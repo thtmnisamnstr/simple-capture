@@ -1,15 +1,26 @@
 #!/bin/bash
-# Type-check and lint the Windows code paths from macOS (M1 plan §6.4): clippy for
-# x86_64-pc-windows-msvc on every crate that does not link Skia or Tauri, plus
-# `cli --no-default-features`. Nothing is linked, so no MSVC toolchain is needed. Crates that
-# link Skia/Tauri (text, export, app, cli default) are only proven on GitHub's Windows runner.
+# Cross-target clippy from macOS (M1 plan §6.4) of the CI fast job's crate set, for Windows and,
+# when its rustup target is installed, Linux: catches code only the other OSes compile. Nothing is
+# linked, so no MSVC or Linux toolchain is needed. Skia/Tauri crates are only proven on CI.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-T=x86_64-pc-windows-msvc
-rustup target list --installed | grep -qx "$T" || { echo "windows-check: rustup target add $T" >&2; exit 1; }
-cargo clippy --locked --target "$T" --all-targets \
-    -p simple-capture-core -p simple-capture-geometry -p simple-capture-platform \
-    -p simple-capture-capture-windows -p simple-capture-record -p simple-capture-decode \
-    -p simple-capture-helpers -- -D warnings
-cargo clippy --locked --target "$T" --all-targets -p simple-capture-cli --no-default-features -- -D warnings
-echo "windows-check: ok"
+FAST=(-p simple-capture-geometry -p simple-capture-core -p simple-capture-platform
+    -p simple-capture-capture-macos -p simple-capture-capture-windows -p simple-capture-capture-linux
+    -p simple-capture-record -p simple-capture-decode -p simple-capture-render
+    -p simple-capture-helpers -p sc-devtools)
+installed=$(rustup target list --installed)
+W=x86_64-pc-windows-msvc
+L=x86_64-unknown-linux-gnu
+grep -qx "$W" <<<"$installed" || { echo "windows-check: rustup target add $W" >&2; exit 1; }
+targets=("$W")
+if grep -qx "$L" <<<"$installed"; then
+    targets+=("$L")
+else
+    echo "windows-check: $L not installed, Linux cross-check SKIPPED (rustup target add $L)"
+fi
+for t in "${targets[@]}"; do
+    echo "windows-check: $t"
+    cargo clippy --locked --target "$t" "${FAST[@]}" --all-targets -- -D warnings
+    cargo clippy --locked --target "$t" -p simple-capture-cli --no-default-features --all-targets -- -D warnings
+done
+echo "windows-check: ok (${targets[*]})"
