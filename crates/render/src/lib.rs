@@ -3,6 +3,8 @@
 
 mod compositor;
 mod diff;
+mod gpu;
+mod maths;
 
 pub mod cpu;
 
