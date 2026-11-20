@@ -93,17 +93,17 @@ fn native_perms_prints_three_statuses_without_prompting() {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", debug_assertions))]
 #[test]
-fn native_sources_outside_the_dev_host_is_refused() {
+fn native_sources_outside_the_dev_host_hits_the_tripwire() {
     let out = cli(&["sources"]);
-    assert_ne!(out.status.code(), Some(0));
     let err = text(&out.stderr);
-    // Until wp-mac-sck lands, the macOS screen source is a stub that says so.
+    assert_eq!(out.status.code(), Some(1), "{err}");
     assert!(
-        err.contains("TCC tripwire") || err.contains("not implemented yet"),
+        err.contains("TCC tripwire") && err.contains("tools/macos-dev-host/run.sh"),
         "{err}"
     );
+    assert!(out.stdout.is_empty(), "{}", text(&out.stdout));
 }
 
 fn project_state(dir: &Path) -> serde_json::Value {
