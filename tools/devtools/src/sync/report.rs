@@ -151,7 +151,18 @@ pub fn recommendation(summary: &[PairSummary]) -> String {
             let _ = write!(why, "; {pair} {:+.1} ms ({what}, n {})", p.median_ms, p.n);
         }
     }
-    if s.within_target == s.n || s.median_ms.abs() <= NO_COMP_MS {
+    if let (Some(v), Some(a)) = (get("issue→video"), get("issue→system_audio")) {
+        let (sv, sa) = (v.max_ms - v.min_ms, a.max_ms - a.min_ms);
+        if sv > 2.0 * sa {
+            let _ = write!(
+                why,
+                "; the spread comes from the stimulus side (issue→video spread {sv:.1} ms vs \
+                 issue→system_audio {sa:.1} ms), not from a drifting audio clock"
+            );
+        }
+    }
+    let median_only = s.median_ms.abs() <= TARGET_MS / 2.0 && spread > MAX_SPREAD_MS;
+    if s.within_target == s.n || s.median_ms.abs() <= NO_COMP_MS || median_only {
         format!("no fixed system-audio compensation: {why}")
     } else if spread <= MAX_SPREAD_MS {
         let dir = if s.median_ms > 0.0 {
@@ -186,6 +197,27 @@ pub fn camera_verdict(events: &[EventResult]) -> String {
         .collect();
     if full.is_empty() {
         return "no full-screen events".into();
+    }
+    if full.len() > 2 {
+        let clear = full
+            .iter()
+            .filter(|e| e.camera_clears_noise == Some(true))
+            .count();
+        let max_step = full
+            .iter()
+            .filter_map(|e| e.camera_step)
+            .fold(0.0_f64, f64::max);
+        let no_data = full.iter().filter(|e| e.camera_step.is_none()).count();
+        return format!(
+            "{clear} of {} full-screen events clear the camera noise floor (largest step \
+             {max_step:.2} levels; {no_data} without camera data){}",
+            full.len(),
+            if clear == 0 {
+                ": camera sync not measured (dark or static scene)"
+            } else {
+                ""
+            }
+        );
     }
     let parts: Vec<String> = full
         .iter()
@@ -401,6 +433,12 @@ mod tests {
             .map(|d| ev(1.0, 1.0 + d, None))
             .collect();
         assert!(recommendation(&summarize(&wild)).contains("varies too much"));
+        let centred: Vec<_> = [-0.045, -0.01, 0.0, 0.005]
+            .iter()
+            .map(|d| ev(1.0, 1.0 + d, None))
+            .collect();
+        let r = recommendation(&summarize(&centred));
+        assert!(r.starts_with("no fixed system-audio"), "{r}");
         assert!(recommendation(&summarize(&small[..2])).contains("too few"));
     }
 
