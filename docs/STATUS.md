@@ -1,285 +1,307 @@
 # Status
 
-**Current milestone: M1 ★ (macOS recording): in progress.** M0 was approved by the owner on
-2026-11-19. M1 now also includes two new requirements: switching the source while recording, and an
-output aspect ratio (16:9, 4:3, 1:1, 9:16) with a letterbox background (SPEC → Capture).
-Pre-work is done (below); the M1 build plan is being written (docs/M1_PLAN.md).
-Updated 2026-11-19. Nothing is committed yet.
+**Current milestone: M1 ★ (macOS recording): built and verified by agents; waiting for the owner's
+★ review.** Updated 2026-11-20. All M1 work is on branch `m1` (pushed to origin, not merged to
+`main`). The ★ review list is the last section of this file.
 
-**M1 pre-work results (2026-11-19, each re-checked by an independent verifier):**
-- **Native preview on Windows/Linux** ([spike 5](../spikes/05-native-preview-windows/REPORT.md),
-  [spike 6](../spikes/06-native-preview-linux/REPORT.md)): Windows plausible but unproven (compiles,
-  never run on Windows); Linux works on Wayland and only partly on X11 (software rendering in
-  Docker). The owner's condition is not met yet, so **webview frames on every OS** (ADR-007).
-- **System pickers** ([research](research/pickers-and-hotswap.md)): all three OSes have one, so
-  the condition is met and a "System picker…" source is added everywhere (ADR-028).
-- **Switching source while recording on macOS** ([spike 3b](../spikes/03-macos-pipeline/REPORT-swap.md)):
-  works. Starting the new stream before stopping the old one gives a 0–28 ms gap with no wrong
-  frames. System audio must move to its own stream, and audio gaps must be filled with silence
-  (ADR-034, ADR-035).
-- **Fonts** ([report](../spikes/04-skia-text/REPORT-fonts.md)): 3 of 13 did not display correctly
-  and were replaced: Fredoka → Baloo 2, Permanent Marker → Sedgwick Ave Display, DM Serif Display →
-  Abril Fatface (ADR-020).
-- **Aspect ratio and background** ([design](research/canvas-and-source-switching.md)): the output
-  becomes a canvas; each source is fit inside it; the background is a colour, gradient or image
-  (ADR-033).
+M1 delivers (SPEC M1 line plus the 2026-11-19 additions): display, window, application, region and
+system-picker sources; permission onboarding that never prompts by itself; separate crash-safe
+tracks (screen as segments, camera, mic and system audio continuous); `project.json` v1, the journal
+and the recovery scan; switching source while recording; the output canvas (Original, 16:9, 4:3,
+1:1, 9:16) with solid, gradient and image backgrounds; a quick x264 MP4 export; capability probe v1;
+the `simple-capture` CLI; the Tauri app with tray, recorder panel, overlays, floating bar and Saved
+window; the sync, soak and kill tests; CI for macOS, Windows and Linux; docs/MANUAL_TEST.md.
 
-**Owner decisions on 2026-11-19** (recorded in DECISIONS.md and SPEC.md): Svelte 5 yes (ADR-005);
-native preview and the system picker only if they also work on Windows and Linux (ADR-007, ADR-028,
-conditional); keep the fonts but drop any that don't display correctly (ADR-020); VP8 BT.601
-accepted on our recommendation (ADR-029); the two extra crates yes (ADR-030); Windows/Linux FFmpeg
-built by us with networking disabled (ADR-013); no Apple Development identity for now (ADR-003
-update: development runs through the Simple Capture Dev host). Every other Proposed ADR was
-accepted with the M0 approval.
+**How the numbers here are sourced.** M1 was built by a team of agents in packages (docs/M1_PLAN.md
+§8). Each package returned a report to the orchestrator; the reports are not stored in the repo, so
+**§2 of this file is the in-repo record of every M1 number**, each naming its source as
+[M1:<package>] (for example [M1:soak] = wp-soak-test) plus the local result file or commit where one
+exists. Files under `target/` are gitignored and exist only on the build Mac. Every recording made
+by an agent was deleted after its numbers were taken; nothing recorded is committed.
 
-All numbers come from an Apple M3 Pro (18 GB, macOS 26.7.2). **Nothing was measured on the base M1
-8 GB target.** The "constrained" proxies turned out to be noisy or did not constrain anything, so
-treat every performance number as an upper bound until there is an M1 run.
+All numbers come from an Apple M3 Pro (Mac15,6, 18 GB, macOS 26.7.2, one 3024×1964 display at 2×
+during the live M1 runs). **Nothing was measured on the base M1 8 GB target.**
 
 ---
 
-## 1. What's done
+## 1. M1 exit checklist (M1_PLAN §1), state on 2026-11-20
 
-| Item | Where |
-|---|---|
-| Spec (source of truth) | [docs/SPEC.md](SPEC.md) |
-| Architecture | [docs/ARCHITECTURE.md](ARCHITECTURE.md) |
-| Decisions (32 ADRs; the Proposed ones need your OK) | [docs/DECISIONS.md](DECISIONS.md) |
-| Codec matrix, licenses | [docs/CODEC_MATRIX.md](CODEC_MATRIX.md), [docs/LICENSES.md](LICENSES.md) |
-| Third-party attribution | [docs/THIRD_PARTY.md](THIRD_PARTY.md) (Kap, markus-perl, fonts, spike 3 note) |
-| Research: Cap recording | [docs/research/cap-recording.md](research/cap-recording.md) |
-| Research: Cap render/decode | [docs/research/cap-render-decode.md](research/cap-render-decode.md) |
-| Research: Cap editor/export | [docs/research/cap-editor-export.md](research/cap-editor-export.md) |
-| Research: Cap MIT crate audit | [docs/research/cap-mit-crates.md](research/cap-mit-crates.md) |
-| Research: Kap | [docs/research/kap.md](research/kap.md) |
-| Research: ecosystem versions, APIs, licenses | [docs/research/ecosystem.md](research/ecosystem.md) |
-| Helper build tooling (pinned, hash-verified) | [third_party/README.md](../third_party/README.md), `third_party/versions.toml` |
-| Permission dev host (one app, never renamed) | `tools/macos-dev-host/`, rules in [CLAUDE.md](../CLAUDE.md) |
-| Spike 1: export helpers | [REPORT.md](../spikes/01-helpers/REPORT.md); raw: [results/latest.md](../spikes/01-helpers/results/latest.md) |
-| Spike 2: preview transport | [REPORT.md](../spikes/02-preview-transport/REPORT.md); raw: `results/verify-r1..r3`, `verify-con1..2`, `evidence/*.png` |
-| Spike 3: macOS pipeline | [REPORT.md](../spikes/03-macos-pipeline/REPORT.md); raw: `out/bench-quiet{,2,3}/summary.json` |
-| Spike 4: Skia text | [REPORT.md](../spikes/04-skia-text/REPORT.md); raw: [out/bench-quiet.md](../spikes/04-skia-text/out/bench-quiet.md), `out/*.png` |
-
-**Spike reports.** The agent harness would not let subagents write `REPORT.md`, so the
-consistency pass returned drafts built only from files on disk plus its re-measurements, and the
-orchestrator saved them verbatim. Their numbers were spot-checked against the saved files.
-
-What the consistency pass re-measured (2026-11-19, 23:13–23:30 UTC, load average about 3.5):
-- Spike 1: VideoToolbox H.264/HEVC size probe at 15 sizes, a 30 s clip run (x264, SVT-AV1, VT
-  H.264, twice), and a SIGTERMed gifski partial. Results are in CODEC_MATRIX §2.1–2.2 and ADR-015.
-- Spike 4: the quiet bench three more times (`--no-png`), and a timed clean Skia FreeType build in a
-  scratch target folder (ADR-018, ADR-021).
-- The raw outputs of these re-runs went to a scratch folder, not the repo. The numbers are quoted in
-  the docs and in the REPORT drafts.
-
-**Spike 3 evidence is now committable.** `spikes/03-macos-pipeline/.gitignore` still ignores the
-recordings in `out/` (770 MB of real screen, camera and mic), but un-ignores every `summary.json`,
-`analysis.json`, `psnr.txt`, `project.json` and run log (64 files, about 470 KB), so every [S3]
-number has a source in the repo after a commit. `out/old-prehost/` stays ignored.
-
-**Naming request ("stop giving the capture spike apps new names").** No spike app gets a new name
-or bundle ID (ADR-002, CLAUDE.md):
-- Spike 3 now runs only under `Simple Capture Dev` (`com.simplecapture.dev`). Its own Info.plist and
-  camera `.app` were deleted, and three rebuilds caused no new prompts.
-- Spike 2 still carries `productName` "Preview Transport Spike" and identifier
-  `com.simplecapture.spike.preview` in `src-tauri/tauri.conf.json`. It was deliberately **not**
-  renamed again: its release build embeds no Info.plist and asks for no permission. Fixed at
-  close-out:
-  - The `"tauri"` script in `package.json` now refuses to run, because `pnpm tauri dev` would embed
-    an Info.plist with that name (a new app name to macOS).
-  - `bench.sh` skips the window snapshot by default. `SC_SNAPSHOT=1` launches the binary through
-    `tools/macos-dev-host/run.sh`, so the snapshot uses the Simple Capture Dev grant. Checked:
-    `c-native-540` under the host, 60.5 fps, snapshot "video visible, HTML over it".
-  - `run.sh` now forwards `SC_*` and `RUST_*` environment variables (`open --env`) and waits for
-    the exit code if a child exits before `open -W` can attach.
-- Spikes 1 and 4 need no permission.
-- The old `com.simplecapture.spike.<name>` convention is retired. The M0 workflow's task text
-  still mentioned it; that workflow is finished, and future agent briefs use the dev-host rule from
-  CLAUDE.md and ADR-002.
-
----
-
-## 2. Spike verdicts
-
-Each spike was re-run by an independent verifier on a quieter machine; all four verdicts were
-"partially confirmed". The verifiers' corrections were not saved to disk, so the consistency pass
-re-read every number below from the saved result files, re-measured where a claim had no source,
-and corrected the docs to match. All four pass on the technical question.
-
-| Spike | Verdict | Key verified result | Main corrections / caveats |
+| # | Item | State | Evidence |
 |---|---|---|---|
-| 1 Helpers | **Pass** | Static FFmpeg 9.0.2 (GPL-2.0+, no network) and gifski 1.34.0. All 29 outputs pass ffprobe, 3 runs out of 3. 1080p30: x264 medium 197 fps, x265 120, SVT-AV1 p8 189, VP9 64, VideoToolbox H.264 191 / HEVC 177. gifski 41 fps at 960×540. Cancel is clean with no leftover processes. | The original speed table was taken under load (x264 was reported at 122.8 fps). The 4-thread proxy is noisy. FFmpeg palette GIF runs at about realtime (14.2 fps median), not "faster". A SIGTERMed gifski partial is **truncated** (no trailer, last frame undecodable) but ffprobe reads 18–20 frames from it; the earlier word "corrupt" had no saved evidence and was re-checked in this pass. VideoToolbox H.264 (hardware, `-allow_sw 0`) fails when **either dimension exceeds 4096**: only 8192×4320 had been probed; 4098×2160, 5120×2880, 6016×3384, 7680×2160 and 2160×4098 were probed in this pass. The 30 s figures: VT H.264 207–208 fps confirmed; "SVT-AV1 153.6 fps" did **not** reproduce (182–185). |
-| 2 Preview | **Pass, keep Tauri** | Every transport: 58.5–60.1 of 60 fps, including full 1080 through the webview. Native CAMetalLayer under the webview: 60.1 fps, about 20% CPU, HTML composites on top. | The constrained pass did not constrain anything. 2D canvas costs 1.3–1.7× the WebKit GPU-process CPU of WebGL2 (1.3× at 540, 1.7× at 720 and 1080), not 2×. The URI pull (B) is cheaper than the Channel (A) at 1080. "0 drops" on the native path holds by construction. Photon latency, WebKitGTK and WebView2 are untested. |
-| 3 macOS pipeline | **Pass** | SCK, camera, mic and system audio each write a fragmented HEVC/AAC .mov. A SIGKILL loses ≤0.86 s and every file stays readable. All clocks are on host time. Decode is zero-copy into wgpu (39 µs import). HEVC encodes 46 fps at 7680×2160. | 60 fps at full native size reached only 44.5 fps. Whole-app UI exclusion fails under the dev host (per-window exclusion works). Keyframe gaps reach 2.8 s on idle screens. Mic sync is unverified. The "Documents hang" did not reproduce. Writer "not ready" drops were 0 in two quiet runs but **6 camera frames in `bench-quiet3`** (capture drops 0 in all three); earlier docs said "0". Only display and single-window capture were tested: region, application, "only this app" audio, device hot-plug, permission onboarding and Mic Mode were not (§3 item 14). Summary evidence under `out/` is now committable (§1). |
-| 4 Skia text | **Pass** | Every text style plus colour emoji works. GPU and CPU outputs differ by at most 1/255 (saved quiet run, three re-runs and the E-core proxy all agree). Sum over 11 items, warm/cold: layout 0.44–0.45 / 0.55–0.58 ms, raster 1080p 3.91–4.27 / 9.10–9.67 ms, raster 4K 15.2–15.9 / 26.1–26.7 ms (`out/bench-quiet.md` plus three re-runs in this pass). | Stock macOS skia-safe (CoreText) cannot draw bundled emoji, so Skia needs a FreeType source build. Build time: the saved log (`target/ft-build.log`, machine under load) says 7 min 55 s; a clean build in this pass took 2 min 42 s wall (skia-bindings build script 144 s). The earlier "2 min 54 s" and the verifier's numbers (layout 0.21 ms, raster 3.82 / 14.5 ms, "identical in all 4 runs") were never saved and are withdrawn. The typewriter animation was broken by a Skia m157 quirk and is fixed. `FORCE_SKIA_BUILD`, not `SKIA_GN_ARGS`, forces the source build. |
+| 1 | `just run` under the dev host, no new prompt | **Met for agents** | `just run` printed SC_READY and SIGTERM exited 0 [M1:app-shell]; permissions read granted before and after every e2e and driver run, with status reads only [M1:e2e, M1:app-integration]. Caveat: early fixture launches from `~/Documents` probably raised a Documents-folder consent for an ad-hoc `sc-devtools` (§4, action 3). |
+| 2 | Every source records; every switch path; segments tile; audio continuous; closed window = source lost | **Met, except paths that need a second display or the picker UI** | `just e2e`: 13 of 14 steps pass twice, step 11 (non-main display) skipped, one display [M1:e2e]. App driver: 82 of 82 checks, 11 flows, every switch path (bar, tray, ⌥⇧S + pick, region overlay, command) [M1:app-integration]. The system picker was configured and read back, never presented (it takes focus): MANUAL_TEST P1–P7. |
+| 3 | Every aspect × background exports to a valid MP4; colour within 3/255 | **Met for validity and colour; the QuickTime look is the owner's** | 20 of 20 exports pass `validate` [M1:e2e step 13]; colour patches within 3/255 [M1:export tests]; look in QuickTime: MANUAL_TEST E2. |
+| 4 | Kill tests recover; killed app recovers on launch; Quit/SIGTERM finalize | **Met** (loss bound is an owner question) | Live 12 of 12 kills recover and export; CI `kill_synth` 6 of 6 [M1:kill-recovery-test, merge 76426a6]; driver: `kill -9` → `recovered`, Quit and SIGTERM → `finalized` [M1:app-integration]. Loss per track up to 1.076 s with 1 s fragments (ADR-008, §4). |
+| 5 | Sync at start, after each switch, at end; system audio, mic, camera | **Partly met** | System audio: median −10.2 ms, 27 of 30 events within ±33 ms; no fixed compensation (ADR-011). **Mic and camera not measured**: the output was muted and the room dark [M1:sync-test]. Owner rerun (§4). Sync across pauses is M7. |
+| 6 | 30-minute soak decides ADR-010 | **Met** | Agent run on the real screen, camera, mic and system audio: every threshold passed; **no frame copy** [M1:soak, `target/soak/20261120-000343/summary.md`]. Mic end sync n/a (mic did not hear the beep). |
+| 7 | CI green on all three OSes | **Not met: macOS and Linux green, Windows red** | Run 44710191597 (m1 @ 76426a6): ui, licenses, fast and full macos-15, fast and full ubuntu-24.04 **pass**; both Windows jobs **fail**. fast windows-2025: `kill_synth` mid-s0 and mid-s1 get `Locked` instead of `Recovered`, because on Windows an existing project `.lock` always counts as held (ADR-038, core), so a killed recorder's lock is never stale. full windows-2025: the Skia cache was restored, the LLVM upgrade skipped, but skia-bindings still built from source and clang-cl 20 failed with STL1000 (ADR-018). Both are for the orchestrator to route (CI config and `crates/core` / the kill test); docs only here. |
+| 8 | cargo-deny, pnpm licences, no networking, approved deps only | **Met** | `licenses` job green in runs 44695891492, 44705677113 and 44710191597; `netcheck: ok`; Cargo.lock unchanged since the scaffold (LICENSES §10). |
+| 9 | Release bundle built and inspected, not launched | **Met** | App and both helpers signed `adhoc,runtime`; both entitlements; three usage strings [M1:app-shell]. |
+| 10 | MANUAL_TEST; STATUS, DECISIONS, ARCHITECTURE updated | **Met** | docs/MANUAL_TEST.md (53 owner steps) [M1:manual-test]; this update (ADR-037, ADR-038 and M1 updates to ADR-008/009/010/011/018/022/024/028/031/034/035). |
+
+---
+
+## 2. M1 measured results
+
+### 2.1 Soak, 30 minutes (ADR-010 decision run)
+
+Source: [M1:soak], `target/soak/20261120-000343/summary.md` (2026-11-20 00:03, debug build, deps at
+opt-level 3). Display 3024×1964 at 2×, 30 fps, default camera (FaceTime HD), default mic, system
+audio All; switches display ↔ window every 5 min (segments s0–s5, 0 switch failures).
+
+| Measure | Threshold (M1_PLAN §1 item 6) | Result |
+|---|---|---|
+| Screen drops | < 0.5 % | 0 of 52,581 frames (0.000 %); writer not ready 0 |
+| Longest screen stall / lowest 10 s rate | – | 0.0 s / 28.1 fps |
+| RSS growth from minute 2 | ≤ 50 MB | 73.3 → 47.9 MB (−25.5 MB, slope −0.83 MB/min), peak 78.4 MB |
+| StreamStopped / source lost | 0 | 0 / 0 |
+| End sync, system audio vs screen | change within 33.3 ms | −21.1 ms (start +26.8 ms, end +5.6 ms; 5-flash bursts) |
+| End sync, mic vs screen | within 33.3 ms | not measured (mic did not hear the beep) |
+| Audio drift, count-based vs host time | reported | mic 0.0 ms, system audio 0.0 ms; 0 gaps, 0 overlaps |
+| Camera | – | 53,975 frames, 0 dropped |
+| CPU, average / max of one core | – | simple-capture 26.8 / 36.1 %, replayd 3.8 / 4.8 %, VTEncoderXPCService 6.5 / 7.4 % |
+
+Minor open item: the mic's `health.frames` was 13,824 samples (+288 ms) above duration × rate, while
+its file was exactly 1800.0 s; not growing with run length [M1:soak].
+
+### 2.2 Switching
+
+| Measure | Result | Source |
+|---|---|---|
+| Request → cut, live (two runs) | display→window 146.3 / 142.4 ms; window→region 112.7 / 114.5 ms; region→display 114.0 / 130.2 ms (target 500 ms) | [M1:e2e] run 5, `target/e2e/report-20261119-232627.json`, `…232905.json` |
+| Recorded gap, last old → first new frame | 5.6–41.6 ms | same |
+| Trailing frames dropped per switch | 1 | same |
+| Peak RSS, two native-size streams overlapping | 48.3 / 47.3 MB | same (`ps` every 200 ms) |
+| Switch to a static window (SC-STATIC) | 149.3 / 151.9 ms | [M1:e2e] step 8 |
+| Wrong-content frames | 0 in 5 runs (55–111 frames each) | [M1:mac-sck] |
+| Gap at the new stream's first frame vs best point in the overlap | > 34 ms in 6 of 15 switches (worst 41.7 ms); best point 0–20.8 ms | [M1:mac-sck] |
+| `switch_begin` → `segment_prepare`; `segment_prepare` → cut (real writer, synthetic source, median / max) | 4.0 / 11.4 ms; 60.2 / 88.5 ms | [M1:record-session], `session_macos` |
+| Synthetic stop-then-start gap | 64 ms | same |
+| Source lost after a window closes | about 80 ms (watcher; SCK gives no error) | [M1:mac-sck]; e2e: lost 4.13 s, last s0 frame 4.09 s [M1:e2e] |
+| App mode filter change (`follow_app`) | 144–178 ms; 76–95 ms audio timestamp hole, filled | [M1:mac-sck] |
+
+### 2.3 Sources and capture
+
+| Measure | Result | Source |
+|---|---|---|
+| First-frame latency | display 158 ms, window 63 ms, application 347 ms, regions 161–360 ms | [M1:mac-sck] final live run |
+| Regions by `sourceRect` | 617×283.5 pt → 1234×566 px; 1121×641 px → 1120×640 px; 1×1 pt → 2×2 px; content correct | [M1:mac-sck], [M1:e2e] step 4 |
+| Application capture, second window opened mid-recording | picked up after 66–77 ms | [M1:mac-sck]; e2e step 3 |
+| Hidden-then-shown own window | excluded, 9 of 9 frames; a window created after start visible until `update_exclusions` (82–105 ms) | [M1:mac-sck] |
+| Own test window in recordings | absent from 963 checked frames | [M1:e2e] step 12 |
+| Tray menu in display recordings | 0, 0 and 1 frame in three runs (was 9 of 9 before the background refresh) | [M1:app-integration], `target/app-driver/20261119-230228/report.json` |
+| `--fps 60` delivered | 52.3 / 51.6 fps native 3024×1964; 52.5 / 50.8 fps at 1× | [M1:e2e] step 9 |
+| Camera (live) | 1920×1080 420v 30.0 fps, start 1176 ms, worst delivery latency 112 ms | [M1:mac-av] |
+| Mic (live) | 48 kHz mono f32, worst latency 140 ms | [M1:mac-av] |
+| Devices listed | 4 cameras (incl. Continuity and Desk View), 4 mics | [M1:mac-av] |
+
+### 2.4 Sync
+
+| Measure | Result | Source |
+|---|---|---|
+| Video → system audio, final 3 runs | median −10.2 ms (min −41.1, max +8.5); 27 of 30 within ±33 ms; per run −26.4, −4.8, −3.1 ms | [M1:sync-test] 2nd attempt, `target/sync/20261120-005228/` |
+| By phase (median, within ±33 ms) | start −13.9 (5/6); after switch 1 (window) −14.6 (5/6); after switch 2 (display) −10.2 (6/6); end −5.5 (6/6) | same |
+| Earlier sets | median −15.6 ms (28/30); −6.8 ms (30/30) | [M1:sync-test] 1st attempt |
+| issue → system audio | stable within a run; about +0.5 ms in one run and about +19.5 ms in every other | both attempts |
+| issue → video (stimulus display latency) | median +23.5 ms, range 10.8–48.6 ms | 2nd attempt |
+| Mic | heard 0 of 30 beeps (output muted: `osascript` read `muted:true`) | 2nd attempt |
+| Camera | 0 of 6 full-screen events above the noise floor (largest step 0.02 levels, dark room); one earlier low-confidence onset about 108 ms after issue | both attempts |
+| Recommendation | no fixed system-audio compensation (ADR-011) | – |
+
+### 2.5 Crash safety
+
+| Measure | Result | Source |
+|---|---|---|
+| Live kills (plain 6 s, after `switch_begin`, after `segment_prepare`, after `segment_open`; 3 runs each) | 12 of 12 recover, files decode, exports validate at 740×480 | [M1:kill-recovery-test] 2nd attempt, with the empty-file rule (merge 76426a6) |
+| Loss per track, live, `fragment_interval_s = 1.0` | up to 1.056 s (2nd attempt), 1.076 s (1st); 14 of 21 measurements over 1 s | same |
+| CI kill tests (`kill_synth`, synthetic) | 6 of 6, ≤ 1 s loss, about 2–3 s wall | same |
+| SIGKILLed writer unit test | screen 0.53 s, mic 0.57 s lost | [M1:mac-av] |
+| Recovery unit tests | 13 synthetic tests | [M1:record-recovery] |
+
+### 2.6 Export, probe and render
+
+| Measure | Result | Source |
+|---|---|---|
+| Quick export 1920×1080, 30 s at 30 fps | 5.20 s, 173.1 fps, 5.77× realtime | [M1:export], `export_bench`, synthetic frames |
+| Quick export 3840×2160, 30 s | 13.85 s, 65.0 fps, 2.17× | same |
+| x264 7680×2160, 10 s | 11.18 s, 26.8 fps, 0.89× (why quick export caps at 3840, Q6) | same |
+| Reference export of a real 10 s 3024×1964 recording | 4.07–4.3 s | [M1:e2e] step 1 |
+| Probe v1, HEVC 60 fps | native 3024×1964 117.9 fps (60 allowed, threshold 78); 1× 1512×982 386.8 fps | [M1:export], `simple-capture probe --refresh` |
+| `h264_videotoolbox -allow_sw 0` | opens at 3840 and 4096 ×2160, fails at 4098 | same |
+| HEVC `encode_benchmark` 1920×1080, 60 frames | 129.3 fps (short run, includes setup) | [M1:mac-av] |
+| Compositor GPU vs CPU | max 0, mean 0 (bit-identical) for every aspect and scale tested | [M1:render] |
+| Compositor `render()` on Metal, Rgba8 / I420 | 1080p 6.3–9.7 ms; 2160p 17.4–18.7 ms; CPU reference 27–161 ms | [M1:render], noisy machine |
+
+### 2.7 Build and CI
+
+| Measure | Result | Source |
+|---|---|---|
+| Clean workspace dev build incl. Skia FreeType | 4 min 17 s [M1:scaffold]; 233 s under load average 30–50 [M1:ci-green] | – |
+| Same with deps at opt-level 0 | 132 s (ADR-031: keep opt-level 3) | [M1:ci-green] |
+| Incremental, real edits | app main.rs 1.6 s; geometry lib.rs (all 15 crates) 3.5 s | [M1:ci-green] |
+| Workspace tests (`ci-local-fast`) | 303 passed, 0 failed, 23 ignored/live at the integration merge; UI 32 of 32 | integration merge report |
+| CI durations, run 44695891492 | ui 22 s, licenses 1 m 41 s, fast ubuntu 4 m 13 s, fast macOS 6 m 26 s, full ubuntu 27 m 41 s, full macOS 23 m 49 s | [M1:ci-green] |
+| First green macOS run | 44705677113: fast 7 m 26 s, full 23 m 12 s | [M1:ci-green] 2nd attempt |
+| Latest run | ui 16 s, licenses 1 m 44 s, fast ubuntu 4 m 18 s, fast macOS 8 m 10 s, full ubuntu 19 m 06 s, full macOS 23 m 04 s (all pass); fast windows 5 m 24 s and full windows 10 m 34 s (fail) | GitHub run 44710191597 (m1 @ 76426a6) |
 
 ---
 
 ## 3. Open risks
 
-1. **No M1 data.** Encoder headroom, preview CPU, memory and helper speed are all M3 Pro numbers.
-   The constrained proxies (4 threads, E-cores only, CPU hogs) were noisy or ineffective.
-2. **60 fps at native Retina size is not sustainable**, even on the M3 Pro (44.5 fps delivered at
-   7680×2160). The default stays 30 fps, and 60 fps is gated by the probe (ADR-009).
-3. **Own-UI exclusion.** Whole-app filtering fails under the dev host. M1 must re-test it in the
-   signed `com.simplecapture.desktop` app, and keep the per-window filter up to date as windows
-   change.
-4. **A/V sync is unproven.** Only screen flash to system-audio onset was measured (39–58 ms).
-   The mic did not hear the test sounds. The flash/beep/clap test is an M1 deliverable.
-5. **SCK buffer starvation.** Cap copies every frame into its own pool. We have not done that and
-   saw no problem in 10 s runs, but long recordings are untested.
-6. **Pause** is designed (ADR-012) but untested.
-7. **Skia FreeType build on Windows and Linux** is untested, and it is the first CI risk.
-8. **Linux preview on WebKitGTK** and **Windows WebView2** are untested. Real Linux hardware is
-   needed (see owner actions).
-9. **macOS 15+ periodic screen-capture re-prompt and `SCContentSharingPicker`: open, needs owner
-   input (ADR-028).** M0 did desk research only. Spike 3 never used the picker, and the re-prompt
-   was never observed (it needs weeks of wall-clock time and a stable signed app). No decision
-   exists on adopting the picker, offering it as an optional source path, or rejecting it, nor on
-   "pick a display in the picker, then crop" for regions. ADR-028 proposes a default and an M1 test.
-10. **Licensing loose ends:**
-    - gifski's `gifsicle` feature (lossy LZW port) has unreviewed provenance: `src/gifsicle.rs` in
-      the pinned crate has no licence header, and gifsicle upstream is GPL-2.0.
-    - The gifski release bundle is missing notice texts: only `gifski.LICENSE` (AGPL-3.0) is
-      collected. libimagequant 4.4.1 (GPL-3.0-or-later, plus the pngquant/Poskanzer-Roelofs notice
-      in its `COPYRIGHT` file) and about 50 permissive crates (`gifski.deps.txt`) have no texts in
-      `third_party/out/` yet (LICENSES §3.2, §5).
-    - BtbN's Windows minimum (10 22H2) is above the spec's (10 2004), and its builds probably
-      contain network protocols.
-    - The FFmpeg GPG signature is unverified (no gpg).
-    - The spec says "OFL fonts", but two suggested fonts are Apache-2.0.
-11. **Helper gaps:**
-    - The PNG decoder is silently missing (zlib is disabled).
-    - There is no AV1 decoder.
-    - gifski x86_64 has not been built.
-    - The Small and High quality tiers are untested.
-12. **objc2-app-kit default features** link CloudKit and CoreData into the binary. Trim them in M1.
-13. **M0 deliverable gaps:** closed at close-out (reports saved, spike 3 evidence un-ignored,
-    spike 2 snapshot routed through the dev host, `pnpm tauri` guarded; §1).
-14. **M1 sources that M0 did not test.** Spike 3 tested display capture, single-window delivery
-    and own-UI exclusion only. These spec items are untested and are real work, not porting:
-    - region capture (`SCStreamConfiguration.sourceRect` on a display stream vs. a full-display
-      capture cropped later; Retina scale and odd sizes);
-    - application capture (an `SCContentFilter` built from an app's windows; new windows appearing
-      mid-recording);
-    - system audio "Only the captured app" (SCK filters audio per app, not per window
-      [ecosystem]), and Core Audio process taps as the alternative;
-    - camera and mic lists that update on hot-plug (device connect/disconnect notifications);
-    - reading Screen Recording, Camera and Mic status **without prompting** for onboarding
-      (spike 3 read camera/mic status with `authorizationStatusForMediaType`, and spike 2 used
-      `CGPreflightScreenCaptureAccess`, but no onboarding flow was built or tested);
-    - the macOS "Mic Mode" button (`showSystemUserInterface(.microphoneModes)`);
-    - click highlight: `showMouseClicks` needs macOS 15, so on 14 we draw clicks ourselves from
-      `cursor.jsonl`. Which one to use is undecided.
-15. **Dev host and `~/Documents`.** Spike 3 once saw `run.sh` hang on a hidden "Documents folder"
-    prompt. At close-out, `run.sh` ran a binary with its working folder inside this repo without
-    any prompt, so the grant is in place. Spike 3's bench still stages binaries in a temp folder,
-    which is harmless.
+1. **No M1 8 GB data.** Every number is from the M3 Pro, including the soak (one debug-build run),
+   export speeds (synthetic content) and the probe.
+2. **CI is not green on Windows** (§1 item 7): the Windows Skia FreeType build has not yet passed
+   with the current workspace (clang-cl 20 vs the VS 18 STL; the LLVM 22.1.8 upgrade only runs on a
+   cache miss), and `kill_synth` fails on Windows because a `.lock` there is never treated as stale.
+   macOS and Linux are green (run 44710191597).
+3. **Kill loss is up to about 1.08 s per track** with 1 s fragments, over the documented ≤ 1 s
+   (ADR-008, owner question).
+4. **The open tray menu can leak 0–1 frame** into a display recording (ADR-010, owner question).
+5. **Mic and camera A/V sync are unmeasured.** System audio is within target. The mic never heard
+   a beep (muted output) and the camera saw a dark room.
+6. **System audio's time base moved by about 19 ms between sessions** (stable within a session).
+   Within the one-frame target, but unexplained; worth a look at the SCK audio PTS mapping.
+7. **"Only the captured app" audio** cannot isolate unbundled processes (SCK groups by bundle ID),
+   and the wp-mac-sck and e2e results on two unbundled tone apps disagree. Bundled apps isolate.
+8. **One display only.** Non-main displays, displays of a different scale, regions on them and
+   overlay repositioning across displays were never run live.
+9. **Picker path and whole-app exclusion** are untested by design (they need the owner and the
+   never-granted release bundle, Q8): MANUAL_TEST P1–P7, B0–B6.
+10. **Not run live by agents:** real device unplug (camera, mic, display), real sleep, disk full,
+    logout, Mic Mode panel (`SC_LIVE_MIC_MODES=1`). All are owner steps in MANUAL_TEST.
+11. **Cut gap up to about 42 ms** at a switch (6 of 15 switches over 34 ms in wp-mac-sck's test);
+    cutting at the best point inside the overlap would give 0–21 ms.
+12. **Dev environment:** binaries under `~/Documents` hung in dyld `open()` as hosted or disclaimed
+    children while a Documents-folder consent was pending; live scripts now stage in `$TMPDIR`, but
+    `just test-live` and `just app-driver` still start from the repo. Builds into the shared
+    `target/skia` from different worktrees can link another worktree's crates.
+13. **60 fps** delivered 51–52 fps at 3024×1964 on a changing test screen (probe allows it).
+14. **Carried from M0, unchanged:** gifski notice texts and the gifsicle-feature provenance; BtbN
+    for Windows/Linux and the Windows 10 minimum (M6); FFmpeg GPG signature unverified; the helper's
+    missing PNG and AV1 decoders; gifski x86_64 not built; Small and High quality tiers untested;
+    Linux WebKitGTK and Windows WebView2 preview cost (M6); Apache-2.0 fonts vs "OFL fonts" in
+    the spec; on Windows an existing project `.lock` always counts as held (M6).
+
+Resolved in M1 (were M0 risks): SCK frame copy (not needed), own-UI exclusion across switches,
+region/application/app-audio/hot-plug/onboarding/Mic Mode untested (built and tested; see the
+caveats above), objc2-app-kit linking CloudKit and CoreData (trimmed), Skia FreeType on Linux
+(passes), pause (moved to M7 by plan).
 
 ---
 
-## 4. What to look at now
+## 4. Owner questions and actions
 
-Allow about 20 minutes. Nothing here needs a rebuild or a new permission.
+**Questions (answer at the ★ review):**
 
-1. **Read** the Proposed ADRs in [DECISIONS.md](DECISIONS.md): 005, 006, 007, 009, 012, 013
-   (**three** sub-points: Windows floor, PNG/AV1 decoders, and the BtbN **networking** exception),
-   016–021, 023–026, 028 (SCContentSharingPicker), 029 (VP8 BT.601 exception to Pitfall 5),
-   030–032 (new crates, dev-profile opt-level, project-folder naming), plus the Proposed parts of
-   010 (frame copy) and 011 (start gate).
-2. **Recordings (spike 3).** Open these in QuickTime:
-   - `spikes/03-macos-pipeline/out/bench-quiet/main/screen.mov` and `camera.mov`.
-   - The killed recording, `spikes/03-macos-pipeline/out/bench-quiet/kill/screen.mov`. It should
-     still play.
+| # | Question | Options | Where |
+|---|---|---|---|
+| Q-a | Kill loss bound | (1) set `fragment_interval_s` to about 0.5 s (should keep loss under 1 s; file overhead not measured), or (2) restate the target as "≤ fragment interval + encoder latency" and keep 1 s | ADR-008 |
+| Q-b | Tray menu leak (0–1 frame) | (1) accept it as a known exception, (2) change the tray (no menu while recording), or (3) whole-app exclusion if your B4 test shows it works in the release bundle | ADR-010 |
+| Q-c | Mic level meter and debug overlay (SPEC v1, on no milestone line) | proposed: M7 (polish and performance pass) | M1_PLAN §1 |
+| Q-d | App audio for unbundled apps | proposed: keep App mode, note in the UI that it isolates apps with a bundle ID | ADR-010 |
+| Q-e (optional) | Drop Skia's default `pdf` feature (and with it expat) | `default-features = false, features = ["textlayout", "embed-freetype", "jpeg"]`; rebuilds Skia once | LICENSES §2.4 |
+| Q8 | Release-bundle test (never-granted bundle, picker, whole-app exclusion, camera/mic prompts) | owner only | MANUAL_TEST §10 |
 
-   Check colour, sharpness and that our test window is not visible.
-3. **Text (spike 4).** Look at these PNGs in `spikes/04-skia-text/out/`:
-   - `composite_gpu_1080p.png`: all text styles.
-   - `emoji_matrix.png`: why CoreText fails.
-   - `anim_typewriter.png` and `anim_words.png`.
-
-   Sign off on the merged-box shape and the emoji look.
-4. **Preview (spike 2).** `spikes/02-preview-transport/evidence/c-native-1080.png` shows HTML
-   drawn over the native Metal layer.
-5. **Export outputs (spike 1).** Open the files in
-   `spikes/01-helpers/results/run-20261119T214545Z/out/` in QuickTime and Chrome. They are
-   synthetic test patterns.
-6. **Optional re-runs** on your machine, from the repo root, on a quiet machine:
-   - `spikes/01-helpers/bench.sh` (about 2.5 min).
-   - `spikes/04-skia-text/bench.sh` (14 s when already built).
-   - `spikes/02-preview-transport/bench.sh` (about 4 min; opens a test window per mode). Add
-     `SC_SNAPSHOT=1` to also check that HTML draws over the video; it runs under Simple Capture
-     Dev.
-   - `spikes/03-macos-pipeline/bench.sh spikes/03-macos-pipeline/out/bench-owner` (about 3 min).
-     This records your real screen, camera and mic, and runs under Simple Capture Dev, which
-     already has its grants.
-
----
-
-## 5. Owner actions required
+**Actions:**
 
 | # | Action | Why / when |
 |---|---|---|
-| 1 | **Create a free Apple Development signing identity**: open Xcode 27.2 → Settings → Accounts → add your Apple ID → Manage Certificates → "+" → Apple Development. Opening Xcode once also runs its first-launch setup. | **Before M1.** Without it, every build of `com.simplecapture.desktop` is a "new app" to macOS, and you would re-approve permissions after each build (ADR-003). |
-| 2 | Approve or reject each **Proposed** ADR, especially Svelte 5 (005), the native preview using a private WebKit key (007), the Skia source build (018), the font list (020) and the GIF "Fast" rename (017). | Before M1 starts |
-| 4 | Choose: raise the spec's Windows minimum to **10 22H2**, or keep 10 2004 and record a helper limitation (BtbN). | Before M6 |
-| 4b | Choose: build our own Windows and Linux FFmpeg with `--disable-network`, or accept BtbN's general-purpose builds, which probably include network protocols, as a documented exception to "no networking code" (ADR-013 point 3). | Before M6 |
-| 5 | Run the benches on a **base M1 8 GB** if you can get one (spikes 1–4 bench commands above). | Before M2 (encoder headroom) and M3 (preview, memory) |
-| 6 | Arrange a **physical Linux machine** (Intel/AMD iGPU, Wayland and X11) for the WebKitGTK preview bench. | End of M1, so a GPUI fallback decision does not land in M6 |
-| 7 | **Do not** rebuild or re-sign `~/Applications/Simple Capture Dev.app` (`install.sh --force`). It holds the Screen Recording, Camera and Microphone grants. | Always |
-| 8 | If macOS ever shows "Simple Capture Dev would like to access files in your Documents folder" again, allow it. Otherwise `run.sh` from this repo can hang. | Only if it appears |
-| 9 | Review the Small and High quality tiers on a real screen recording (ADR-016). | Before M5 |
-| 10 | Decide the **SCContentSharingPicker** question (ADR-028): adopt it, offer it as an optional source path, or reject it, and whether "pick a display, then crop" is acceptable for regions. | Before M1 source work (M1 plan item 3) |
-| 11 | OK or reject the **VP8 BT.601 exception** to Pitfall 5 (ADR-029), and the architecture additions in ADR-030–032 (new `geometry`/`preview` crates, dev-profile `opt-level = 3`, `.sc` project-folder naming). | Before M1 starts |
+| 1 | Work through docs/MANUAL_TEST.md (about 53 steps; the ★ list below orders them). | ★ review |
+| 2 | Unmute the speakers, light the room, put something in front of the camera, and run `SC_SYNC_RUNS=3 just sync-test`; then the clap step C1. | Gives the missing mic and camera sync numbers (§1 item 5) |
+| 3 | If a "Simple Capture Dev would like to access files in your Documents folder" dialog is waiting, answer it ("Don't Allow" is fine). Agents saw hosted processes hang on `~/Documents` paths from about 22:23 on 2026-11-19 and never clicked anything. | Before `just test-live` / `just app-driver` from the repo |
+| 4 | Optional: `SC_LIVE_MIC_MODES=1 just test-live simple-capture-capture-macos av_ av_show_mic_modes` (opens Control Center's Mic Mode panel). | Agents skip it to keep your focus |
+| 5 | Connect a second display at a different scale for MANUAL_TEST S7 and W4. | Only live gap in sources |
+| 6 | **Do not** rebuild or re-sign `~/Applications/Simple Capture Dev.app` (`install.sh --force`). It holds the Screen Recording, Camera and Microphone grants. | Always |
+| 7 | Run the benches and a soak on a **base M1 8 GB** if you can get one. | Before M2 (encoder headroom) and M3 (preview, memory) |
+| 8 | Arrange a **physical Linux machine** (Intel/AMD iGPU, Wayland and X11) for the WebKitGTK preview bench. | Before M3 preview work, so a fallback decision does not land in M6 |
+| 9 | Choose the Windows minimum (10 22H2 vs 10 2004) and BtbN vs our own Windows/Linux FFmpeg (ADR-013). | Before M6 |
+| 10 | Review the Small and High quality tiers on a real screen recording (ADR-016). | Before M5 |
 
 ---
 
-## 6. M1 plan outline (macOS recording) ★
+## 5. Carried to M7
 
-Goal (spec): sources, permissions, separate crash-safe tracks, the project file, a quick x264 MP4
-export, the sync test, and a CI skeleton for all three OSes.
+**From pause (M1_PLAN §1 "Not in M1"; ADR-012).** `Session::pause/resume` exist and return
+`Unsupported`; the schema's `pauses`, `RecClock` pause maths and the journal `pause`/`resume` events
+exist and recovery already folds them, so M7 needs no migration. M7 test items:
+- re-stamp the newest frame dropped during a pause at resume (Cap had a bug here);
+- rewrite `project.json` at pause and at resume;
+- A/V sync across pauses (SPEC Pitfall 2): the sync test with pauses, at start, after each pause and
+  at the end;
+- switching while paused (the new segment starts at resume);
+- resume across sleep (M1 stops and finalizes on sleep);
+- the 3-2-1 countdown, start/stop and pause hotkeys, and the floating bar's Restart button.
 
-1. **Workspace skeleton** (ARCHITECTURE §1):
-   - `core`, `geometry`, `platform`, `capture-macos`, `record`, `helpers`, `export` (minimal),
-     `app`, `ui`, `cli`.
-   - Placeholder Windows and Linux capture crates that compile.
-   - justfile targets.
-2. **Signing.** Sign the app as `com.simplecapture.desktop` with the Apple Development identity,
-   using the hardened runtime and the camera and mic entitlements.
-3. **capture-macos.** Only part of this is a port of spike 3; the rest is new, untested work
-   (§3 item 14), so each item below gets its own test before it is called done:
-   - *ported:* display and window sources; per-window exclusion of our UI, re-testing whole-app
-     exclusion in the signed app; trimmed objc2 features;
-   - *new, untested in M0:* application source; region source (decide `sourceRect` vs. crop
-     after capture with a spike-sized test first); system audio Off / All / App (per-app audio
-     filtering); camera and mic lists that update on hot-plug; the Mic Mode button;
-   - *new, depends on owner input:* the `SCContentSharingPicker` path (ADR-028) and the click
-     highlight method (`showMouseClicks` on 15+, our own drawing on 14).
-4. **record:**
-   - start gate, bounded queues with drop counters, and writer threads;
-   - fragmented `.mov` tracks with 1 s fragments;
-   - stop extension, `journal.jsonl`, and atomic `project.json` v1;
-   - disk-space guard and finalizing on device unplug.
-5. **Recovery scan on launch** (state `recording` → `recovered` / `damaged`), plus a kill-test in
-   the test suite using the dev host.
-6. **Soak test:** 30 min at native resolution + camera + mic + system audio. Measure drops, memory
-   and A/V offsets. Decide the SCK frame-copy question (ADR-010).
-7. **Sync test:** flash + beep + clap, measured at both the start and the end. Set any
-   system-audio compensation from it.
-8. **Quick export:**
-   - Composite the screen layer only (the camera bubble comes in M2).
-   - Pipe Y4M to the bundled FFmpeg: x264 medium CRF 22 + aac_at, `.part` then rename, cancel.
-   - Validate with ffprobe.
-9. **Capability probe v1:** helper hashes, VideoToolbox H.264/HEVC size limits, and native HEVC
-   headroom at the capture size, which gates 60 fps.
-10. **Minimal UI:** recorder panel, permission onboarding including the macOS 15 re-prompt note,
-    and a floating stop bar. Onboarding needs a status check that never prompts
-    (`CGPreflightScreenCaptureAccess`, `AVCaptureDevice.authorizationStatus`); untested as a flow.
-11. **CI** on macOS arm64, Windows x64 and Ubuntu x64:
-    - build, clippy, tests;
-    - cargo-deny and the pnpm license check;
-    - cached helper builds and cached Skia FreeType builds (the Windows FreeType build is the first
-      thing to prove).
-12. **Docs:** MANUAL_TEST.md (macOS section) and STATUS updates.
+**Also M7 (SPEC M7 line or proposed):** recovery UI beyond the launch notice, Library, segment
+rollover on window resize (`source_resized` is only logged), disk-guard and hot-plug polish,
+`cursor.jsonl` and our own click drawing (Q5), the mic level meter and the debug overlay (Q-c).
 
-At the end of M1, stop for owner review (★).
+---
+
+## 6. M0 record (2026-11-19)
+
+M0 was approved by the owner on 2026-11-19. Pre-work before M1, each re-checked by an independent
+verifier: native preview on Windows/Linux was not proven, so **webview frames on every OS**
+(ADR-007); all three OSes have a system picker, so "System picker…" is a source everywhere
+(ADR-028); make-before-break switching on macOS gave 0–28 ms gaps with no wrong frames, and system
+audio moved to its own stream with silence filling (ADR-034, ADR-035); 3 of 13 fonts were replaced
+(ADR-020); the output became a canvas with a letterbox background (ADR-033). Owner decisions are
+recorded in DECISIONS.md (ADR-036 for the M1 plan answers).
+
+| Spike | Verdict | Key verified result | Main corrections / caveats |
+|---|---|---|---|
+| 1 Helpers | **Pass** | Static FFmpeg 9.0.2 (GPL-2.0+, no network) and gifski 1.34.0. All 29 outputs pass ffprobe, 3 runs out of 3. 1080p30: x264 medium 197 fps, x265 120, SVT-AV1 p8 189, VP9 64, VideoToolbox H.264 191 / HEVC 177. gifski 41 fps at 960×540. Cancel is clean with no leftover processes. | The 4-thread proxy is noisy. FFmpeg palette GIF runs at about realtime. A SIGTERMed gifski partial is truncated. VideoToolbox H.264 (`-allow_sw 0`) fails when either dimension exceeds 4096. |
+| 2 Preview | **Pass, keep Tauri** | Every transport: 58.5–60.1 of 60 fps, including full 1080 through the webview. | The constrained pass did not constrain anything. Photon latency, WebKitGTK and WebView2 are untested. |
+| 3 macOS pipeline | **Pass** | SCK, camera, mic and system audio each write a fragmented HEVC/AAC .mov; a SIGKILL lost ≤ 0.86 s (M1: up to 1.08 s); all clocks on host time; zero-copy decode into wgpu. | 60 fps at full native size reached only 44.5 fps. Whole-app UI exclusion fails under the dev host. |
+| 4 Skia text | **Pass** | Every text style plus colour emoji works; GPU vs CPU max 1/255. | Needs a FreeType source build (stock macOS skia-safe uses CoreText). |
+
+Spike reports: `spikes/0N-*/REPORT.md`; raw evidence as listed in DECISIONS.md "Source keys". No spike
+app has its own name or bundle ID any more; everything that needs a permission runs under
+`Simple Capture Dev` (ADR-002, CLAUDE.md).
+
+| Item | Where |
+|---|---|
+| Spec (source of truth) | [docs/SPEC.md](SPEC.md) |
+| Architecture | [docs/ARCHITECTURE.md](ARCHITECTURE.md) |
+| Decisions (38 ADRs) | [docs/DECISIONS.md](DECISIONS.md) |
+| M1 plan and package briefs | [docs/M1_PLAN.md](M1_PLAN.md) |
+| Owner test checklist | [docs/MANUAL_TEST.md](MANUAL_TEST.md) |
+| Codec matrix, licences, third-party | [CODEC_MATRIX](CODEC_MATRIX.md), [LICENSES](LICENSES.md), [THIRD_PARTY](THIRD_PARTY.md) |
+| Research notes | `docs/research/` |
+| Helper build tooling (pinned, hash-verified) | [third_party/README.md](../third_party/README.md) |
+| Permission dev host (one app, never renamed) | `tools/macos-dev-host/`, rules in [CLAUDE.md](../CLAUDE.md) |
+
+---
+
+## 7. ★ review list (M1)
+
+Allow about 2–3 hours for everything; items 1–5 take about 30 minutes and need no recording.
+
+1. **Read** §1 and §2 above, then the M1 updates in [DECISIONS.md](DECISIONS.md): ADR-037 (the
+   plan's own choices and their results) and ADR-038 (choices made inside packages), plus the
+   "M1 result/update" blocks in ADR-008, 009, 010, 011, 018, 022, 024, 028, 031, 034 and 035.
+2. **Answer** questions Q-a to Q-e in §4 (fragment interval, tray menu, mic meter/debug overlay
+   milestone, App audio wording, optional Skia features).
+3. **CI:** open GitHub run 44710191597 (or the newest run on `m1`) and check all eight jobs.
+   At the time of writing macOS and Linux were green and both Windows jobs failed (§1 item 7).
+4. **Code tour:** `git diff main...m1 --stat`; ARCHITECTURE §4 (switching as built), §6 (journal
+   table), §11 (probe-size rule), §12 (recovery and kill tests).
+5. **Licences:** LICENSES §2 (MPL exceptions, Skia vendored set) and §10.
+6. **Run the app:** `just run`, then MANUAL_TEST §1 (L1–L4: tray, panel, onboarding) and §2 sources
+   S1–S6, S8–S13. Note any prompt in the MANUAL_TEST §12 prompt log.
+7. **Switching:** MANUAL_TEST W1–W6 (bar, tray, ⌥⇧S, region, closed window, discard).
+8. **System picker:** MANUAL_TEST P1–P7, including P7 (picked display with the bar visible: check
+   for our pixels).
+9. **Export:** MANUAL_TEST E1–E4; open the 20 aspect × background exports (E2) in QuickTime and
+   check the letterbox and colours; E4: is the tray menu or our UI visible anywhere?
+10. **Sync:** §4 action 2 (`SC_SYNC_RUNS=3 just sync-test` with sound on and a lit room), then C1
+    (clap).
+11. **Crash safety and system events:** K1–K2 (kill and relaunch), H1–H8 (hot-plug, unplug,
+    display unplug, sleep, quit, low disk, frames-dropping hint).
+12. **Second display** (if available): S7 and W4.
+13. **Release bundle (Q8, owner only):** MANUAL_TEST B0–B6: never-granted bundle through the
+    picker, behaviour after a rebuild, whole-app exclusion (`SC_EXCLUSION=app`), camera and mic
+    prompts with our usage strings.
+14. **Optional:** `just soak 30` (O1) for an owner soak in the same summary format;
+    §4 action 4 (Mic Mode).
+15. **Decide:** approve M1 and merge `m1` into `main`, or list fixes.

@@ -28,6 +28,12 @@ decision here changes the spec, the spec is updated only after the owner says OK
     files and run logs are not (STATUS §1).
   - [S4] `out/bench-quiet.md` (one run) and `out/*.png`, plus three `--no-png` re-runs in the
     consistency pass (numbers quoted in ADR-021).
+- M1 (2026-11-19/20): **[M1:<package>]** is the report that package returned to the orchestrator
+  (for example [M1:soak] = wp-soak-test, [M1:e2e] = wp-e2e-cli). The reports themselves are not in
+  the repo; **docs/STATUS.md §2 is the in-repo record of every M1 number**, each with its source.
+  Local result files named there (`target/soak/…`, `target/e2e/…`, `target/app-driver/…`) are
+  gitignored and exist only on the build Mac; every recording was deleted after its numbers were
+  taken. GitHub CI runs are cited by run id.
 
 **Machine caveat for every number**: measured on an Apple M3 Pro (5P + 6E cores, 18 GB), macOS 26.7.2.
 The target is a base M1 with 8 GB, and **nothing was measured on an M1**. The "constrained" proxies
@@ -245,7 +251,25 @@ they are not a substitute for an M1 run.
 - **Consequences:**
   - An idle screen delivers no frames, so the gap between keyframes can grow to 2.8 s. That does not
     hurt seeking (there are no frames in between) or crash safety.
-  - Fragment interval vs. overhead is still to tune: at 1 s, loss stays under 1 s.
+  - Fragment interval vs. overhead is still to tune. The M0 wording "at 1 s, loss stays under 1 s"
+    is corrected by the M1 result below.
+- **M1 result (2026-11-20):**
+  - Live kill tests under the dev host [M1:kill-recovery-test]: 12 SIGKILLs (a plain 6 s
+    recording with camera, mic and system audio, and kills after `switch_begin`,
+    `segment_prepare` and `segment_open`, 3 runs each). All 12 recover and export after the
+    empty-file rule (ADR-038). Loss per track with `fragment_interval_s = 1.0`: 14 of the 21
+    per-track measurements in the passing run were 1.003–1.056 s; the first attempt's worst was
+    1.076 s. A kill just before a fragment boundary loses the whole unwritten fragment plus encoder
+    latency, so [S3]'s 0.86 s was a favourable phase, not a bound. The live tool fails above
+    fragment interval + 250 ms and warns above 1 s; the synthetic CI test (`kill_synth`) stays
+    strict at ≤ 1 s because `.sctrk` writes are unbuffered.
+  - The SIGKILLed-writer unit test lost 0.53 s (screen) and 0.57 s (mic) [M1:mac-av].
+  - A writer killed between `segment_open` and its first append leaves a 0-byte file; recovery now
+    drops it as empty instead of marking the project damaged (ADR-038, recovery).
+  - Writer not-ready counts in the 30-minute soak: 0 on every track [M1:soak].
+  - **Owner question (STATUS §5):** shorten `fragment_interval_s` (about 0.5 s should meet ≤ 1 s;
+    the file-overhead cost is not measured) or restate the target as "≤ fragment interval +
+    encoder latency".
 
 ## ADR-009: Frame-rate and resolution policy for recording
 - **Status:** Accepted (owner approved M0 on 2026-11-19 without objecting to this proposal).
@@ -276,6 +300,21 @@ they are not a substitute for an M1 run.
     through AVAssetWriter it does open.
 - **Consequences:** The M1's media engine ceiling is unknown, so the probe decides on each machine.
   Running an M1 is a pre-M2 action.
+- **M1 update (2026-11-20, M1 plan §10 item 11, the probe-size rule):**
+  - Probe v1 runs at launch and measures HEVC at 60 fps for every connected display's native and
+    1× pixel size (sizes from CoreGraphics, no permission). A source may record at 60 fps (native or
+    1×) only if its display's probe reached at least 1.3 × 60 = 78 fps. Windows and regions are
+    never larger than their display, so a switch never re-probes. A display connected later is
+    probed on the next launch and is not offered 60 fps until then. Sustained drops raise
+    `FramesDropping`.
+  - Measured rates are rounded to 0.01 fps, so the cached `probe-v1.json` compares exactly with a
+    fresh probe (serde_json had read a 17-digit value back 1 ULP off; merge fix 96fbc5d).
+  - On the M3 Pro [M1:export]: native 3024×1964 encodes at 117.9 fps (60 fps allowed), 1×
+    1512×982 at 386.8 fps. `h264_videotoolbox -allow_sw 0` opens at 3840×2160 and 4096×2160 and
+    fails at 4098×2160, as in [S1].
+  - Delivered rate with `--fps 60` [M1:e2e]: 52.3 / 51.6 fps at native 3024×1964 and 52.5 / 50.8
+    fps at 1× (two runs, `target/e2e/report-20261119-232627.json`, `…232905.json`). SCK delivers
+    only on change, so this is a delivery figure on a changing test screen, not an encoder limit.
 
 ## ADR-010: Capture details on macOS
 - **Status:** Accepted (within the spec); the formerly Proposed parts accepted with the M0 approval on 2026-11-19.
@@ -296,6 +335,43 @@ they are not a substitute for an M1 run.
   - **Frame copy:** *Proposed — decide in M1.* Cap copies every SCK frame into its own pixel-buffer
     pool, because AVAssetWriter can hold buffers long enough to starve SCK [cap-recording]. [S3] did
     not copy and saw no starvation in 10 s runs. A 30-minute soak test decides this.
+- **M1 result (2026-11-20):**
+  - **Frame copy: decided, no copy.** The 30-minute soak [M1:soak]
+    (`target/soak/20261120-000343/summary.md`): display 3024×1964 at 2×, 30 fps, camera + mic +
+    system audio All, switching display ↔ window every 5 min (6 segments). Screen 52,581 frames,
+    0 dropped (0.000 %), writer not ready 0, longest stall 0.0 s, lowest 10 s rate 28.1 fps;
+    0 StreamStopped, 0 source lost; RSS 73.3 MB at 2 min and 47.9 MB at 30 min (peak 78.4 MB,
+    growth −25.5 MB). Every M1 plan §1 item 6 threshold passed. One debug-build run on the M3 Pro;
+    an M1 8 GB run is still missing.
+  - **Own-UI exclusion as built (M1 plan §10 item 9):** every stream excludes our registered
+    window IDs plus every window our process owns at start, fetched with
+    `onScreenWindowsOnly = false`. `SCShareableContent.currentProcess` (14.4+) also lists redacted
+    windows of other processes (Menubar, Wallpaper, StatusIndicator), so it is filtered by our pid
+    [M1:mac-sck]. A window created hidden and given a window number by `configure` stays excluded
+    when shown (9 of 9 frames); a window created after the start is visible until
+    `update_exclusions`, which takes 82–105 ms [M1:mac-sck]. When a menu of ours begins tracking
+    (`OwnWindowsChanged`), every stream's exclusions are refreshed on a background thread at 0, 120
+    and 400 ms; each refresh takes 35–153 ms [M1:app-integration]. The tray's Switch Source item
+    opens the excluded popover rather than a submenu; our status item is excluded, leaving a gap in
+    the menu bar.
+  - **Tray menu leak: owner question (STATUS §5).** With the refresh on the main thread, 9 of 9
+    sampled frames showed the open tray menu. With the background refresh: 0 frames in two runs,
+    1 frame (about 66 ms after the menu opened) in a third [M1:app-integration,
+    `target/app-driver/20261119-230228/report.json`]. A menu window becomes excludable only after
+    `NSMenuDidBeginTracking` plus a filter update, so 0–1 frame can leak. Options: accept it, or
+    exclude the whole app (`SC_EXCLUSION=app`), which fails under the dev host [S3] and is
+    re-tested by the owner in the release bundle (MANUAL_TEST B4).
+  - The floating bar and switch popover were absent from the compared frames
+    [M1:app-integration]; the CLI's own test window (magenta) was absent from all 963 checked
+    frames [M1:e2e].
+  - "Only the captured app" audio: SCK groups app audio by bundle ID, and every unbundled process
+    lands in one group. With two unbundled tone apps the 440-vs-660 Hz isolation did not hold in
+    the wp-mac-sck live test (both tones about 0.053), while a bundled app (Finder) isolated to
+    silence [M1:mac-sck]. The later e2e step 6 (SC-TONE-440 → SC-TONE-660W, App mode) measured
+    the other tone at zero power in both spans [M1:e2e]. The two results disagree and the cause is
+    not known; until it is, App mode is documented as reliable for bundled apps only.
+  - Screen Recording preflight cannot tell "denied" from "never asked", so without a grant the
+    status reads `not_determined` [M1:mac-sck].
 
 ## ADR-011: Clock and track alignment
 - **Status:** Accepted (the spec's clock rule, verified on macOS); the formerly Proposed details (start gate) accepted with the M0 approval on 2026-11-19.
@@ -322,6 +398,30 @@ they are not a substitute for an M1 run.
 - **Consequences:** Mic sync is unverified, because the spike's mic did not hear the test sounds.
   The flash/beep/clap sync test is an M1 deliverable. Any fixed system-audio latency compensation
   must come from that test.
+- **M1 result (2026-11-20):**
+  - The start gate is built as proposed (ADR-038, record): `start_timeout_ms` 5000; the router
+    buffers up to 16 frames that arrive before the start is fixed and places the newest one with
+    PTS < start at rec 0; s0 always starts at rec 0.
+  - **Decision: no fixed system-audio compensation.** `just sync-test` (flash in a fixture window
+    plus a 1 kHz beep, at the start, after each of two switches and at the end):
+    - final 3 runs [M1:sync-test, second attempt, `target/sync/20261120-005228/`]: video →
+      system audio median −10.2 ms over 30 events (min −41.1, max +8.5), 27 of 30 within ±33 ms;
+      per run −26.4, −4.8 and −3.1 ms;
+    - earlier sets [M1:sync-test, first attempt]: median −15.6 ms (28 of 30) and −6.8 ms
+      (30 of 30).
+    - Negative means system audio is earlier than the flash. The three events outside ±33 ms each
+      had a slow stimulus (issue → video 38–49 ms), and `issue → system_audio` was stable within a
+      run but moved between sessions (about +0.5 ms in one run, about +19.5 ms in every other),
+      roughly one IO buffer. A constant offset fixes neither.
+  - Soak [M1:soak]: the system audio − screen offset changed by −21.1 ms between the start and
+    end flash bursts over 30 minutes (start +26.8 ms, end +5.6 ms), within one frame; count-based
+    vs host-time drift 0.0 ms on mic and system audio.
+  - **Mic and camera sync are still unmeasured.** The system output was muted (`osascript` read
+    `output muted:true`; agents never change the volume), so the mic heard none of the beeps; the
+    camera saw a dark, static scene (largest luma step 0.02 levels). One earlier low-confidence
+    camera onset was about 108 ms after the issue. Owner step: unmute, light the room and rerun
+    `SC_SYNC_RUNS=3 just sync-test`, plus the clap check (MANUAL_TEST C1). Sync across pauses is
+    M7.
 
 ## ADR-012: Pause keeps capture running
 - **Status:** Accepted (owner approved M0 on 2026-11-19 without objecting to this proposal).
@@ -458,6 +558,28 @@ they are not a substitute for an M1 run.
     when a prebuilt archive matches [S4 verification].
   - Windows (clang-cl, Python, Ninja) and Linux are untested. They are the first M1 CI risk.
   - FreeType's FTL licence needs a credit in About → Licenses.
+- **M1 update (2026-11-20):**
+  - skia-safe also enables `embed-freetype`: on Linux, libfontconfig1-dev pulls in
+    libfreetype-dev and skia-bindings otherwise adds `-I/usr/include/freetype2`, which clashes with
+    the vendored FreeType (merge fix ec7f762, from [M1:ci]). No crate added. On macOS the build
+    script reports the feature as redundant [M1:text].
+  - Linux: the Skia FreeType build passes in the local ubuntu:24.04 container (aarch64) and on the
+    GitHub ubuntu-24.04 runner (full job green in run 44695891492) [M1:ci, M1:ci-green].
+  - Windows: windows-2025 now ships VS 18, whose STL rejects the image's clang-cl 20 (STL1000), so
+    a cold Skia build upgrades LLVM to 22.1.8 (only on a Skia cache miss) [M1:ci-green]. In run
+    44710191597 (m1 @ 76426a6) the Windows Skia cache was **restored**, so the upgrade was skipped,
+    yet the skia-bindings build script still ran a source build during clippy (the cached out dir
+    evidently did not match this build's hash) and clang-cl 20 failed with STL1000. So the Windows
+    Skia FreeType build has **not yet passed on a runner** with the current workspace; gating the
+    LLVM upgrade on a cache miss is not enough (CI fix for the orchestrator). The Q10 prebuilt
+    fallback (repo variable `SC_WINDOWS_SKIA_PREBUILT=1`) exists and is unused.
+  - Build time: a clean whole-workspace dev build including the Skia FreeType build took 4 min 17 s
+    wall [M1:scaffold] and 233 s on a heavily loaded machine (Skia build script 118 s)
+    [M1:ci-green].
+  - Each distinct feature set builds Skia again: `cargo clippy` and `cargo test` got different
+    skia-bindings hashes, and the shared `target/skia` held 7 full Skia builds during stage 1
+    [M1:text]. The CI cache key is skia-bindings version + the root manifest's skia-safe line +
+    `.cargo/config.toml` (ADR-038, CI).
 
 ## ADR-019: Emoji font is Noto Color Emoji COLRv1
 - **Status:** Accepted (owner approved M0 on 2026-11-19 without objecting to this proposal).
@@ -534,6 +656,15 @@ they are not a substitute for an M1 run.
 - **Consequences:** In the spike, the CPU and GPU paths share the affine and quad code. The real
   reference needs independent transform tests (geometry unit tests), or a shared bug would go
   unnoticed.
+- **M1 update (2026-11-20):** the M1 compositor is stricter than this ADR's tolerance. Every stage
+  (BT.709 YUV → RGB with nearest 4:2:0 chroma, a k×k integer box prefilter with
+  k = floor(src/dst) per axis capped at 64, an 8-bit fixed-point bilinear step, premultiplied
+  blending over the background, and RGB → I420 with centre-sited 2×2 chroma) is fixed-point i32
+  maths shared line for line by the WGSL shaders and `cpu::render_cpu`. GPU vs CPU on Metal: max
+  0, mean 0 for every aspect at scales 1, 0.5, 0.25, 0.140625 and 2, in RGBA8 and I420; YUV → RGB
+  → YUV round trip max 0 [M1:render]. Geometry has its own property tests (100k contain-fit cases,
+  [M1:geometry]). Software adapters and DX12/Vulkan/GL were not exercised; CI's Ubuntu job runs
+  the render tests on lavapipe with `SC_REQUIRE_GPU=1`.
 
 ## ADR-023: How Cap's MIT crates are used
 - **Status:** Accepted (owner approved M0 on 2026-11-19 without objecting to this proposal).
@@ -569,6 +700,22 @@ they are not a substitute for an M1 run.
     Linux.
   - Ban gifski, imagequant and the Cap crates in ADR-023.
   - For npm, run `pnpm licenses list --prod --json` with an allowlist [ecosystem].
+- **M1 update (2026-11-20, [M1:ci]):**
+  - Five named MPL-2.0 exceptions, all unavoidable with Tauri 2 and used unmodified (file-level
+    copyleft only): `cssparser`, `cssparser-macros`, `selectors`, `dtoa-short` (tauri-utils →
+    dom_query, HTML/CSP processing of the bundled UI) and `option-ext` (tauri → dirs → dirs-sys).
+  - HTTP clients are banned (`reqwest`, `hyper`, `ureq`, `isahc`, `curl`, `curl-sys`,
+    `attohttpc`, `surf`). reqwest and hyper are in Cargo.lock only as Tauri's Android/iOS
+    dependencies; `scripts/ci/deny.sh` proves with `cargo tree --target <each desktop target> -i`
+    that nothing builds them. On Linux, `soup3` arrives through webkit2gtk (the system WebView) and
+    is not banned [M1:scaffold].
+  - `[advisories]` uses `unmaintained = "workspace"` and `yanked = "deny"`.
+  - The npm gate checks production packages strictly and also dev packages, because svelte is a
+    devDependency compiled into the bundle; the only dev exception is lightningcss (MPL-2.0, a
+    Vite build tool, not shipped).
+  - cargo-about 0.9.3 installs its binary only with `cargo install cargo-about --features cli`.
+  - Results: the `licenses` CI job (cargo-deny, pnpm licenses, netcheck, cargo-about notices)
+    passed in runs 44695891492 and 44705677113 [M1:ci-green]; details in LICENSES §2.
 
 ## ADR-025: Playback clock
 - **Status:** Accepted (owner approved M0 on 2026-11-19 without objecting to this proposal).
@@ -657,6 +804,21 @@ they are not a substitute for an M1 run.
     is the better default for release builds. M1 manual test: run the release bundle (never
     granted) and record through the picker; note any prompt or alert, and whether system audio
     works.
+- **M1 update (2026-11-20, M1 plan §10 item 10), as built [M1:mac-sck, M1:app-integration]:**
+  - The picker's modes are set once per launch: single window, single app, single display
+    (read back as 21), `maximumStreamCount = 0`, `excludedWindowIDs` = our registered overlays plus
+    the request's windows. Agents configured and read it back but never presented it (it would take
+    focus).
+  - Switching through the picker = `present()` plus a new make-before-break stream from the picked
+    filter, not `present(for:)` with an in-place filter update ([S3b] saw wrong-size frames from
+    that). Picks made for purpose "switch" switch inside the app core, so the driver, tray and
+    picker share one path; before the integration fix a picker pick during a recording did nothing.
+  - "Pick a display, then a region" = `PickedSource.region_pt` + `sourceRect`.
+  - `update_exclusions` on a picked stream returns Unsupported until the release-bundle test shows
+    that a rebuilt filter keeps picker consent.
+  - Still open, owner only (MANUAL_TEST P1–P7 and B0–B6): never-granted picker recording, system
+    audio on the picker path, behaviour after a rebuild, and `excludedWindowIDs` on a picked display
+    with the floating bar visible.
 
 ## ADR-029: VP8 exports are BT.601 (exception to Pitfall 5)
 - **Status:** Accepted on the orchestrator's recommendation (owner 2026-11-19: "I have no clue. Is this ok?"). VP8 cannot carry a Rec.709 tag that players honour, so BT.601 is the only way VP8 files show correct colours. Spec Pitfall 5 now carries the exception. The owner may still overrule it.
@@ -691,6 +853,13 @@ they are not a substitute for an M1 run.
 - **Consequences:** Slower clean debug builds, faster debug runs. **Not measured in M0** (every
   spike benchmarked release builds only). Measure clean and incremental dev build times in M1 and
   drop this if the cost is high.
+- **M1 result (2026-11-20): keep it.** [M1:ci-green], M3 Pro under heavy load (load average 30–50,
+  so upper bounds), `cargo build --locked --workspace --timings`: clean build with deps at
+  opt-level 3: 233 s wall, 1395 s CPU; with deps at opt-level 0: 132 s wall, 530 s CPU. So opt-level 3
+  costs about 100 s wall and 2.6× the CPU on a clean build. Incremental builds after real edits are
+  unaffected: `app/src/main.rs` 1.6 s (opt 3) vs 2.5 s (opt 0); `crates/geometry/src/lib.rs`, which
+  rebuilds all 15 workspace crates, 3.5 s vs 4.1 s. The scaffold measured a clean build of 4 min 17 s
+  and incremental builds of 3.26 s (`crates/core`) and 11.10 s (the app) [M1:scaffold].
 
 ## ADR-032: Project folder naming
 - **Status:** Accepted (owner approved M0 on 2026-11-19 without objecting to this proposal).
@@ -755,6 +924,37 @@ they are not a substitute for an M1 run.
   - Switching UI: a "Switch source" button on the floating bar and in the tray menu, plus a hotkey,
     opening displays, windows, "Select region…" and "System picker…". A closed captured window ends
     its segment, holds the last frame and prompts for a new source.
+- **M1 update (2026-11-20, M1 plan §10 items 2, 3 and 12), as built:**
+  - Region changes during a recording are switches (new segment, make-before-break);
+    `updateConfiguration` in place is not used in M1. `ScreenSource::start` returns after the stream
+    has started, and cuts and the start gate use first-frame PTS only.
+  - Order of a switch: journal `switch_begin`; journal `segment_prepare` and pre-create the new
+    segment's writer; start the new stream; its first frame is the cut (`segment_open`); the old
+    stream keeps running until its first frame at or past the cut, for at most two frame intervals
+    + 10 ms (about 77 ms at 30 fps), so in-flight frames land in the old segment and trailing frames
+    are counted; then `segment_close` (its `end_rec_ns` is still the cut) and `project.json` is
+    rewritten on the control thread.
+  - A new stream with no first frame within 1.5 s is abandoned. On a start failure the ladder is
+    retry stop-then-start → restore the old source → source lost (`switch_failed.next` =
+    `retry_stop_then_start` | `restore_old` | `source_lost` | `keep_old`). A minimized window
+    target ends with `switch_failed` / `keep_old` [M1:e2e].
+  - Measured live [M1:e2e, run 5, two runs]: request → cut 146.3 / 142.4 ms (display → window),
+    112.7 / 114.5 ms (window → region) and 114.0 / 130.2 ms (region → display), all under the 500 ms
+    target; 1 trailing frame dropped per switch; recorded gap 5.6–41.6 ms between the last old and
+    first new frame; peak RSS with two native-size streams overlapping 48.3 / 47.3 MB. Switch to a
+    static window (SC-STATIC): 149.3 / 151.9 ms.
+  - [M1:mac-sck] measured 0 wrong-content frames in 5 runs; the gap at the new stream's first frame
+    exceeded 34 ms in 6 of 15 switches (worst 41.7 ms, one extra 120 Hz vsync, mostly when the
+    7680×2160 display stream starts), while the best switch point inside the overlap was 0–20.8 ms
+    every time. The router cuts at the first frame, so gaps up to about 42 ms remain possible.
+  - Synthetic timings with real AVAssetWriter files [M1:record-session, `session_macos`, 11
+    switches, median / max]: `switch_begin` → `segment_prepare` 4.0 / 11.4 ms, `segment_prepare` →
+    cut 60.2 / 88.5 ms; stop-then-start gap 64 ms.
+  - Source lost: a closed window gives no SCK error, only one Suspended frame; a watcher reports
+    `SourceLost` about 80 ms after the close [M1:mac-sck]. e2e: lost at 4.13 s, last s0 frame
+    4.09 s, s1 opened by the scripted switch at 7.15 s [M1:e2e].
+  - Over 30 minutes with a switch every 5 minutes: 6 segments, 0 switch failures, 0 drops
+    [M1:soak].
 
 ## ADR-035: macOS system audio comes from its own SCStream, and audio gaps are filled with silence
 - **Status:** Accepted (required by ADR-034; measured in spike 3b).
@@ -770,6 +970,21 @@ they are not a substitute for an M1 run.
     display and region segments use "All".
   - Every audio writer (mic, system audio, on every OS) inserts silence for any timestamp gap, so
     audio never drifts early.
+- **M1 update (2026-11-20, M1 plan §10 item 15), as built:**
+  - Overlap trimming is symmetric with gap filling: the filler re-anchors audio to host time and
+    corrects device clock skew in small steps, each at most the threshold plus one buffer.
+    `gap_threshold_ns` is 2 ms. At ±100 ppm over 30 simulated minutes: 89 fills or trims, each
+    exactly 2.0 ms [M1:record-session]. Resampling is not used.
+  - Soak [M1:soak]: mic and system audio 0 gaps, 0 overlaps, drift 0.0 ms over 30 minutes. The
+    mic's `health.frames` was 13,824 samples (288 ms) above duration × rate while its file was
+    exactly 1800.0 s; the surplus does not grow with run length and is probably counted before the
+    start trim (minor, open).
+  - Track ends: mic, camera and system-audio files end at the stop time, and a missing audio tail
+    (in-flight buffers that never arrive, 40–60 ms) is filled with silence [M1:e2e fix, 6bb31a8,
+    9413bbd].
+  - App mode follows the active segment with `updateContentFilter`: 144–178 ms per change, with a
+    76–95 ms timestamp hole around it that the filler closes [M1:mac-sck]. App-audio isolation
+    caveat: ADR-010 M1 result.
 
 ## ADR-036: M1 dependency set, git policy and plan-level answers
 - **Status:** Accepted (owner 2026-11-19).
@@ -787,3 +1002,194 @@ they are not a substitute for an M1 run.
     fails there.
   - Test binaries never take focus from the owner (CLAUDE.md).
 
+
+## ADR-037: M1 plan-level choices (M1 plan §10) and their results
+- **Status:** Accepted (made by the M1 plan, 2026-11-19, under the owner's "you figure this out";
+  logged at M1 close, 2026-11-20). The owner may revisit any of them at the ★ review.
+- **Decision and result**, by §10 item. Items 2, 3, 9, 10, 11, 12 and 15 changed earlier ADRs and are
+  recorded there.
+  1. **CPU upload in M1 export.** Decoded NV12 planes are uploaded to wgpu from mapped buffers
+     (`R8Uint` + `Rg8Uint` textures); the zero-copy IOSurface import of [S3] moves to M3. Same path
+     on every OS and on the synthetic platform. Quick export speeds with it: CODEC_MATRIX §2.7.
+  2. Region changes are switches: ADR-034 M1 update.
+  3. `ScreenSource::start` returns after start; cuts use first-frame PTS: ADR-034 M1 update.
+     First-frame latency [M1:mac-sck]: display 158 ms, window 63 ms, application 347 ms, regions
+     161–360 ms.
+  4. **No new utility crates where std suffices.** Held: `Cargo.lock` did not change after the
+     scaffold (every merge report), and no package filed a lockfile change request.
+  5. **Live tests** run through `scripts/test-live.sh` under the dev host and fail when 0 tests
+     ran; a debug-build TCC tripwire makes plain `cargo test` fail instead of touching TCC. Result:
+     14 `sck_live` tests pass under the host [M1:mac-sck]; running `simple-capture sources`
+     outside the host exits 1 with the tripwire message naming `run.sh` [M1:cli]. Release builds
+     have no tripwire, so the test that checks it runs in debug builds only.
+  6. **Camera track recorded in M1** without a bubble: 53,975 camera frames, 0 dropped, in the
+     30-minute soak [M1:soak].
+  7. **`cursor.jsonl` deferred.** Q5: click highlight uses SCK `showMouseClicks` on macOS 15+ only
+     (hidden on 14); our own click drawing and `cursor.jsonl` clicks wait for M7.
+  8. **M7 items stay in M7:** pause/resume, countdown, start/stop and pause hotkeys, Restart.
+     `Session::pause/resume` return `Unsupported`; the schema's `pauses`, `RecClock` pause maths and
+     the journal `pause`/`resume` events exist and recovery folds them, so M7 needs no migration.
+     The mic level meter and debug overlay are on no milestone line; STATUS §4 proposes M7.
+  9. Own-UI exclusion rule: ADR-010 M1 result (owner question on the tray menu).
+  10. Picker: ADR-028 M1 update.
+  11. Probe-size rule: ADR-009 M1 update.
+  12. Switch timing and failures: ADR-034 M1 update.
+  13. **Sleep stops and finalizes** the recording (`stop.reason = sleep`) with a notice after wake;
+      with no pause in M1 there is no resume across sleep. The driver's simulated-sleep flow passes;
+      the `StoppedForSleep` notice is now emitted before the finalized state (it used to race the
+      exit) [M1:app-integration]. A real sleep is an owner step (MANUAL_TEST H5).
+  14. **Quit, SIGTERM and logout stop gracefully** and cancel an export; a project is `recovered`
+      only after a real crash or kill. Driver flows [M1:app-integration]: Quit then relaunch stays
+      `finalized`; SIGTERM to `run.sh` gives stop reason `signal`; `kill -9` then relaunch gives
+      `recovered` with the launch notice; Quit during an export leaves no `.part` and no ffmpeg
+      process. e2e step 14: SIGTERM and a `stop` line on stdin both finalize [M1:e2e]. Logout was
+      not tested by agents.
+  15. Audio overlap trimming: ADR-035 M1 update.
+  16. **App identity is `AppRef { pid, bundle_id? }`.** The project schema gains `app_pid` on
+      application sources and makes `app_bundle_id` optional; `region_pt` is display-local
+      (ARCHITECTURE §6). The CLI records an application by `app-pid:` and adds the bundle ID when
+      it finds one [M1:cli].
+  17. **`session.log`** is written by `sc_core::sessionlog` from record and recovery
+      (`<rfc3339> <host_ns> LEVEL msg`, one write per line, no fsync), not through a tracing
+      subscriber; app and cli own their subscribers. The session writes one `config {…}` line at
+      start with the requested settings [M1:e2e].
+  18. **`run.sh`** forwards INT/TERM/HUP to the child, exports `SC_DEV_HOST=1`, always writes a pid
+      file and supports a stdin FIFO (`SC_DEV_STDIN`). Script change only; the signed host bundle
+      is untouched [M1:scaffold].
+  19. **Whole-app exclusion re-test** (ADR-010) moves to the owner's release-bundle test via
+      `open -n --env SC_EXCLUSION=app -a "Simple Capture"` (MANUAL_TEST B4); per-window exclusion
+      stays the default. Not run yet.
+  20. **Overlays are repositioned** onto the target display before they show; the pick overlay
+      follows the cursor across displays [M1:app-shell]. Only one display was connected, so the
+      non-main-display paths were skipped in every live test (e2e step 11, the `sck_live`
+      non-main test) and are an owner step (MANUAL_TEST S7).
+  21. **Release bundle config** lives only in `app/tauri.bundle.conf.json`, so plain builds work
+      everywhere. The built bundle was inspected, never launched: app and both helpers signed
+      `adhoc,runtime`, both entitlements present, three usage strings in Info.plist
+      [M1:app-shell].
+
+## ADR-038: M1 implementation choices made inside packages
+- **Status:** Accepted (package decisions within frozen contracts, 2026-11-19/20; listed so the
+  ★ review can see them). Source: each package's report.
+- **core** [M1:core]:
+  - Project folder titles are capped at 100 UTF-8 bytes (cut at a char boundary, never leaving a
+    dangling ZWJ or variation selector); `/ \ : * ? " < > |` become `-`; an empty title becomes
+    "Recording"; collisions get " 2", " 3".
+  - `is_project_dir` = a `.sc` folder holding `project.json` or `journal.jsonl`.
+  - A missing journal reads as empty; a torn last line is skipped and flagged; a torn line that
+    later appends pushed into the middle counts as unknown.
+  - `segment_at` returns None in gaps; holding the previous frame is the caller's job.
+  - `ProjectLock`: `.lock` with `<pid> <uuid>`; on unix a lock whose pid is dead is stale and taken
+    over; on Windows an existing lock always counts as held (a crashed Windows recording stays
+    locked until the file is deleted). This makes `kill_synth` mid-s0 / mid-s1 fail on
+    windows-2025 (`Locked` instead of `Recovered`, run 44710191597); needs a fix or a Windows skip
+    before CI can be green. `fsync_dir` is a no-op on Windows.
+  - Journal appends are one write + fsync (F_FULLFSYNC on macOS); not measured, fine at journal
+    event rates.
+- **geometry** [M1:geometry]: edge rounding uses exact rationals, round half up; the reference long
+  side is computed from the even-rounded short side, so a reference whose short side equals a
+  preset class gives exactly that preset; extreme Original ratios (beyond 4096:1) also clamp the
+  long side at 8192; with no segments the reference short side is 1080; `cover_src_rect`'s `focus`
+  is the normalised crop centre, clamped inside the image; `aspect_locked_resize` `Move` takes the
+  new top-left corner, "Match frame" = `Some(canvas ratio)`, Free = None.
+- **synthetic platform** [M1:platform-synth]: one PTS-ordered scheduler thread per platform, so runs
+  are reproducible; after a newer stream's first frame the old stream sends exactly
+  `trailing_after_new_stream` more frames (default 0) and goes quiet; `.sctrk` tracks are
+  RLE-compressed with unbuffered length-prefixed records; `AudioReader::read` returns f32 samples
+  in whole frames (the meaning every reader now follows).
+- **decode** [M1:decode]: `held` is true only when the frame is not the active segment's own frame
+  at t; a held frame reports the segment, `frame_px` and `content_px` it came from;
+  `TrackAudio::read` always fills the buffer (silence past the end); the audio start comes from
+  `first_sample_offset_ns`, not `first_sample_file_ns()`.
+- **render**: fixed-point maths shared by GPU and CPU (ADR-022 M1 update). The background is
+  re-uploaded every frame (about 33 MB at 4K); an upload cache keyed on the `BackgroundCache` Arc is
+  a later optimisation [M1:render].
+- **text** [M1:text]: linear gradients use the CSS angle convention (0° up, clockwise), so export
+  matches the UI preview; every background is forced opaque; gradients interpolate in
+  sRGB-encoded values; the cache key is FNV-1a (`DefaultHasher` is not stable across Rust
+  versions); images sample mipmapped trilinear when shrinking and Mitchell cubic when enlarging;
+  image fit Contain letterboxes on black. `build_info`: FreeType true, milestone 157, JPEG decode
+  true, WebP false.
+- **helpers** [M1:helpers]: `sweep_stale` removes only `<name>.<ext>.part` files with an export
+  extension (mp4, mov, m4v, gif, webm, mkv, wav, m4a) idle for at least 60 s; commit hard-links
+  (check-then-rename fallback) and never overwrites; a failed commit deletes the `.part`; `finish`
+  reports a non-zero exit in `ExitReport.code`, not as an error; cancel is SIGTERM to the process
+  group, 1.5 s, then SIGKILL (measured within 1500 ± 300 ms).
+- **export** [M1:export]: frames are tagged with `setparams` as well as output tags (FFmpeg 9 lets
+  untagged frame properties override `-color_*`); the mix WAV is `<out>.wav.part` next to the mp4
+  `.part`; a size class at least as large as the reference falls back to the reference; for
+  Original with several segments the size-class ratio comes from `canvas.ratio`.
+- **record, session** [M1:record-session, M1:e2e]:
+  - `Tuning` defaults: screen queue 3 (SCK `queueDepth` 6; video drops the newest frame when
+    full), camera queue 8 ([S3] saw camera writer bursts), audio queue 256 (about 2.5 s of 10 ms
+    buffers, so audio never drops), gap threshold 2 ms, start timeout 5 s, switch first-frame
+    timeout 1.5 s, `FramesDropping` at 2 % over 10 s, disk warning at 2 GB and stop at 500 MB
+    (start needs 2 × stop = 1 GB), fragment interval 1.0 s (ADR-008 owner question), default HEVC
+    0.05 bits per pixel [M1:mac-av].
+  - The old-stream drain and the 16-frame early buffer (ADR-034, ADR-011 M1 updates);
+    `segment_close` is journaled after the drain.
+  - s0 starts at rec 0; screen frames with PTS ≥ stop are dropped; continuous tracks end at the
+    stop; audio tails are padded with silence (fixes from `just e2e`).
+- **record, recovery** [M1:record-recovery, M1:kill-recovery-test]:
+  - Frameless screen segments and **0-byte track files** (a writer killed before its first append)
+    are dropped with a warning, file kept, without marking the project damaged (empty-file rule:
+    merge fix 76426a6, test `kill_after_segment_open_with_zero_byte_segment_file`).
+  - Unreadable non-screen tracks are dropped from tracks, `audio_mix` and overlays, and the project
+    is marked `damaged`.
+  - Recovery details go to `recording.extra.recovery = {dropped: [...], notes: [...]}`.
+  - `AlreadyFinal` is decided before taking the lock, so a second run writes nothing; per-project
+    errors during `scan` are reported as `Damaged` and the scan continues.
+- **cli** [M1:cli]: `display:N` and `@DISPLAY` try an exact display ID first, then a 1-based index;
+  `--own-test-window T=SECONDS`; the own test window is a borderless non-activating NSPanel shown
+  with `orderFrontRegardless` only after it is excluded; the probe cache lives in the app data
+  folder (`~/Library/Application Support/com.simplecapture.desktop`, override `SC_DATA_DIR`);
+  default title "Recording"; if the session finalized itself (disk, sleep) the CLI still prints the
+  folder and exits 0; a second signal kills the process. Headless binaries that build SCK window or
+  app filters must first create an accessory NSApplication, or SCK aborts with `CGS_REQUIRE_INIT`
+  [M1:e2e].
+- **capture-macos** [M1:mac-sck, M1:mac-av, M1:e2e]:
+  - Regions use `sourceRect`, no crop: 617×283.5 pt → 1234×566 px, 1×1 pt → 2×2 px, 1121×641 px →
+    1120×640 px (pixel sizes floored to even), content verified. `method` is `source_rect`.
+  - `content_px` uses SCK's scale factor (it was in points on Retina, which would have exported only
+    the top-left quarter; e2e fix 4c0883b).
+  - Application capture picks up a second window opened mid-recording 66–77 ms after it appears.
+  - `MacOverlays::configure` swaps the window's class to a non-activating NSPanel subclass and puts
+    the original class back before `close`; without that, AppKit's KVO throws on macOS 26 when the
+    window closes.
+  - Camera and mic `start()` require `authorized` and never call a request API, so they cannot
+    prompt; `DeviceLost` comes from the device watcher; a writer that never got a sample is
+    cancelled and reports 0 samples; probe durations come from the edit-aware track time range
+    (raw AAC packets add about 61 ms of priming).
+  - The live `show_mic_modes` test runs only with `SC_LIVE_MIC_MODES=1`, because it opens Control
+    Center's panel on the owner's screen.
+- **app and UI** [M1:ui, M1:app-shell, M1:app-integration]: the app sets the accessory activation
+  policy and never activates; seven windows are created hidden and configured at launch;
+  `app/build.rs` writes a placeholder `ui/dist/index.html` so a fresh checkout builds; overlays get
+  their purpose from a UI event `overlay-context` (fallback: hash query, then the display under the
+  window, then the main display); overlay UIs emit `region-selected`, `source-picked` (own chooser)
+  and the cancel events, while Rust emits `source-picked` for the system picker; new events
+  `launch-tasks-done` and the UI-only `ui-log` (CSP violations and uncaught errors go to the app
+  log); capabilities add `core:window:allow-show` / `allow-hide`.
+- **CI** [M1:ci, M1:ci-green]: fast job (no Skia or Tauri) and full job per OS; Skia build cached
+  apart from `target/`, keyed on skia-bindings version + the root manifest's skia-safe line +
+  `.cargo/config.toml`; `SC_REQUIRE_GPU=1` on Ubuntu only (lavapipe); `SC_ALLOW_NO_HW_ENCODER=1`
+  on macOS runners with a visible warning; Windows target dir `C:\t`; tests run with
+  `--test-threads=2`; LLVM 22.1.8 on a cold Windows Skia build; `kill_synth` runs with
+  `--features test-hooks` on all three OSes; two real-time record tests get 100 ms extra when `CI`
+  is set; the local merge check (`ci-local-fast`) also runs Windows and Linux cross-target clippy
+  of the fast crate set, because cfg-gated code broke CI twice.
+- **Test tooling** [M1:soak, M1:kill-recovery-test, M1:e2e, M1:app-integration, merge reports]:
+  - Soak sync points are bursts of 5 flashes 2 s apart, averaged (one flash sits on the 33 ms frame
+    grid, the size of the threshold); end sync is judged as the change in the audio − screen offset
+    from start to end.
+  - The kill tool arms `SC_TEST_HOLD_AT` only at switch time, lets s0's hold through, and builds
+    its hooks CLI in a private target dir.
+  - The live lock is machine-wide (under the main checkout's `target/`, found with
+    `git rev-parse --git-common-dir`).
+  - Live scripts stage binaries, working folders and recordings outside `~/Documents` (in
+    `$TMPDIR`): hosted or disclaimed children of binaries under `~/Documents` hung in dyld `open()`
+    on a pending Documents-folder consent. Signed binaries are copied to a new file and renamed,
+    never overwritten in place (an in-place copy gets SIGKILLed at exec).
+  - Shared `target/skia` hazard: a build from one worktree can link crates compiled from another
+    worktree's sources, so live results from shared-target binaries may not match the branch under
+    test. The kill tool builds in a private target dir for this reason.

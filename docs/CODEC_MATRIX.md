@@ -1,6 +1,6 @@
 # Codec matrix
 
-Status: M0 draft, 2026-11-19. This file answers two questions: which API or encoder does each media job on each OS, and which export combinations we offer with which settings. It is fed by the M0 spikes and research notes; every non-obvious claim names its source.
+Status: M0 draft, 2026-11-19; M1 results added 2026-11-20 (§1 macOS rows, §2.7, §3, §4). This file answers two questions: which API or encoder does each media job on each OS, and which export combinations we offer with which settings. It is fed by the M0 spikes and research notes; every non-obvious claim names its source.
 
 Sources, short names used below:
 
@@ -11,6 +11,7 @@ Sources, short names used below:
 | S3 | Spike 3, macOS pipeline: `spikes/03-macos-pipeline/` (results in `out/bench-quiet*`) |
 | S4 | Spike 4, Skia text: `spikes/04-skia-text/` |
 | R-rec, R-dec, R-edit, R-mit, R-kap, R-eco | `docs/research/cap-recording.md`, `cap-render-decode.md`, `cap-editor-export.md`, `cap-mit-crates.md`, `kap.md`, `ecosystem.md` |
+| M1:<package> | The M1 package's report (2026-11-19/20), e.g. M1:export = wp-export. Not stored in the repo; docs/STATUS.md §2 is the in-repo record of every M1 number with its source. |
 
 Important caveats:
 
@@ -27,7 +28,7 @@ Important caveats:
 | Screen + system audio | ScreenCaptureKit `SCStream` through `objc2-screen-capture-kit` 0.3.2 | **verified** (S3) | Captured native 7680x2160 px (3840x1080 pt at scale 2). Pixel format 420v, BT.709 YCbCr matrix set explicitly, queueDepth 6, cursor on. Frames arrive only on change: 0.86 fps idle, 28.95 fps active at a 30 cap, 55.3 at a 60 cap (single window). Full display at 60 fps requested delivered only 44.5 fps. `excludesCurrentProcessAudio` works (own sound at -120 dB). Hiding our own windows works **per window**; whole-app exclusion **fails** under the dev host (S3). SCStream microphone output needs macOS 15+ (R-eco). |
 | Camera | AVFoundation `AVCaptureSession` (`objc2-av-foundation`) | **verified** (S3) | FaceTime HD 1080p30 420v: capture drops 0 and late frames 0 in all three quiet runs; writer "not ready" drops 0, 0 and **6** (`bench-quiet3`). Continuity Camera reports as `External`, not `ContinuityCamera` (S3 verification). |
 | Mic | AVFoundation `AVCaptureSession` (not AVAudioEngine) | **verified** (S3) | Host-time timestamps straight into the writer. Clock offset to host time 0.15-1.18 ms. Mic A/V sync not verified (the mic did not hear the test sounds). |
-| Raw-track record encode | `AVAssetWriter`, QuickTime `.mov`, `movieFragmentInterval` 1 s; VideoToolbox **HEVC Main, hvc1** for screen and camera; AAC LC for mic (mono 48 kHz) and system audio (stereo 48 kHz) | **verified** (S3) | SIGKILL at 6 s loses at most 0.86 s and every file still decodes (S3). Keyframe interval set to 1 s, but gaps reach 1.65-2.78 s when SCK sends no frames on an idle screen (S3 verification). HEVC encoder headroom, frames/s: 7680x2160 46.3, 5120x2880 52.3, 3840x2160 90.3, 3024x1964 122.9, 1920x1080 315.4. So: 30 fps at native size, 60 fps only at 4K or below, after a real encode test. H.264 through AVAssetWriter (hardware not required): 7680x2160 19.6-31.8 fps and 5120x2880 18.5-36.6 fps (unstable), 4K 54.4, 1080p 204 (S3). It does open above 4096 px, unlike FFmpeg's hardware-only `h264_videotoolbox -allow_sw 0` (S1); the low, noisy speed suggests a software encoder there (inference, see ADR-009). |
+| Raw-track record encode | `AVAssetWriter`, QuickTime `.mov`, `movieFragmentInterval` 1 s; VideoToolbox **HEVC Main, hvc1** for screen and camera; AAC LC for mic (mono 48 kHz) and system audio (stereo 48 kHz) | **verified** (S3) | SIGKILL at 6 s loses at most 0.86 s and every file still decodes (S3). Keyframe interval set to 1 s, but gaps reach 1.65-2.78 s when SCK sends no frames on an idle screen (S3 verification). HEVC encoder headroom, frames/s: 7680x2160 46.3, 5120x2880 52.3, 3840x2160 90.3, 3024x1964 122.9, 1920x1080 315.4. So: 30 fps at native size, 60 fps only at 4K or below, after a real encode test. H.264 through AVAssetWriter (hardware not required): 7680x2160 19.6-31.8 fps and 5120x2880 18.5-36.6 fps (unstable), 4K 54.4, 1080p 204 (S3). It does open above 4096 px, unlike FFmpeg's hardware-only `h264_videotoolbox -allow_sw 0` (S1); the low, noisy speed suggests a software encoder there (inference, see ADR-009). **M1:** `fragment_interval_s` 1.0 loses 1.003–1.076 s per track on a live SIGKILL (a whole unwritten fragment plus encoder latency; M1:kill-recovery-test, owner question in ADR-008). Default HEVC rate 0.05 bits per pixel; H.264 for raw tracks only when both sides ≤ 4096 (M1:mac-av). Probe v1 on this Mac: HEVC 3024x1964 117.9 fps, 1512x982 386.8 fps (M1:export). 30-minute soak at 3024x1964 30 fps: 0 writer not-ready on every track (M1:soak). |
 | Editor decode | `AVAssetReader` producing IOSurface-backed NV12 (420v) | **verified** (S3) | 7680x2160 HEVC: 302 fps decode, 344 fps with import and preview render; seek median 54 ms, max 142 ms (three runs). Camera 1080p: 1599 fps, seek 11 ms. AVAssetReader reads a SIGKILLed fragmented `.mov` completely. Readers cannot seek: recreate on a keyframe (R-dec). |
 | Frames into wgpu | `CVMetalTextureCache` makes R8 (Y) and RG8 (CbCr) Metal textures from the IOSurface; `wgpu-hal` wraps them; WGSL BT.709 limited-range shader | **verified** (S3) | Zero-copy: IOSurface ids match on both planes, the same Metal texture object, 39 µs per 7680x2160 frame. PSNR against an ffmpeg reference conversion 79.3 dB (screen). Keep the source CVPixelBuffer alive until GPU work finishes (R-dec). |
 | Preview to UI | `CAMetalLayer` NSView under a transparent WKWebView (wgpu FIFO surface); fallback raw frames into WebGL2 | **verified** (S2) | Native path 60.1 fps of 60 at 20% total CPU; WebGL2 fallback 58.5-59.9 fps. Send webview frames at the preview's device-pixel size (S2). |
@@ -153,6 +154,22 @@ Each format remembers its own last explicit choice; the effective fps is the lar
 
 Browsers treat delays below 2 cs as 10 cs, so anything above 50 fps would play slower; that is why the list stops at 50.
 
+### 2.7 Quick export (M1, measured)
+
+The M1 quick export is the only export: `libx264 -preset medium -profile:v high -pix_fmt yuv420p -crf 22` with `setparams` BT.709 limited tags plus output tags, `aac_at` 160k (`aac` off macOS), `+faststart`, `-an` when there is no audio. The compositor renders each frame on the GPU (Metal here) from CPU-uploaded NV12 and pipes Y4M I420 to the helper. The long side is capped at 3840 (Q6); the reference size is never upscaled.
+
+| Case | Wall | Encode rate | × realtime | Source |
+|---|---|---|---|---|
+| 1920x1080, 30 s at 30 fps | 5.20 s | 173.1 fps | 5.77× | M1:export, `cargo test --release --test export_bench -- --ignored` |
+| 3840x2160, 30 s at 30 fps | 13.85 s | 65.0 fps | 2.17× | same |
+| 7680x2160, 10 s at 30 fps (bypasses the job; the quick export caps at 3840) | 11.18 s | 26.8 fps | 0.89× (slower than realtime) | same |
+| 3024x1964 reference export of a real 10 s display recording | 4.07–4.3 s | – | about 2.3–2.5× | M1:e2e, step 1, two runs (`target/e2e/report-20261119-232627.json`, `…232905.json`) |
+
+- The bench frames are synthetic and flat, so real screen content will encode slower; treat the bench rates as upper bounds (M1:export). All on the M3 Pro; nothing on an M1.
+- Compositor share of the frame time, Metal, whole `render()` including background upload and readback (M1:render): 1080p 6.3–9.7 ms, 2160p 17.4–18.7 ms. The background is re-uploaded every frame (about 33 MB at 4K), a known later optimisation.
+- Validation (`ffprobe_check`): codec, size, fps, frame count, duration within one frame, audio length within one AAC frame plus one video frame, colour tags bt709/bt709/bt709/tv. All 20 aspect × background exports in e2e passed, and colour patches decode within 3/255 (M1:export, M1:e2e).
+- The x264 7680x2160 rate is the reason for the 3840 cap (ADR-036, Q6).
+
 ## 3. What the capability probe must check
 
 Run once per machine and cache the result keyed by OS version, helper version and GPU. Hide anything that fails.
@@ -163,14 +180,16 @@ Run once per machine and cache the result keyed by OS version, helper version an
 4. **Decode-back** where the helper can decode the codec. AV1 cannot be decoded by our helper (no AV1 decoder), so skip or use a native decoder for that check.
 5. **`aac_at` presence** (macOS only), otherwise native `aac`.
 6. **Hardware Fast encoders on Windows/Linux** (NVENC/QSV/AMF/MF/VAAPI, including AV1 and VP9 variants). Run risky ones in a child process, and mark an encoder "in use" while it runs so a crash quarantines it on next launch (R-rec).
-7. **Native recording headroom:** an HEVC (and H.264) encode at the display's native size and the chosen fps. Offer 60 fps only when it keeps up; S3 measured 46 fps HEVC at 7680x2160 on the M3 Pro, which rules out 60 fps there.
+7. **Native recording headroom:** an HEVC (and H.264) encode at the display's native size and the chosen fps. Offer 60 fps only when it keeps up; S3 measured 46 fps HEVC at 7680x2160 on the M3 Pro, which rules out 60 fps there. **M1 probe v1 (the probe-size rule, ADR-009):** at launch, HEVC at 60 fps for every connected display's native and 1× size; 60 fps is offered for a source only if its display reached ≥ 78 fps (1.3 × 60). M3 Pro: 3024x1964 117.9 fps, 1512x982 386.8 fps; `h264_videotoolbox -allow_sw 0` opens at 3840 and 4096 x2160, fails at 4098 (M1:export). Delivered with `--fps 60` on a changing test screen: 50.8–52.5 fps (M1:e2e).
 8. **Native decode paths:** AVAssetReader for HEVC/H.264 on macOS; MF DXVA on Windows; VAAPI on Linux.
 9. **gifski** is present and is version 1.32 or later (needed for Y4M on stdin; we ship 1.34.0) (R-eco).
 10. **Helper integrity:** binary present, version string matches the pinned build (`9.0.2-simple-capture`), with a clear error if missing (S1 tested the missing-helper message).
 
 ## 4. Open items
 
-- Run S1 and S3 on a real base M1 8 GB: x264/x265/VP9 speed, VideoToolbox throughput, HEVC headroom at the M1's native sizes.
+- Run S1 and S3 on a real base M1 8 GB: x264/x265/VP9 speed, VideoToolbox throughput, HEVC headroom at the M1's native sizes. Also the M1 quick export and probe v1 (§2.7); every M1 number is from the M3 Pro.
+- Fragment interval for raw tracks (1 s loses up to about 1.08 s on a SIGKILL; ADR-008 owner question).
+- Quick export speed on real (not synthetic) screen content.
 - Decide the 5K/6K Fast path for H.264 (downscale, HEVC, or x264).
 - VP8 colour exception (ADR-029) needs the owner's OK.
 - The S3 evidence behind section 1 (summaries, analyses, logs) is un-ignored under `out/`; only the recordings are gitignored (STATUS §1).
