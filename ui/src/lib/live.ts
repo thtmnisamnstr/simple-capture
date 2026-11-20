@@ -32,7 +32,7 @@ export class LiveView {
   constructor(
     private canvas: HTMLCanvasElement,
     private name: string,
-    private onFrame: () => void,
+    private onFrame: (w: number, h: number) => void,
   ) {
     this.gl = canvas.getContext('webgl2', { premultipliedAlpha: true, alpha: true, antialias: false });
     if (this.gl) this.setup(this.gl);
@@ -81,7 +81,7 @@ export class LiveView {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    this.onFrame();
+    this.onFrame(w, h);
   }
 
   private async pump() {

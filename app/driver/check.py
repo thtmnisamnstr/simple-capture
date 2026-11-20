@@ -168,8 +168,8 @@ if basic("01-onboarding", log):
     DISPLAYS = steps(log, "cmd list_displays")[0]["result"]
     rects = steps(log, "log-window-rects")[0]["result"]
     vis = {r["label"]: r["visible"] for r in rects}
-    check("01-onboarding", "eight windows, IDs > 0, onboarding shown",
-          len(rects) == 8 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
+    check("01-onboarding", "nine windows, IDs > 0, onboarding shown",
+          len(rects) == 9 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
     ui = ui_lines(steps(log, "ui-log")[0])
     text = next((l for l in ui if "onboarding " in l), "")
     check("01-onboarding", "onboarding renders the three statuses",
@@ -387,6 +387,13 @@ if basic("12-bubble", log):
         win2, g2 = rects[1].get("bubble"), (c.get("geom") or {}).get("window")
         check("12-bubble", "bubble window followed the drag",
               bool(win2 and g2) and all(abs(win2["rect_pt"][k] - g2[k]) <= 1 for k in "xy"), {"window": win2, "geom": g2})
+        if len(st) >= 5 and len(rects) >= 3:
+            d, e = st[3], st[4]
+            stage = rects[2].get("stage")
+            check("12-bubble", "9:16 frame: stage shown, bubble floats", bool(d.get("stage")) and bool(stage and stage["visible"])
+                  and not ((d.get("geom") or {}).get("maps_output", True)), {"state": d.get("stage"), "window": stage, "geom": d.get("geom")})
+            sfps = e.get("stage_frame", 0) - d.get("stage_frame", 0)
+            check("12-bubble", "stage frames keep coming (>= 15 in 1 s)", d.get("stage_frame", 0) > 0 and sfps >= 15, sfps)
     else:
         check("12-bubble", "bubble steps logged", False, {"states": len(st), "rects": len(rects)})
 

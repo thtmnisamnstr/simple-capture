@@ -12,6 +12,7 @@ mod objc;
 mod protocol;
 mod settings;
 mod signals;
+mod stage;
 mod state;
 mod still;
 mod tray;
@@ -174,6 +175,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     core.configure_windows()?;
     bubble::spawn(&core);
+    stage::spawn(&core);
     let tray = tray::Tray::build(app.handle(), core.clone())?;
     let _ = core.tray.set(tray);
     tracing::info!("tray ready");
@@ -264,6 +266,10 @@ fn main() {
             commands::cancel_export,
             commands::reveal,
             commands::recovery_report,
+            commands::camera_preview,
+            commands::bubble_state,
+            commands::bubble_drag,
+            commands::camera_key_live,
         ])
         .setup(setup)
         .build(tauri::generate_context!());

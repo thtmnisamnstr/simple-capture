@@ -26,7 +26,7 @@ use crate::settings::{CanvasDto, RecorderSettings, SettingsStore};
 use crate::state::{Input, Phase};
 use crate::still::{self, StillCache};
 
-pub const WINDOWS: [(&str, OverlayRole); 8] = [
+pub const WINDOWS: [(&str, OverlayRole); 9] = [
     ("panel", OverlayRole::Panel),
     ("onboarding", OverlayRole::Onboarding),
     ("bar", OverlayRole::FloatingBar),
@@ -35,6 +35,7 @@ pub const WINDOWS: [(&str, OverlayRole); 8] = [
     ("pick", OverlayRole::PickOverlay),
     ("saved", OverlayRole::Saved),
     ("bubble", OverlayRole::Bubble),
+    ("stage", OverlayRole::Stage),
 ];
 
 pub type Reply = Result<Value, String>;
@@ -1241,12 +1242,66 @@ impl Core {
             }
             tracing::warn!("camera preview while recording: {e}");
         }
+        let stage = device.is_some() && !crate::bubble::maps_output(&s);
         {
             let mut b = lock(&self.bubble);
             b.key = Some(s.camera_key.clone());
             b.shown = device.is_some() && s.bubble_shown && s.camera_key.visible;
+            b.stage = s
+                .source
+                .clone()
+                .filter(|_| stage)
+                .map(|src| (src, s.canvas.clone()));
+        }
+        if stage {
+            self.show_window("stage", false)?;
+        } else {
+            self.hide_window("stage");
+            self.live.clear("stage");
         }
         self.place_bubble(&s)
+    }
+
+    /// What the stage renderer draws, or `None` while the stage is hidden.
+    pub fn stage_inputs(&self) -> Option<crate::stage::StageInputs> {
+        let (src, canvas, key) = {
+            let b = lock(&self.bubble);
+            let (src, canvas) = b.stage.clone()?;
+            (src, canvas, b.key.clone())
+        };
+        let w = self.app.get_webview_window("stage")?;
+        let inner = w.inner_size().ok()?;
+        let background = match &canvas.background_image {
+            Some(p) => sc_core::project::Background::Image {
+                asset: p.clone(),
+                sha256: String::new(),
+                fit: sc_core::project::Fit::Cover,
+                focus_norm: sc_geometry::PointF { x: 0.5, y: 0.5 },
+            },
+            None => canvas.background.clone(),
+        };
+        Some(crate::stage::StageInputs {
+            source: src.to_spec(|id| self.picked(id)).ok(),
+            aspect: canvas.aspect,
+            background,
+            key: key.filter(|k| k.visible),
+            inner: sc_geometry::SizePx {
+                w: inner.width.max(2),
+                h: inner.height.max(2),
+            },
+        })
+    }
+
+    /// A camera placement while it is being dragged in the stage: shown at once (and a keyframe
+    /// while recording) but not saved; the stage saves the settings when the drag ends.
+    pub fn camera_key_live(&self, key: sc_core::project::CameraKey) -> Reply {
+        {
+            let mut b = lock(&self.bubble);
+            b.key = Some(key.clone());
+            b.version += 1;
+        }
+        self.send_camera_key(&key, false);
+        Ok(Value::Null)
     }
 
     fn place_bubble(&self, s: &RecorderSettings) -> Reply {
@@ -1319,6 +1374,8 @@ impl Core {
             "key": b.key,
             "shown": b.shown,
             "frame": self.live.latest_id("bubble"),
+            "stage_frame": self.live.latest_id("stage"),
+            "stage": b.stage.is_some(),
             "camera_open": self.camera.open_device(),
         }))
     }

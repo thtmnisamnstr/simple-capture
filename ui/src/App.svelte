@@ -8,6 +8,7 @@
   import Pick from './routes/Pick.svelte';
   import Saved from './routes/Saved.svelte';
   import Bubble from './routes/Bubble.svelte';
+  import Stage from './routes/Stage.svelte';
 
   let route: Route = $state(routeFromHash(window.location.hash));
 
@@ -33,6 +34,8 @@
     <Pick />
   {:else if route === 'bubble'}
     <Bubble />
+  {:else if route === 'stage'}
+    <Stage />
   {:else}
     <Saved />
   {/if}

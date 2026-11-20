@@ -55,7 +55,8 @@ pub fn shape_size(short: f64, aspect: Ratio) -> (f64, f64) {
 }
 
 /// Destination rectangle, camera crop and corner radius for `pose` on a `canvas` with a camera
-/// frame of `camera` pixels. The crop starts as the largest `aspect` rectangle inside the frame
+/// frame of `camera` pixels. The shape always lies inside the canvas (a centre saved for another
+/// frame shape is pulled in). The crop starts as the largest `aspect` rectangle inside the frame
 /// (fill), shrinks by `zoom`, and moves by `pan` within the frame.
 pub fn camera_rects(
     canvas: SizePx,
@@ -66,9 +67,16 @@ pub fn camera_rects(
     let (cw, ch) = (f64::from(canvas.w), f64::from(canvas.h));
     let short = cw.min(ch) * pose.size.clamp(CAMERA_SIZE_MIN, CAMERA_SIZE_MAX);
     let (w, h) = shape_size(short, aspect);
+    let inside = |c: f64, len: f64, side: f64| {
+        if len >= side {
+            side / 2.0
+        } else {
+            (c * side).clamp(len / 2.0, side - len / 2.0)
+        }
+    };
     let dst = RectF {
-        x: pose.center.x * cw - w / 2.0,
-        y: pose.center.y * ch - h / 2.0,
+        x: inside(pose.center.x, w, cw) - w / 2.0,
+        y: inside(pose.center.y, h, ch) - h / 2.0,
         w,
         h,
     };

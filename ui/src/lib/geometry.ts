@@ -276,7 +276,8 @@ export function shapeSize(short: number, aspect: Ratio): Size {
 export function cameraRects(canvas: Size, camera: Size, aspect: Ratio, pose: CameraPose): CameraRects {
   const short = Math.min(canvas.w, canvas.h) * clamp(pose.size, CAMERA_SIZE_MIN, CAMERA_SIZE_MAX);
   const { w, h } = shapeSize(short, aspect);
-  const dst = { x: pose.center.x * canvas.w - w / 2, y: pose.center.y * canvas.h - h / 2, w, h };
+  const inside = (c: number, len: number, side: number) => (len >= side ? side / 2 : clamp(c * side, len / 2, side - len / 2));
+  const dst = { x: inside(pose.center.x, w, canvas.w) - w / 2, y: inside(pose.center.y, h, canvas.h) - h / 2, w, h };
   const fw = Math.max(camera.w, 1);
   const fh = Math.max(camera.h, 1);
   const a = ratioF(aspect);

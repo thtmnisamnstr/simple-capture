@@ -10,7 +10,7 @@ use tauri::State;
 use crate::core::{Core, Reply};
 
 #[cfg(test)]
-const COMMANDS: [&str; 26] = [
+const COMMANDS: [&str; 27] = [
     "get_permissions",
     "request_permission",
     "open_permission_settings",
@@ -37,6 +37,7 @@ const COMMANDS: [&str; 26] = [
     "camera_preview",
     "bubble_state",
     "bubble_drag",
+    "camera_key_live",
 ];
 
 fn snake_to_camel(s: &str) -> String {
@@ -106,6 +107,7 @@ pub fn dispatch(core: &Arc<Core>, name: &str, args: &Value) -> Reply {
         "recovery_report" => core.recovery_report(),
         "camera_preview" => core.camera_preview(arg(args, "active")?),
         "bubble_state" => core.bubble_state(),
+        "camera_key_live" => core.camera_key_live(arg(args, "key")?),
         "bubble_drag" => core.bubble_drag(
             &arg::<String>(args, "phase")?,
             arg(args, "x")?,
@@ -255,6 +257,37 @@ pub async fn recovery_report(core: State<'_, Arc<Core>>) -> Reply {
     run(core, "recovery_report", Value::Null).await
 }
 
+#[tauri::command]
+pub async fn camera_preview(core: State<'_, Arc<Core>>, active: bool) -> Reply {
+    run(core, "camera_preview", json!({ "active": active })).await
+}
+
+#[tauri::command]
+pub async fn bubble_state(core: State<'_, Arc<Core>>) -> Reply {
+    run(core, "bubble_state", Value::Null).await
+}
+
+#[tauri::command]
+pub async fn bubble_drag(
+    core: State<'_, Arc<Core>>,
+    phase: String,
+    x: f64,
+    y: f64,
+    corner: Option<(f64, f64)>,
+) -> Reply {
+    run(
+        core,
+        "bubble_drag",
+        json!({ "phase": phase, "x": x, "y": y, "corner": corner }),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn camera_key_live(core: State<'_, Arc<Core>>, key: Value) -> Reply {
+    run(core, "camera_key_live", json!({ "key": key })).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -284,5 +317,18 @@ mod tests {
             .filter_map(|(i, s)| (i % 2 == 1).then_some(s))
             .collect();
         assert_eq!(names, COMMANDS.to_vec());
+    }
+
+    #[test]
+    fn every_command_is_registered_with_tauri() {
+        let main = include_str!("main.rs");
+        let handler = &main[main.find("generate_handler![").expect("invoke handler")..];
+        let handler = &handler[..handler.find("])").expect("end of handler")];
+        for name in COMMANDS {
+            assert!(
+                handler.contains(&format!("commands::{name},")),
+                "{name} is dispatched but not in generate_handler!"
+            );
+        }
     }
 }

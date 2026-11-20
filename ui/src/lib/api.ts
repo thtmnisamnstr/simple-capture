@@ -18,6 +18,7 @@ import type {
   SourceSpecDto,
   CanvasDto,
   BubbleGeom,
+  CameraKey,
   BubbleStateDto,
 } from './types.ts';
 
@@ -56,6 +57,7 @@ export const api = {
   bubbleState: () => call<BubbleStateDto>('bubble_state'),
   bubbleDrag: (phase: 'begin' | 'move' | 'end', x: number, y: number, corner: [number, number] | null = null) =>
     call<BubbleGeom | null>('bubble_drag', { phase, x, y, corner }),
+  cameraKeyLive: (key: CameraKey) => call<void>('camera_key_live', { key }),
 };
 
 export const COMMANDS = [
@@ -85,6 +87,7 @@ export const COMMANDS = [
   'camera_preview',
   'bubble_state',
   'bubble_drag',
+  'camera_key_live',
 ] as const;
 
 export function errorText(err: unknown): string {

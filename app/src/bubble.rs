@@ -57,6 +57,7 @@ pub struct BubbleState {
     pub geom: Option<Geom>,
     pub version: u64,
     pub last_key_sent: Option<Instant>,
+    pub stage: Option<(crate::dto::SourceSpecDto, crate::settings::CanvasDto)>,
     drag: Option<Drag>,
 }
 

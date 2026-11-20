@@ -15,6 +15,7 @@
       { "label": "region", "url": "index.html#/region", "title": "Select Region", "width": 800, "height": 600, "resizable": false, "decorations": false, "skipTaskbar": true, "visible": false, "focus": false },
       { "label": "pick", "url": "index.html#/pick", "title": "Pick Source", "width": 800, "height": 600, "resizable": false, "decorations": false, "skipTaskbar": true, "visible": false, "focus": false },
       { "label": "saved", "url": "index.html#/saved", "title": "Recording Saved", "width": 420, "height": 300, "resizable": false, "visible": false, "focus": false },
+      { "label": "stage", "url": "index.html#/stage", "title": "Camera Placement", "width": 480, "height": 300, "minWidth": 240, "minHeight": 160, "resizable": true, "alwaysOnTop": true, "skipTaskbar": true, "visible": false, "focus": false },
       { "label": "bubble", "url": "index.html#/bubble", "title": "Simple Capture Camera", "width": 240, "height": 240, "resizable": false, "decorations": false, "transparent": true, "shadow": false, "alwaysOnTop": true, "skipTaskbar": true, "visible": false, "focus": false }
     ],
     "security": {
