@@ -25,6 +25,8 @@ FFPROBE = os.environ["SC_FFPROBE"]
 KEEP = os.environ.get("SC_E2E_KEEP") == "1"
 FIXTURE = json.load(open(os.environ["SC_FIXTURE"]))
 APPS = {a["title"]: a for a in FIXTURE["apps"]}
+# Everything the dev host's child touches (binary, cwd, projects) stays outside ~/Documents, so
+# no recording depends on a Documents-folder TCC answer.
 WORK = tempfile.mkdtemp(prefix="sc-e2e-")
 SPAWNED = []
 RESULTS = []
@@ -80,7 +82,7 @@ def record(name, args, actions=(), term_at=None, stop_line_at=None, timeout_s=90
     cmd = [RUNSH, CLI, "record", *args, "--events", "--projects-dir", projects]
     log(f"  record {name}: {' '.join(args)}")
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                         env=env, cwd=ROOT, start_new_session=True)
+                         env=env, cwd=WORK, start_new_session=True)
     rec = Rec()
     rec.events, rec.stdout_lines, rec.err = [], [], []
     rec.t0 = None
@@ -131,6 +133,11 @@ def record(name, args, actions=(), term_at=None, stop_line_at=None, timeout_s=90
         now = time.monotonic()
         if now > deadline:
             rec.err.append("e2e: timeout, killing the recording")
+            if child is not None:
+                try:
+                    os.kill(child, signal.SIGKILL)
+                except OSError:
+                    pass
             os.killpg(p.pid, signal.SIGKILL)
             break
         if rec.t0 is not None:
@@ -355,7 +362,7 @@ def export_check(st, rec, size, audio, tag=None):
 
 
 def spawn_window(*args):
-    p = subprocess.Popen([DEVTOOLS, "testapps", *args], stdout=subprocess.PIPE, text=True)
+    p = subprocess.Popen([DEVTOOLS, "testapps", *args], stdout=subprocess.PIPE, text=True, cwd=WORK)
     ready = json.loads(p.stdout.readline())
     SPAWNED.append(p)
     threading.Thread(target=lambda: [None for _ in p.stdout], daemon=True).start()
@@ -739,7 +746,7 @@ STEPS = [
 
 
 def perms():
-    r = run([RUNSH, CLI, "--json", "perms"], timeout=300)
+    r = run([RUNSH, CLI, "--json", "perms"], timeout=300, cwd=WORK)
     try:
         return json.loads(r.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):

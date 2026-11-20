@@ -19,8 +19,10 @@ fi
 
 if [ -z "${SC_E2E_INNER:-}" ]; then
   cargo build --locked -p simple-capture-cli -p sc-devtools || exit 1
-  # Private copies: other worktrees share CARGO_TARGET_DIR and may relink these mid-run.
-  BIN="$ROOT/target/e2e/bin"
+  # Private copies outside ~/Documents: other worktrees share CARGO_TARGET_DIR and may relink
+  # these mid-run, and the fixture apps are their own responsible process (disclaimed), so
+  # launching them from ~/Documents blocks in exec on a Documents-folder TCC check.
+  BIN="${TMPDIR:-/tmp}/sc-e2e-bin"
   mkdir -p "$BIN"
   for b in sc-devtools simple-capture; do
     # A new inode each time: overwriting a signed binary in place gets it SIGKILLed at exec.
@@ -64,16 +66,22 @@ source "$ROOT/scripts/lib/live.sh"
 # live.sh's fixture_start gives the apps 20 s; the first disclaimed launch of a new sc-devtools
 # can take minutes (system scan), so wait longer here and reuse fixture_stop.
 mkdir -p "$LIVE_DIR"
-rm -f "$LIVE_DIR/fixture.json"
-"$SC_DEVTOOLS" testapps fixture --out "$LIVE_DIR/fixture.json" &
-echo "$!" > "$LIVE_DIR/fixture.pid"
 trap 'fixture_stop' EXIT
-for _ in $(seq 3000); do
+for attempt in 1 2; do
+  rm -f "$LIVE_DIR/fixture.json"
+  (cd "$(dirname "$SC_DEVTOOLS")" && exec "$SC_DEVTOOLS" testapps fixture --out "$LIVE_DIR/fixture.json") \
+    2>"$LIVE_DIR/fixture.err" &
+  echo "$!" > "$LIVE_DIR/fixture.pid"
+  for _ in $(seq 3000); do
+    [ -s "$LIVE_DIR/fixture.json" ] && break
+    kill -0 "$(cat "$LIVE_DIR/fixture.pid")" 2>/dev/null || break
+    sleep 0.1
+  done
   [ -s "$LIVE_DIR/fixture.json" ] && break
-  kill -0 "$(cat "$LIVE_DIR/fixture.pid")" 2>/dev/null || break
-  sleep 0.1
+  echo "e2e: the fixture apps did not start (attempt $attempt): $(tail -c 400 "$LIVE_DIR/fixture.err")" >&2
+  fixture_stop
 done
-[ -s "$LIVE_DIR/fixture.json" ] || { echo "e2e: the fixture apps did not start" >&2; exit 1; }
+[ -s "$LIVE_DIR/fixture.json" ] || exit 1
 export SC_FIXTURE="$LIVE_DIR/fixture.json"
 python3 -I "$ROOT/scripts/e2e/e2e.py" "$@" &
 PY=$!
