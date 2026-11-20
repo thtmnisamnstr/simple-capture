@@ -35,6 +35,10 @@ env:
     -p simple-capture-capture-macos -p simple-capture-capture-windows -p simple-capture-capture-linux
     -p simple-capture-record -p simple-capture-decode -p simple-capture-render
     -p simple-capture-helpers -p sc-devtools
+  # Plan §6.2: the record Session tests run a few real seconds with one-frame tolerances, so CI
+  # runs tests with --test-threads=2 (hosted runners have 3-4 vCPUs). One invocation for the
+  # whole selection keeps Cargo's feature unification, and so the build, identical.
+  TEST_THREADS: "2"
 
 jobs:
   fast:
@@ -62,7 +66,7 @@ jobs:
         shell: bash
         run: |
           # shellcheck disable=SC2086
-          cargo test --locked $FAST_PACKAGES
+          cargo test --locked $FAST_PACKAGES -- --test-threads="$TEST_THREADS"
           cargo test --locked -p simple-capture-cli --no-default-features
 
   full:
@@ -101,6 +105,14 @@ jobs:
         uses: ./.github/actions/skia-cache
         with:
           mode: restore
+      - name: LLVM >= 22 for a cold Skia build (Windows)
+        # windows-2025's MSVC STL (VS 18, 14.5x) rejects clang-cl older than 22 (STL1000) and the
+        # image ships LLVM 20. Only a Skia cache miss compiles C++, so only then upgrade.
+        if: runner.os == 'Windows' && steps.skia.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          choco upgrade llvm --version=22.1.8 --no-progress -y
+          "/c/Program Files/LLVM/bin/clang" --version
       - if: runner.os == 'macOS'
         uses: ./.github/actions/macos-helpers
       - name: clippy (builds Skia)
@@ -111,7 +123,8 @@ jobs:
         with:
           mode: save
       - name: test
-        run: cargo test --locked --workspace
+        shell: bash
+        run: cargo test --locked --workspace -- --test-threads="$TEST_THREADS"
 
   licenses:
     runs-on: ubuntu-24.04
