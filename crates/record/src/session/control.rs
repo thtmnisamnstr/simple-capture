@@ -1252,12 +1252,12 @@ impl Control {
         if let Some(s) = c.stream.take() {
             let _ = s.stop();
         }
-        self.finish_cont(c);
+        self.finish_cont(c, None);
         self.sh.notice(Notice::DeviceLost { kind, name });
     }
 
-    fn finish_cont(&mut self, c: Cont) {
-        let _ = c.tx.send(TrackIn::Finish);
+    fn finish_cont(&mut self, c: Cont, end_host: Option<i64>) {
+        let _ = c.tx.send(TrackIn::Finish { end_host });
         match c.join.join() {
             Ok(r) => self.results.push(r),
             Err(_) => self.log(
@@ -1299,7 +1299,7 @@ impl Control {
             let _ = j.join();
         }
         for c in std::mem::take(&mut self.cont) {
-            self.finish_cont(c);
+            self.finish_cont(c, Some(stop_host));
         }
         if let Some((tx, j)) = self.health.take() {
             drop(tx);

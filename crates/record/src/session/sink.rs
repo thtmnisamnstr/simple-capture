@@ -12,7 +12,10 @@ use super::shared::{Ctl, Shared, TrackStats, bump, lock};
 pub(crate) enum TrackIn {
     Video(VideoFrame),
     Audio(AudioBuffer),
-    Finish,
+    /// `end_host`: the recording's stop time; samples captured after it are cut from the file.
+    Finish {
+        end_host: Option<i64>,
+    },
 }
 
 #[derive(Debug, Clone, Default)]

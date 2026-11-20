@@ -22,7 +22,9 @@ if [ -z "${SC_E2E_INNER:-}" ]; then
   # Private copies: other worktrees share CARGO_TARGET_DIR and may relink these mid-run.
   BIN="$ROOT/target/e2e/bin"
   mkdir -p "$BIN"
-  cp -f "$TARGET_DIR/debug/sc-devtools" "$TARGET_DIR/debug/simple-capture" "$BIN/" || exit 1
+  for b in sc-devtools simple-capture; do
+    cmp -s "$TARGET_DIR/debug/$b" "$BIN/$b" || cp -f "$TARGET_DIR/debug/$b" "$BIN/$b" || exit 1
+  done
   export SC_DEVTOOLS="$BIN/sc-devtools"
   export SC_E2E_CLI="$BIN/simple-capture"
   export SC_E2E_INNER=1
@@ -56,8 +58,20 @@ done
 
 # shellcheck source=../lib/live.sh
 source "$ROOT/scripts/lib/live.sh"
-fixture_start || exit 1
+# live.sh's fixture_start gives the apps 20 s; the first disclaimed launch of a new sc-devtools
+# can take minutes (system scan), so wait longer here and reuse fixture_stop.
+mkdir -p "$LIVE_DIR"
+rm -f "$LIVE_DIR/fixture.json"
+"$SC_DEVTOOLS" testapps fixture --out "$LIVE_DIR/fixture.json" &
+echo "$!" > "$LIVE_DIR/fixture.pid"
 trap 'fixture_stop' EXIT
+for _ in $(seq 3000); do
+  [ -s "$LIVE_DIR/fixture.json" ] && break
+  kill -0 "$(cat "$LIVE_DIR/fixture.pid")" 2>/dev/null || break
+  sleep 0.1
+done
+[ -s "$LIVE_DIR/fixture.json" ] || { echo "e2e: the fixture apps did not start" >&2; exit 1; }
+export SC_FIXTURE="$LIVE_DIR/fixture.json"
 python3 -I "$ROOT/scripts/e2e/e2e.py" "$@" &
 PY=$!
 trap 'kill -TERM "$PY" 2>/dev/null' INT TERM HUP
