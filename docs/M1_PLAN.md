@@ -1132,7 +1132,7 @@ Not ported in M1: spike 2's `native_mac.rs` (native preview) and spike 4's text 
      `std`, `objc2-core-foundation`, `objc2-core-graphics`, `block2`, plus the modules we use
      (NSApplication, NSWindow, NSPanel, NSView, NSResponder, NSScreen, NSWorkspace,
      NSRunningApplication, NSOpenPanel, NSSavePanel, NSColor, NSGraphics, NSEvent, NSImage, NSMenu,
-     NSStatusItem, NSStatusBar, NSButton) per ADR-006; `skia-safe = "=0.157.0"` with `textlayout`;
+     NSStatusItem, NSStatusBar, NSButton) per ADR-006; `skia-safe = "=0.157.0"` with `textlayout` + `embed-freetype` (merge wave 1: stops Linux using system FreeType headers);
      `wgpu = "30.0.2"`; `tauri` with `tray-icon`.
   2. `rust-toolchain.toml`, `.cargo/config.toml`, `.gitignore` additions (`.wt/`, `ui/dist/`,
      `ui/node_modules/`, `app/binaries/`).
@@ -1843,7 +1843,7 @@ docs/research/ecosystem.md; the scaffold pins them.
 | objc2-foundation, -core-foundation, -core-graphics, -core-media, -core-video, -core-audio-types, -io-surface, -screen-capture-kit, -av-foundation, -avf-audio | 0.3.2 | Zlib OR Apache-2.0 OR MIT | capture-macos, devtools | ADR-006 |
 | objc2-app-kit (`default-features = false` + §8.0 list) | 0.3.2 | Zlib OR Apache-2.0 OR MIT | capture-macos, devtools | ADR-006 (trim features) |
 | wgpu | 30.0.2 | MIT OR Apache-2.0 | render | SPEC Tech stack |
-| skia-safe (`textlayout`, FreeType source build) | =0.157.0 | MIT (Skia BSD-3-Clause; vendored libs LICENSES §2.4) | text | ADR-018 |
+| skia-safe (`textlayout`, `embed-freetype`, FreeType source build) | =0.157.0 | MIT (Skia BSD-3-Clause; vendored libs LICENSES §2.4) | text | ADR-018 |
 | serde (`derive`) | 1.0.229 | MIT OR Apache-2.0 | all crates | ARCHITECTURE §1 ("project.json v1 (serde)"); spikes |
 | serde_json | 1.0.154 | MIT OR Apache-2.0 | core, record, export, app, cli, devtools | spike-only (ARCHITECTURE §1 implies it) |
 | tracing | 0.1 (latest patch, pinned by the scaffold) | MIT | all crates | SPEC Engineering ("tracing plus a session.log") |
