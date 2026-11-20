@@ -312,13 +312,13 @@ fn kill_after_segment_prepare() {
     assert!(notes.contains("prepared but never opened"), "{notes}");
 }
 
-#[test]
-fn kill_after_segment_open() {
+/// Kills at `after_segment_open` and returns the folder, the kill time and s1's file.
+fn killed_after_segment_open(name: &str) -> Option<(PathBuf, i64, PathBuf)> {
     if !hooks() {
-        return;
+        return None;
     }
     let mut rec = start(
-        "open",
+        name,
         &[
             "--switch-at-ms",
             "700",
@@ -336,7 +336,35 @@ fn kill_after_segment_open() {
         "{s:?}"
     );
     assert!(!s.iter().any(|e| e.starts_with("segment_close")), "{s:?}");
+    let file = events(&dir)
+        .iter()
+        .find_map(|e| match e {
+            JournalEvent::SegmentOpen { seg, file, .. } if seg == "s1" => Some(dir.join(file)),
+            _ => None,
+        })
+        .expect("segment_open:s1 names its file");
+    Some((dir, kill_rec, file))
+}
+
+#[test]
+fn kill_after_segment_open() {
+    let Some((dir, kill_rec, _)) = killed_after_segment_open("open") else {
+        return;
+    };
     // The router holds before s1's first append, so recovery drops the empty s1.
     let p = recover_and_check(&dir, kill_rec, 1);
     assert_eq!(p.recording.screen.segments[0].id, "s0");
+}
+
+/// A fragmented-MOV writer has written nothing yet at `after_segment_open`: the live kill test
+/// finds s1 at 0 bytes. Recovery must drop it like an empty segment, not call the project damaged.
+#[test]
+fn kill_after_segment_open_with_zero_byte_segment_file() {
+    let Some((dir, kill_rec, s1)) = killed_after_segment_open("open-empty") else {
+        return;
+    };
+    std::fs::File::create(&s1).expect("truncate s1 to 0 bytes");
+    let p = recover_and_check(&dir, kill_rec, 1);
+    assert_eq!(p.recording.screen.segments[0].id, "s0");
+    assert!(s1.exists(), "recovery keeps the original file");
 }
