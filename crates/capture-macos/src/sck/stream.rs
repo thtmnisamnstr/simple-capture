@@ -26,9 +26,9 @@ use sc_core::project::{RegionMethod, Resolution, SourceDescriptor};
 use sc_core::time::HostTime;
 use sc_geometry::{RectPt, SizePx, app_bounds_pt, even_round, snap_region_even_px};
 use sc_platform::{
-    AudioBuffer, AudioData, AudioTrackKind, DisplayInfo, Error, FrameBuffer, FrameSink, Result,
-    ScreenSource, ScreenStream, ScreenStreamConfig, SourceEvent, SourceList, SourceSpec, StreamTag,
-    VideoFrame, WindowId,
+    AppRef, AudioBuffer, AudioData, AudioTrackKind, DisplayInfo, Error, FrameBuffer, FrameSink,
+    Result, ScreenSource, ScreenStream, ScreenStreamConfig, SourceEvent, SourceList, SourceSpec,
+    StreamTag, VideoFrame, WindowId,
 };
 
 use super::content::{self, CgDisplay};
@@ -89,6 +89,10 @@ impl ScreenSource for MacScreenSource {
 
     fn list(&self, hide: &[WindowId]) -> Result<SourceList> {
         content::list(hide)
+    }
+
+    fn window_app(&self, id: WindowId) -> Result<Option<AppRef>> {
+        content::window_app(id)
     }
 
     fn describe(

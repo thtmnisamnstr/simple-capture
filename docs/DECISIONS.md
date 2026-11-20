@@ -1224,3 +1224,29 @@ they are not a substitute for an M1 run.
   works with the `includingApplications` display filter (no SCStream error), the segment is
   1840×872 (`crop_pt` 1781,185 920×436, `content_px` the whole frame) instead of 7680×2160, and
   the export is 1840×3272 (9:16) with the window filling the canvas width (rows 1200–2072).
+
+## ADR-040: Source lists show only windows a person would record
+- **Status:** Accepted (bug fix for the owner's hands-on report, 2026-11-20: the Windows tab listed
+  menu-bar status items, the WindowServer "Cursor" window and untitled windows; the Apps tab listed
+  Control Center and Dock; "Pick window by clicking" always picked the Cursor window, which is
+  frontmost and always under the pointer). The owner may revisit it at the ★ review.
+- **Decision:** `list` (macOS, `sck::listable`, so the CLI `sources`, the panel tabs, the switcher
+  and the pick overlay agree) keeps a window only if it is on screen and overlaps a display, is on
+  an app content layer (0–23, as ADR-039), is at least 40 pt on each side (the pointer, status
+  items, the menu bar, tooltips and status bubbles are smaller; a title bar alone is 28 pt), has a
+  non-blank title, is not ours or in `hide`, and its owner is a regular app
+  (`NSRunningApplication.activationPolicy`) or an unbundled program with the accessory policy.
+  Dock, Control Center, Notification Center, SystemUIServer, loginwindow and menu-bar apps are
+  bundled accessory or prohibited apps, and WindowServer is not an app. The unbundled exception
+  keeps the devtools fixtures (accessory so they never take focus or show in the Dock) listable for
+  the live tests and driver flows. An app is listed only if it owns a listed window.
+- **Not changed:** the application crop (`app_window_frames`, ADR-039) still counts every window of
+  the app on a content layer, 2 pt or more, titled or not, so the UI's preview size estimate from
+  the list can differ when such a window lies outside the listed ones. Following app audio for a
+  window source looks the owner up directly (`ScreenSource::window_app`), so it works for windows
+  the list hides.
+- **Result** [live, 2026-11-20, CLI `sources` under the dev host, one 3840×1080 pt display]: before,
+  37 windows and 10 apps (WindowServer, Control Center, Dock, LanguageTool's full-display overlay at
+  layer 3, Chrome's tooltip and status bubble); after, only titled layer-0 windows of Chrome, Slack,
+  Claude, Messages, Notion, Asana and Moonlight, and those 7 apps. The frontmost listed window is a
+  real app window, so the pick hit test lands on it.
