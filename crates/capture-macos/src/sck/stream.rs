@@ -59,7 +59,7 @@ impl MacScreenSource {
         sink: Arc<dyn FrameSink>,
     ) -> Result<MacScreenStream> {
         tcc::guard("SCStream start")?;
-        let content = content::fetch(false)?;
+        let content = content::shareable(false)?;
         let built = build(Some(&content), spec, cfg)?;
         let config = stream_config(&built, cfg);
         let window = match built.kind {
@@ -101,7 +101,7 @@ impl ScreenSource for MacScreenSource {
             SourceSpec::Window { .. } | SourceSpec::Application { .. }
         );
         let content = if needs_content {
-            Some(content::fetch(false)?)
+            Some(content::shareable(false)?)
         } else {
             None
         };
@@ -121,7 +121,7 @@ impl ScreenSource for MacScreenSource {
 
     fn snapshot(&self, spec: &SourceSpec, max: SizePx) -> Result<sc_core::image::RgbaImage> {
         tcc::guard("SCScreenshotManager")?;
-        let content = content::fetch(false)?;
+        let content = content::shareable(false)?;
         let cfg = ScreenStreamConfig {
             fps: 1,
             resolution: Resolution::Native,
@@ -913,7 +913,7 @@ impl ScreenStream for MacScreenStream {
             Kind::Window { .. } => Ok(()),
             kind => {
                 tcc::guard("SCShareableContent")?;
-                let content = content::fetch(false)?;
+                let content = content::shareable(false)?;
                 let mut all = self.cfg_exclude.clone();
                 all.extend_from_slice(exclude);
                 match rebuild_filter(kind, &content, &all)? {

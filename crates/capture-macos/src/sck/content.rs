@@ -56,7 +56,7 @@ fn content_block(
 }
 
 /// Every window (`onScreenWindowsOnly = false` when `on_screen_only` is false), no desktop windows.
-pub(crate) fn fetch(on_screen_only: bool) -> Result<Retained<SCShareableContent>> {
+pub(crate) fn shareable(on_screen_only: bool) -> Result<Retained<SCShareableContent>> {
     tcc::guard("SCShareableContent")?;
     let (tx, rx) = mpsc::channel();
     let blk = content_block(tx);
@@ -385,7 +385,7 @@ fn app_ref(a: &SCRunningApplication) -> AppRef {
 }
 
 pub(crate) fn list(hide: &[WindowId]) -> Result<SourceList> {
-    let content = fetch(true)?;
+    let content = shareable(true)?;
     let cg = cg_displays()?;
     let infos = displays()?;
     let z = z_order();

@@ -96,7 +96,7 @@ impl MacSystemAudio {
 }
 
 fn display_audio_filter(display: u32, exclude: &[WindowId]) -> Result<Retained<SCContentFilter>> {
-    let content = content::fetch(false)?;
+    let content = content::shareable(false)?;
     let d = content::find_display(&content, display)
         .ok_or_else(|| Error::NotFound(format!("display {display} not shareable")))?;
     let wins = content::exclusion_windows(&content, exclude);
@@ -110,7 +110,7 @@ fn display_audio_filter(display: u32, exclude: &[WindowId]) -> Result<Retained<S
 }
 
 fn app_audio_filter(display: u32, pid: i32) -> Result<Retained<SCContentFilter>> {
-    let content = content::fetch(false)?;
+    let content = content::shareable(false)?;
     let d = content::find_display(&content, display)
         .ok_or_else(|| Error::NotFound(format!("display {display} not shareable")))?;
     let app = content::find_app(&content, pid)

@@ -81,14 +81,30 @@ live_envcheck() {
   return "$rc"
 }
 
+# The fixture apps are their own responsible process (disclaimed), so exec'ing them from under
+# ~/Documents blocks on a Documents-folder consent: run a private copy from $TMPDIR instead.
+# A new inode each time it changes: overwriting a signed binary in place gets it SIGKILLed.
+live_stage_devtools() {
+  case "$SC_DEVTOOLS" in "$HOME/Documents/"*) ;; *) return 0 ;; esac
+  local bin="${TMPDIR:-/tmp}/sc-live-bin"
+  mkdir -p "$bin" || return 1
+  if ! cmp -s "$SC_DEVTOOLS" "$bin/sc-devtools"; then
+    cp "$SC_DEVTOOLS" "$bin/sc-devtools.new.$$" && mv -f "$bin/sc-devtools.new.$$" "$bin/sc-devtools" || return 1
+  fi
+  SC_DEVTOOLS="$bin/sc-devtools"
+  export SC_DEVTOOLS
+}
+
 fixture_start() {
   live_devtools || return 1
+  live_stage_devtools || return 1
   mkdir -p "$LIVE_DIR"
   local out="$LIVE_DIR/fixture.json"
   rm -f "$out"
-  "$SC_DEVTOOLS" testapps fixture --out "$out" &
+  (cd "$(dirname "$SC_DEVTOOLS")" && exec "$SC_DEVTOOLS" testapps fixture --out "$out") &
   echo "$!" > "$LIVE_DIR/fixture.pid"
-  for _ in $(seq 200); do
+  # The first launch of a freshly linked binary can take minutes (system scan).
+  for _ in $(seq $((${SC_FIXTURE_WAIT_S:-300} * 10))); do
     [ -s "$out" ] && break
     kill -0 "$(cat "$LIVE_DIR/fixture.pid")" 2>/dev/null || break
     sleep 0.1
