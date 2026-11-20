@@ -1,0 +1,54 @@
+{
+  "clock": "mach host time (CMClockGetHostTimeClock), seconds",
+  "config": {
+    "bitrate": 24883200.0,
+    "bpp": 0.05,
+    "codec": "hevc",
+    "excludes_current_process_audio": true,
+    "fps": 30.0,
+    "movie_fragment_interval_s": 1.0,
+    "pixel_format": "420v",
+    "queue_depth": 6,
+    "shows_cursor": true
+  },
+  "display": {
+    "id": 2,
+    "nsscreen_backing_scale": 2.0,
+    "pixels": [
+      7680,
+      2160
+    ],
+    "point_pixel_scale": 2.0,
+    "points": [
+      3840,
+      1080
+    ]
+  },
+  "filter": "excluding 1 SCWindow(s) owned by pid 45943",
+  "permission_host": "com.simplecapture.dev",
+  "pid": 45943,
+  "recording_start_host_s": 1049751.002730083,
+  "schema_version": 1,
+  "status": "recording",
+  "t0_host_s": 1049750.781027541,
+  "target": "main display",
+  "test_window": {
+    "color_srgb": [
+      255,
+      0,
+      255
+    ],
+    "rect_pixels_top_left": [
+      400.0,
+      400.0,
+      800.0,
+      600.0
+    ],
+    "rect_points_top_left": [
+      200.0,
+      200.0,
+      400.0,
+      300.0
+    ]
+  }
+}

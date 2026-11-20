@@ -1,0 +1,457 @@
+{
+ "project": "update-shared",
+ "strategy": "update",
+ "audio_mode": "shared",
+ "update_order": "filter-first",
+ "permission_host": "com.simplecapture.dev",
+ "errors": [],
+ "stream_errors": [],
+ "segments": [
+  {
+   "file": "screen-000.mov",
+   "source": "display",
+   "pixels": [
+    7680,
+    2160
+   ],
+   "codec": "hevc",
+   "tag": "hvc1",
+   "size": [
+    7680,
+    2160
+   ],
+   "color": [
+    "bt709",
+    "bt709",
+    "bt709"
+   ],
+   "ffprobe_duration_s": 3.088333,
+   "intended_duration_s": 3.098026458872482,
+   "nb_frames": "83",
+   "decoded_frames": 83,
+   "frames_written_by_app": 82,
+   "held_last_frame_s": 0.02258916641585529,
+   "decode_error_lines": 0,
+   "decode_error_sample": [],
+   "ffprobe_decode_stderr_lines": 0,
+   "null_muxer_dts_warnings": 6,
+   "fps": 26.626308992489697,
+   "late_or_missing_frames": 7,
+   "content_classes": {
+    "display": 82
+   },
+   "encoder_not_ready_drops": 0,
+   "append_failures": 0,
+   "size_matches_source": true
+  },
+  {
+   "file": "screen-001.mov",
+   "source": "window",
+   "pixels": [
+    720,
+    480
+   ],
+   "codec": "hevc",
+   "tag": "hvc1",
+   "size": [
+    720,
+    480
+   ],
+   "color": [
+    "bt709",
+    "bt709",
+    "bt709"
+   ],
+   "ffprobe_duration_s": 2.965,
+   "intended_duration_s": 2.9931268331129104,
+   "nb_frames": "86",
+   "decoded_frames": 86,
+   "frames_written_by_app": 85,
+   "held_last_frame_s": 0.004677958553656936,
+   "decode_error_lines": 0,
+   "decode_error_sample": [],
+   "ffprobe_decode_stderr_lines": 0,
+   "null_muxer_dts_warnings": 1,
+   "fps": 28.42528450452445,
+   "late_or_missing_frames": 1,
+   "content_classes": {
+    "window": 85
+   },
+   "encoder_not_ready_drops": 0,
+   "append_failures": 0,
+   "size_matches_source": true
+  },
+  {
+   "file": "screen-002.mov",
+   "source": "region",
+   "pixels": [
+    1120,
+    640
+   ],
+   "codec": "hevc",
+   "tag": "hvc1",
+   "size": [
+    1120,
+    640
+   ],
+   "color": [
+    "bt709",
+    "bt709",
+    "bt709"
+   ],
+   "ffprobe_duration_s": 2.875,
+   "intended_duration_s": 2.875413333065808,
+   "nb_frames": "83",
+   "decoded_frames": 83,
+   "frames_written_by_app": 83,
+   "held_last_frame_s": 0.0,
+   "decode_error_lines": 0,
+   "decode_error_sample": [],
+   "ffprobe_decode_stderr_lines": 0,
+   "null_muxer_dts_warnings": 0,
+   "fps": 28.795860275539713,
+   "late_or_missing_frames": 0,
+   "content_classes": {
+    "region": 83
+   },
+   "encoder_not_ready_drops": 0,
+   "append_failures": 0,
+   "size_matches_source": true
+  },
+  {
+   "file": "screen-003.mov",
+   "source": "display",
+   "pixels": [
+    7680,
+    2160
+   ],
+   "codec": "hevc",
+   "tag": "hvc1",
+   "size": [
+    7680,
+    2160
+   ],
+   "color": [
+    "bt709",
+    "bt709",
+    "bt709"
+   ],
+   "ffprobe_duration_s": 2.966667,
+   "intended_duration_s": 2.9662460419349372,
+   "nb_frames": "84",
+   "decoded_frames": 84,
+   "frames_written_by_app": 84,
+   "held_last_frame_s": 0.0,
+   "decode_error_lines": 0,
+   "decode_error_sample": [],
+   "ffprobe_decode_stderr_lines": 0,
+   "null_muxer_dts_warnings": 0,
+   "fps": 28.118311574122664,
+   "late_or_missing_frames": 2,
+   "content_classes": {
+    "display": 84
+   },
+   "encoder_not_ready_drops": 0,
+   "append_failures": 0,
+   "size_matches_source": true
+  }
+ ],
+ "switches": [
+  {
+   "from": "display",
+   "to": "window",
+   "api_ms": 171.80199990980327,
+   "gap_last_old_to_first_new_ms": 55.92249985784292,
+   "request_to_first_new_pts_ms": 166.51558387093246,
+   "request_to_first_new_arrival_ms": 167.57775004953146,
+   "old_content_frames_arriving_after_request": 4,
+   "old_content_frames_with_pts_after_request": 4,
+   "old_content_frames_after_api_done_not_in_old_segment": 0,
+   "frames_in_old_segment_not_old_content": 0,
+   "frames_in_new_segment_not_new_content": 0,
+   "transition_frames_dropped": 2,
+   "transition_dropped_kinds": {
+    "7680x2160 mixed tag1": 2
+   },
+   "frame_sequence_around_switch": [
+    "7680x2160:display",
+    "7680x2160:mixed",
+    "720x480:window"
+   ],
+   "frame_geometry_around_switch": {
+    "720x480 window rect[0,0,360,240] cs1 sf2 seg1": 38,
+    "7680x2160 display rect[0,0,3840,1080] cs1 sf2 seg0": 9,
+    "7680x2160 mixed rect[0,0,360,240] cs1 sf2 seg-1": 2
+   }
+  },
+  {
+   "from": "window",
+   "to": "region",
+   "api_ms": 151.82958310469985,
+   "gap_last_old_to_first_new_ms": 38.01129199564457,
+   "request_to_first_new_pts_ms": 157.34662511385977,
+   "request_to_first_new_arrival_ms": 155.18825012259185,
+   "old_content_frames_arriving_after_request": 4,
+   "old_content_frames_with_pts_after_request": 4,
+   "old_content_frames_after_api_done_not_in_old_segment": 0,
+   "frames_in_old_segment_not_old_content": 0,
+   "frames_in_new_segment_not_new_content": 0,
+   "transition_frames_dropped": 1,
+   "transition_dropped_kinds": {
+    "720x480 display tag1": 1
+   },
+   "frame_sequence_around_switch": [
+    "720x480:window",
+    "720x480:display",
+    "1120x640:region"
+   ],
+   "frame_geometry_around_switch": {
+    "1120x640 region rect[0,0,560,320] cs1 sf2 seg2": 39,
+    "720x480 display rect[0,69.375,360,101.25] cs0.09375 sf2 seg-1": 1,
+    "720x480 window rect[0,0,360,240] cs1 sf2 seg1": 10
+   }
+  },
+  {
+   "from": "region",
+   "to": "display",
+   "api_ms": 31.947124982252717,
+   "gap_last_old_to_first_new_ms": 27.781791053712368,
+   "request_to_first_new_pts_ms": 33.555665984749794,
+   "request_to_first_new_arrival_ms": 33.808665815740824,
+   "old_content_frames_arriving_after_request": 1,
+   "old_content_frames_with_pts_after_request": 1,
+   "old_content_frames_after_api_done_not_in_old_segment": 0,
+   "frames_in_old_segment_not_old_content": 0,
+   "frames_in_new_segment_not_new_content": 0,
+   "transition_frames_dropped": 0,
+   "transition_dropped_kinds": {},
+   "frame_sequence_around_switch": [
+    "1120x640:region",
+    "7680x2160:display"
+   ],
+   "frame_geometry_around_switch": {
+    "1120x640 region rect[0,0,560,320] cs1 sf2 seg2": 6,
+    "7680x2160 display rect[0,0,3840,1080] cs1 sf2 seg3": 41
+   }
+  }
+ ],
+ "switch_steps": [
+  [
+   {
+    "step": "startCapture",
+    "ms": 119.58595784381032,
+    "error": null
+   }
+  ],
+  [
+   {
+    "step": "updateContentFilter",
+    "ms": 148.54850014671683,
+    "error": null
+   },
+   {
+    "step": "updateConfiguration",
+    "ms": 17.00379094108939,
+    "error": null
+   }
+  ],
+  [
+   {
+    "step": "updateContentFilter",
+    "ms": 137.4688339419663,
+    "error": null
+   },
+   {
+    "step": "updateConfiguration",
+    "ms": 10.455207899212837,
+    "error": null
+   }
+  ],
+  [
+   {
+    "step": "updateConfiguration",
+    "ms": 26.97750017978251,
+    "error": null
+   }
+  ]
+ ],
+ "audio": {
+  "system_audio": {
+   "codec": "aac",
+   "sample_rate": "48000",
+   "channels": 2,
+   "ffprobe_duration_s": 11.699979,
+   "decode_error_lines": 0,
+   "first_pts_rel_to_start_s": 0.09221766609698534,
+   "continuity_from_buffers": {
+    "buffer_frames": {
+     "max": 960.0,
+     "median": 960.0,
+     "min": 960.0,
+     "n": 585
+    },
+    "buffers": 585,
+    "end_host_s": 1056665.296791541,
+    "first_pts_host_s": 1056653.424755291,
+    "gaps_over_1ms": 3,
+    "overlaps_over_1ms": 0,
+    "samples_s": 11.69999999999984
+   },
+   "buffer_gaps": [
+    {
+     "at_host_s": 1056654.384755291,
+     "gap_ms": 17.104124883189797,
+     "nearest_switch_offset_s": -1.967932750005275
+    },
+    {
+     "at_host_s": 1056656.3618594161,
+     "gap_ms": 60.262166894972324,
+     "nearest_switch_offset_s": 0.009171375073492527
+    },
+    {
+     "at_host_s": 1056659.342121583,
+     "gap_ms": 94.66995811089873,
+     "nearest_switch_offset_s": -0.012862249976024032
+    }
+   ],
+   "tone_440_window_owner": {
+    "median_db": -24.1,
+    "checked_from_to_rel_s": [
+     0.3,
+     11.4
+    ],
+    "windows_checked": 1110,
+    "windows_below_median_minus_12db": 4,
+    "dropout_runs": [
+     {
+      "from_rel_s": 2.92,
+      "to_rel_s": 2.94
+     },
+     {
+      "from_rel_s": 5.84,
+      "to_rel_s": 5.86
+     }
+    ],
+    "around_switches": [
+     {
+      "switch_rel_s": 2.908,
+      "min_db_within_0p5s": -200.0
+     },
+     {
+      "switch_rel_s": 5.91,
+      "min_db_within_0p5s": -88.7
+     },
+     {
+      "switch_rel_s": 8.909,
+      "min_db_within_0p5s": -24.7
+     }
+    ]
+   },
+   "tone_660_windowless_process": {
+    "median_db": -24.2,
+    "checked_from_to_rel_s": [
+     0.3,
+     11.4
+    ],
+    "windows_checked": 1110,
+    "windows_below_median_minus_12db": 4,
+    "dropout_runs": [
+     {
+      "from_rel_s": 2.92,
+      "to_rel_s": 2.94
+     },
+     {
+      "from_rel_s": 5.84,
+      "to_rel_s": 5.86
+     }
+    ],
+    "around_switches": [
+     {
+      "switch_rel_s": 2.908,
+      "min_db_within_0p5s": -200.0
+     },
+     {
+      "switch_rel_s": 5.91,
+      "min_db_within_0p5s": -89.2
+     },
+     {
+      "switch_rel_s": 8.909,
+      "min_db_within_0p5s": -25.0
+     }
+    ]
+   },
+   "switch_rel_to_file_s": [
+    2.908,
+    5.91,
+    8.909
+   ]
+  },
+  "mic": {
+   "codec": "aac",
+   "sample_rate": "48000",
+   "channels": 1,
+   "ffprobe_duration_s": 12.352,
+   "decode_error_lines": 0,
+   "first_pts_rel_to_start_s": -0.30897512496449053,
+   "continuity_from_buffers": {
+    "buffer_frames": {
+     "max": 512.0,
+     "median": 512.0,
+     "min": 512.0,
+     "n": 1158
+    },
+    "buffers": 1158,
+    "end_host_s": 1056665.3755625,
+    "first_pts_host_s": 1056653.0235625,
+    "gaps_over_1ms": 0,
+    "overlaps_over_1ms": 0,
+    "samples_s": 12.352000000000162
+   },
+   "buffer_gaps": []
+  }
+ },
+ "cpu_pct_of_one_core_total": {
+  "VTEncoderXPCService": 3.2,
+  "WindowServer": 0.0,
+  "coreaudiod": 0.0,
+  "replayd": 4.1,
+  "self": 13.4
+ },
+ "cpu_per_segment": [
+  {
+   "VTEncoderXPCService": 4.9,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 4.9,
+   "self": 13.7
+  },
+  {
+   "VTEncoderXPCService": 2.3,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 3.9,
+   "self": 12.7
+  },
+  {
+   "VTEncoderXPCService": 2.2,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 4.3,
+   "self": 13.0
+  },
+  {
+   "VTEncoderXPCService": 3.3,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 3.3,
+   "self": 14.4
+  }
+ ],
+ "sck_frame_status": {
+  "tag1": {
+   "complete": 337,
+   "idle": 1
+  }
+ },
+ "self_rss_max_mb": 47.9375
+}

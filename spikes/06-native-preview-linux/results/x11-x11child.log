@@ -1,0 +1,63 @@
+== vulkaninfo summary
+[spike06] mode=X11Child gdk_backend=x11 readback=1280x720
+[spike06] env WEBKIT_DISABLE_DMABUF_RENDERER=None WEBKIT_DISABLE_COMPOSITING_MODE=None
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+dbus-daemon[29]: [session uid=0 pid=29] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=0 pid=30 comm="/target/release/native-preview-linux-spike")
+dbus-daemon[29]: [session uid=0 pid=29] Successfully activated service 'org.a11y.Bus'
+dbus-daemon[96]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=0 pid=97 comm="/usr/lib/aarch64-linux-gnu/webkit2gtk-4.1/WebKitWe")
+dbus-daemon[96]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+[spike06] x11 child: ensure_native=true xid=0x20001f
+[spike06] native target 1280x800 px
+[spike06] surface caps formats=[Bgra8UnormSrgb, Bgra8Unorm] present=[Immediate, Mailbox, Fifo, FifoRelaxed] alpha=[PreMultiplied, Inherit]
+[spike06] surface configured Bgra8Unorm Mailbox PreMultiplied
+[spike06] t=1s produced/s=3 presented/s=3 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=43 drawn=0 fetched=0
+[spike06] t=2s produced/s=61 presented/s=61 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=61 drawn=0 fetched=0
+[spike06] t=3s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=61 drawn=0 fetched=0
+[spike06] t=4s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=60 drawn=0 fetched=0
+[spike06] t=5s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=61 drawn=0 fetched=0
+[spike06] t=6s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=61 drawn=0 fetched=0
+[spike06] t=7s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=61 drawn=0 fetched=0
+[spike06] t=8s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=60 drawn=0 fetched=0
+[spike06] t=9s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+== xwininfo -root -tree
+
+xwininfo: Window id: 0x21f (the root window) (has no name)
+
+  Root window id: 0x21f (the root window) (has no name)
+  Parent window id: 0x0 (none)
+     3 children:
+     0x200014 (has no name): ()  1x1+-1+-1  +-1+-1
+     0x200003 "spike06 X11Child": ("native-preview-linux-spike" "Native-preview-linux-spike")  1280x800+0+0  +0+0
+        2 children:
+        0x20001f (has no name): ()  1280x800+0+0  +0+0
+        0x200004 (has no name): ()  1x1+-1+-1  +-1+-1
+     0x200001 "native-preview-linux-spike": ("native-preview-linux-spike" "Native-preview-linux-spike")  10x10+10+10  +10+10
+
+== CPU over a 3 s window, % of one core (SOFTWARE RENDERING, not representative)
+27 (dbus-run-sessio) 0.0%
+30 (native-preview-) 330.4%
+8 (Xvfb) 16.6%
+87 (WebKitNetworkPr) 0.0%
+97 (WebKitWebProces) 128.4%
+[js] raf=56 drawn=0 fetched=0
+[spike06] t=10s produced/s=58 presented/s=58 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=60 drawn=0 fetched=0
+[spike06] t=11s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=54 drawn=0 fetched=0
+[spike06] t=12s produced/s=56 presented/s=56 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=60 drawn=0 fetched=0
+[spike06] t=13s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=61 drawn=0 fetched=0
+[spike06] t=14s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[spike06] done
+== exit 0

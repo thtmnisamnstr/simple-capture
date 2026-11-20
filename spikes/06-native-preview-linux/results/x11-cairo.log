@@ -1,0 +1,64 @@
+== vulkaninfo summary
+Devices:
+========
+GPU0:
+	apiVersion         = 1.4.318
+	driverVersion      = 25.2.8
+	vendorID           = 0x10005
+	deviceID           = 0x0000
+	deviceType         = PHYSICAL_DEVICE_TYPE_CPU
+	deviceName         = llvmpipe (LLVM 20.1.2, 128 bits)
+	driverID           = DRIVER_ID_MESA_LLVMPIPE
+	driverName         = llvmpipe
+	driverInfo         = Mesa 25.2.8-0ubuntu0.24.04.5 (LLVM 20.1.2)
+	conformanceVersion = 1.3.1.1
+	deviceUUID         = 6d657361-3235-2e32-2e38-2d3075627500
+	driverUUID         = 6c6c766d-7069-7065-5555-494400000000
+[spike06] mode=Cairo gdk_backend=x11 readback=1280x720
+[spike06] env WEBKIT_DISABLE_DMABUF_RENDERER=None WEBKIT_DISABLE_COMPOSITING_MODE=None
+libEGL warning: DRI3 error: Could not get DRI3 device
+libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
+dbus-daemon[54]: [session uid=0 pid=54] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=0 pid=56 comm="/target/release/native-preview-linux-spike")
+dbus-daemon[54]: [session uid=0 pid=54] Successfully activated service 'org.a11y.Bus'
+[spike06] t=1s produced/s=50 presented/s=0 gl_renders/s=1 gl_uploads/s=1 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+dbus-daemon[122]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=0 pid=123 comm="/usr/lib/aarch64-linux-gnu/webkit2gtk-4.1/WebKitWe")
+dbus-daemon[122]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+[spike06] t=2s produced/s=60 presented/s=0 gl_renders/s=31 gl_uploads/s=29 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=42 drawn=0 fetched=0
+[spike06] t=3s produced/s=56 presented/s=0 gl_renders/s=56 gl_uploads/s=46 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=60 drawn=0 fetched=0
+[spike06] t=4s produced/s=60 presented/s=0 gl_renders/s=60 gl_uploads/s=59 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=60 drawn=0 fetched=0
+[spike06] t=5s produced/s=60 presented/s=0 gl_renders/s=60 gl_uploads/s=60 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=60 drawn=0 fetched=0
+[spike06] t=6s produced/s=60 presented/s=0 gl_renders/s=60 gl_uploads/s=60 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=60 drawn=0 fetched=0
+[spike06] t=7s produced/s=60 presented/s=0 gl_renders/s=60 gl_uploads/s=60 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=56 drawn=0 fetched=0
+[spike06] t=8s produced/s=60 presented/s=0 gl_renders/s=57 gl_uploads/s=54 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=58 drawn=0 fetched=0
+[spike06] t=9s produced/s=60 presented/s=0 gl_renders/s=59 gl_uploads/s=56 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+== xwininfo -root -tree
+
+xwininfo: Window id: 0x21f (the root window) (has no name)
+
+  Root window id: 0x21f (the root window) (has no name)
+  Parent window id: 0x0 (none)
+     3 children:
+     0x200014 (has no name): ()  1x1+-1+-1  +-1+-1
+     0x200003 "spike06 Cairo": ("native-preview-linux-spike" "Native-preview-linux-spike")  1280x800+0+0  +0+0
+        1 child:
+        0x200004 (has no name): ()  1x1+-1+-1  +-1+-1
+     0x200001 "native-preview-linux-spike": ("native-preview-linux-spike" "Native-preview-linux-spike")  10x10+10+10  +10+10
+
+== CPU over a 3 s window, % of one core (SOFTWARE RENDERING, not representative)
+113 (WebKitNetworkPr) 0.0%
+123 (WebKitWebProces) 136.3%
+51 (dbus-run-sessio) 0.0%
+56 (native-preview-) 332.8%
+8 (Xvfb) 39.6%
+[js] raf=59 drawn=0 fetched=0
+[spike06] t=10s produced/s=60 presented/s=0 gl_renders/s=59 gl_uploads/s=59 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[spike06] done
+== exit 0

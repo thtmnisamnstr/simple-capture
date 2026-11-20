@@ -1,0 +1,150 @@
+{
+ "project": "/Users/gavin/Documents/Development/simple-capture/spikes/03-macos-pipeline/out/bench-quiet2/kill",
+ "status": "recording",
+ "files": {
+  "screen.mov": {
+   "programs": [],
+   "stream_groups": [],
+   "streams": [
+    {
+     "codec_name": "hevc",
+     "profile": "Main",
+     "codec_tag_string": "hvc1",
+     "width": 7680,
+     "height": 2160,
+     "pix_fmt": "yuv420p",
+     "color_range": "tv",
+     "color_space": "bt709",
+     "color_transfer": "bt709",
+     "color_primaries": "bt709",
+     "duration": "6.035000",
+     "bit_rate": "11313946",
+     "nb_frames": "26"
+    }
+   ],
+   "format": {
+    "duration": "6.035000",
+    "size": "8538492",
+    "bit_rate": "11318630"
+   },
+   "keyframes": {
+    "count": 7,
+    "max_gap_s": 0.993333
+   }
+  },
+  "camera.mov": {
+   "programs": [],
+   "stream_groups": [],
+   "streams": [
+    {
+     "codec_name": "hevc",
+     "profile": "Main",
+     "codec_tag_string": "hvc1",
+     "width": 1920,
+     "height": 1080,
+     "pix_fmt": "yuv420p",
+     "color_range": "tv",
+     "color_space": "bt709",
+     "color_transfer": "bt709",
+     "color_primaries": "bt709",
+     "duration": "7.003333",
+     "bit_rate": "10254443",
+     "nb_frames": "27"
+    }
+   ],
+   "format": {
+    "duration": "7.003333",
+    "size": "9696839",
+    "bit_rate": "11076827"
+   },
+   "keyframes": {
+    "count": 8,
+    "max_gap_s": 0.9683330000000003
+   }
+  },
+  "mic.mov": {
+   "programs": [],
+   "stream_groups": [],
+   "streams": [
+    {
+     "codec_name": "aac",
+     "profile": "LC",
+     "codec_tag_string": "mp4a",
+     "sample_rate": "48000",
+     "channels": 1,
+     "duration": "7.018667",
+     "bit_rate": "93032",
+     "nb_frames": "47"
+    }
+   ],
+   "format": {
+    "duration": "7.018667",
+    "size": "93702",
+    "bit_rate": "106803"
+   }
+  },
+  "system_audio.mov": {
+   "programs": [],
+   "stream_groups": [],
+   "streams": [
+    {
+     "codec_name": "aac",
+     "profile": "LC",
+     "codec_tag_string": "mp4a",
+     "sample_rate": "48000",
+     "channels": 2,
+     "duration": "6.016000",
+     "bit_rate": "1875",
+     "nb_frames": "47"
+    }
+   ],
+   "format": {
+    "duration": "6.016000",
+    "size": "3276",
+    "bit_rate": "4356"
+   }
+  }
+ },
+ "sync_checks": {},
+ "kill_test": {
+  "killed_after_s": 6.000296791084111,
+  "tracks": {
+   "screen.mov": {
+    "readable_packets": 169,
+    "readable_media_s": 6.035,
+    "bytes": 8538492,
+    "first_pts_host_s": 1049574.2602625,
+    "covered_until_host_s": 1049580.2952625,
+    "lost_before_kill_s": 0.084,
+    "ffmpeg_full_decode_errors": 0
+   },
+   "camera.mov": {
+    "readable_packets": 207,
+    "readable_media_s": 7.003,
+    "bytes": 9696839,
+    "first_pts_host_s": 1049572.5874,
+    "covered_until_host_s": 1049579.590733,
+    "lost_before_kill_s": 0.788,
+    "ffmpeg_full_decode_errors": 0
+   },
+   "mic.mov": {
+    "readable_packets": 329,
+    "readable_media_s": 6.975,
+    "bytes": 93702,
+    "first_pts_host_s": 1049572.6686875,
+    "covered_until_host_s": 1049579.6433535002,
+    "lost_before_kill_s": 0.736,
+    "ffmpeg_full_decode_errors": 0
+   },
+   "system_audio.mov": {
+    "readable_packets": 282,
+    "readable_media_s": 5.972,
+    "bytes": 3276,
+    "first_pts_host_s": 1049574.295999958,
+    "covered_until_host_s": 1049580.267999958,
+    "lost_before_kill_s": 0.111,
+    "ffmpeg_full_decode_errors": 0
+   }
+  }
+ }
+}

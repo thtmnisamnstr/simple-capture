@@ -1,0 +1,9 @@
+target/
+out/**
+!out/**/
+!out/**/summary.json
+!out/**/analysis.json
+!out/**/psnr.txt
+!out/**/project.json
+!out/*.log
+out/old-prehost/

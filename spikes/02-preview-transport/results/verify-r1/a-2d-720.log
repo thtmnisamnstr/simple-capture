@@ -1,0 +1,4 @@
+[js] snapshot: {"button_center_rgb":[255,255,255],"decoded_frame_id":791,"decoded_ts_age_ms":-92,"html_over_preview":true,"image_px":[2720,1640],"png":"/Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/verify-r1/a-2d-720.png","preview_visible":true,"scale":2,"titlebar_px":64}
+[bench] wrote /Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/verify-r1/a-2d-720.json
+[js] report written: /Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/verify-r1/a-2d-720.json
+[bench] event loop exit

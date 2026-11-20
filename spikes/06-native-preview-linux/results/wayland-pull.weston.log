@@ -1,0 +1,29 @@
+Date: 2026-11-20 UTC
+[00:31:51.801] weston 13.0.0
+               https://wayland.freedesktop.org
+               Bug reports to: https://gitlab.freedesktop.org/wayland/weston/issues/
+               Build: 13.0.0
+[00:31:51.802] Command line: weston --backend=headless --renderer=pixman --width=1400 --height=900 --socket=wayland-1 --debug --shell=kiosk-shell.so
+[00:31:51.802] OS: Linux, 7.0.14-linuxkit, #1 SMP PREEMPT Fri Oct 30 13:45:20 UTC 2026, aarch64
+[00:31:51.802] Flight recorder: enabled
+[00:31:51.802] Starting with no config file.
+WARNING: debug protocol has been enabled. This is a potential denial-of-service attack vector and information leak.
+[00:31:51.803] Output repaint window is 7 ms maximum.
+[00:31:51.803] Loading module '/usr/lib/aarch64-linux-gnu/libweston-13/headless-backend.so'
+[00:31:51.806] Using Pixman renderer
+[00:31:51.806] Registered plugin API 'weston_windowed_output_api_v2' of size 16
+[00:31:51.806] Color manager: no-op
+[00:31:51.806] Output 'headless' attempts EOTF mode: SDR
+[00:31:51.806] Output 'headless' using color profile: stock sRGB color profile
+[00:31:51.806] Output 'headless' enabled with head(s) headless
+[00:31:51.807] Compositor capabilities:
+               arbitrary surface rotation: yes
+               screen capture uses y-flip: no
+               cursor planes: no
+               arbitrary resolutions: no
+               view mask clipping: yes
+               explicit sync: no
+               color operations: no
+               presentation clock: CLOCK_MONOTONIC_RAW, id 4
+               presentation clock resolution: 0.000000001 s
+[00:31:51.807] Loading module '/usr/lib/aarch64-linux-gnu/weston/kiosk-shell.so'

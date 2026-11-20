@@ -1,0 +1,660 @@
+{
+  "audio_mode": "shared",
+  "clock": "mach host time (CMClockGetHostTimeClock), seconds",
+  "codec": "hevc",
+  "cpu_pct_of_one_core_total": {
+    "VTEncoderXPCService": 3.5,
+    "WindowServer": 0.0,
+    "coreaudiod": 0.0,
+    "replayd": 4.6,
+    "self": 16.2
+  },
+  "cpu_per_segment": [
+    {
+      "cpu_pct_of_one_core": {
+        "VTEncoderXPCService": 5.3,
+        "WindowServer": 0.0,
+        "coreaudiod": 0.0,
+        "replayd": 4.2,
+        "self": 16.5
+      },
+      "from_host_s": 1056737.54045575,
+      "to_host_s": 1056740.547877916
+    },
+    {
+      "cpu_pct_of_one_core": {
+        "VTEncoderXPCService": 2.8,
+        "WindowServer": 0.0,
+        "coreaudiod": 0.0,
+        "replayd": 4.5,
+        "self": 15.9
+      },
+      "from_host_s": 1056740.547877916,
+      "to_host_s": 1056743.545444083
+    },
+    {
+      "cpu_pct_of_one_core": {
+        "VTEncoderXPCService": 2.3,
+        "WindowServer": 0.0,
+        "coreaudiod": 0.0,
+        "replayd": 4.7,
+        "self": 16.1
+      },
+      "from_host_s": 1056743.545444083,
+      "to_host_s": 1056746.547795916
+    },
+    {
+      "cpu_pct_of_one_core": {
+        "VTEncoderXPCService": 3.5,
+        "WindowServer": 0.0,
+        "coreaudiod": 0.0,
+        "replayd": 4.8,
+        "self": 16.5
+      },
+      "from_host_s": 1056746.547795916,
+      "to_host_s": 1056749.547080291
+    }
+  ],
+  "duration_s": 12.001868166029453,
+  "errors": [],
+  "final_stop": {
+    "done_host_s": 1056749.585583166,
+    "error": null,
+    "issued_host_s": 1056749.551109791,
+    "ms": 34.47337495163083,
+    "step": "stopCapture(final)"
+  },
+  "fps": 30.0,
+  "frame_routing": "dims+content_rect+content_scale",
+  "helpers": [
+    {
+      "event": "ready",
+      "pid": 94720,
+      "tone_hz": 440.0,
+      "tone_started_host_s": 1056736.627031833,
+      "windows": [
+        [
+          900.0,
+          200.0,
+          360.0,
+          240.0
+        ],
+        [
+          2200.0,
+          300.0,
+          640.0,
+          400.0
+        ]
+      ]
+    },
+    {
+      "event": "ready",
+      "pid": 94721,
+      "tone_hz": 660.0,
+      "tone_started_host_s": 1056737.05385675,
+      "windows": []
+    }
+  ],
+  "kind": "swap-spike",
+  "mic_continuity": {
+    "buffer_frames": {
+      "max": 512.0,
+      "median": 512.0,
+      "min": 512.0,
+      "n": 1157
+    },
+    "buffers": 1157,
+    "end_host_s": 1056749.5779374999,
+    "first_pts_host_s": 1056737.2366041667,
+    "gaps": [],
+    "gaps_over_1ms": 0,
+    "overlaps_over_1ms": 0,
+    "samples_s": 12.341333333333495
+  },
+  "movie_fragment_interval_s": 1.0,
+  "permission_host": "com.simplecapture.dev",
+  "pixel_format": "420v",
+  "recording_start_host_s": 1056737.545212125,
+  "recording_stop_host_s": 1056749.547080291,
+  "schema_version": 1,
+  "sck_frame_status": {
+    "tag1": {
+      "complete": 83
+    },
+    "tag2": {
+      "complete": 84
+    },
+    "tag3": {
+      "complete": 85
+    },
+    "tag4": {
+      "complete": 84
+    }
+  },
+  "screen_segments": [
+    {
+      "content_classes": {
+        "display": 83
+      },
+      "end_host_s": 1056740.638290208,
+      "file": "screen-000.mov",
+      "fps": 27.977018474274256,
+      "frames_written": 83,
+      "index": 0,
+      "interval_ms_max": 118.07254212908447,
+      "interval_ms_p50": 34.72720878198743,
+      "last_real_frame_host_s": 1056740.538707041,
+      "late_or_missing_frames": 3,
+      "pixels": [
+        7680,
+        2160
+      ],
+      "requested_host_s": 1056737.545212125,
+      "source": {
+        "content_rect_pts": [
+          0.0,
+          0.0,
+          3840.0,
+          1080.0
+        ],
+        "display_id": 2,
+        "excluded": "excluding 0 SCWindow(s) owned by pid 94715",
+        "kind": "display"
+      },
+      "start_host_s": 1056737.607729958,
+      "stream_tag": 1,
+      "writer": {
+        "append_failures": 0,
+        "appended": 84,
+        "bytes": 3155356,
+        "encoder": "HEVC 7680x2160 avg 24.9 Mbps, keyframe <=1 s / 30 frames, no B-frames, BT.709 tags",
+        "encoder_not_ready_drops": 0,
+        "file": "screen-000.mov",
+        "first_pts_host_s": 1056737.607729958,
+        "held_last_frame_s": 0.0662498336751014,
+        "kind": "screen",
+        "last_pts_host_s": 1056740.604956874
+      },
+      "writer_error": null
+    },
+    {
+      "content_classes": {
+        "window": 84
+      },
+      "end_host_s": 1056743.629429416,
+      "file": "screen-001.mov",
+      "fps": 28.841766771064513,
+      "frames_written": 84,
+      "index": 1,
+      "interval_ms_max": 38.76433288678527,
+      "interval_ms_p50": 34.324999898672104,
+      "last_real_frame_host_s": 1056743.516061208,
+      "late_or_missing_frames": 0,
+      "pixels": [
+        720,
+        480
+      ],
+      "requested_host_s": 1056740.547877916,
+      "source": {
+        "content_rect_pts": [
+          900.0,
+          200.0,
+          360.0,
+          240.0
+        ],
+        "filter": "desktopIndependentWindow",
+        "kind": "window",
+        "owner_pid": 94720,
+        "point_pixel_scale": 2.0,
+        "window_id": 35619
+      },
+      "start_host_s": 1056740.638290208,
+      "stream_tag": 2,
+      "writer": {
+        "append_failures": 0,
+        "appended": 85,
+        "bytes": 72602,
+        "encoder": "HEVC 720x480 avg 0.5 Mbps, keyframe <=1 s / 30 frames, no B-frames, BT.709 tags",
+        "encoder_not_ready_drops": 0,
+        "file": "screen-001.mov",
+        "first_pts_host_s": 1056740.638290208,
+        "held_last_frame_s": 0.0800348746124655,
+        "kind": "screen",
+        "last_pts_host_s": 1056743.596096082
+      },
+      "writer_error": null
+    },
+    {
+      "content_classes": {
+        "region": 85
+      },
+      "end_host_s": 1056746.643751791,
+      "file": "screen-002.mov",
+      "fps": 28.933637441389646,
+      "frames_written": 85,
+      "index": 2,
+      "interval_ms_max": 41.672749910503626,
+      "interval_ms_p50": 34.72720901481807,
+      "last_real_frame_host_s": 1056746.532624708,
+      "late_or_missing_frames": 0,
+      "pixels": [
+        1120,
+        640
+      ],
+      "requested_host_s": 1056743.545444083,
+      "source": {
+        "display_id": 2,
+        "inside_window_id": 35620,
+        "kind": "region",
+        "point_pixel_scale": 2.0,
+        "source_rect_pts": [
+          2240.0,
+          340.0,
+          560.0,
+          320.0
+        ]
+      },
+      "start_host_s": 1056743.629429416,
+      "stream_tag": 3,
+      "writer": {
+        "append_failures": 0,
+        "appended": 86,
+        "bytes": 168997,
+        "encoder": "HEVC 1120x640 avg 1.1 Mbps, keyframe <=1 s / 30 frames, no B-frames, BT.709 tags",
+        "encoder_not_ready_drops": 0,
+        "file": "screen-002.mov",
+        "first_pts_host_s": 1056743.629429416,
+        "held_last_frame_s": 0.0777937495149672,
+        "kind": "screen",
+        "last_pts_host_s": 1056746.610418457
+      },
+      "writer_error": null
+    },
+    {
+      "content_classes": {
+        "display": 84
+      },
+      "end_host_s": 1056749.547080291,
+      "file": "screen-003.mov",
+      "fps": 28.795859496534327,
+      "frames_written": 84,
+      "index": 3,
+      "interval_ms_max": 41.672749910503626,
+      "interval_ms_p50": 34.7272080834955,
+      "last_real_frame_host_s": 1056749.526110625,
+      "late_or_missing_frames": 0,
+      "pixels": [
+        7680,
+        2160
+      ],
+      "requested_host_s": 1056746.547795916,
+      "source": {
+        "content_rect_pts": [
+          0.0,
+          0.0,
+          3840.0,
+          1080.0
+        ],
+        "display_id": 2,
+        "excluded": "excluding 0 SCWindow(s) owned by pid 94715",
+        "kind": "display"
+      },
+      "start_host_s": 1056746.643751791,
+      "stream_tag": 4,
+      "writer": {
+        "append_failures": 0,
+        "appended": 84,
+        "bytes": 2440826,
+        "encoder": "HEVC 7680x2160 avg 24.9 Mbps, keyframe <=1 s / 30 frames, no B-frames, BT.709 tags",
+        "encoder_not_ready_drops": 0,
+        "file": "screen-003.mov",
+        "first_pts_host_s": 1056746.643751791,
+        "held_last_frame_s": 0.0,
+        "kind": "screen",
+        "last_pts_host_s": 1056749.526110625
+      },
+      "writer_error": null
+    }
+  ],
+  "self_rss_max_mb": 47.484375,
+  "sources": [
+    {
+      "descriptor": {
+        "content_rect_pts": [
+          0.0,
+          0.0,
+          3840.0,
+          1080.0
+        ],
+        "display_id": 2,
+        "excluded": "excluding 0 SCWindow(s) owned by pid 94715",
+        "kind": "display"
+      },
+      "label": "display",
+      "pixels": [
+        7680,
+        2160
+      ]
+    },
+    {
+      "descriptor": {
+        "content_rect_pts": [
+          900.0,
+          200.0,
+          360.0,
+          240.0
+        ],
+        "filter": "desktopIndependentWindow",
+        "kind": "window",
+        "owner_pid": 94720,
+        "point_pixel_scale": 2.0,
+        "window_id": 35619
+      },
+      "label": "window",
+      "pixels": [
+        720,
+        480
+      ]
+    },
+    {
+      "descriptor": {
+        "display_id": 2,
+        "inside_window_id": 35620,
+        "kind": "region",
+        "point_pixel_scale": 2.0,
+        "source_rect_pts": [
+          2240.0,
+          340.0,
+          560.0,
+          320.0
+        ]
+      },
+      "label": "region",
+      "pixels": [
+        1120,
+        640
+      ]
+    }
+  ],
+  "status": "finished",
+  "strategy": "restart",
+  "stream_errors": [],
+  "switch_metrics": [
+    {
+      "api_done_host_s": 1056740.696024291,
+      "api_ms": 148.14637508243322,
+      "first_new_frame_pts_host_s": 1056740.638290208,
+      "frame_geometry_around_switch": {
+        "720x480 window rect[0,0,360,240] cs1 sf2 seg1": 41,
+        "7680x2160 display rect[0,0,3840,1080] cs1 sf2 seg0": 6
+      },
+      "frame_sequence_around_switch": [
+        "7680x2160:display",
+        "720x480:window"
+      ],
+      "frames_in_new_segment_not_new_content": 0,
+      "frames_in_old_segment_not_old_content": 0,
+      "from": "display",
+      "gap_last_old_to_first_new_ms": 99.58316711708903,
+      "last_old_frame_pts_host_s": 1056740.538707041,
+      "old_content_frames_after_api_done_not_in_old_segment": 0,
+      "old_content_frames_arriving_after_request": 0,
+      "old_content_frames_with_pts_after_request": 0,
+      "request_host_s": 1056740.547877916,
+      "request_to_first_new_arrival_ms": 90.95687512308359,
+      "request_to_first_new_pts_ms": 90.41229216381907,
+      "size_change": [
+        [
+          7680,
+          2160
+        ],
+        [
+          720,
+          480
+        ]
+      ],
+      "switch": 1,
+      "to": "window",
+      "transition_dropped_kinds": {},
+      "transition_frames_dropped": 0
+    },
+    {
+      "api_done_host_s": 1056743.681061125,
+      "api_ms": 135.61704196035862,
+      "first_new_frame_pts_host_s": 1056743.629429416,
+      "frame_geometry_around_switch": {
+        "1120x640 region rect[0,0,560,320] cs1 sf2 seg2": 41,
+        "720x480 window rect[0,0,360,240] cs1 sf2 seg1": 5
+      },
+      "frame_sequence_around_switch": [
+        "720x480:window",
+        "1120x640:region"
+      ],
+      "frames_in_new_segment_not_new_content": 0,
+      "frames_in_old_segment_not_old_content": 0,
+      "from": "window",
+      "gap_last_old_to_first_new_ms": 113.36820805445313,
+      "last_old_frame_pts_host_s": 1056743.516061208,
+      "old_content_frames_after_api_done_not_in_old_segment": 0,
+      "old_content_frames_arriving_after_request": 0,
+      "old_content_frames_with_pts_after_request": 0,
+      "request_host_s": 1056743.545444083,
+      "request_to_first_new_arrival_ms": 81.72879205085337,
+      "request_to_first_new_pts_ms": 83.98533309809864,
+      "size_change": [
+        [
+          720,
+          480
+        ],
+        [
+          1120,
+          640
+        ]
+      ],
+      "switch": 2,
+      "to": "region",
+      "transition_dropped_kinds": {},
+      "transition_frames_dropped": 0
+    },
+    {
+      "api_done_host_s": 1056746.808223041,
+      "api_ms": 260.4271250311285,
+      "first_new_frame_pts_host_s": 1056746.643751791,
+      "frame_geometry_around_switch": {
+        "1120x640 region rect[0,0,560,320] cs1 sf2 seg2": 6,
+        "7680x2160 display rect[0,0,3840,1080] cs1 sf2 seg3": 41
+      },
+      "frame_sequence_around_switch": [
+        "1120x640:region",
+        "7680x2160:display"
+      ],
+      "frames_in_new_segment_not_new_content": 0,
+      "frames_in_old_segment_not_old_content": 0,
+      "from": "region",
+      "gap_last_old_to_first_new_ms": 111.12708295695484,
+      "last_old_frame_pts_host_s": 1056746.532624708,
+      "old_content_frames_after_api_done_not_in_old_segment": 0,
+      "old_content_frames_arriving_after_request": 0,
+      "old_content_frames_with_pts_after_request": 0,
+      "request_host_s": 1056746.547795916,
+      "request_to_first_new_arrival_ms": 98.35695894435048,
+      "request_to_first_new_pts_ms": 95.95587500371039,
+      "size_change": [
+        [
+          1120,
+          640
+        ],
+        [
+          7680,
+          2160
+        ]
+      ],
+      "switch": 3,
+      "to": "display",
+      "transition_dropped_kinds": {},
+      "transition_frames_dropped": 0
+    }
+  ],
+  "switches": [
+    {
+      "index": 0,
+      "request_host_s": 1056737.545212125,
+      "steps": [
+        {
+          "done_host_s": 1056737.659750291,
+          "error": null,
+          "issued_host_s": 1056737.549862916,
+          "ms": 109.88737479783595,
+          "step": "startCapture"
+        }
+      ],
+      "to": "display"
+    },
+    {
+      "from": "display",
+      "index": 1,
+      "request_host_s": 1056740.547877916,
+      "steps": [
+        {
+          "done_host_s": 1056740.606908375,
+          "error": null,
+          "issued_host_s": 1056740.553889541,
+          "ms": 53.018833976238966,
+          "step": "stopCapture(old)"
+        },
+        {
+          "ms": 2.490582875907421,
+          "step": "create SCStream"
+        },
+        {
+          "done_host_s": 1056740.696024291,
+          "error": null,
+          "issued_host_s": 1056740.609403791,
+          "ms": 86.62050007842481,
+          "step": "startCapture(new)"
+        }
+      ],
+      "to": "window"
+    },
+    {
+      "from": "window",
+      "index": 2,
+      "request_host_s": 1056743.545444083,
+      "steps": [
+        {
+          "done_host_s": 1056743.572158958,
+          "error": null,
+          "issued_host_s": 1056743.550064541,
+          "ms": 22.094417130574584,
+          "step": "stopCapture(old)"
+        },
+        {
+          "ms": 15.800749883055687,
+          "step": "create SCStream"
+        },
+        {
+          "done_host_s": 1056743.681061125,
+          "error": null,
+          "issued_host_s": 1056743.587967125,
+          "ms": 93.09399989433587,
+          "step": "startCapture(new)"
+        }
+      ],
+      "to": "region"
+    },
+    {
+      "from": "region",
+      "index": 3,
+      "request_host_s": 1056746.547795916,
+      "steps": [
+        {
+          "done_host_s": 1056746.5784205,
+          "error": null,
+          "issued_host_s": 1056746.551209625,
+          "ms": 27.2108749486506,
+          "step": "stopCapture(old)"
+        },
+        {
+          "ms": 13.82791600190103,
+          "step": "create SCStream"
+        },
+        {
+          "done_host_s": 1056746.808223041,
+          "error": null,
+          "issued_host_s": 1056746.592312625,
+          "ms": 215.9104160964489,
+          "step": "startCapture(new)"
+        }
+      ],
+      "to": "display"
+    }
+  ],
+  "system_audio_continuity": {
+    "buffer_frames": {
+      "max": 960.0,
+      "median": 960.0,
+      "min": 960.0,
+      "n": 570
+    },
+    "buffers": 570,
+    "end_host_s": 1056749.510899083,
+    "first_pts_host_s": 1056737.63034975,
+    "gaps": [
+      {
+        "at_host_s": 1056738.5903497501,
+        "gap_ms": 19.562457920983434,
+        "nearest_switch_offset_s": -1.9775281657930464
+      },
+      {
+        "at_host_s": 1056740.489912208,
+        "gap_ms": 167.54216700792313,
+        "nearest_switch_offset_s": -0.07796570798382163
+      },
+      {
+        "at_host_s": 1056743.517454375,
+        "gap_ms": 122.46295786462724,
+        "nearest_switch_offset_s": -0.04798970790579915
+      },
+      {
+        "at_host_s": 1056746.519917333,
+        "gap_ms": 170.9817498922348,
+        "nearest_switch_offset_s": -0.04787858296185732
+      }
+    ],
+    "gaps_over_1ms": 4,
+    "overlaps_over_1ms": 0,
+    "samples_s": 11.399999999999846
+  },
+  "system_audio_stream_tags": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "tracks": [
+    {
+      "append_failures": 0,
+      "appended": 570,
+      "bytes": 132608,
+      "encoder": "AAC 2 ch @ 48000 Hz, 160 kbps (source: 2 ch, fmt lpcm, 32 bits, flags 0x29)",
+      "encoder_not_ready_drops": 0,
+      "file": "system_audio.mov",
+      "first_pts_host_s": 1056737.63034975,
+      "kind": "system_audio",
+      "last_pts_host_s": 1056749.490899083
+    },
+    {
+      "append_failures": 0,
+      "appended": 1157,
+      "bytes": 155190,
+      "device": "MacBook Pro Microphone",
+      "encoder": "AAC 1 ch @ 48000 Hz, 96 kbps (source: 1 ch, fmt lpcm, 32 bits, flags 0x29)",
+      "encoder_not_ready_drops": 0,
+      "file": "mic.mov",
+      "first_pts_host_s": 1056737.2366041667,
+      "kind": "mic",
+      "last_pts_host_s": 1056749.5672708333
+    }
+  ],
+  "update_order": "filter-first"
+}

@@ -1,0 +1,222 @@
+{
+  "adapter": "Metal / Apple M3 Pro / IntegratedGpu",
+  "app_plus_webkit_cpu_pct": 41.06954864687674,
+  "app_plus_webkit_mem_mb": 664.9721832275391,
+  "error": null,
+  "gpu_util_pct": {
+    "max": 77.0,
+    "mean": 73.4,
+    "n": 20,
+    "p50": 74.0,
+    "p95": 76.0,
+    "p99": 77.0
+  },
+  "js": {
+    "acks": {
+      "failed": 0,
+      "lastError": "",
+      "maxMs": 11.99999999999818,
+      "ok": 794,
+      "sent": 794
+    },
+    "canvas_css": {
+      "h": 360,
+      "w": 640
+    },
+    "channel_fetch": {
+      "pending_ages_ms": [],
+      "rejected": 0,
+      "resolved": 794,
+      "started": 794
+    },
+    "clock_offset_ms": 1.360107421875,
+    "clock_rtt_ms": 0,
+    "dpr": 2,
+    "draw_call_ms": {
+      "max": 9.99999999999818,
+      "mean": 0.5594639865997252,
+      "n": 597,
+      "p50": 1,
+      "p95": 1.0000000000009095,
+      "p99": 1.000000000001819
+    },
+    "drawn_unique": 597,
+    "errors": [],
+    "fetch_ms": null,
+    "id_gaps": 3,
+    "latency_draw_ms": {
+      "max": 36.639892578125,
+      "mean": 15.867205493613902,
+      "n": 597,
+      "p50": 15.5732421875,
+      "p95": 22.841064453125,
+      "p99": 23.8681640625
+    },
+    "latency_recv_ms": {
+      "max": 26.639892578125,
+      "mean": 7.150911458333334,
+      "n": 600,
+      "p50": 7.362060546875,
+      "p95": 11.92724609375,
+      "p99": 13.326171875
+    },
+    "presented_fps": 59.7,
+    "presented_fps_span": 59.755363946260275,
+    "raf_count": 720,
+    "raf_fps": 72,
+    "raf_interval_ms": {
+      "max": 21.00000000000182,
+      "mean": 13.89027777777777,
+      "n": 720,
+      "p50": 14,
+      "p95": 15,
+      "p99": 16
+    },
+    "received": 600,
+    "send_to_recv_ms": {
+      "max": 19.64404296875,
+      "mean": 2.0943033854166666,
+      "n": 600,
+      "p50": 1.965087890625,
+      "p95": 3.123046875,
+      "p99": 4.6181640625
+    },
+    "snapshot": {
+      "button_center_rgb": [
+        255,
+        255,
+        255
+      ],
+      "decoded_frame_id": 789,
+      "decoded_ts_age_ms": -69,
+      "html_over_preview": true,
+      "image_px": [
+        2720,
+        1640
+      ],
+      "png": "/Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/default-r2/a-gl-720.png",
+      "preview_visible": true,
+      "scale": 2,
+      "titlebar_px": 64
+    },
+    "stalls": [],
+    "superseded_before_draw": 3,
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+    "verify_fail": 0,
+    "verify_ok": 19,
+    "window_s": 10
+  },
+  "measure_window_s": 10.177857166,
+  "mode": {
+    "duration_s": 10.0,
+    "fetch_per_raf": false,
+    "fps": 60,
+    "height": 720,
+    "max_in_flight": 2,
+    "name": "a-gl-720",
+    "native_above": false,
+    "renderer": "gl",
+    "snapshot": true,
+    "transport": "channel",
+    "warmup_s": 3.0,
+    "width": 1280
+  },
+  "native_view": null,
+  "os": "ProductName: macOS ProductVersion: 26.7.2 BuildVersion: 25G332",
+  "processes": [
+    {
+      "cpu_pct": 50.0105269407797,
+      "footprint_mb": null,
+      "pid": 630,
+      "role": "windowserver(system-wide)",
+      "rss_mb": 90.25
+    },
+    {
+      "cpu_pct": 14.541371291238653,
+      "footprint_mb": 225.6573028564453,
+      "pid": 11290,
+      "role": "app",
+      "rss_mb": 123.328125
+    },
+    {
+      "cpu_pct": 9.432240837560208,
+      "footprint_mb": 120.15705108642578,
+      "pid": 11291,
+      "role": "webkit-gpu",
+      "rss_mb": 33.53125
+    },
+    {
+      "cpu_pct": 0.0982525087245855,
+      "footprint_mb": 6.437980651855469,
+      "pid": 11292,
+      "role": "webkit-networking",
+      "rss_mb": 10.3125
+    },
+    {
+      "cpu_pct": 16.99768400935329,
+      "footprint_mb": 312.7198486328125,
+      "pid": 11293,
+      "role": "webkit-webcontent",
+      "rss_mb": 306.421875
+    }
+  ],
+  "producer": {
+    "ack_calls_total": 796,
+    "acked_max_id": 796,
+    "acquire_ms": null,
+    "backpressure_overrides": 0,
+    "copy_ms": {
+      "max": 4.1613750000000005,
+      "mean": 0.14552354084967328,
+      "n": 612,
+      "p50": 0.128875,
+      "p95": 0.219459,
+      "p99": 0.352625
+    },
+    "delivered": 612,
+    "dropped_backpressure": 0,
+    "dropped_unfetched": 0,
+    "encode_ms": {
+      "max": 1.8253329999999999,
+      "mean": 0.2732342990196075,
+      "n": 612,
+      "p50": 0.247083,
+      "p95": 0.43150000000000005,
+      "p99": 0.559167
+    },
+    "frame_total_ms": {
+      "max": 10.951083,
+      "mean": 5.022684738562091,
+      "n": 612,
+      "p50": 5.162166,
+      "p95": 9.762165999999999,
+      "p99": 10.518583999999999
+    },
+    "gpu_wait_ms": {
+      "max": 10.16825,
+      "mean": 4.577312934640521,
+      "n": 612,
+      "p50": 4.732875,
+      "p95": 9.282874999999999,
+      "p99": 10.04975
+    },
+    "late_ticks": 0,
+    "present_latency_ms": null,
+    "presented": 0,
+    "presented_fps": 0.0,
+    "produced": 612,
+    "produced_fps": 60.13053533944632,
+    "send_ms": {
+      "max": 0.100334,
+      "mean": 0.025386764705882355,
+      "n": 612,
+      "p50": 0.023458,
+      "p95": 0.041541,
+      "p99": 0.0645
+    },
+    "sent": 796,
+    "surface_errors": 0
+  },
+  "tauri": "2.12.7",
+  "timestamp_ms": 1795124065680.644
+}

@@ -1,0 +1,6 @@
+target/
+results/**/out/
+results/**/cancel/
+results/**/*.wav
+results-bench.log
+results/**/logs/

@@ -1,0 +1,6 @@
+[native] placement=above-webview webview_h=820 viewport_h=788 parent=wry::wkwebview::class::wry_web_view_parent::WryWebViewParent0.57.3 flipped=false frame=(24,180 960x540) scale=2 subview order (back->front)=["..NSKVONotifying_wry::wkwebview::class::wry_web_view::WryWebView0.57.3", "NSView"]
+[js] native view: placement=above-webview webview_h=820 viewport_h=788 parent=wry::wkwebview::class::wry_web_view_parent::WryWebViewParent0.57.3 flipped=false frame=(24,180 960x540) scale=2 subview order (back->front)=["..NSKVONotifying_wry::wkwebview::class::wry_web_view::WryWebView0.57.3", "NSView"]
+[js] snapshot: {"button_center_rgb":[109,128,67],"decoded_frame_id":788,"decoded_ts_age_ms":-63,"html_over_preview":false,"image_px":[2720,1640],"png":"/Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/constrained/c-above-1080.png","preview_visible":true,"scale":2,"titlebar_px":64}
+[bench] wrote /Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/constrained/c-above-1080.json
+[js] report written: /Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/constrained/c-above-1080.json
+[bench] event loop exit

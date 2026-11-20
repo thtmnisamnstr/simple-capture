@@ -1,0 +1,76 @@
+== vulkaninfo summary
+Devices:
+========
+GPU0:
+	apiVersion         = 1.4.318
+	driverVersion      = 25.2.8
+	vendorID           = 0x10005
+	deviceID           = 0x0000
+	deviceType         = PHYSICAL_DEVICE_TYPE_CPU
+	deviceName         = llvmpipe (LLVM 20.1.2, 128 bits)
+	driverID           = DRIVER_ID_MESA_LLVMPIPE
+	driverName         = llvmpipe
+	driverInfo         = Mesa 25.2.8-0ubuntu0.24.04.5 (LLVM 20.1.2)
+	conformanceVersion = 1.3.1.1
+	deviceUUID         = 6d657361-3235-2e32-2e38-2d3075627500
+	driverUUID         = 6c6c766d-7069-7065-5555-494400000000
+
+(native-preview-linux-spike:41): Gdk-CRITICAL **: 00:41:01.091: gdk_seat_get_keyboard: assertion 'GDK_IS_SEAT (seat)' failed
+[spike06] mode=Subsurface gdk_backend=wayland readback=1280x720
+[spike06] env WEBKIT_DISABLE_DMABUF_RENDERER=None WEBKIT_DISABLE_COMPOSITING_MODE=None
+libEGL warning: failed to get driver name for fd -1
+
+libEGL warning: MESA-LOADER: failed to retrieve device information
+
+libEGL warning: failed to get driver name for fd -1
+
+MESA: error: ZINK: failed to choose pdev
+libEGL warning: egl: failed to create dri2 screen
+
+(native-preview-linux-spike:41): Gdk-CRITICAL **: 00:41:01.243: gdk_seat_get_keyboard: assertion 'GDK_IS_SEAT (seat)' failed
+dbus-daemon[40]: [session uid=0 pid=40] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=0 pid=41 comm="/target/release/native-preview-linux-spike")
+dbus-daemon[40]: [session uid=0 pid=40] Successfully activated service 'org.a11y.Bus'
+
+(native-preview-linux-spike:41): Gdk-CRITICAL **: 00:41:01.265: gdk_seat_get_keyboard: assertion 'GDK_IS_SEAT (seat)' failed
+dbus-daemon[107]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=0 pid=108 comm="/usr/lib/aarch64-linux-gnu/webkit2gtk-4.1/WebKitWe")
+dbus-daemon[107]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+[spike06] wayland subsurface at logical (0,0) size 1400x900px scale 1, placed below parent
+[spike06] native target 1400x900 px
+[spike06] surface caps formats=[Bgra8UnormSrgb, Rgba8UnormSrgb, Bgra8Unorm, Rgba8Unorm, Rgb10a2Unorm] present=[Mailbox, Fifo, Immediate] alpha=[Opaque, PreMultiplied]
+[spike06] surface configured Bgra8Unorm Mailbox Opaque
+[spike06] t=1s produced/s=5 presented/s=5 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=22 drawn=0 fetched=0
+[spike06] t=2s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=36 drawn=0 fetched=0
+[spike06] t=3s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=37 drawn=0 fetched=0
+[spike06] t=4s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=36 drawn=0 fetched=0
+[spike06] t=5s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=36 drawn=0 fetched=0
+[spike06] t=6s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=36 drawn=0 fetched=0
+[spike06] t=7s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=36 drawn=0 fetched=0
+[spike06] t=8s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=37 drawn=0 fetched=0
+[spike06] t=9s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=36 drawn=0 fetched=0
+== CPU over a 3 s window, % of one core (SOFTWARE RENDERING, not representative)
+108 (WebKitWebProces) 102.8%
+38 (dbus-run-sessio) 0.0%
+41 (native-preview-) 388.8%
+8 (weston) 6.3%
+99 (WebKitNetworkPr) 0.0%
+[spike06] t=10s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=36 drawn=0 fetched=0
+[spike06] t=11s produced/s=59 presented/s=59 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=30 drawn=0 fetched=0
+[spike06] t=12s produced/s=35 presented/s=35 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=33 drawn=0 fetched=0
+[spike06] t=13s produced/s=60 presented/s=60 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=36 drawn=0 fetched=0
+[spike06] t=14s produced/s=61 presented/s=61 gl_renders/s=0 gl_uploads/s=0 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[spike06] done
+== exit 0

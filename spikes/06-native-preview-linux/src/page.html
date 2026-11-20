@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; font: 16px sans-serif; color: #fff; overflow: hidden; }
+  #bar { position: absolute; left: 0; right: 0; top: 0; height: 48px; background: #1e1e24; display: flex; align-items: center; padding: 0 16px; gap: 16px; }
+  #panel { position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); width: 420px; padding: 18px; border-radius: 14px;
+           background: rgba(220, 30, 60, 0.55); border: 3px solid #fff; text-align: center; font-weight: bold; font-size: 26px; z-index: 2; }
+  #timeline { position: absolute; left: 0; right: 0; bottom: 0; height: 64px; background: rgba(0, 0, 0, 0.6); z-index: 2; }
+  #playhead { position: absolute; top: 0; bottom: 0; width: 4px; background: #ffd400; }
+  #fps { font-family: monospace; }
+  canvas { position: absolute; left: 0; top: 48px; width: 100%; height: calc(100% - 48px); z-index: 1; }
+</style>
+</head>
+<body>
+<div id="bar"><b>spike06</b><span>mode: __MODE__</span><span id="fps">js fps: -</span><span id="info"></span></div>
+<div id="panel">HTML OVER VIDEO<br><span style="font-size:15px">translucent red, white border</span></div>
+<div id="timeline"><div id="playhead"></div></div>
+<script>
+const mode = "__MODE__";
+const post = (m) => { try { window.ipc.postMessage(m); } catch (e) {} };
+let n = 0, t0 = performance.now(), drawn = 0, fetched = 0;
+function tick(now) {
+  n++;
+  const ph = document.getElementById('playhead');
+  ph.style.left = ((now / 40) % (window.innerWidth - 4)) + 'px';
+  if (now - t0 >= 1000) {
+    const s = `raf=${n} drawn=${drawn} fetched=${fetched}`;
+    document.getElementById('fps').textContent = 'js ' + s;
+    post(s);
+    n = 0; drawn = 0; fetched = 0; t0 = now;
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+if (mode === "Pull") {
+  const c = document.createElement('canvas');
+  document.body.appendChild(c);
+  let gl = c.getContext('webgl2');
+  let ctx2d = null, tex = null, curW = 0, curH = 0;
+  if (gl) {
+    const vs = `#version 300 es
+      out vec2 uv; void main(){ vec2 p = vec2(float((gl_VertexID<<1)&2), float(gl_VertexID&2)); uv = p; gl_Position = vec4(p.x*2.0-1.0, 1.0-p.y*2.0, 0.0, 1.0); }`;
+    const fs = `#version 300 es
+      precision mediump float; in vec2 uv; uniform sampler2D t; out vec4 o; void main(){ o = vec4(texture(t, uv).rgb, 1.0); }`;
+    const prog = gl.createProgram();
+    for (const [k, s] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
+      const sh = gl.createShader(k); gl.shaderSource(sh, s); gl.compileShader(sh); gl.attachShader(prog, sh);
+    }
+    gl.linkProgram(prog); gl.useProgram(prog);
+    tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  } else {
+    ctx2d = c.getContext('2d');
+  }
+  document.getElementById('info').textContent = gl ? 'canvas: webgl2' : 'canvas: 2d (no webgl2)';
+  post(gl ? 'pull canvas=webgl2 renderer=' + gl.getParameter(gl.RENDERER) : 'pull canvas=2d');
+  let lastId = 0;
+  async function pull() {
+    try {
+      const r = await fetch('sc://localhost/frame', { cache: 'no-store' });
+      if (r.status === 200) {
+        const buf = await r.arrayBuffer();
+        fetched++;
+        const dv = new DataView(buf);
+        const id = dv.getUint32(4, true), w = dv.getUint32(8, true), h = dv.getUint32(12, true);
+        if (id !== lastId) {
+          lastId = id;
+          const px = new Uint8Array(buf, 32, w * h * 4);
+          if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+          if (gl) {
+            gl.viewport(0, 0, w, h);
+            if (curW !== w || curH !== h) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, px); curW = w; curH = h; }
+            else gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+          } else {
+            ctx2d.putImageData(new ImageData(new Uint8ClampedArray(px.buffer, 32, w * h * 4), w, h), 0, 0);
+          }
+          drawn++;
+        }
+      }
+    } catch (e) { post('pull error ' + e); await new Promise(r => setTimeout(r, 200)); }
+    requestAnimationFrame(pull);
+  }
+  requestAnimationFrame(pull);
+}
+</script>
+</body>
+</html>

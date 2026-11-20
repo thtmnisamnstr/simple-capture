@@ -1,0 +1,444 @@
+{
+ "project": "restart-separate",
+ "strategy": "restart",
+ "audio_mode": "separate",
+ "update_order": "filter-first",
+ "permission_host": "com.simplecapture.dev",
+ "errors": [],
+ "stream_errors": [],
+ "segments": [
+  {
+   "file": "screen-000.mov",
+   "source": "display",
+   "pixels": [
+    7680,
+    2160
+   ],
+   "codec": "hevc",
+   "tag": "hvc1",
+   "size": [
+    7680,
+    2160
+   ],
+   "color": [
+    "bt709",
+    "bt709",
+    "bt709"
+   ],
+   "ffprobe_duration_s": 3.036667,
+   "intended_duration_s": 3.0360225839540362,
+   "nb_frames": "85",
+   "decoded_frames": 85,
+   "frames_written_by_app": 84,
+   "held_last_frame_s": 0.043930125422775745,
+   "decode_error_lines": 0,
+   "decode_error_sample": [],
+   "ffprobe_decode_stderr_lines": 0,
+   "null_muxer_dts_warnings": 0,
+   "fps": 28.0523004715687,
+   "late_or_missing_frames": 2,
+   "content_classes": {
+    "display": 84
+   },
+   "encoder_not_ready_drops": 0,
+   "append_failures": 0,
+   "size_matches_source": true
+  },
+  {
+   "file": "screen-001.mov",
+   "source": "window",
+   "pixels": [
+    720,
+    480
+   ],
+   "codec": "hevc",
+   "tag": "hvc1",
+   "size": [
+    720,
+    480
+   ],
+   "color": [
+    "bt709",
+    "bt709",
+    "bt709"
+   ],
+   "ffprobe_duration_s": 3.0,
+   "intended_duration_s": 2.999568165978417,
+   "nb_frames": "86",
+   "decoded_frames": 86,
+   "frames_written_by_app": 85,
+   "held_last_frame_s": 0.05252658249810338,
+   "decode_error_lines": 0,
+   "decode_error_sample": [],
+   "ffprobe_decode_stderr_lines": 0,
+   "null_muxer_dts_warnings": 0,
+   "fps": 28.82924191153836,
+   "late_or_missing_frames": 0,
+   "content_classes": {
+    "window": 85
+   },
+   "encoder_not_ready_drops": 0,
+   "append_failures": 0,
+   "size_matches_source": true
+  },
+  {
+   "file": "screen-002.mov",
+   "source": "region",
+   "pixels": [
+    1120,
+    640
+   ],
+   "codec": "hevc",
+   "tag": "hvc1",
+   "size": [
+    1120,
+    640
+   ],
+   "color": [
+    "bt709",
+    "bt709",
+    "bt709"
+   ],
+   "ffprobe_duration_s": 2.993333,
+   "intended_duration_s": 2.9934862090740353,
+   "nb_frames": "86",
+   "decoded_frames": 86,
+   "frames_written_by_app": 85,
+   "held_last_frame_s": 0.04306654166430235,
+   "decode_error_lines": 0,
+   "decode_error_sample": [],
+   "ffprobe_decode_stderr_lines": 0,
+   "null_muxer_dts_warnings": 0,
+   "fps": 28.795856681329475,
+   "late_or_missing_frames": 0,
+   "content_classes": {
+    "region": 85
+   },
+   "encoder_not_ready_drops": 0,
+   "append_failures": 0,
+   "size_matches_source": true
+  },
+  {
+   "file": "screen-003.mov",
+   "source": "display",
+   "pixels": [
+    7680,
+    2160
+   ],
+   "codec": "hevc",
+   "tag": "hvc1",
+   "size": [
+    7680,
+    2160
+   ],
+   "color": [
+    "bt709",
+    "bt709",
+    "bt709"
+   ],
+   "ffprobe_duration_s": 2.928333,
+   "intended_duration_s": 2.9276638329029083,
+   "nb_frames": "84",
+   "decoded_frames": 83,
+   "frames_written_by_app": 84,
+   "held_last_frame_s": 0.0,
+   "decode_error_lines": 0,
+   "decode_error_sample": [],
+   "ffprobe_decode_stderr_lines": 0,
+   "null_muxer_dts_warnings": 0,
+   "fps": 28.318200013480705,
+   "late_or_missing_frames": 1,
+   "content_classes": {
+    "display": 84
+   },
+   "encoder_not_ready_drops": 0,
+   "append_failures": 0,
+   "size_matches_source": true
+  }
+ ],
+ "switches": [
+  {
+   "from": "display",
+   "to": "window",
+   "api_ms": 86.26891695894301,
+   "gap_last_old_to_first_new_ms": 77.26345886476338,
+   "request_to_first_new_pts_ms": 79.11170902661979,
+   "request_to_first_new_arrival_ms": 79.59662517532706,
+   "old_content_frames_arriving_after_request": 0,
+   "old_content_frames_with_pts_after_request": 0,
+   "old_content_frames_after_api_done_not_in_old_segment": 0,
+   "frames_in_old_segment_not_old_content": 0,
+   "frames_in_new_segment_not_new_content": 0,
+   "transition_frames_dropped": 0,
+   "transition_dropped_kinds": {},
+   "frame_sequence_around_switch": [
+    "7680x2160:display",
+    "720x480:window"
+   ],
+   "frame_geometry_around_switch": {
+    "720x480 window rect[0,0,360,240] cs1 sf2 seg1": 42,
+    "7680x2160 display rect[0,0,3840,1080] cs1 sf2 seg0": 6
+   }
+  },
+  {
+   "from": "window",
+   "to": "region",
+   "api_ms": 80.03991702571511,
+   "gap_last_old_to_first_new_ms": 85.85991594009101,
+   "request_to_first_new_pts_ms": 76.97920803911984,
+   "request_to_first_new_arrival_ms": 74.325833003968,
+   "old_content_frames_arriving_after_request": 0,
+   "old_content_frames_with_pts_after_request": 0,
+   "old_content_frames_after_api_done_not_in_old_segment": 0,
+   "frames_in_old_segment_not_old_content": 0,
+   "frames_in_new_segment_not_new_content": 0,
+   "transition_frames_dropped": 0,
+   "transition_dropped_kinds": {},
+   "frame_sequence_around_switch": [
+    "720x480:window",
+    "1120x640:region"
+   ],
+   "frame_geometry_around_switch": {
+    "1120x640 region rect[0,0,560,320] cs1 sf2 seg2": 42,
+    "720x480 window rect[0,0,360,240] cs1 sf2 seg1": 6
+   }
+  },
+  {
+   "from": "region",
+   "to": "display",
+   "api_ms": 78.58720794320107,
+   "gap_last_old_to_first_new_ms": 76.39987510628998,
+   "request_to_first_new_pts_ms": 70.24491694755852,
+   "request_to_first_new_arrival_ms": 68.38175002485514,
+   "old_content_frames_arriving_after_request": 0,
+   "old_content_frames_with_pts_after_request": 0,
+   "old_content_frames_after_api_done_not_in_old_segment": 0,
+   "frames_in_old_segment_not_old_content": 0,
+   "frames_in_new_segment_not_new_content": 0,
+   "transition_frames_dropped": 0,
+   "transition_dropped_kinds": {},
+   "frame_sequence_around_switch": [
+    "1120x640:region",
+    "7680x2160:display"
+   ],
+   "frame_geometry_around_switch": {
+    "1120x640 region rect[0,0,560,320] cs1 sf2 seg2": 6,
+    "7680x2160 display rect[0,0,3840,1080] cs1 sf2 seg3": 41
+   }
+  }
+ ],
+ "switch_steps": [
+  [
+   {
+    "step": "startCapture",
+    "ms": 50.485749961808324,
+    "error": null
+   }
+  ],
+  [
+   {
+    "step": "stopCapture(old)",
+    "ms": 32.92845794931054,
+    "error": null
+   },
+   {
+    "step": "create SCStream",
+    "ms": 2.002374967560172,
+    "error": null
+   },
+   {
+    "step": "startCapture(new)",
+    "ms": 44.60904188454151,
+    "error": null
+   }
+  ],
+  [
+   {
+    "step": "stopCapture(old)",
+    "ms": 22.192290984094143,
+    "error": null
+   },
+   {
+    "step": "create SCStream",
+    "ms": 5.847791908308864,
+    "error": null
+   },
+   {
+    "step": "startCapture(new)",
+    "ms": 45.689999824389815,
+    "error": null
+   }
+  ],
+  [
+   {
+    "step": "stopCapture(old)",
+    "ms": 22.36500009894371,
+    "error": null
+   },
+   {
+    "step": "create SCStream",
+    "ms": 5.738707957789302,
+    "error": null
+   },
+   {
+    "step": "startCapture(new)",
+    "ms": 45.80258298665285,
+    "error": null
+   }
+  ]
+ ],
+ "audio": {
+  "system_audio": {
+   "codec": "aac",
+   "sample_rate": "48000",
+   "channels": 2,
+   "ffprobe_duration_s": 12.339979,
+   "decode_error_lines": 0,
+   "first_pts_rel_to_start_s": -0.3444624999538064,
+   "continuity_from_buffers": {
+    "buffer_frames": {
+     "max": 960.0,
+     "median": 960.0,
+     "min": 960.0,
+     "n": 617
+    },
+    "buffers": 617,
+    "end_host_s": 1056940.802542041,
+    "first_pts_host_s": 1056928.462542041,
+    "gaps_over_1ms": 0,
+    "overlaps_over_1ms": 0,
+    "samples_s": 12.339999999999826
+   },
+   "buffer_gaps": [],
+   "tone_440_window_owner": {
+    "median_db": -24.2,
+    "checked_from_to_rel_s": [
+     0.3,
+     12.04
+    ],
+    "windows_checked": 1174,
+    "windows_below_median_minus_12db": 0,
+    "dropout_runs": [],
+    "around_switches": [
+     {
+      "switch_rel_s": 3.345,
+      "min_db_within_0p5s": -25.1
+     },
+     {
+      "switch_rel_s": 6.347,
+      "min_db_within_0p5s": -25.1
+     },
+     {
+      "switch_rel_s": 9.347,
+      "min_db_within_0p5s": -25.1
+     }
+    ]
+   },
+   "tone_660_windowless_process": {
+    "median_db": -24.2,
+    "checked_from_to_rel_s": [
+     0.3,
+     12.04
+    ],
+    "windows_checked": 1174,
+    "windows_below_median_minus_12db": 0,
+    "dropout_runs": [],
+    "around_switches": [
+     {
+      "switch_rel_s": 3.345,
+      "min_db_within_0p5s": -24.8
+     },
+     {
+      "switch_rel_s": 6.347,
+      "min_db_within_0p5s": -24.7
+     },
+     {
+      "switch_rel_s": 9.347,
+      "min_db_within_0p5s": -24.7
+     }
+    ]
+   },
+   "switch_rel_to_file_s": [
+    3.345,
+    6.347,
+    9.347
+   ]
+  },
+  "mic": {
+   "codec": "aac",
+   "sample_rate": "48000",
+   "channels": 1,
+   "ffprobe_duration_s": 12.48,
+   "decode_error_lines": 0,
+   "first_pts_rel_to_start_s": -0.3973378741648048,
+   "continuity_from_buffers": {
+    "buffer_frames": {
+     "max": 512.0,
+     "median": 512.0,
+     "min": 512.0,
+     "n": 1170
+    },
+    "buffers": 1170,
+    "end_host_s": 1056940.8896666665,
+    "first_pts_host_s": 1056928.4096666668,
+    "gaps_over_1ms": 0,
+    "overlaps_over_1ms": 0,
+    "samples_s": 12.48000000000017
+   },
+   "buffer_gaps": []
+  }
+ },
+ "cpu_pct_of_one_core_total": {
+  "VTEncoderXPCService": 4.3,
+  "WindowServer": 0.0,
+  "coreaudiod": 0.0,
+  "replayd": 4.6,
+  "self": 20.7
+ },
+ "cpu_per_segment": [
+  {
+   "VTEncoderXPCService": 6.2,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 4.5,
+   "self": 21.0
+  },
+  {
+   "VTEncoderXPCService": 3.0,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 4.5,
+   "self": 19.7
+  },
+  {
+   "VTEncoderXPCService": 3.3,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 4.7,
+   "self": 20.3
+  },
+  {
+   "VTEncoderXPCService": 4.6,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 4.6,
+   "self": 21.7
+  }
+ ],
+ "sck_frame_status": {
+  "tag1": {
+   "complete": 84
+  },
+  "tag2": {
+   "complete": 85
+  },
+  "tag3": {
+   "complete": 85
+  },
+  "tag4": {
+   "complete": 84,
+   "idle": 1
+  }
+ },
+ "self_rss_max_mb": 49.265625
+}

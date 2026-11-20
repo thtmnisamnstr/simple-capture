@@ -1,0 +1,471 @@
+[
+ {
+  "run": "overlap-separate",
+  "strategy": "overlap",
+  "audio_mode": "separate",
+  "order": "filter-first",
+  "switch_gap_ms": [
+   8.0,
+   23.4,
+   27.8
+  ],
+  "api_ms": [
+   115.1,
+   86.0,
+   103.2
+  ],
+  "req_to_first_new_arrival_ms": [
+   68.2,
+   44.7,
+   52.6
+  ],
+  "old_content_after_request": [
+   3,
+   2,
+   2
+  ],
+  "old_content_after_api_done": [
+   0,
+   0,
+   0
+  ],
+  "wrong_content_in_segments": [
+   0,
+   0,
+   0
+  ],
+  "transition_dropped": [
+   1,
+   1,
+   1
+  ],
+  "segments": [
+   {
+    "src": "display",
+    "size": [
+     7680,
+     2160
+    ],
+    "codec": "hevc",
+    "dur": 3.0,
+    "intended": 3.0,
+    "fps": 27.9,
+    "late": 3,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "window",
+    "size": [
+     720,
+     480
+    ],
+    "codec": "hevc",
+    "dur": 3.0,
+    "intended": 3.0,
+    "fps": 28.8,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "region",
+    "size": [
+     1120,
+     640
+    ],
+    "codec": "hevc",
+    "dur": 3.0,
+    "intended": 3.0,
+    "fps": 28.9,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "display",
+    "size": [
+     7680,
+     2160
+    ],
+    "codec": "hevc",
+    "dur": 2.9,
+    "intended": 2.9,
+    "fps": 28.8,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   }
+  ],
+  "sys_audio_buffer_gaps_ms": [],
+  "sys_audio_dur": 12.3,
+  "tone440_dropouts": [],
+  "tone660_dropouts": [],
+  "mic_buffer_gaps": 0,
+  "cpu_total": {
+   "VTEncoderXPCService": 4.2,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 4.7,
+   "self": 20.4
+  },
+  "errors": []
+ },
+ {
+  "run": "restart-separate",
+  "strategy": "restart",
+  "audio_mode": "separate",
+  "order": "filter-first",
+  "switch_gap_ms": [
+   89.4,
+   98.9,
+   76.4
+  ],
+  "api_ms": [
+   100.2,
+   73.5,
+   75.9
+  ],
+  "req_to_first_new_arrival_ms": [
+   89.6,
+   68.0,
+   66.5
+  ],
+  "old_content_after_request": [
+   0,
+   0,
+   0
+  ],
+  "old_content_after_api_done": [
+   0,
+   0,
+   0
+  ],
+  "wrong_content_in_segments": [
+   0,
+   0,
+   0
+  ],
+  "transition_dropped": [
+   0,
+   0,
+   0
+  ],
+  "segments": [
+   {
+    "src": "display",
+    "size": [
+     7680,
+     2160
+    ],
+    "codec": "hevc",
+    "dur": 3.0,
+    "intended": 3.0,
+    "fps": 28.1,
+    "late": 3,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "window",
+    "size": [
+     720,
+     480
+    ],
+    "codec": "hevc",
+    "dur": 3.0,
+    "intended": 3.0,
+    "fps": 28.5,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "region",
+    "size": [
+     1120,
+     640
+    ],
+    "codec": "hevc",
+    "dur": 3.0,
+    "intended": 3.0,
+    "fps": 28.7,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "display",
+    "size": [
+     7680,
+     2160
+    ],
+    "codec": "hevc",
+    "dur": 2.9,
+    "intended": 2.9,
+    "fps": 28.7,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   }
+  ],
+  "sys_audio_buffer_gaps_ms": [],
+  "sys_audio_dur": 12.3,
+  "tone440_dropouts": [],
+  "tone660_dropouts": [],
+  "mic_buffer_gaps": 0,
+  "cpu_total": {
+   "VTEncoderXPCService": 4.3,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 4.9,
+   "self": 21.2
+  },
+  "errors": []
+ },
+ {
+  "run": "update-separate",
+  "strategy": "update",
+  "audio_mode": "separate",
+  "order": "filter-first",
+  "switch_gap_ms": [
+   73.5,
+   44.6,
+   6.9
+  ],
+  "api_ms": [
+   93.0,
+   59.7,
+   50.0
+  ],
+  "req_to_first_new_arrival_ms": [
+   88.1,
+   66.2,
+   54.2
+  ],
+  "old_content_after_request": [
+   1,
+   1,
+   2
+  ],
+  "old_content_after_api_done": [
+   0,
+   0,
+   0
+  ],
+  "wrong_content_in_segments": [
+   0,
+   0,
+   0
+  ],
+  "transition_dropped": [
+   2,
+   2,
+   0
+  ],
+  "segments": [
+   {
+    "src": "display",
+    "size": [
+     7680,
+     2160
+    ],
+    "codec": "hevc",
+    "dur": 3.1,
+    "intended": 3.1,
+    "fps": 28.5,
+    "late": 1,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "window",
+    "size": [
+     720,
+     480
+    ],
+    "codec": "hevc",
+    "dur": 3.0,
+    "intended": 3.0,
+    "fps": 28.9,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "region",
+    "size": [
+     1120,
+     640
+    ],
+    "codec": "hevc",
+    "dur": 3.0,
+    "intended": 3.0,
+    "fps": 28.9,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "display",
+    "size": [
+     7680,
+     2160
+    ],
+    "codec": "hevc",
+    "dur": 2.9,
+    "intended": 2.9,
+    "fps": 28.7,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   }
+  ],
+  "sys_audio_buffer_gaps_ms": [],
+  "sys_audio_dur": 12.3,
+  "tone440_dropouts": [],
+  "tone660_dropouts": [],
+  "mic_buffer_gaps": 0,
+  "cpu_total": {
+   "VTEncoderXPCService": 4.0,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 4.2,
+   "self": 19.7
+  },
+  "errors": []
+ },
+ {
+  "run": "update-shared",
+  "strategy": "update",
+  "audio_mode": "shared",
+  "order": "filter-first",
+  "switch_gap_ms": [
+   74.3,
+   50.9,
+   20.8
+  ],
+  "api_ms": [
+   188.8,
+   167.5,
+   36.3
+  ],
+  "req_to_first_new_arrival_ms": [
+   185.2,
+   167.8,
+   41.5
+  ],
+  "old_content_after_request": [
+   4,
+   4,
+   1
+  ],
+  "old_content_after_api_done": [
+   0,
+   0,
+   0
+  ],
+  "wrong_content_in_segments": [
+   0,
+   0,
+   0
+  ],
+  "transition_dropped": [
+   2,
+   1,
+   0
+  ],
+  "segments": [
+   {
+    "src": "display",
+    "size": [
+     7680,
+     2160
+    ],
+    "codec": "hevc",
+    "dur": 3.1,
+    "intended": 3.1,
+    "fps": 28.1,
+    "late": 2,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "window",
+    "size": [
+     720,
+     480
+    ],
+    "codec": "hevc",
+    "dur": 3.0,
+    "intended": 3.0,
+    "fps": 28.6,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "region",
+    "size": [
+     1120,
+     640
+    ],
+    "codec": "hevc",
+    "dur": 2.9,
+    "intended": 2.9,
+    "fps": 28.8,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   },
+   {
+    "src": "display",
+    "size": [
+     7680,
+     2160
+    ],
+    "codec": "hevc",
+    "dur": 3.0,
+    "intended": 3.0,
+    "fps": 28.8,
+    "late": 0,
+    "dec_err": 0,
+    "enc_drops": 0
+   }
+  ],
+  "sys_audio_buffer_gaps_ms": [
+   86.6,
+   83.2
+  ],
+  "sys_audio_dur": 11.7,
+  "tone440_dropouts": [
+   {
+    "from_rel_s": 2.9,
+    "to_rel_s": 2.92
+   },
+   {
+    "from_rel_s": 5.84,
+    "to_rel_s": 5.86
+   }
+  ],
+  "tone660_dropouts": [
+   {
+    "from_rel_s": 2.9,
+    "to_rel_s": 2.92
+   },
+   {
+    "from_rel_s": 5.84,
+    "to_rel_s": 5.86
+   }
+  ],
+  "mic_buffer_gaps": 0,
+  "cpu_total": {
+   "VTEncoderXPCService": 4.3,
+   "WindowServer": 0.0,
+   "coreaudiod": 0.0,
+   "replayd": 5.0,
+   "self": 21.0
+  },
+  "errors": []
+ }
+]

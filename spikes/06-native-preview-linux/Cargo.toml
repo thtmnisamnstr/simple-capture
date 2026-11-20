@@ -1,0 +1,27 @@
+[package]
+name = "native-preview-linux-spike"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[workspace]
+
+[dependencies]
+wgpu = "30"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "1"
+raw-window-handle = "0.6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+tao = "0.37"
+wry = "0.57"
+gtk = "0.18"
+gdkx11 = "0.18"
+glow = "0.17"
+libloading = "0.8"
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+
+[profile.release]
+opt-level = 3

@@ -1,0 +1,67 @@
+== vulkaninfo summary
+Devices:
+========
+GPU0:
+	apiVersion         = 1.4.318
+	driverVersion      = 25.2.8
+	vendorID           = 0x10005
+	deviceID           = 0x0000
+	deviceType         = PHYSICAL_DEVICE_TYPE_CPU
+	deviceName         = llvmpipe (LLVM 20.1.2, 128 bits)
+	driverID           = DRIVER_ID_MESA_LLVMPIPE
+	driverName         = llvmpipe
+	driverInfo         = Mesa 25.2.8-0ubuntu0.24.04.5 (LLVM 20.1.2)
+	conformanceVersion = 1.3.1.1
+	deviceUUID         = 6d657361-3235-2e32-2e38-2d3075627500
+	driverUUID         = 6c6c766d-7069-7065-5555-494400000000
+
+(native-preview-linux-spike:41): Gdk-CRITICAL **: 00:34:54.406: gdk_seat_get_keyboard: assertion 'GDK_IS_SEAT (seat)' failed
+[spike06] mode=GlArea gdk_backend=wayland readback=1280x720
+[spike06] env WEBKIT_DISABLE_DMABUF_RENDERER=None WEBKIT_DISABLE_COMPOSITING_MODE=Some("1")
+libEGL warning: failed to get driver name for fd -1
+
+libEGL warning: MESA-LOADER: failed to retrieve device information
+
+libEGL warning: failed to get driver name for fd -1
+
+MESA: error: ZINK: failed to choose pdev
+libEGL warning: egl: failed to create dri2 screen
+[spike06] GLArea context GL 4.5 use_es=false
+
+(native-preview-linux-spike:41): Gdk-CRITICAL **: 00:34:54.537: gdk_seat_get_keyboard: assertion 'GDK_IS_SEAT (seat)' failed
+dbus-daemon[40]: [session uid=0 pid=40] Activating service name='org.a11y.Bus' requested by ':1.0' (uid=0 pid=41 comm="/target/release/native-preview-linux-spike")
+dbus-daemon[40]: [session uid=0 pid=40] Successfully activated service 'org.a11y.Bus'
+
+(native-preview-linux-spike:41): Gdk-CRITICAL **: 00:34:54.696: gdk_seat_get_keyboard: assertion 'GDK_IS_SEAT (seat)' failed
+dbus-daemon[84]: Activating service name='org.a11y.atspi.Registry' requested by ':1.0' (uid=0 pid=85 comm="/usr/lib/aarch64-linux-gnu/webkit2gtk-4.1/WebKitWe")
+dbus-daemon[84]: Successfully activated service 'org.a11y.atspi.Registry'
+SpiRegistry daemon is running with well-known name - org.a11y.atspi.Registry
+[spike06] t=1s produced/s=50 presented/s=0 gl_renders/s=50 gl_uploads/s=42 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=60 drawn=0 fetched=0
+[spike06] t=2s produced/s=57 presented/s=0 gl_renders/s=56 gl_uploads/s=53 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=52 drawn=0 fetched=0
+[spike06] t=3s produced/s=31 presented/s=0 gl_renders/s=28 gl_uploads/s=28 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=58 drawn=0 fetched=0
+[spike06] t=4s produced/s=54 presented/s=0 gl_renders/s=50 gl_uploads/s=45 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=51 drawn=0 fetched=0
+[spike06] t=5s produced/s=60 presented/s=0 gl_renders/s=59 gl_uploads/s=58 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=61 drawn=0 fetched=0
+[spike06] t=6s produced/s=61 presented/s=0 gl_renders/s=60 gl_uploads/s=60 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=61 drawn=0 fetched=0
+[spike06] t=7s produced/s=60 presented/s=0 gl_renders/s=60 gl_uploads/s=60 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=60 drawn=0 fetched=0
+[spike06] t=8s produced/s=60 presented/s=0 gl_renders/s=59 gl_uploads/s=59 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[js] raf=54 drawn=0 fetched=0
+[spike06] t=9s produced/s=52 presented/s=0 gl_renders/s=53 gl_uploads/s=47 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+== CPU over a 3 s window, % of one core (SOFTWARE RENDERING, not representative)
+38 (dbus-run-sessio) 0.0%
+41 (native-preview-) 645.1%
+76 (WebKitNetworkPr) 1.0%
+8 (weston) 4.0%
+85 (WebKitWebProces) 5.0%
+[js] raf=62 drawn=0 fetched=0
+[spike06] t=10s produced/s=61 presented/s=0 gl_renders/s=61 gl_uploads/s=61 frames_served/s=0 adapter=Vulkan/llvmpipe (LLVM 20.1.2, 128 bits)/Cpu
+[spike06] done
+
+(process:85): GLib-GIO-WARNING **: 00:35:04.663: Error releasing name org.webkit.app-15ffb3ffc27bf766bf67137f1533cbc7985a839aa3c315d95396be1e9f21ffb1.Sandboxed.WebProcess-cd3f6ad9-9b48-4a54-8cb7-779d0feee7c4: The connection is closed
+== exit 0

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Preview Transport Spike",
+  "version": "0.0.0",
+  "identifier": "com.simplecapture.spike.preview",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "windows": [],
+    "macOSPrivateApi": false,
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/icon.png"]
+  }
+}
