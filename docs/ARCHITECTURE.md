@@ -104,13 +104,13 @@ Notes:
 
 | Job | macOS (status) | Windows (M6, untested) | Linux (M6, untested) |
 |---|---|---|---|
-| Screen | ScreenCaptureKit via objc2, 420v, queueDepth 6, **video only**, one SCStream per segment (ADR-034, ADR-035). **Verified [S3]** for display and single-window capture. Region by `sourceRect` on a display filter was used in [S3b] (1120×640 segments, correct size). Application capture, region by crop, odd and Retina region sizes are untested | Windows.Graphics.Capture via `CreateForWindow` / `CreateForMonitor`: windows-capture (MIT) or vendored scap-direct3d, decided in M6 [cap-mit-crates]. Region = cropped monitor capture | xdg-desktop-portal ScreenCast (ashpd) + PipeWire; `persist_mode` 2, re-save the single-use restore token [ecosystem]. Region = crop of a monitor (KDE can also return its own region) |
+| Screen | ScreenCaptureKit via objc2, 420v, queueDepth 6, **video only**, one SCStream per segment (ADR-034, ADR-035). **Verified [S3]** for display and single-window capture. Region by `sourceRect` on a display filter was used in [S3b] (1120×640 segments, correct size). **M1:** display, window, application (new windows picked up in 66–77 ms) and region by `sourceRect` (Retina and odd sizes floored to even px) all verified live; crop not needed | Windows.Graphics.Capture via `CreateForWindow` / `CreateForMonitor`: windows-capture (MIT) or vendored scap-direct3d, decided in M6 [cap-mit-crates]. Region = cropped monitor capture | xdg-desktop-portal ScreenCast (ashpd) + PipeWire; `persist_mode` 2, re-save the single-use restore token [ecosystem]. Region = crop of a monitor (KDE can also return its own region) |
 | System picker (ADR-028) | `SCContentSharingPicker` (14.0+): configured and read back in [S3b] but **never presented**. `excludedWindowIDs` for our UI, `present(for: stream)` for switching | `GraphicsCapturePicker` via `IInitializeWithWindow` (1803+); one window or one display, no exclusion list. windows-capture 2.0.1 already wraps it [pickers-and-hotswap] | The portal dialog itself (mandatory on Wayland), `multiple = true`, MONITOR \| WINDOW |
 | Switching source while recording (ADR-034) | Make-before-break: new SCStream, cut on its first frame, then stop the old one. Gap 0–28 ms ([S3b]; 14–22 ms in the verifier run). `updateConfiguration` only for region changes on the same display (7–28 ms) | New WGC frame pool + session per switch, started before the old one ends; two yellow borders show briefly | Sources pre-selected with `multiple = true` switch with no dialog. Any other source needs a new portal session and dialog; the screen holds its last frame meanwhile |
-| System audio | **A dedicated audio-only SCStream** for the whole recording (ADR-035): 0 gaps over 1 ms in 10 of 10 runs plus 3 of 3 re-runs [S3b]. `excludesCurrentProcessAudio`. "All" **verified [S3]**; "Only the captured app" untested | WASAPI loopback; process loopback on build 20348+ | PipeWire `stream.capture.sink=true` [ecosystem] |
+| System audio | **A dedicated audio-only SCStream** for the whole recording (ADR-035): 0 gaps over 1 ms in 10 of 10 runs plus 3 of 3 re-runs [S3b]. `excludesCurrentProcessAudio`. "All" **verified [S3]**; "Only the captured app" built in M1 (`updateContentFilter`, 144–178 ms per change); isolates bundled apps, unbundled processes are grouped by SCK (ADR-010) | WASAPI loopback; process loopback on build 20348+ | PipeWire `stream.capture.sink=true` [ecosystem] |
 | Audio gaps (ADR-035) | Silence inserted before AVAssetWriter, whose AAC input otherwise closes timestamp gaps (files 0.08–0.48 s short [S3b]) | same rule, in the same `record` code | same rule |
-| Camera | AVCaptureSession, ≤1080p30 420v (**verified [S3]**; device list hot-plug untested) | MF + DirectShow fallback, vendored from Cap's MIT crates (ADR-023) | V4L2 / portal camera |
-| Mic | AVCaptureSession, host-time timestamps (**verified [S3]**; 0 gaps in 15 of 15 runs plus 5 re-runs [S3b]; hot-plug and the Mic Mode button untested) | WASAPI via cpal | PipeWire via cpal |
+| Camera | AVCaptureSession, ≤1080p30 420v (**verified [S3]**; M1: device notifications update the list, real hot-plug is an owner step) | MF + DirectShow fallback, vendored from Cap's MIT crates (ADR-023) | V4L2 / portal camera |
+| Mic | AVCaptureSession, host-time timestamps (**verified [S3]**; 0 gaps in 15 of 15 runs plus 5 re-runs [S3b]; M1: hot-plug via notifications; Mic Mode built, run live only on request) | WASAPI via cpal | PipeWire via cpal |
 | Screen consent | TCC Screen Recording grant for our own chooser (`SCShareableContent`). The picker path may work without the grant (video only; secondary source, untested) | None needed for `CreateForWindow` / `CreateForMonitor` in unpackaged apps; the picker is its own consent | The portal dialog; restore token skips it next time |
 | Raw-track encode | AVAssetWriter → VideoToolbox HEVC / AudioToolbox AAC, fragmented .mov (**verified [S3]**, per segment [S3b]) | MF hardware MFT (async unlock required [ecosystem]) | FFmpeg LGPL libraries built by us with `--disable-network` (ADR-013) (VAAPI/NVENC), else x264 via the helper |
 | Editor decode | AVAssetReader → IOSurface NV12 (**verified [S3]**) | MF Source Reader (DXVA) | FFmpeg LGPL libraries built by us (+VAAPI) |
@@ -220,47 +220,77 @@ health monitor (1 Hz): fps, drops, writer readiness, free disk, per track and se
 
 ### Switching source (ADR-034, measured in [S3b])
 
-The switch controller runs make-before-break:
-1. A switch request arrives with source S′. Journal `switch_begin`.
-2. Build a new SCStream: filter = S′ minus our windows (the same exclusion list as every stream,
-   ADR-010); config = S′'s native pixel size, same fps, 420v, queueDepth 6, video output only.
-   Give it a new stream tag and start it.
+The switch controller runs make-before-break. **As built in M1** (ADR-034 M1 update; the
+numbers below are from the M1 package reports, see STATUS §2):
+1. A switch request arrives with source S′. Journal `switch_begin` (with `to` and `via`).
+2. Journal `segment_prepare` (seg, file, host_ns), then pre-create the new segment's writer, so no
+   screen file exists without a journal line. Build a new SCStream: filter = S′ minus our windows
+   (the exclusion rule below); config = S′'s native pixel size, same fps, 420v, queueDepth 6, video
+   only. Give it a new stream tag and start it. Median `switch_begin` → `segment_prepare` 4.0 ms
+   with a real writer.
 3. The router keeps appending the old stream's frames to the old segment. The new stream's first
-   complete frame, at host time `t1`, is the **cut**: `cut = to_rec(t1)`.
-   - Journal `segment_open` (fsync), then create the new segment's AVAssetWriter at the frame's exact
-     size and append the frame. File time 0 is the cut.
-   - Old-stream frames with PTS ≥ `t1` are dropped and counted. [S3b] dropped 0–1 such trailing
-     frame per switch, with no wrong content in any segment.
-   - Journal `segment_close` for the old segment and rewrite `project.json` (as on pause).
-4. The old segment's writer goes to a finisher thread: it appends a retimed copy of the last frame
-   so the file lasts until the cut, then `endSessionAtSourceTime(cut)` and `finishWriting`. [S3b]
-   placed the copy at `cut − 1/fps` so it is not trimmed. The old stream is stopped.
-5. If the new stream fails to start, the old segment continues: journal `switch_failed` and show a
-   toast. ADR-034's fallback is stop-then-start (74–99 ms gap in [S3b]; the hold covers it). When to
-   use the fallback is settled in M1.
+   frame, at host time `t1`, is the **cut**: `cut = to_rec(t1)`. Journal `segment_open` and append
+   the frame; file time 0 is the cut.
+4. **Drain.** The old stream keeps running until its first frame at or past the cut, for at most two
+   frame intervals + 10 ms (about 77 ms at 30 fps). In-flight frames with PTS < `t1` still land in
+   the old segment; frames with PTS ≥ `t1` are dropped and counted in `trailing_dropped` (1 per
+   switch in the live e2e runs). The wait is skipped when the old stream is already stopped (after a
+   stop-then-start retry). A static old window sends nothing, so its drain runs to the timeout.
+5. Journal `segment_close` (its `end_rec_ns` is the cut, written after the drain), stop the old
+   stream, finish the old writer (it ends at the cut), and rewrite `project.json` on the control
+   thread.
+6. **Failures.** A new stream with no first frame within 1.5 s
+   (`switch_first_frame_timeout_ms`) is abandoned. On a start failure the ladder is: retry
+   stop-then-start → restore the old source → source lost. Each step journals `switch_failed` with
+   `next` = `retry_stop_then_start`, `restore_old`, `source_lost` or `keep_old` (a target that
+   cannot start at all, such as a minimized window, keeps the old source).
+
+Measured live (e2e run 5, display → window → region → display): request → cut 112.7–146.3 ms,
+recorded gap between the last old and first new frame 5.6–41.6 ms, peak RSS 47.3–48.3 MB with two
+native-size streams overlapping. The cut is the new stream's first frame; wp-mac-sck found the best
+point inside the overlap would give 0–20.8 ms, against 34–42 ms at the first frame in 6 of 15
+switches (an extra 120 Hz vsync), so gaps up to about 42 ms remain possible.
+
+Frames that reach the router before the recording's start is fixed (`RouterCmd::Begin`) are buffered
+(at most 16); at Begin the newest one with PTS < start is placed at rec 0 and the rest replay
+normally, so s0 always starts at 0 and never holds a frame from the future.
 
 Routing is by **stream identity**, not by frame size: each stream's output object carries its tag,
 and the router knows the active tag and the cut PTS. [S3b] found that in-place updates
 (`updateContentFilter` + `updateConfiguration`) deliver 1–3 transitional frames of the wrong size and
-can fail with `-3812` when a `sourceRect` config meets a window filter, so in-place updates are used
-only for config-only changes:
-- Moving or resizing a region on the same display: one `updateConfiguration` on the running stream
-  (7–28 ms, no audio impact [S3b]). Never send a `sourceRect` config while a window filter is active.
+can fail with `-3812` when a `sourceRect` config meets a window filter. **M1 uses no in-place
+updates:** moving or resizing a region is a switch to a new region segment (M1 plan §10 item 2). A
+later milestone may use one `updateConfiguration` on the running stream for region changes on the
+same display (7–28 ms, no audio impact [S3b]); never with a window filter active.
 
 Other switching rules:
 - Never use `startCapture`'s completion as the cut; the cut is always the first frame (§5).
 - **Switch while paused** is allowed. The new segment starts at resume, so no "choosing" footage is
-  recorded. Untested.
+  recorded. Untested; pause is M7.
+- **Switching through the system picker** = `present()` plus a new make-before-break stream from the
+  picked filter (not `present(for:)` with an in-place update). Picks made for purpose "switch" (pick
+  overlay, region overlay, system picker) switch inside the app core, so every path shares one
+  code path. "Pick a display, then a region" = `PickedSource.region_pt` + `sourceRect`.
 - **Source lost** (window closed, display unplugged; Pitfall 12): the segment ends with
   `source_lost`, the last frame is held, audio and camera continue, and the floating bar prompts
-  "Switch source · Stop".
+  "Switch source · Stop". A closed window gives no SCK error, only one Suspended frame, so a
+  watcher checks the window still exists while the stream is suspended and reports `SourceLost`
+  about 80 ms after the close (M1).
 - **Source resized** (window resize, resolution change): M1 logs the event and SCK's behaviour
   (`SCStreamFrameInfo` contentRect and contentScale). An automatic rollover to a new segment is M7
   if needed.
-- **Own-UI exclusion across switches.** The chooser popover, pick-mode overlay and region overlay
-  are created hidden at launch, so their window IDs are already in every stream's exclusion list.
-  Untested: whether hidden-then-shown windows stay excluded that way. Fallback: update the filter
-  and wait for its completion before showing an overlay.
+- **Own-UI exclusion rule (M1 plan §10 item 9, ADR-010 M1 result).** Every stream excludes our
+  registered window IDs plus every window our process owns at stream start, fetched with
+  `onScreenWindowsOnly = false` (`currentProcess` is filtered by our pid, because it also lists
+  other processes' redacted windows). The seven app windows are created hidden at launch and given
+  a window number by `configure`, so they are in every exclusion list before they ever show:
+  verified, 9 of 9 frames. A window created after a stream started is visible until
+  `update_exclusions` completes (82–105 ms). When a menu of ours begins tracking
+  (`OwnWindowsChanged`), every stream's exclusions are refreshed on a background thread at 0, 120
+  and 400 ms; the open tray menu can still leak 0–1 frame (owner question, STATUS §5). The tray's
+  Switch Source item opens the excluded popover rather than a submenu. `update_exclusions` on a
+  picked stream is unsupported until the release-bundle test shows a rebuilt filter keeps picker
+  consent. `SC_EXCLUSION=app` excludes the whole app instead (owner re-test, ADR-010).
 
 ### Audio gap filler (ADR-035)
 
@@ -268,21 +298,31 @@ Other switching rules:
   buffer's PTS is later than expected by more than a threshold, the filler first writes silent
   samples for the gap through `TrackWriter`, then the buffer. The gap goes into the track's
   `health.gaps` and the journal.
-- The threshold is tuned in M1 ([S3b] counted gaps over 1 ms).
-- Buffers that arrive *earlier* than expected (overlap) are logged; how to trim them is decided in
-  M1.
+- The threshold is 2 ms (`Tuning::gap_threshold_ns`).
+- Buffers that arrive *earlier* than expected (overlap) are trimmed symmetrically (`skip_frames` on
+  the writer): the filler re-anchors to host time and corrects device clock skew in steps of at
+  most the threshold plus one buffer, so audio never drifts. Resampling is not used. At ±100 ppm
+  over 30 simulated minutes this made 89 corrections of 2.0 ms each; the 30-minute soak measured
+  0 gaps, 0 overlaps and 0.0 ms drift on mic and system audio.
+- At stop, every continuous track ends at the stop time; a missing audio tail (in-flight buffers
+  that never arrive, 40–60 ms in e2e) is filled with silence like any gap.
 - [S3b] evidence for why this exists: when the switched stream also carried system audio, every
   filter change or restart lost 60–171 ms, and AVAssetWriter closed those gaps, so everything after
   a gap played up to 0.48 s early.
 
 ### Other rules
 
-- **Buffer pool copy (open, ADR-010).** Cap copies every SCK frame into its own CVPixelBufferPool,
-  because a writer holding surfaces can starve SCK [cap-recording]. [S3] did not copy and saw no
-  starvation in 10 s runs. The M1 30-minute soak test decides. If the copy is needed, it is a GPU
-  blit into an IOSurface-backed pool sized for the queue.
-- **Disk guard.** Check free space before starting and poll it during recording. Stop early enough
-  that the writers can still finalize.
+- **Buffer pool copy: not used (decided in M1, ADR-010).** Cap copies every SCK frame into its own
+  CVPixelBufferPool, because a writer holding surfaces can starve SCK [cap-recording]. The M1
+  30-minute soak (screen queue 3, SCK queueDepth 6) had 0 drops, 0 stalls and no StreamStopped
+  without a copy. If a later run shows starvation, the copy is a GPU blit into an IOSurface-backed
+  pool sized for the queue.
+- **Disk guard.** Start needs 1 GB free (2 × the stop level); a warning at 2 GB; a graceful stop at
+  500 MB, early enough that the writers can still finalize (`stop.reason = disk`).
+- **Sleep, quit and signals (M1 plan §10 items 13–14).** System sleep stops and finalizes the
+  recording (`stop.reason = sleep`), with a notice after wake; there is no resume across sleep.
+  Quit, SIGTERM and logout stop gracefully (`quit`, `signal`) and cancel a running export (its
+  `.part` files are removed). A project is `recovered` only after a real crash or kill.
 - **Device changes** (Pitfall 12). If a camera or mic is unplugged, its writer finishes cleanly and
   the event is logged. The recording continues with the remaining tracks.
 - **Measured cost [S3]**, screen 7680×2160 + camera + mic + system audio (shared stream), 30 fps:
@@ -296,6 +336,11 @@ Other switching rules:
   VTEncoderXPCService 2.7–4.5%, peak RSS 47–50 MB. A separate audio stream did not clearly cost more.
   Not measured: peak memory and encoder load while two 7680×2160 streams overlap, and the
   audio-only stream's cost on its own.
+- **Measured cost, M1 soak** (debug build, deps at opt-level 3; display 3024×1964 at 30 fps +
+  camera + mic + system audio, a switch every 5 min, 30 min): simple-capture 26.8 % average / 36.1 %
+  max of one core, replayd 3.8 / 4.8 %, VTEncoderXPCService 6.5 / 7.4 %; RSS 73.3 MB at 2 min,
+  47.9 MB at 30 min, peak 78.4 MB. Two overlapping native-size streams (3024×1964): peak RSS
+  47.3–48.3 MB (e2e run 5).
 
 ---
 
@@ -394,6 +439,10 @@ type ProjectV1 = {
     tracks: Track[];                // one per file: every screen segment, camera, mic, system audio
     system_audio: "off" | "all" | "app";        // "app" follows the active segment's app (ADR-035)
     permission_host?: string;       // dev builds only (com.simplecapture.dev)
+    recovery?: {                    // written by the recovery scan (M1)
+      dropped: { track_id: string; file: string; reason: string; segment_id?: string }[];
+      notes: string[];
+    };
   };
 
   camera_layout: {                  // RECORDING time, so pasted clips keep their layout
@@ -446,11 +495,13 @@ type SourceDescriptor =
   | { kind: "display"; display_id: string; display_name?: string; scale: number; frame_pt?: Rect }
   | { kind: "window"; window_id: number; app_bundle_id?: string; app_name?: string;
       window_title?: string; scale: number }
-  | { kind: "application"; display_id: string; app_bundle_id: string; app_name?: string;
-      scale: number }
+  | { kind: "application"; display_id: string;
+      app_bundle_id?: string;       // optional: unbundled processes have none (M1)
+      app_pid?: number;             // the app's pid at record time (AppRef { pid, bundle_id? })
+      app_name?: string; scale: number }
   | { kind: "region"; display_id: string; scale: number;
-      region_pt: Rect;              // in points, top-left origin
-      method: "source_rect" | "crop" };   // SCK sourceRect, or crop of a full-display capture
+      region_pt: Rect;              // in points, top-left origin, LOCAL to the display
+      method: "source_rect" | "crop" };   // M1 always uses source_rect (verified)
 
 type Canvas = {
   aspect: "original" | "16:9" | "4:3" | "1:1" | "9:16" | "4:5";   // 4:5 reserved
@@ -606,19 +657,44 @@ Other backgrounds:
 
 ### Journal (journal.jsonl)
 
-Appended and fsync'd during recording, one JSON object per line. Segment events are what recovery
-rebuilds the segment list from (§12). Values below are illustrative.
+Appended and fsync'd during recording, one JSON object per line (one write + fsync per event). Segment
+events are what recovery rebuilds the segment list from (§12). Values below are illustrative.
+
+Events and fields as built in M1 (`sc_core::journal::JournalEvent`; ✓ = read by recovery):
+
+| Event | Fields |
+|---|---|
+| `start` ✓ | `start_host_ns`, `clock`, `fps_requested`, `resolution`, `system_audio` |
+| `segment_prepare` ✓ | `seg`, `file`, `host_ns`: written before a pre-created writer's file exists |
+| `segment_open` ✓ | `seg`, `track_id`, `start_rec_ns`, `file`, `via`, `reason`, `source`, `frame_px`, `content_px` |
+| `switch_begin` | `host_ns`, `to` (source descriptor), `via` |
+| `segment_close` ✓ | `seg`, `end_rec_ns`, `reason`, `trailing_dropped` (written after the drain, §4) |
+| `switch_failed` | `host_ns`, `error`, `next` (`retry_stop_then_start` \| `restore_old` \| `source_lost` \| `keep_old`) |
+| `source_lost` | `host_ns`, `seg`, `reason` |
+| `source_resized` | `host_ns`, `seg`, `content_rect_pt?`, `content_scale?` |
+| `audio_gap` ✓ | `track` (a Track id), `kind` (`gap` \| `overlap`), `at_rec_ns`, `dur_ns` |
+| `pause` / `resume` ✓ | `host_ns` (written from M7; folded by recovery now) |
+| `device` ✓ | `host_ns`, `track_id?`, `kind` (`camera` \| `mic`), `change` (`lost` \| `connected` \| `disconnected`), `name`, `unique_id` |
+| `track_finished` ✓ | `track_id`, `duration_ns?`, `samples` |
+| `health` ✓ | `host_ns`, `rec_ns`, `tracks[]` of {`track_id`, `frames`, `dropped`, `writer_not_ready`, `gaps`} (1 Hz) |
+| `stop` ✓ | `stop_host_ns`, `reason` (`user` \| `duration` \| `signal` \| `quit` \| `disk` \| `sleep` \| `error`) |
+
+Track ids (`screen-N`, `camera`, `mic`, `system_audio`) are used everywhere a track is named. Continuous
+tracks are in `project.json` from its first write, because recovery creates Tracks only for screen
+segments.
 
 ```jsonl
-{"ev":"start","start_host_ns":912345678901234}
+{"ev":"start","start_host_ns":912345678901234,"clock":"mach_host","fps_requested":30,"resolution":"native","system_audio":"all"}
+{"ev":"segment_prepare","seg":"s0","file":"tracks/screen-000.mov","host_ns":912345678001234}
 {"ev":"segment_open","seg":"s0","track_id":"screen-0","start_rec_ns":0,"file":"tracks/screen-000.mov","via":"own_chooser","reason":"record_start","source":{…},"frame_px":{"w":7680,"h":2160},"content_px":{…}}
-{"ev":"switch_begin","host_ns":912367000000000,"to":{"kind":"window","window_id":4512}}
+{"ev":"switch_begin","host_ns":912367000000000,"to":{"kind":"window","window_id":4512,"scale":2.0},"via":"system_picker"}
+{"ev":"segment_prepare","seg":"s1","file":"tracks/screen-001.mov","host_ns":912367004000000}
 {"ev":"segment_open","seg":"s1","track_id":"screen-1","start_rec_ns":21480000000,"file":"tracks/screen-001.mov","via":"system_picker","reason":"user_switch","source":{…},"frame_px":{"w":3024,"h":1964},"content_px":{…}}
-{"ev":"segment_close","seg":"s0","end_rec_ns":21480000000,"reason":"user_switch"}
-{"ev":"switch_failed","host_ns":912367400000000,"error":"window closed"}
-{"ev":"audio_gap","track":"system_audio","at_rec_ns":33120000000,"dur_ns":60000000}
+{"ev":"segment_close","seg":"s0","end_rec_ns":21480000000,"reason":"user_switch","trailing_dropped":1}
+{"ev":"switch_failed","host_ns":912367400000000,"error":"window closed","next":"keep_old"}
+{"ev":"audio_gap","track":"system_audio","kind":"gap","at_rec_ns":33120000000,"dur_ns":60000000}
 {"ev":"pause","host_ns":…}  {"ev":"resume","host_ns":…}  {"ev":"device","…":"…"}  {"ev":"health","…":"…"}
-{"ev":"stop","stop_host_ns":912405778901234}
+{"ev":"stop","stop_host_ns":912405778901234,"reason":"user"}
 ```
 
 ### Cursor (cursor.jsonl)
@@ -759,9 +835,14 @@ Draw order per output frame: background → screen (src = `content_px`, dst = fi
     OK. HEIC is not in the build.
   - The background is drawn first over the whole canvas; the content is never shrunk to show more
     of it. Padding, rounded corners and shadows around the screen stay out of scope (SPEC non-goals).
-- **Downscaling** (*untested*). Contain fit often scales hard (s = 0.140625 above). The screen
-  sampler must avoid aliasing at such ratios (a mip chain or a multi-tap filter), and the CPU
-  reference must implement the same filter. Not chosen or measured yet; an M1 golden-test item.
+- **Downscaling (M1, built).** Contain fit often scales hard (s = 0.140625 above). The M1
+  compositor uses a k×k integer box prefilter (k = floor(src/dst) per axis, capped at 64) then an
+  8-bit fixed-point bilinear step; pixel centres map to (rel+½)·s/(d·k)−½. The CPU reference shares
+  the maths line for line, so GPU and CPU agree to the bit (ADR-022 M1 update). The CPU filter is
+  within 1.25 code values of a float box average. Chroma is nearest 4:2:0 on input and the 2×2
+  average on I420 output. M1 uploads NV12 planes from mapped buffers (`R8Uint` + `Rg8Uint`); the
+  IOSurface import below is M3. Render time per frame on Metal (whole `render()` incl. background
+  upload and readback): 1080p 6.3–9.7 ms, 2160p 17.4–18.7 ms.
 - **YUV import on macOS** [S3]:
   - CVMetalTextureCache wraps planes 0 and 1 of the IOSurface as R8 and RG8 Metal textures.
   - `wgpu-hal` `texture_from_raw` wraps those in wgpu.
@@ -863,9 +944,11 @@ sequenceDiagram
   `[0, duration)`), composited on the canvas: background, then each screen segment contain-fit
   (§8). No camera bubble (M2) and no text (M4).
 - **Size.** The reference canvas size (§8). Fixed aspects are at most 3840 px on the long side.
-  Original keeps the source size: a single 7680×2160 display exports at 7680×2160. x264 speed at
-  that size is not measured (only HEVC raw recording at 7680×2160 is, ADR-009), and whether a quick
-  export should cap Original above 4096 px is open (§14).
+  The quick export caps the long side at 3840 (Q6), never upscales, and falls back to the
+  reference when a size class is at least as large; the full-size Original export comes with M5's
+  presets. Reason: x264 medium CRF 22 at 7680×2160 runs at 26.8 fps (0.89× realtime) on synthetic
+  content (CODEC_MATRIX §2.7). The default output sits next to the project as `<name>.mp4`, with
+  " 2", " 3" on collision.
 - **Frame rate.** The recording's `fps_requested` (30 by default). Screen tracks are VFR; the frame
   rule (§7) holds frames, so output is constant frame rate.
 - **Video.** Y4M on stdin to the bundled FFmpeg: `libx264 -preset medium -profile:v high
@@ -946,13 +1029,18 @@ in the app data folder and shown on the Diagnostics page and in `--self-test`.
 
 - Before running a risky probe, the probe is marked "in progress". If the app crashes during it,
   that encoder is quarantined on the next launch [cap-recording].
-- **Switching and the encode probe.** ADR-009 probes at the actual capture size. A switch can move
-  to a different size mid-recording, so whether the new source needs a re-probe (or whether one
-  probe at the largest connected display's native size covers every window and region) is open
-  (§14). The design note's claim that the probe already runs at the largest display was refuted by
-  its verifier.
-- M1 builds probe v1: helper hashes, VideoToolbox H.264/HEVC size limits, and native HEVC headroom
-  at the capture size, which gates 60 fps.
+- **Probe-size rule (M1, ADR-009 M1 update).** At launch, probe v1 measures HEVC at 60 fps for
+  every connected display's native and 1× pixel size (from CoreGraphics, no permission). A source
+  may record at 60 fps (native or 1×) only if its display's probe reached ≥ 1.3 × 60 fps. Windows
+  and regions are never larger than their display, so a switch never re-probes; a display
+  connected later is probed on the next launch and is not offered 60 fps until then. Sustained
+  drops raise `FramesDropping`.
+- **Probe v1 as built:** helper info (sha256, version line, `-buildconf` flags, network disabled);
+  `h264_videotoolbox -allow_sw 0` opens at 3840, 4096 and 4098 ×2160; the HEVC `encode_benchmark`
+  per display; an in-progress marker that quarantines a step that crashed; cached in
+  `<app data>/probe-v1.json`, keyed by helper sha256, OS version and display sizes; measured rates
+  rounded to 0.01 fps. M3 Pro: 3024×1964 117.9 fps, 1512×982 386.8 fps; H.264 VT opens at 4096,
+  fails at 4098.
 
 ---
 
@@ -963,13 +1051,15 @@ in the app data folder and shown on the Diagnostics page and in `--self-test`.
      segment (ADR-034).
    - `journal.jsonl` is appended and fsync'd for segments, switches, pauses, device events, audio
      gaps and health (§6).
-   - A segment's `segment_open` is journaled before its file is created, so no screen file exists
-     without a journal entry that gives its RecTime start. `segment_close` is journaled at the cut,
-     before the old writer finishes.
+   - A segment's `segment_prepare` is journaled before its writer's file is created, and
+     `segment_open` when its first frame is appended, so no screen file exists without a journal
+     entry. `segment_close` (with `end_rec_ns` = the cut) is journaled after the old stream's drain
+     (§4), before the old writer finishes.
    - `project.json` stays in state `recording` and is rewritten at every switch.
 2. **Proven on macOS [S3]:** after a SIGKILL mid-recording, all four files open and decode, losing
-   at most 0.86 s. [S3b] produced 58 + 18 segment files that all decode with 0 errors, but the
-   spike wrote its segment list only at the end, so journal-based recovery is **untested**.
+   at most 0.86 s in the spike (up to 1.08 s in M1, item 5). [S3b] produced 58 + 18 segment files
+   that all decode with 0 errors. Journal-based recovery is **tested in M1** (item 5; 13 synthetic
+   recovery tests plus the live kill tests).
 3. **On launch, recovery scan.** For each project in state `recording`:
    1. Take the `.lock`.
    2. Rebuild the segment list from `project.json` plus the journal's `segment_open` /
@@ -978,7 +1068,10 @@ in the app data folder and shown on the Diagnostics page and in `--self-test`.
       `segment_close` ends at its start plus its measured file duration (`end_reason: "recovered"`).
    4. A segment file that will not open is dropped from the segment list (the file stays on disk
       and `session.log` records it); playback holds the previous segment's last frame over its
-      range, or shows background only if it was the first segment.
+      range, or shows background only if it was the first segment. A segment with no frames, or a
+      0-byte track file (a writer killed between `segment_open` and its first append), is dropped
+      the same way **without** marking the project damaged. A `segment_prepare` with no
+      `segment_open` is ignored and its file kept. Details go to `recording.recovery`.
    5. Fold the rest of the journal into `project.json`, and set `stop_host_ns` from the longest
       track.
    6. Mark the project `recovered`, or `damaged` if any track will not open.
@@ -986,12 +1079,16 @@ in the app data folder and shown on the Diagnostics page and in `--self-test`.
       rename only after it validates.
 4. **Exports never overwrite** an existing file: create the target exclusively, write `.part`, then
    rename.
-5. **Kill tests (M1)**, run as children of the dev host: SIGKILL mid-segment; between
-   `switch_begin` and the new stream's first frame; and between `segment_open` and
-   `segment_close`; each followed by the recovery scan. A synthetic-source version of the switch
-   test runs in CI on all three OSes.
-6. **Not yet tested:** a 30-minute soak test, unplugging a device mid-recording, sleep/wake, disk
-   full, and recovery UI (M1/M7).
+5. **Kill tests (M1, done).** Dev host (`just killtest`): SIGKILL in a plain 6 s recording with
+   camera, mic and system audio, and at the hold points after `switch_begin`, `segment_prepare` and
+   `segment_open`; 3 runs × 4 cases, 12 of 12 recover, every file decodes, every export validates.
+   CI (`kill_synth`, synthetic platform, all three OSes, `--features test-hooks`): mid-s0, mid-s1
+   and the three hold points, plus a 0-byte s1 file. Loss per track is up to fragment interval +
+   encoder latency: 1.003–1.076 s live with 1 s fragments (owner question, ADR-008).
+6. **Tested in M1:** the 30-minute soak; sleep, Quit, SIGTERM and `kill -9` through the app driver
+   (simulated sleep); a killed app recovers on next launch with a panel notice. **Not yet tested
+   live:** unplugging a camera, mic or display mid-recording, a real sleep, disk full (owner steps
+   H2–H5, H7 in MANUAL_TEST); recovery UI beyond the notice is M7.
 
 ---
 
@@ -1036,11 +1133,12 @@ in the app data folder and shown on the Diagnostics page and in `--self-test`.
     reports full-resolution picker video on macOS 26.5 with **no** grant and no bypass alert, but
     system audio as silence without the grant. If that holds here, the picker is the better default
     for ad-hoc release builds, and "All system audio" still needs the grant.
-  - Settings: `maximumStreamCount = 0` (Control Center cannot start streams we did not ask for);
-    `excludedWindowIDs` = our windows; switching via `present(for: stream)` with the result in the
-    observer's `didUpdateWithFilter:forStream:`, fed into the make-before-break switch (§4). The
-    menu-bar Video item delivers through the same callback, so it is handled at any time (or
-    `allowsChangingSelectedContent = false` locks content to our UI).
+  - Settings: modes set once per launch (single window, single app, single display),
+    `maximumStreamCount = 0` (Control Center cannot start streams we did not ask for),
+    `excludedWindowIDs` = our registered windows plus the request's. **M1 switches through the
+    picker with `present()` and a new make-before-break stream** (§4), not `present(for: stream)`
+    with an in-place filter update, which [S3b] showed delivers wrong-size frames. The menu-bar
+    Video item delivers through the same observer and is handled at any time.
   - Region through the picker: pick a display, then our overlay sets the region.
   - Picks do not persist across launches (secondary source).
   - **M1 manual test** (needs the owner's approval): the never-granted release bundle records
@@ -1064,49 +1162,58 @@ in the app data folder and shown on the Diagnostics page and in `--self-test`.
 
 ## 14. Open architecture questions (tracked in STATUS)
 
-**Switching and segments (M1)**
-- Peak memory and encoder load while two 7680×2160 streams overlap; click-to-cut latency. The
-  design note's proposed M1 target (cut within 500 ms, 0 extra dropped frames, continuous audio
-  sample count) is a target, not a measurement.
-- The audio-only SCStream's cost on its own, and the unexplained 16–20 ms early gap seen in 3 of 6
-  shared-audio runs [S3b].
-- "Only the captured app" audio: following the active segment by changing the audio stream's
-  filter is untested, gap-free or not. [S3b] saw a desktop-independent-window filter not narrow
-  audio at all (a windowless process stayed audible), so app mode probably needs an
-  application-based filter on the audio stream.
-- Whether a new source needs an encoder re-probe (§11).
-- Hidden-at-launch overlays and per-window exclusion across switches (§4).
-- Window resize mid-segment (`source_resized`): log in M1, rollover in M7 if needed.
-- Gap-filler threshold and handling of early (overlapping) audio buffers.
-- Cost of polling window bounds for cursor normalisation.
+**Answered in M1** (details in the sections named; numbers in STATUS §2)
+- Click-to-cut latency and two overlapping native-size streams: 112–146 ms request → cut, peak RSS
+  47–48 MB at 3024×1964 (§4). 7680×2160 overlap is still unmeasured (no such display connected).
+- Encoder re-probe on a switch: not needed (probe-size rule, §11).
+- Hidden-at-launch overlays and per-window exclusion across switches: work (§4); menus leak 0–1
+  frame (owner question).
+- Gap-filler threshold (2 ms) and overlap trimming (symmetric) (§4).
+- Region: `sourceRect` works, including Retina scale and odd sizes (floored to even pixels); no
+  crop.
+- Application capture picks up new windows of the app automatically (66–77 ms).
+- Device hot-plug: lists update through device notifications and a lost device finalizes its
+  track (unit-tested and in the app; real unplugging is an owner step). Mic Mode: implemented, run
+  live only on request (it opens Control Center). Click highlight: `showMouseClicks` on 15+ (Q5).
+- SCK frame copy: not needed (§4). Fragment interval: 1 s loses up to about 1.08 s (§12, owner
+  question).
 
-**Sources and consent (M1)**
-- Region: `sourceRect` vs. crop after capture; Retina scale and odd sizes. The docs and the macOS
-  26.5 header disagree on whether `sourceRect` applies to single-window capture [pickers-and-hotswap].
-- Application capture (an app filter; new windows appearing mid-recording).
+**Still open after M1**
+- The audio-only SCStream's cost on its own; the unexplained 16–20 ms early gap seen in 3 of 6
+  shared-audio runs [S3b]; and the system-audio time base that moved by about 19 ms between
+  sessions in the M1 sync test (possibly one IO buffer stamped sometimes and not other times).
+- "Only the captured app" audio: SCK groups app audio by bundle ID, so unbundled processes cannot
+  be isolated; the e2e and wp-mac-sck results disagree on two unbundled tone apps (ADR-010).
+- A cut at the best point inside the overlap instead of the new stream's first frame (would remove
+  the 34–42 ms gaps seen in 6 of 15 switches).
+- Window resize mid-segment (`source_resized`): logged in M1, rollover in M7 if needed.
+- Cost of polling window bounds for cursor normalisation (`cursor.jsonl` is M7).
 - Picker consent without a grant, system audio on the picker path, whether a filter rebuilt from
   `includedDisplays` plus our windows keeps picker consent, and `excludedWindowIDs` on a picked
-  display.
-- Whole-app exclusion cannot be tested under the dev host; with no signing identity it can only be
-  tested in an ad-hoc release bundle, with the owner's approval.
-- Device hot-plug, the Mic Mode button, click highlight method (`showMouseClicks` on 15+, our own
-  drawing on 14).
+  display: owner release-bundle test (MANUAL_TEST P7, B2–B4).
+- Whole-app exclusion (`SC_EXCLUSION=app`) in the release bundle: owner test B4.
+- Non-main displays and displays of a different scale: no second display was connected for any
+  live test.
+- Mic and camera A/V sync: not measured (muted output, dark room); owner rerun.
 
 **Canvas and export**
-- Downscale filter for large contain-fit ratios, matched in the CPU reference (§8).
-- Quick export of Original canvases above 4096 px: x264 speed at 7680×2160 is not measured, and
-  whether to cap the quick-export size is undecided.
+- Downscale filter for large contain-fit ratios: answered in M1, a k×k integer box (k =
+  floor(src/dst), capped at 64) then 8-bit bilinear, bit-identical on GPU and CPU (ADR-022). Ratios
+  above 64:1 per axis alias in the bilinear step.
+- Quick export of Original canvases above 4096 px: answered in M1. x264 medium CRF 22 at
+  7680×2160 runs at 26.8 fps (0.89× realtime) on synthetic content, so the quick export caps the
+  long side at 3840 (Q6); full-size Original export comes with M5's presets.
 - GIF default maximum as a long-side cap (M5, owner).
 - WebP backgrounds (skia-safe `webp-decode`, owner OK).
 - Text `_1080` units relative to the canvas short side (M4 implements it).
 
 **Carried over**
-- Whether SCK frames must be copied into an app-owned pool (soak test in M1).
-- Fragment interval (1 s) vs. file overhead on long recordings.
-- Pause implementation (ADR-012) and the flash/beep/clap sync result.
+- Fragment interval vs. file overhead and kill loss (owner question, ADR-008).
+- Pause implementation (ADR-012, M7), and sync across pauses.
 - Webview-frame preview cost on WebKitGTK and WebView2 (now the only path everywhere); hardware runs
   of [S5] and [S6] before any native preview is switched on; Windows zero-copy vs. CPU upload.
-- Skia FreeType builds on Windows and Linux CI (now needed in M1 for backgrounds).
+- Skia FreeType builds: Linux passes in CI; Windows has only built from a cached Skia, and a cold
+  build with LLVM 22.1.8 has never run on a runner.
 - Linux: restoring a multi-source portal selection with one token; app id for unsandboxed builds.
 - Windows: `IsBorderRequired(false)` in an unpackaged app.
 - Project folder: keep the `.sc` suffix, and plain folder vs. macOS package (ADR-032).

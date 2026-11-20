@@ -1,8 +1,8 @@
 # Licenses
 
-Status: M0 draft, 2026-11-19. This is the licensing policy for Simple Capture, how CI enforces it, and what every release must ship. Attribution for code or designs we adapt lives in docs/THIRD_PARTY.md; this file covers dependencies and bundled programs. It records engineering decisions, not legal advice.
+Status: M0 draft, 2026-11-19; M1 results added 2026-11-20 (§2, §10). This is the licensing policy for Simple Capture, how CI enforces it, and what every release must ship. Attribution for code or designs we adapt lives in docs/THIRD_PARTY.md; this file covers dependencies and bundled programs. It records engineering decisions, not legal advice.
 
-Sources: S1-S4 are the M0 spikes (`spikes/01-helpers`, `02-preview-transport`, `03-macos-pipeline`, `04-skia-text`) and their quiet-machine verification passes; R-* are the notes in `docs/research/` (R-mit = cap-mit-crates.md, R-eco = ecosystem.md, R-kap = kap.md, R-rec = cap-recording.md). None of the spikes has a REPORT.md yet: the harness blocked those writes, so facts here come from the spike folders, `third_party/` and the verification results.
+Sources: S1-S4 are the M0 spikes (`spikes/01-helpers`, `02-preview-transport`, `03-macos-pipeline`, `04-skia-text`) and their quiet-machine verification passes; R-* are the notes in `docs/research/` (R-mit = cap-mit-crates.md, R-eco = ecosystem.md, R-kap = kap.md, R-rec = cap-recording.md). Each spike now has a REPORT.md (saved at M0 close-out). M1 facts cite the package that produced them as M1:<package> (for example M1:text = wp-text, M1:ci = wp-ci); the reports are not stored in the repo, and docs/STATUS.md §2 is the in-repo record of M1 results.
 
 ## 1. Policy
 
@@ -64,27 +64,48 @@ Notes:
 - cargo-deny reads each crate's `license` field only. It does not see C/C++ code compiled inside a crate, so section 2.4 covers that by hand.
 - Also run `cargo deny check advisories` and keep `sources` strict, so a networking crate cannot slip in through a git dependency.
 
+**As built in M1** (`deny.toml`, M1:ci; ADR-024 M1 update):
+- Five MPL-2.0 per-crate exceptions, unavoidable with Tauri 2 and used unmodified (MPL-2.0 is file-level copyleft; we ship no modified MPL files): `cssparser`, `cssparser-macros`, `selectors`, `dtoa-short` (tauri-utils → dom_query, HTML/CSP processing of the bundled UI) and `option-ext` (tauri → dirs → dirs-sys). Their notices come through cargo-about.
+- HTTP clients and servers are banned: `reqwest`, `hyper`, `ureq`, `isahc`, `curl`, `curl-sys`, `attohttpc`, `surf`. reqwest and hyper sit in Cargo.lock only as Tauri's Android/iOS dependencies; `scripts/ci/deny.sh` proves with `cargo tree --target <each desktop target> -i <crate>` that no desktop target builds them, and that `ffmpeg-next` / `ffmpeg-sys-next` are absent from Cargo.lock (no Linux in-process FFmpeg yet). On Linux, `soup3` comes in through webkit2gtk (the system WebView) and is not banned (M1:scaffold).
+- `[advisories]`: `unmaintained = "workspace"`, `yanked = "deny"`; private crates are ignored.
+- The objc2-app-kit `default` feature is off in the app graph; `otool -L` shows neither CloudKit nor CoreData in `simple-capture-app`, `simple-capture` or `sc-devtools` (M1:scaffold).
+
 ### 2.2 cargo-about (Rust notices)
 
 cargo-about 0.9.3 (R-eco) generates the third-party notices for the About → Licenses screen from the same `accepted` list as cargo-deny. Its output is a release artifact (section 5), generated in CI and not checked in.
+
+- Install with `cargo install cargo-about --version 0.9.3 --features cli`; without `--features cli` no binary is installed (M1:ci).
+- `scripts/ci/notices.sh` runs it with `--fail` and the template `scripts/ci/about.hbs`. M1 run (M1:ci-green): `THIRD_PARTY_RUST.html`, 395,424 bytes, about 448 entries, in 27.7 s. Licence counts as printed: MIT 194, Apache-2.0 5, MPL-2.0 3, Unicode-3.0 2, BSD-3-Clause 2, Zlib 1, ISC 1 (cargo-about groups crates that share a licence text, so these are texts, not crates).
 
 ### 2.3 npm license check (UI)
 
 Use pnpm's built-in `pnpm licenses list --prod --json` and a small script that fails on anything outside the section 1 allow list (R-eco). `license-checker-rseidelsohn` 5.0.1 is the fallback; whether it handles pnpm's symlinked `node_modules` is unverified (R-eco). Only production dependencies end up in the shipped bundle; dev tools (Vite, svelte-check, TypeScript) are not shipped.
 
+**As built in M1** (`scripts/ci/licenses.sh` + `npm-licenses.mjs`, M1:ci): no dependencies, a small SPDX AND/OR/WITH evaluator with its own node tests. `--prod` is strict. `--all` also checks dev packages, because svelte is a devDependency compiled into the bundle; the only dev exception is lightningcss (MPL-2.0, a Vite build tool, not shipped). Result (M1:ci-green): production 1 package ok, all 50 packages ok.
+
 ### 2.4 Native code the tools above cannot see
 
-Kept as a hand-maintained list in `third_party/` and included in the notices:
+Kept as a hand-maintained list in `third_party/` and included in the notices.
 
-| Component | Comes in through | License |
+**M1 audit of the Skia build** (M1:text; source `target/skia/debug/build/skia-bindings-488bc29a65ace2b8`: `args.gn`, `cargo:rustc-link-lib` lines, and `ar t` / `nm` over the static libraries). skia-safe 0.157.0 with features `textlayout` + `embed-freetype`; skia-safe's default features (`pdf`, `embed-icudtl`, `jpeg`, `binary-cache`) are also on, because the workspace dependency does not turn them off. Linked statically: `skparagraph`, `skshaper`, `skunicode_core`, `skunicode_icu`, `skia`, `skia-bindings`, plus the system `c++` and `ApplicationServices`. GN args: FreeType on and vendored (`skia_use_system_freetype2=false`), every `system_*` option off, libjpeg-turbo decode/encode on, libwebp off, PDF on, ICU and HarfBuzz bundled; Ganesh, Graphite, SVG, Skottie, XPS and DNG off.
+
+| Component (compiled into the app binary) | Comes in through | License |
 |---|---|---|
-| Skia | `skia-safe` / `skia-bindings` (statically linked) | BSD-3-Clause |
-| FreeType | Skia build (we use FreeType on every OS, S4) | FreeType License (FTL); requires a credit in the documentation/About |
-| HarfBuzz | Skia build | MIT-style ("Old MIT") |
-| ICU | Skia build | Unicode-3.0 |
-| expat, libjpeg-turbo, libpng, zlib | Skia build | MIT; IJG + BSD-3-Clause + Zlib; libpng license; Zlib |
+| Skia | `skia-safe` / `skia-bindings` | BSD-3-Clause |
+| FreeType | Skia build (FreeType on every OS, ADR-018) | FreeType License (FTL); requires a credit in the documentation/About |
+| HarfBuzz | Skia build (`textlayout`) | MIT-style ("Old MIT") |
+| ICU, plus the embedded `icudtl.dat` | Skia build (`skunicode_icu`, default feature `embed-icudtl`) | Unicode-3.0 |
+| libjpeg-turbo | Skia build (default feature `jpeg`) | IJG + BSD-3-Clause + Zlib |
+| libpng | Skia build | libpng license (PNG Reference Library License v2) |
+| zlib (Chromium's copy) | Skia build | Zlib |
+| expat | Skia build, pulled in by the default `pdf` feature | MIT |
+| Wuffs (GIF decode) | Skia build | Apache-2.0 (to confirm against the vendored LICENSE when notices are generated) |
+| skcms | Skia build | BSD-3-Clause (Google; to confirm against the vendored LICENSE) |
 
-S4 confirmed Skia, FreeType, HarfBuzz and ICU are statically linked into the spike binary (`otool -L` shows only system libraries) but did **not** run cargo-about or audit the exact set Skia vendors (R-eco flagged this). Do that audit in M1 when the text crate lands.
+- Checked out under Skia's externals but **not** compiled in: libwebp, brotli and others (no symbols in the archives).
+- WebP decode is off (`build_info().webp_decode = false`), matching ADR-033/Q9 (PNG and JPEG backgrounds only).
+- Optional, for the owner or orchestrator: `default-features = false, features = ["textlayout", "embed-freetype", "jpeg"]` would drop PDF and expat (and the binary-cache feature). It is a manifest change that rebuilds Skia everywhere, so it was not made in M1.
+- macOS: `otool -L` shows only system libraries and frameworks in the app, CLI and devtools binaries (M1:scaffold, as in S4).
 
 ## 3. Bundled helpers
 
@@ -239,3 +260,17 @@ Current use: **no Cap code is in this repository.** The MIT crates `scap-screenc
 | S2 preview | All dependencies MIT or Apache-2.0. `reqwest` and `hyper` are in Cargo.lock only as optional Tauri dependencies and are not compiled. No Cap or Kap code. |
 | S3 macOS pipeline | 118 crates, all permissive. objc2-app-kit's default features link CloudKit and CoreData (no networking called); trim those features in M1. No Cap code. |
 | S4 Skia text | skia-safe MIT, fontdb MIT, wgpu/png/pollster MIT OR Apache-2.0, bytemuck Zlib/MIT/Apache-2.0. Skia's vendored C libraries listed in section 2.4. Skia is built from source with `FORCE_SKIA_BUILD=1` (S4). No Cap code. |
+
+## 10. M1 compliance (2026-11-20)
+
+| Check | Result | Source |
+|---|---|---|
+| cargo-deny (licenses, bans incl. HTTP clients, advisories, sources) | pass | `licenses` CI job, runs 44695891492 and 44705677113; `scripts/ci/deny.sh` locally (M1:ci-green) |
+| pnpm license gate (prod strict, all with the lightningcss exception) | pass: prod 1 package, all 50 packages | same |
+| cargo-about notices | generated, about 448 entries (§2.2) | `scripts/ci/notices.sh` (M1:ci-green) |
+| No networking code: source grep of crates/app/cli/tools and `ui/src`, both Tauri CSPs local-only, helper built with `--disable-network` | pass (`netcheck: ok`); negative tests (an injected `std::net` line, a WebSocket in `ui/src`, a remote `connect-src`) were caught | `scripts/ci/netcheck.sh` (M1:ci, M1:ci-green); the merge fix ece22aa renamed a private `fetch(` function the grep flagged |
+| Skia vendored set audited | §2.4 | M1:text |
+| No Cap or Kap code in M1 | none adapted; the only "ported" code is our own spike code | THIRD_PARTY.md |
+| Release bundle sidecars | ffmpeg and ffprobe signed `adhoc,runtime` with the app's entitlements (inherited, as §5 notes) | M1:app-shell (bundle inspected, never launched) |
+
+Still open from M0 (unchanged in M1): gifski notice texts (libimagequant GPL-3.0 text and COPYRIGHT, the permissive crates in `gifski.deps.txt`), the gifsicle-feature provenance question, the FFmpeg GPG signature, BtbN for Windows/Linux (M6), and the Apache-2.0 fonts question (§6). M1 ships no GIF export and bundles no fonts, so none of these blocks M1.
