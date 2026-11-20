@@ -552,6 +552,11 @@ impl Control {
 
         let start_host = platform.host_now().0;
         self.sh.start_host.store(start_host, Ordering::Release);
+        if let Some(d) = self.req.duration_ns {
+            self.sh
+                .stop_host
+                .store(start_host.saturating_add(d.max(1)), Ordering::Release);
+        }
         self.project.recording.start_host_ns = start_host;
         self.journal(JournalEvent::Start {
             start_host_ns: start_host,
@@ -1311,10 +1316,12 @@ impl Control {
             return f.clone().map_err(Error::State);
         }
         self.sh.set_state(SessionState::Stopping);
-        let stop_host = self.sh.now();
-        self.sh
+        let now = self.sh.now();
+        let stop_host = self
+            .sh
             .stop_host
-            .store(stop_host, std::sync::atomic::Ordering::Release);
+            .fetch_min(now, std::sync::atomic::Ordering::AcqRel)
+            .min(now);
         let start = self.sh.start_host();
         let done = self.shutdown(stop_host);
         if let Some(d) = &done {

@@ -175,6 +175,7 @@ fn run(a: Args) -> Result<(), String> {
         canvas,
         background_image: None,
         exclude: Vec::new(),
+        duration_ns: None,
         tuning: Tuning::default(),
     };
     if a.hold_at.as_deref() == Some("after_start") {
