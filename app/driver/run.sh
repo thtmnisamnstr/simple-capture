@@ -89,6 +89,7 @@ drive_signal() {
 }
 
 FILTERS=("$@")
+[ ${#FILTERS[@]} -gt 0 ] && export SC_APP_DRIVER_FILTERED=1
 wanted() {
   [ ${#FILTERS[@]} -eq 0 ] && return 0
   local f

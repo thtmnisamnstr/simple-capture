@@ -8,6 +8,7 @@ import sys
 
 RUN = sys.argv[1]
 FFMPEG = os.environ.get("SC_FFMPEG", "")
+FILTERED = os.environ.get("SC_APP_DRIVER_FILTERED") == "1"
 results = []
 
 
@@ -86,7 +87,8 @@ def media_ok(pr):
 
 def basic(flow, log, allow_fail=()):
     if log is None:
-        check(flow, "ran", False, "no log")
+        if not FILTERED:
+            check(flow, "ran", False, "no log")
         return False
     failed = [s for s in steps(log) if not s["ok"] and not any(s["line"].startswith(a) for a in allow_fail)]
     check(flow, "every step ok and exit 0", not failed and rc(flow) == 0,
@@ -110,7 +112,7 @@ def ui_lines(step):
     return step.get("result") or []
 
 
-def gray_frames(path, crop, fps=10):
+def gray_frames(path, crop, fps):
     x, y, w, h = crop
     sw, sh = max(2, w // 4), max(2, h // 4)
     vf = f"fps={fps},crop={w}:{h}:{x}:{y},scale={sw}:{sh},format=gray"
@@ -134,22 +136,26 @@ def crop_for(rect, disp, seg):
     return (x0, y0, w, h) if w >= 16 and h >= 16 else None
 
 
-def compare(flow, what, frames, absent, present, fps=10):
+def compare(flow, what, frames, absent, present, fps=10, grace_s=0.0):
+    """Frames while `what` was on screen against frames while it was not. Frames that differ
+    within `grace_s` of it appearing are counted and reported but tolerated."""
+
     def pick(span):
-        return [f for i, f in enumerate(frames) if span[0] <= i / fps <= span[1]]
+        return [(i / fps, f) for i, f in enumerate(frames) if span[0] <= i / fps <= span[1]]
 
     a, p = pick(absent), pick(present)
     if len(a) < 2 or not p:
         check(flow, f"{what} excluded", False, {"absent_frames": len(a), "present_frames": len(p), "total": len(frames)})
         return
-    ref = a[0]
-    noise = max(mad(ref, f) for f in a[1:])
-    diffs = [mad(ref, f) for f in p]
+    ref = a[0][1]
+    noise = max(mad(ref, f) for _, f in a[1:])
+    diffs = [(t, mad(ref, f)) for t, f in p]
     limit = max(4.0, 2 * noise + 2)
-    showing = sum(1 for d in diffs if d > limit)
-    check(flow, f"{what} excluded", showing == 0,
-          {"frames_compared": len(p), "frames_showing": showing, "max_diff": round(max(diffs), 2),
-           "noise": round(noise, 2), "limit": round(limit, 2), "absent_s": absent, "present_s": present})
+    showing = [round(t - present[0], 3) for t, d in diffs if d > limit]
+    late = [t for t in showing if t > grace_s]
+    check(flow, f"{what} excluded" + (f" (after {grace_s:.2f} s)" if grace_s else ""), not late,
+          {"fps": fps, "frames_compared": len(p), "frames_showing": len(showing), "showing_at_s": showing,
+           "max_diff": round(max(d for _, d in diffs), 2), "noise": round(noise, 2), "limit": round(limit, 2)})
 
 
 P = projects()
@@ -254,12 +260,15 @@ if basic("05-exclusion", log) and FFMPEG and DISPLAYS:
                                 (hide_t + 0.6, opened - 0.3), (show_t + 0.4, stop_t - 0.3)))
             else:
                 check("05-exclusion", f"{label} visible during the recording", False, r2[label])
+        fps = pr["project"]["recording"]["screen"]["fps_requested"]
         for what, rect, absent, present in targets:
             crop = crop_for(rect, disp, seg)
             if not crop:
                 check("05-exclusion", f"{what} rect inside the frame", False, rect)
                 continue
-            compare("05-exclusion", what, gray_frames(path, crop), absent, present)
+            # A menu's window exists only once it tracks; the refresh it triggers takes ~150 ms.
+            grace = 0.25 if what == "tray menu" else 0.0
+            compare("05-exclusion", what, gray_frames(path, crop, fps), absent, present, fps, grace)
 
 log = lines("06-export")
 if basic("06-export", log):
