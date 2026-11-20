@@ -384,10 +384,23 @@ fn switch_every_500ms_across_three_sizes() {
     let obs = Arc::new(Obs::default());
     let s = Session::start(as_dyn(&p), req, obs.clone()).expect("start");
     let pdir = s.project_dir().to_path_buf();
+    let recordings = || {
+        obs.states
+            .lock()
+            .expect("lock")
+            .iter()
+            .filter(|st| matches!(st, SessionState::Recording))
+            .count()
+    };
     for i in 1..12 {
         sleep_host(&*p, 500 * MS);
         s.switch_source(specs[i % 3].clone(), Via::OwnChooser)
             .expect("switch");
+        assert!(
+            wait_for(Duration::from_secs(10), || recordings() > i),
+            "switch {i} never cut over; states: {:?}",
+            obs.states.lock().expect("lock")
+        );
     }
     sleep_host(&*p, 500 * MS);
     let sum = s.stop(StopReason::User).expect("stop");
