@@ -77,3 +77,8 @@ export const COMMANDS = [
   'reveal',
   'recovery_report',
 ] as const;
+
+export function errorText(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return typeof err === 'string' ? err : JSON.stringify(err);
+}

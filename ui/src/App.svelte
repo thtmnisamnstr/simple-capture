@@ -1,6 +1,12 @@
 <script lang="ts">
   import { routeFromHash, type Route } from './lib/router.ts';
-  import Placeholder from './routes/Placeholder.svelte';
+  import Panel from './routes/Panel.svelte';
+  import Onboarding from './routes/Onboarding.svelte';
+  import Bar from './routes/Bar.svelte';
+  import Switcher from './routes/Switcher.svelte';
+  import Region from './routes/Region.svelte';
+  import Pick from './routes/Pick.svelte';
+  import Saved from './routes/Saved.svelte';
 
   let route: Route = $state(routeFromHash(window.location.hash));
 
@@ -12,14 +18,19 @@
 </script>
 
 <main data-route={route}>
-  <Placeholder {route} />
+  {#if route === 'panel'}
+    <Panel />
+  {:else if route === 'onboarding'}
+    <Onboarding />
+  {:else if route === 'bar'}
+    <Bar />
+  {:else if route === 'switcher'}
+    <Switcher />
+  {:else if route === 'region'}
+    <Region />
+  {:else if route === 'pick'}
+    <Pick />
+  {:else}
+    <Saved />
+  {/if}
 </main>
-
-<style>
-  :global(html, body) {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 13px;
-    background: transparent;
-  }
-</style>
