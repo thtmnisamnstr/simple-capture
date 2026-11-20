@@ -127,8 +127,27 @@ def one_run(n):
     return report
 
 
+def output_state():
+    """Reads (never changes) the output volume and mute state: a muted output means the mic
+    cannot hear the beeps, while system audio is still captured."""
+    try:
+        r = subprocess.run(["osascript", "-e", "get volume settings"], capture_output=True,
+                           text=True, timeout=10)
+        return r.stdout.strip() or r.stderr.strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"unknown ({e})"
+
+
 def main():
     reports, failed = [], 0
+    state = output_state()
+    log(f"sync: output {state}")
+    if "output muted:true" in state:
+        log("sync: WARNING the output is muted, so the mic cannot hear the beeps; the volume is "
+            "left unchanged (unmute it by hand to measure mic sync)")
+    os.makedirs(OUT, exist_ok=True)
+    with open(os.path.join(OUT, "output.txt"), "w") as f:
+        f.write(state + "\n")
     for n in range(1, RUNS + 1):
         log(f"sync: run {n} of {RUNS} ({DURATION_S} s: display, window at 35 s, display at 50 s)")
         try:

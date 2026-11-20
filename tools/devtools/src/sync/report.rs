@@ -22,6 +22,8 @@ pub const LATENCY_PAIRS: [&str; 4] = [
 ];
 pub const NO_COMP_MS: f64 = 10.0;
 pub const MAX_SPREAD_MS: f64 = 25.0;
+pub const PAUSES: &str =
+    "sync across pauses is M7: this test records no pause, so it is not measured";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EventResult {
@@ -149,7 +151,18 @@ pub fn recommendation(summary: &[PairSummary]) -> String {
             let _ = write!(why, "; {pair} {:+.1} ms ({what}, n {})", p.median_ms, p.n);
         }
     }
-    if s.within_target == s.n || s.median_ms.abs() <= NO_COMP_MS {
+    if let (Some(v), Some(a)) = (get("issue→video"), get("issue→system_audio")) {
+        let (sv, sa) = (v.max_ms - v.min_ms, a.max_ms - a.min_ms);
+        if sv > 2.0 * sa {
+            let _ = write!(
+                why,
+                "; the spread comes from the stimulus side (issue→video spread {sv:.1} ms vs \
+                 issue→system_audio {sa:.1} ms), not from a drifting audio clock"
+            );
+        }
+    }
+    let median_only = s.median_ms.abs() <= TARGET_MS / 2.0 && spread > MAX_SPREAD_MS;
+    if s.within_target == s.n || s.median_ms.abs() <= NO_COMP_MS || median_only {
         format!("no fixed system-audio compensation: {why}")
     } else if spread <= MAX_SPREAD_MS {
         let dir = if s.median_ms > 0.0 {
@@ -184,6 +197,27 @@ pub fn camera_verdict(events: &[EventResult]) -> String {
         .collect();
     if full.is_empty() {
         return "no full-screen events".into();
+    }
+    if full.len() > 2 {
+        let clear = full
+            .iter()
+            .filter(|e| e.camera_clears_noise == Some(true))
+            .count();
+        let max_step = full
+            .iter()
+            .filter_map(|e| e.camera_step)
+            .fold(0.0_f64, f64::max);
+        let no_data = full.iter().filter(|e| e.camera_step.is_none()).count();
+        return format!(
+            "{clear} of {} full-screen events clear the camera noise floor (largest step \
+             {max_step:.2} levels; {no_data} without camera data){}",
+            full.len(),
+            if clear == 0 {
+                ": camera sync not measured (dark or static scene)"
+            } else {
+                ""
+            }
+        );
     }
     let parts: Vec<String> = full
         .iter()
@@ -240,9 +274,49 @@ pub fn render_text(r: &Report) -> String {
         let _ = writeln!(s, "note: {n}");
     }
     s.push_str(&render_summary(&r.summary));
+    s.push_str(&render_phases(&r.events));
     let _ = writeln!(s, "mic: {}", r.mic);
     let _ = writeln!(s, "camera: {}", r.camera);
     let _ = writeln!(s, "recommendation: {}", r.recommendation);
+    let _ = writeln!(s, "pauses: {PAUSES}");
+    s
+}
+
+pub fn render_phases(events: &[EventResult]) -> String {
+    let mut order: Vec<&str> = Vec::new();
+    let mut by: BTreeMap<&str, Vec<&EventResult>> = BTreeMap::new();
+    for e in events {
+        if !by.contains_key(e.label.as_str()) {
+            order.push(&e.label);
+        }
+        by.entry(&e.label).or_default().push(e);
+    }
+    let mut s = String::new();
+    let _ = writeln!(
+        s,
+        "{:<16} {:>22} {:>22} {:>22}",
+        "phase (median ms)", "video→system_audio", "video→mic", "camera→system_audio"
+    );
+    for label in order {
+        let cell = |pair: &str| {
+            let v: Vec<f64> = by[label]
+                .iter()
+                .filter_map(|e| e.offsets_ms.get(pair).copied())
+                .collect();
+            stats(&v).map_or("-".into(), |(med, _, _)| {
+                let ok = v.iter().filter(|x| x.abs() <= TARGET_MS).count();
+                format!("{med:+.1} ({ok}/{} ok)", v.len())
+            })
+        };
+        let _ = writeln!(
+            s,
+            "{:<16} {:>22} {:>22} {:>22}",
+            label,
+            cell("video→system_audio"),
+            cell("video→mic"),
+            cell("camera→system_audio")
+        );
+    }
     s
 }
 
@@ -278,9 +352,11 @@ pub fn summarize_files(paths: &[&str]) -> Result<()> {
     let summary = summarize(&all);
     println!("all {} runs ({} events):", paths.len(), all.len());
     print!("{}", render_summary(&summary));
+    print!("{}", render_phases(&all));
     println!("mic: {}", mic_verdict(&all));
     println!("camera: {}", camera_verdict(&all));
     println!("recommendation: {}", recommendation(&summary));
+    println!("pauses: {PAUSES}");
     Ok(())
 }
 
@@ -312,6 +388,23 @@ mod tests {
     }
 
     #[test]
+    fn phases_keep_event_order_and_count_target() {
+        let mut a = ev(2.0, 2.01, None);
+        a.offsets_ms.insert("video→system_audio".into(), -10.0);
+        let mut b = ev(38.0, 38.0, None);
+        b.label = "after-switch-1".into();
+        b.offsets_ms.insert("video→system_audio".into(), -50.0);
+        let t = render_phases(&[a, b]);
+        let start = t.find("start").unwrap();
+        let sw = t.find("after-switch-1").unwrap();
+        assert!(start < sw, "{t}");
+        assert!(
+            t.contains("-10.0 (1/1 ok)") && t.contains("-50.0 (0/1 ok)"),
+            "{t}"
+        );
+    }
+
+    #[test]
     fn recommendation_cases() {
         let small: Vec<_> = [0.004, -0.002, 0.006]
             .iter()
@@ -340,6 +433,12 @@ mod tests {
             .map(|d| ev(1.0, 1.0 + d, None))
             .collect();
         assert!(recommendation(&summarize(&wild)).contains("varies too much"));
+        let centred: Vec<_> = [-0.045, -0.01, 0.0, 0.005]
+            .iter()
+            .map(|d| ev(1.0, 1.0 + d, None))
+            .collect();
+        let r = recommendation(&summarize(&centred));
+        assert!(r.starts_with("no fixed system-audio"), "{r}");
         assert!(recommendation(&summarize(&small[..2])).contains("too few"));
     }
 
