@@ -5,8 +5,14 @@
 mod live_runner;
 
 #[cfg(target_os = "macos")]
+mod common;
+
+#[cfg(target_os = "macos")]
+mod tests;
+
+#[cfg(target_os = "macos")]
 fn main() {
-    live_runner::main(&[])
+    live_runner::main(tests::ALL)
 }
 
 #[cfg(not(target_os = "macos"))]
