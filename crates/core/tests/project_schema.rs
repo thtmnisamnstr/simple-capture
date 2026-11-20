@@ -64,3 +64,34 @@ fn new_recording_serializes() {
         serde_json::from_str(&serde_json::to_string(&p).expect("serializes")).expect("reparses");
     assert_eq!(p, back);
 }
+
+#[test]
+fn application_crop_is_optional() {
+    let old = r#"{"kind":"application","display_id":"1","app_pid":42,"scale":2.0}"#;
+    let d: SourceDescriptor = serde_json::from_str(old).expect("pre-crop descriptor parses");
+    assert!(matches!(
+        d,
+        SourceDescriptor::Application { crop_pt: None, .. }
+    ));
+    assert_eq!(serde_json::to_string(&d).expect("serializes"), old);
+    let new = SourceDescriptor::Application {
+        display_id: "1".into(),
+        app_bundle_id: None,
+        app_pid: Some(42),
+        app_name: None,
+        scale: 2.0,
+        crop_pt: Some(sc_geometry::RectPt {
+            x: 100.0,
+            y: 50.0,
+            w: 800.0,
+            h: 600.0,
+        }),
+    };
+    let json = serde_json::to_string(&new).expect("serializes");
+    assert!(
+        json.contains(r#""crop_pt":{"x":100.0,"y":50.0,"w":800.0,"h":600.0}"#),
+        "{json}"
+    );
+    let back: SourceDescriptor = serde_json::from_str(&json).expect("reparses");
+    assert_eq!(back, new);
+}

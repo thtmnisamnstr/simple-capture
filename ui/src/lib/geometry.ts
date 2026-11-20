@@ -129,6 +129,41 @@ export function snapRegionEvenPx(r: RectPt, scale: number): RectPt {
   };
 }
 
+/** Pixel size of a region snapped like the capture does (sc_geometry::snap_region_even_px): both
+ *  edges rounded to whole pixels, then the size floored to even, at least 2. */
+export function snappedRegionSizePx(r: RectPt, scale: number): Size {
+  const side = (o: number, len: number) => {
+    const p0 = roundHalfAway(o * scale);
+    const p1 = roundHalfAway((o + len) * scale);
+    return Math.max(2, Math.floor((p1 - p0) / 2) * 2);
+  };
+  return { w: side(r.x, r.w), h: side(r.y, r.h) };
+}
+
+const finiteRect = (r: RectPt) => [r.x, r.y, r.w, r.h].every(Number.isFinite);
+
+/** Union of an app's window rects (global points), each clipped to the display, as display-local
+ *  points (ADR-039); null when nothing is left or a side is under 2 pt. Mirrors
+ *  sc_geometry::app_bounds_pt. */
+export function appBoundsPt(windows: RectPt[], display: RectPt): RectPt | null {
+  if (!finiteRect(display)) return null;
+  let acc: [number, number, number, number] | null = null;
+  for (const w of windows) {
+    if (!finiteRect(w)) continue;
+    const x0 = Math.max(w.x, display.x);
+    const y0 = Math.max(w.y, display.y);
+    const x1 = Math.min(w.x + w.w, display.x + display.w);
+    const y1 = Math.min(w.y + w.h, display.y + display.h);
+    if (x1 <= x0 || y1 <= y0) continue;
+    acc = acc ? [Math.min(acc[0], x0), Math.min(acc[1], y0), Math.max(acc[2], x1), Math.max(acc[3], y1)] : [x0, y0, x1, y1];
+  }
+  if (!acc) return null;
+  const [x0, y0, x1, y1] = acc;
+  const w = x1 - x0;
+  const h = y1 - y0;
+  return w >= 2 && h >= 2 ? { x: x0 - display.x, y: y0 - display.y, w, h } : null;
+}
+
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
 /** For `move`, `to` is the new top-left corner; otherwise the dragged handle's position. */

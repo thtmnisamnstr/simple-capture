@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  appBoundsPt,
   aspectLockedResize,
   aspectRatio,
   containFit,
@@ -15,6 +16,7 @@ import {
   ratioOf,
   referenceCanvasSize,
   smallContent,
+  snappedRegionSizePx,
   snapRegionEvenPx,
   type GeoAspect,
   type SizeClass,
@@ -149,4 +151,29 @@ test('free resize follows the handle and move clamps to bounds', () => {
   assert.deepEqual(aspectLockedResize(r, null, 'move', { x: 950, y: -20 }, bounds), { x: 800, y: 0, w: 200, h: 100 });
   const locked = aspectLockedResize(r, ratio(16, 9), 'se', { x: 420, y: 120 }, bounds);
   assert.deepEqual([locked.x, locked.y, Math.round(locked.w)], [100, 100, 320]);
+});
+
+test('app bounds: union of windows clipped to the display, display-local (mirrors Rust)', () => {
+  const d = { x: 0, y: 0, w: 1512, h: 982 };
+  const right = { x: 1512, y: -100, w: 1920, h: 1080 };
+  const r = (x: number, y: number, w: number, h: number) => ({ x, y, w, h });
+  const cases: [string, ReturnType<typeof r>[], ReturnType<typeof r>, ReturnType<typeof r> | null][] = [
+    ['no windows', [], d, null],
+    ['one window', [r(100, 50, 800, 600)], d, r(100, 50, 800, 600)],
+    ['union of two', [r(100, 50, 400, 300), r(600, 200, 300, 500)], d, r(100, 50, 800, 650)],
+    ['clipped to the display', [r(-50, 900, 300, 200)], d, r(0, 900, 250, 82)],
+    ['window on another display is ignored', [r(100, 50, 200, 100), r(1600, 0, 800, 600)], d, r(100, 50, 200, 100)],
+    ['display-local on a secondary display', [r(1612, 0, 400, 300)], right, r(100, 100, 400, 300)],
+    ['sliver under 2 pt', [r(1511, 10, 100, 100)], d, null],
+    ['empty window', [r(10, 10, 0, 0)], d, null],
+    ['non-finite window skipped', [r(NaN, 0, 10, 10), r(10, 10, 20, 20)], d, r(10, 10, 20, 20)],
+    ['covers the whole display', [r(-10, -10, 2000, 2000)], d, d],
+  ];
+  for (const [name, windows, display, want] of cases) assert.deepEqual(appBoundsPt(windows, display), want, name);
+});
+
+test('snapped region size matches the capture (edges rounded, floored to even)', () => {
+  assert.deepEqual(snappedRegionSizePx({ x: 100, y: 50, w: 800, h: 600 }, 2), { w: 1600, h: 1200 });
+  assert.deepEqual(snappedRegionSizePx({ x: 10.25, y: 20, w: 300.5, h: 201 }, 2), { w: 600, h: 402 });
+  assert.deepEqual(snappedRegionSizePx({ x: 0, y: 0, w: 0.2, h: 0.2 }, 2), { w: 2, h: 2 });
 });

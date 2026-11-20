@@ -24,7 +24,7 @@ use objc2_screen_capture_kit::{
 use sc_core::image::RgbaImage;
 use sc_core::project::{RegionMethod, Resolution, SourceDescriptor};
 use sc_core::time::HostTime;
-use sc_geometry::{RectPt, SizePx, even_round, snap_region_even_px};
+use sc_geometry::{RectPt, SizePx, app_bounds_pt, even_round, snap_region_even_px};
 use sc_platform::{
     AudioBuffer, AudioData, AudioTrackKind, DisplayInfo, Error, FrameBuffer, FrameSink, Result,
     ScreenSource, ScreenStream, ScreenStreamConfig, SourceEvent, SourceList, SourceSpec, StreamTag,
@@ -96,10 +96,13 @@ impl ScreenSource for MacScreenSource {
         spec: &SourceSpec,
         cfg: &ScreenStreamConfig,
     ) -> Result<(SourceDescriptor, SizePx)> {
-        let needs_content = matches!(
-            spec,
-            SourceSpec::Window { .. } | SourceSpec::Application { .. }
-        );
+        let needs_content = match spec {
+            SourceSpec::Window { .. } | SourceSpec::Application { .. } => true,
+            SourceSpec::Picked(p) => {
+                matches!(p.descriptor, SourceDescriptor::Application { .. })
+            }
+            _ => false,
+        };
         let content = if needs_content {
             Some(content::shareable(false)?)
         } else {
@@ -261,6 +264,31 @@ fn region(region_pt: RectPt, scale: f64) -> (RectPt, SizePx) {
     (snapped, size)
 }
 
+/// Capture size, scale and source rect of an application source (ADR-039): the union of its
+/// windows on the display, snapped like a region, when that is smaller than the display; otherwise
+/// the whole display with no source rect.
+fn app_crop(d: &CgDisplay, res: Resolution, windows: &[RectPt]) -> (SizePx, f64, Option<RectPt>) {
+    let (full, scale) = display_size(d, res);
+    match app_bounds_pt(windows, d.frame_pt) {
+        Some(b) if b.w < d.frame_pt.w || b.h < d.frame_pt.h => {
+            let (snapped, size) = region(b, scale);
+            (size, scale, Some(snapped))
+        }
+        _ => (full, scale, None),
+    }
+}
+
+fn app_crop_for(
+    content: &SCShareableContent,
+    display: u32,
+    pid: i32,
+    cfg: &ScreenStreamConfig,
+) -> Result<(SizePx, f64, Option<RectPt>)> {
+    let d = content::cg_display_by_id(display)?;
+    let frames = content::app_window_frames(content, pid, d.frame_pt, &cfg.exclude);
+    Ok(app_crop(&d, cfg.resolution, &frames))
+}
+
 pub(crate) fn build(
     content: Option<&SCShareableContent>,
     spec: &SourceSpec,
@@ -341,21 +369,21 @@ pub(crate) fn build(
         SourceSpec::Application { display, app } => {
             let content = content.ok_or_else(|| Error::Other("application: no content".into()))?;
             let id = content::parse_display_id(display)?;
-            let d = content::cg_display_by_id(id)?;
-            let (size, scale) = display_size(&d, cfg.resolution);
+            let (size, scale, crop) = app_crop_for(content, id, app.pid, cfg)?;
             let filter = app_filter(content, id, app.pid, &cfg.exclude)?;
             let name = content::find_app(content, app.pid)
                 .map(|a| unsafe { a.applicationName() }.to_string());
             Ok(Built {
                 filter,
                 size,
-                source_rect: None,
+                source_rect: crop,
                 descriptor: SourceDescriptor::Application {
                     display_id: display.0.clone(),
                     app_bundle_id: app.bundle_id.clone(),
                     app_pid: Some(app.pid),
                     app_name: name,
                     scale,
+                    crop_pt: crop,
                 },
                 kind: Kind::Application {
                     display: id,
@@ -387,6 +415,25 @@ pub(crate) fn build(
                             method: RegionMethod::SourceRect,
                         },
                     )
+                }
+                (
+                    None,
+                    SourceDescriptor::Application {
+                        display_id,
+                        app_pid: Some(pid),
+                        ..
+                    },
+                ) if let Some((size, s, Some(crop))) = content.and_then(|c| {
+                    let id = display_id.parse::<u32>().ok()?;
+                    app_crop_for(c, id, *pid, cfg).ok()
+                }) =>
+                {
+                    let mut descriptor = p.descriptor.clone();
+                    if let SourceDescriptor::Application { scale, crop_pt, .. } = &mut descriptor {
+                        *scale = s;
+                        *crop_pt = Some(crop);
+                    }
+                    (size, Some(crop), descriptor)
                 }
                 _ => (
                     even_size(rect.w * scale, rect.h * scale),
@@ -947,6 +994,7 @@ fn snapshot(b: &Built, max: SizePx) -> Result<RgbaImage> {
         c.setWidth(size.w as usize);
         c.setHeight(size.h as usize);
         c.setShowsCursor(false);
+        c.setScalesToFit(true);
         c.setColorSpaceName(kCGColorSpaceSRGB);
         if let Some(r) = b.source_rect {
             c.setSourceRect(cgrect(r));
@@ -1079,6 +1127,62 @@ mod tests {
             2.0,
         );
         assert_eq!(s, SizePx { w: 1120, h: 640 });
+    }
+
+    fn rpt(x: f64, y: f64, w: f64, h: f64) -> RectPt {
+        RectPt { x, y, w, h }
+    }
+
+    fn retina(frame_pt: RectPt) -> CgDisplay {
+        CgDisplay {
+            id: 1,
+            frame_pt,
+            size_px: SizePx {
+                w: (frame_pt.w * 2.0) as u32,
+                h: (frame_pt.h * 2.0) as u32,
+            },
+            scale: 2.0,
+            is_main: true,
+            builtin: true,
+        }
+    }
+
+    #[test]
+    fn app_crop_is_the_snapped_window_union() {
+        let d = retina(rpt(0.0, 0.0, 1512.0, 982.0));
+        let one = [rpt(100.0, 50.0, 800.0, 600.0)];
+        assert_eq!(
+            app_crop(&d, Resolution::Native, &one),
+            (
+                SizePx { w: 1600, h: 1200 },
+                2.0,
+                Some(rpt(100.0, 50.0, 800.0, 600.0))
+            )
+        );
+        assert_eq!(
+            app_crop(&d, Resolution::OneX, &one),
+            (
+                SizePx { w: 800, h: 600 },
+                1.0,
+                Some(rpt(100.0, 50.0, 800.0, 600.0))
+            )
+        );
+        assert_eq!(
+            app_crop(&d, Resolution::Native, &[]),
+            (SizePx { w: 3024, h: 1964 }, 2.0, None)
+        );
+        assert_eq!(
+            app_crop(&d, Resolution::Native, &[rpt(-5.0, -5.0, 1600.0, 1000.0)]),
+            (SizePx { w: 3024, h: 1964 }, 2.0, None)
+        );
+        let (size, _, crop) = app_crop(&d, Resolution::Native, &[rpt(10.25, 20.0, 300.5, 201.0)]);
+        assert_eq!(size, SizePx { w: 600, h: 402 });
+        assert_eq!(crop, Some(rpt(10.5, 20.0, 300.0, 201.0)));
+        let side = retina(rpt(1512.0, -100.0, 1920.0, 1080.0));
+        let (size, _, crop) =
+            app_crop(&side, Resolution::Native, &[rpt(1612.0, 0.0, 400.0, 300.0)]);
+        assert_eq!(size, SizePx { w: 800, h: 600 });
+        assert_eq!(crop, Some(rpt(100.0, 100.0, 400.0, 300.0)));
     }
 
     #[test]

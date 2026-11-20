@@ -1,5 +1,5 @@
 use sc_geometry::{
-    Handle, PointF, Ratio, RectPt, RectPx, aspect_locked_resize, flip_y, pt_to_px,
+    Handle, PointF, Ratio, RectPt, RectPx, app_bounds_pt, aspect_locked_resize, flip_y, pt_to_px,
     snap_region_even_px,
 };
 
@@ -280,5 +280,72 @@ fn resize_properties_keep_ratio_and_bounds() {
             }
             _ => {}
         }
+    }
+}
+
+#[test]
+fn app_bounds_table() {
+    let d = rpt(0.0, 0.0, 1512.0, 982.0);
+    let right = rpt(1512.0, -100.0, 1920.0, 1080.0);
+    let cases: &[(&str, Vec<RectPt>, RectPt, Option<RectPt>)] = &[
+        ("no windows", vec![], d, None),
+        (
+            "one window",
+            vec![rpt(100.0, 50.0, 800.0, 600.0)],
+            d,
+            Some(rpt(100.0, 50.0, 800.0, 600.0)),
+        ),
+        (
+            "union of two",
+            vec![
+                rpt(100.0, 50.0, 400.0, 300.0),
+                rpt(600.0, 200.0, 300.0, 500.0),
+            ],
+            d,
+            Some(rpt(100.0, 50.0, 800.0, 650.0)),
+        ),
+        (
+            "clipped to the display",
+            vec![rpt(-50.0, 900.0, 300.0, 200.0)],
+            d,
+            Some(rpt(0.0, 900.0, 250.0, 82.0)),
+        ),
+        (
+            "window on another display is ignored",
+            vec![
+                rpt(100.0, 50.0, 200.0, 100.0),
+                rpt(1600.0, 0.0, 800.0, 600.0),
+            ],
+            d,
+            Some(rpt(100.0, 50.0, 200.0, 100.0)),
+        ),
+        (
+            "display-local on a secondary display",
+            vec![rpt(1612.0, 0.0, 400.0, 300.0)],
+            right,
+            Some(rpt(100.0, 100.0, 400.0, 300.0)),
+        ),
+        (
+            "sliver under 2 pt",
+            vec![rpt(1511.0, 10.0, 100.0, 100.0)],
+            d,
+            None,
+        ),
+        ("empty window", vec![rpt(10.0, 10.0, 0.0, 0.0)], d, None),
+        (
+            "non-finite window skipped",
+            vec![rpt(f64::NAN, 0.0, 10.0, 10.0), rpt(10.0, 10.0, 20.0, 20.0)],
+            d,
+            Some(rpt(10.0, 10.0, 20.0, 20.0)),
+        ),
+        (
+            "covers the whole display",
+            vec![rpt(-10.0, -10.0, 2000.0, 2000.0)],
+            d,
+            Some(d),
+        ),
+    ];
+    for (name, windows, display, want) in cases {
+        assert_eq!(app_bounds_pt(windows, *display), *want, "{name}");
     }
 }

@@ -55,6 +55,37 @@ pub fn snap_region_even_px(r: RectPt, scale: f64) -> RectPt {
     RectPt { x, y, w, h }
 }
 
+/// The union of an application's window rects (global points), each clipped to the display, as
+/// display-local points (ADR-039). `None` when nothing is left or a side is under 2 pt.
+pub fn app_bounds_pt(windows: &[RectPt], display_frame_pt: RectPt) -> Option<RectPt> {
+    let d = display_frame_pt;
+    if !finite(d) {
+        return None;
+    }
+    let mut acc: Option<(f64, f64, f64, f64)> = None;
+    for w in windows.iter().filter(|w| finite(**w)) {
+        let x0 = w.x.max(d.x);
+        let y0 = w.y.max(d.y);
+        let x1 = (w.x + w.w).min(d.x + d.w);
+        let y1 = (w.y + w.h).min(d.y + d.h);
+        if x1 <= x0 || y1 <= y0 {
+            continue;
+        }
+        acc = Some(match acc {
+            None => (x0, y0, x1, y1),
+            Some((a, b, c, e)) => (a.min(x0), b.min(y0), c.max(x1), e.max(y1)),
+        });
+    }
+    let (x0, y0, x1, y1) = acc?;
+    let (w, h) = (x1 - x0, y1 - y0);
+    (w >= 2.0 && h >= 2.0).then_some(RectPt {
+        x: x0 - d.x,
+        y: y0 - d.y,
+        w,
+        h,
+    })
+}
+
 fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
     v.min(hi).max(lo)
 }

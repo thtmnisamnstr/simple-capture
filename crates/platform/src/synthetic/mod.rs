@@ -46,8 +46,8 @@
 //! assert_eq!(code.unwrap().source_hash, source_hash("anything"));
 //! ```
 //!
-//! **ScreenScript**: latency, idle spans, idle from start, start failures, loss, trailing frames
-//! and a first frame whose size differs from `describe()`.
+//! **ScreenScript**: latency, idle spans, idle from start, start failures, loss, trailing frames,
+//! a first frame whose size differs from `describe()`, and an application crop that moves.
 //! ```
 //! use sc_geometry::SizePx;
 //! use sc_platform::synthetic::{Scenario, ScreenScript, StartFailure};
@@ -148,7 +148,7 @@ use std::time::{Duration, Instant};
 use sc_core::ClockKind;
 use sc_core::folder::LocalDateTime;
 use sc_core::time::HostTime;
-use sc_geometry::SizePx;
+use sc_geometry::{RectPt, SizePx};
 
 use crate::unsupported::Nothing;
 use crate::{
@@ -195,6 +195,9 @@ pub struct ScreenScript {
     pub trailing_after_new_stream: u32,
     /// The size every delivered frame really has, when it differs from `describe()`.
     pub first_frame_size: Option<SizePx>,
+    /// An application source's `crop_pt` from successive `describe()` calls (the last one
+    /// repeats), as its windows move; empty: no crop.
+    pub describe_crops: Vec<RectPt>,
 }
 
 impl Default for ScreenScript {
@@ -209,6 +212,7 @@ impl Default for ScreenScript {
             lost_after_ns: None,
             trailing_after_new_stream: 0,
             first_frame_size: None,
+            describe_crops: Vec::new(),
         }
     }
 }

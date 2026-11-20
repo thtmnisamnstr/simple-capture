@@ -6,7 +6,7 @@ use sc_core::journal::{GapKind, JournalEvent, StopReason, SwitchNext, read_journ
 use sc_core::project::{
     EndReason, ProjectState, ProjectV1, SourceDescriptor, StartReason, TrackKind, Via,
 };
-use sc_geometry::{Aspect, Ratio, SizePx};
+use sc_geometry::{Aspect, Ratio, RectPt, SizePx};
 use sc_platform::synthetic::{
     AudioScript, DiskScript, Scenario, ScreenScript, ScriptedEvent, StartFailure,
     SyntheticPlatform, VideoScript, display_spec, read_code, source_hash,
@@ -671,6 +671,87 @@ fn retry_failing_restores_the_old_source() {
             .iter()
             .all(|s| source_key(&s.source) == "a")
     );
+    check_segments(&proj, &pdir, &*p.decoder());
+}
+
+/// Regression (ADR-039 review): a restored application segment recorded the crop from when the old
+/// segment started, not the one `describe()` returned for the restored stream.
+#[test]
+fn restored_application_segment_records_the_current_crop() {
+    let dir = tmp("restore_crop");
+    let crop = |x: f64| RectPt {
+        x,
+        y: 10.0,
+        w: 320.0,
+        h: 180.0,
+    };
+    let p = platform(
+        Scenario::new()
+            .screen(
+                "app:42",
+                ScreenScript {
+                    size: size(320, 180),
+                    describe_crops: vec![crop(10.0), crop(200.0)],
+                    ..Default::default()
+                },
+            )
+            .screen(
+                "broken",
+                ScreenScript {
+                    start_fails: StartFailure::Always,
+                    ..Default::default()
+                },
+            ),
+    );
+    let obs = Arc::new(Obs::default());
+    let spec = SourceSpec::Application {
+        display: DisplayId("synthetic:main".into()),
+        app: AppRef {
+            pid: 42,
+            bundle_id: None,
+        },
+    };
+    let s = Session::start(as_dyn(&p), request(&dir, spec), obs.clone()).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 300 * MS);
+    s.switch_source(display_spec("broken", None), Via::OwnChooser)
+        .expect("switch");
+    assert!(wait_for(Duration::from_secs(3), || obs
+        .notices()
+        .iter()
+        .any(|n| matches!(
+            n,
+            Notice::SwitchFailed { restored: true, .. }
+        ))));
+    sleep_host(&*p, 300 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let crops = |segs: Vec<&SourceDescriptor>| -> Vec<Option<RectPt>> {
+        segs.into_iter()
+            .map(|d| match d {
+                SourceDescriptor::Application { crop_pt, .. } => *crop_pt,
+                other => panic!("not an application: {other:?}"),
+            })
+            .collect()
+    };
+    let proj = ProjectV1::load(&pdir).expect("load");
+    let segs = &proj.recording.screen.segments;
+    assert_eq!(
+        segs.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
+        ["s0", "s2"]
+    );
+    assert_eq!(
+        crops(segs.iter().map(|s| &s.source).collect()),
+        vec![Some(crop(10.0)), Some(crop(200.0))]
+    );
+    let ev = journal(&pdir);
+    let opened = ev
+        .iter()
+        .filter_map(|e| match e {
+            JournalEvent::SegmentOpen { source, .. } => Some(source),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(crops(opened), vec![Some(crop(10.0)), Some(crop(200.0))]);
     check_segments(&proj, &pdir, &*p.decoder());
 }
 

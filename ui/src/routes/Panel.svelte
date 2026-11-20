@@ -61,7 +61,7 @@
   const source = $derived(settings?.source ?? null);
   const sourceDisplay = $derived(source ? displayOfSource(source, all) : null);
   const probe = $derived(probeFor(caps, sourceDisplay?.id ?? null));
-  const contentPx = $derived(source ? sourceSizePx(source, all) : null);
+  const contentPx = $derived(source ? sourceSizePx(source, all, settings?.resolution) : null);
   const canvasPx = $derived.by(() => {
     if (!settings || !contentPx) return null;
     const fixed = aspectRatio(settings.canvas.aspect);

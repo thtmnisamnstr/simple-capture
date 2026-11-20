@@ -277,6 +277,7 @@ fn picked_source(f: &SCContentFilter) -> PickedSource {
                 .as_ref()
                 .map(|a| unsafe { a.applicationName() }.to_string()),
             scale,
+            crop_pt: None,
         }
     } else {
         SourceDescriptor::Display {
