@@ -7,3 +7,8 @@ export function routeFromHash(hash: string): Route {
   const name = hash.replace(/^#\/?/, '').split(/[/?]/)[0];
   return (ROUTES as readonly string[]).includes(name) ? (name as Route) : 'panel';
 }
+
+export function hashParams(hash: string): URLSearchParams {
+  const i = hash.indexOf('?');
+  return new URLSearchParams(i < 0 ? '' : hash.slice(i + 1));
+}
