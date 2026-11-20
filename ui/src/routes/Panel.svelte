@@ -24,7 +24,8 @@
     sourceSizePx,
     windowTitle,
   } from '../lib/sources.ts';
-  import { aspectRatio, ratioOf, referenceCanvasSize, smallContent } from '../lib/geometry.ts';
+  import { aspectRatio, fitBox, ratioOf, referenceCanvasSize, smallContent } from '../lib/geometry.ts';
+  const PREVIEW_MAX = 112;
   import { backgroundCss, backgroundSummary } from '../lib/backgrounds.ts';
   import { rememberSource } from '../lib/recent.ts';
   import { beginPick, beginRegion, hideSelf, showWindow, systemPicker } from '../lib/windows.ts';
@@ -67,6 +68,7 @@
     const fixed = aspectRatio(settings.canvas.aspect);
     return referenceCanvasSize(settings.canvas.aspect, fixed ?? ratioOf(contentPx), [contentPx]);
   });
+  const previewBox = $derived(fitBox(canvasPx ?? { w: 16, h: 10 }, PREVIEW_MAX));
   const isSmall = $derived(!!canvasPx && !!contentPx && smallContent(canvasPx, contentPx));
   const missingPerms = $derived(perms ? (['screen', 'camera', 'mic'] as const).filter((k) => perms![k] !== 'granted') : []);
 
@@ -350,7 +352,8 @@
       <div class="preview-row">
         <div
           class="preview"
-          style:aspect-ratio={canvasPx ? `${canvasPx.w} / ${canvasPx.h}` : '16 / 10'}
+          style:width="{previewBox.w}px"
+          style:height="{previewBox.h}px"
           style:background={backgroundCss(settings.canvas.background)}
         >
           {#if still}<img src={still} alt="Preview of the frame" />{/if}
@@ -569,8 +572,6 @@
     align-items: flex-start;
   }
   .preview {
-    width: 112px;
-    max-height: 112px;
     flex: none;
     border-radius: 5px;
     border: 1px solid var(--border);

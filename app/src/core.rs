@@ -251,8 +251,10 @@ impl Core {
             .get_webview_window(label)
             .ok_or_else(|| format!("no window {label:?}"))?;
         let f = d.frame_pt;
-        w.set_position(LogicalPosition::new(f.x, f.y))
-            .and_then(|_| w.set_size(LogicalSize::new(f.w, f.h)))
+        // Size first: AppKit resizes around the bottom-left corner, so a resize after the move
+        // would push the window's top above the display.
+        w.set_size(LogicalSize::new(f.w, f.h))
+            .and_then(|_| w.set_position(LogicalPosition::new(f.x, f.y)))
             .map_err(|e| format!("move {label}: {e}"))
     }
 

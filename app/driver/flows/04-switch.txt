@@ -10,10 +10,12 @@ cmd switch_source {"spec":{"kind":"window","window_id":@GREEN_WID@}}
 wait 3000
 hotkey switch
 wait 500
+log-window-rects
 pick display @DISPLAY@
 wait 3000
 cmd begin_region_select {"purpose":"switch","display_id":"@DISPLAY@"}
 wait 500
+log-window-rects
 region set @DISPLAY@ 200,200,640,360
 wait 3000
 hotkey switch

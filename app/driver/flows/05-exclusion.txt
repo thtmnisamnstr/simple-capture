@@ -1,4 +1,4 @@
-# Tray menu, bar and switcher popover over a display recording: none may appear in the frames.
+# Tray menu, bar, switcher popover and recorder panel over a display recording: none may appear in the frames.
 cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv exclusion","settings":{}}}
 wait 2500
 log-window-rects
@@ -8,6 +8,7 @@ tray open-menu
 wait 2000
 show bar
 show switcher
+show panel
 wait 300
 log-window-rects
 wait 2500

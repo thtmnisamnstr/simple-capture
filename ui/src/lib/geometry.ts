@@ -240,6 +240,13 @@ export function fitRatioInside(r: RectPt, lock: Ratio): RectPt {
   return { x: r.x + (r.w - w) / 2, y: r.y + (r.h - h) / 2, w, h };
 }
 
+/** The largest box with `shape`'s aspect that fits inside a `max`×`max` square. */
+export function fitBox(shape: Size, max: number): Size {
+  if (!(shape.w > 0 && shape.h > 0)) return { w: max, h: max };
+  const k = max / Math.max(shape.w, shape.h);
+  return { w: Math.max(1, Math.round(shape.w * k)), h: Math.max(1, Math.round(shape.h * k)) };
+}
+
 export function smallContent(canvas: Size, content: Size): boolean {
   const d = containFit(canvas, content);
   return d.w < canvas.w * 0.25 || d.h < canvas.h * 0.25;

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  fitBox,
   appBoundsPt,
   aspectLockedResize,
   aspectRatio,
@@ -176,4 +177,11 @@ test('snapped region size matches the capture (edges rounded, floored to even)',
   assert.deepEqual(snappedRegionSizePx({ x: 100, y: 50, w: 800, h: 600 }, 2), { w: 1600, h: 1200 });
   assert.deepEqual(snappedRegionSizePx({ x: 10.25, y: 20, w: 300.5, h: 201 }, 2), { w: 600, h: 402 });
   assert.deepEqual(snappedRegionSizePx({ x: 0, y: 0, w: 0.2, h: 0.2 }, 2), { w: 2, h: 2 });
+});
+
+test('fitBox keeps the frame shape inside the preview square', () => {
+  assert.deepEqual(fitBox({ w: 2160, h: 3840 }, 112), { w: 63, h: 112 }, '9:16 is tall, not squashed');
+  assert.deepEqual(fitBox({ w: 3840, h: 2160 }, 112), { w: 112, h: 63 });
+  assert.deepEqual(fitBox({ w: 2160, h: 2160 }, 112), { w: 112, h: 112 });
+  assert.deepEqual(fitBox({ w: 0, h: 0 }, 112), { w: 112, h: 112 });
 });

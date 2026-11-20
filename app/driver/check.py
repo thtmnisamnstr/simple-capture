@@ -240,6 +240,15 @@ if basic("04-switch", log):
         failed = [e for e in pr["journal"] if e.get("ev") == "switch_failed"]
         check("04-switch", "six switches, none failed", len(sw) == 6 and not failed,
               {"switch_begin": len(sw), "switch_failed": failed})
+    shown = [w for st in steps(log, "log-window-rects") for w in (st.get("result") or [])
+             if w["label"] in ("region", "pick") and w["visible"]]
+    frames = [d["frame_pt"] for d in DISPLAYS]
+    check("04-switch", "region and pick overlays seen while shown", {w["label"] for w in shown} == {"region", "pick"},
+          [w["label"] for w in shown])
+    for w in shown:
+        r = w["rect_pt"]
+        check("04-switch", f"{w['label']} overlay covers its display exactly",
+              any(all(abs(r[k] - f[k]) <= 1 for k in ("x", "y", "w", "h")) for f in frames), {"rect": r, "displays": frames})
 
 log = lines("05-exclusion")
 if basic("05-exclusion", log) and FFMPEG and DISPLAYS:
@@ -261,7 +270,7 @@ if basic("05-exclusion", log) and FFMPEG and DISPLAYS:
         if menus:
             targets.append(("tray menu", menus[0]["rect_pt"], (opened - 1.5, opened - 0.2), (opened, closed)))
         r2 = {r["label"]: r for r in rect_steps[1]["result"]}
-        for label in ("bar", "switcher"):
+        for label in ("bar", "switcher", "panel"):
             rp = r2[label]["rect_pt"]
             if r2[label]["visible"] and rp:
                 targets.append((label, [rp["x"], rp["y"], rp["w"], rp["h"]],
