@@ -8,6 +8,7 @@ use sc_geometry::{Aspect, PointF, Ratio, RectPt, RectPx, SizePx};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::time::{HostTime, PauseSpan, RecClock};
 use crate::{ClockKind, Error, Result};
 
 pub type Extra = Map<String, Value>;
@@ -648,7 +649,8 @@ impl ProjectV1 {
     pub const SCHEMA_VERSION: u32 = 1;
     pub const FILE_NAME: &'static str = "project.json";
 
-    /// A fresh project in state `recording`, with defaults wp-core finalises.
+    /// A fresh project in state `recording`: 30 fps, native resolution, cursor on, no system
+    /// audio, `Original` aspect (resolved at record start) with a dark solid background.
     pub fn new_recording(
         id: String,
         title: String,
@@ -715,28 +717,113 @@ impl ProjectV1 {
         }
     }
 
-    /// Stub until wp-core.
-    pub fn load(_dir: &Path) -> Result<ProjectV1> {
-        Err(Error::Unsupported("sc_core::project: not implemented yet"))
+    /// Reads `<dir>/project.json`. Unknown fields are kept in each struct's `extra`.
+    pub fn load(dir: &Path) -> Result<ProjectV1> {
+        let path = dir.join(Self::FILE_NAME);
+        let bytes = std::fs::read(&path).map_err(|e| Error::io_at(e, "read", &path))?;
+        let version = serde_json::from_slice::<Value>(&bytes)
+            .map_err(|e| Error::Json(format!("{}: {e}", path.display())))?
+            .get("schema_version")
+            .and_then(Value::as_u64);
+        if version != Some(u64::from(Self::SCHEMA_VERSION)) {
+            return Err(Error::Invalid(format!(
+                "{}: unsupported schema_version {version:?} (this build reads {})",
+                path.display(),
+                Self::SCHEMA_VERSION
+            )));
+        }
+        serde_json::from_slice(&bytes).map_err(|e| Error::Json(format!("{}: {e}", path.display())))
     }
 
-    /// Atomic (fsio). Stub until wp-core.
-    pub fn save(&self, _dir: &Path) -> Result<()> {
-        Err(Error::Unsupported("sc_core::project: not implemented yet"))
+    /// Writes `<dir>/project.json` atomically (temp, fsync, rename, fsync folder).
+    pub fn save(&self, dir: &Path) -> Result<()> {
+        let mut bytes = serde_json::to_vec_pretty(self)?;
+        bytes.push(b'\n');
+        crate::fsio::atomic_write(&dir.join(Self::FILE_NAME), &bytes)
     }
 
-    /// Stub until wp-core.
+    /// The recording's clock (start and pauses) as a [`RecClock`].
+    pub fn rec_clock(&self) -> RecClock {
+        RecClock {
+            start: HostTime(self.recording.start_host_ns),
+            pauses: self
+                .recording
+                .pauses
+                .iter()
+                .map(|p| PauseSpan {
+                    start: HostTime(p.start_host_ns),
+                    end: Some(HostTime(p.end_host_ns)),
+                })
+                .collect(),
+        }
+    }
+
+    /// Recording length in RecTime: `stop − start − pauses` once stopped, otherwise the latest
+    /// closed segment end. `None` while nothing is known.
     pub fn duration_ns(&self) -> Option<i64> {
-        None
+        if let Some(stop) = self.recording.stop_host_ns {
+            let clock = self.rec_clock();
+            let d = stop
+                .saturating_sub(self.recording.start_host_ns)
+                .saturating_sub(clock.pause_total_before(HostTime(stop)));
+            return Some(d.max(0));
+        }
+        self.recording
+            .screen
+            .segments
+            .iter()
+            .filter_map(|s| s.end_rec_ns)
+            .max()
     }
 
-    /// Stub until wp-core.
-    pub fn segment_at(&self, _t_rec: i64) -> Option<&ScreenSegment> {
-        None
+    /// The segment whose `[start_rec_ns, end_rec_ns)` contains `t_rec` (an open segment, with no
+    /// end yet, runs on forever). `None` before the first segment and inside gaps; the caller
+    /// decides whether to hold the previous segment's last frame there.
+    pub fn segment_at(&self, t_rec: i64) -> Option<&ScreenSegment> {
+        self.recording
+            .screen
+            .segments
+            .iter()
+            .filter(|s| s.start_rec_ns <= t_rec && s.end_rec_ns.is_none_or(|e| t_rec < e))
+            .max_by_key(|s| s.start_rec_ns)
     }
 }
 
-/// Copies a PNG/JPEG into `assets/background-<sha256[0..12]>.<ext>`. Stub until wp-core.
-pub fn copy_background_asset(_src: &Path, _project_dir: &Path) -> Result<Background> {
-    Err(Error::Unsupported("sc_core::project: not implemented yet"))
+/// Copies a PNG/JPEG (recognised by its magic bytes) into
+/// `<project_dir>/assets/background-<sha256[0..12]>.<png|jpg>` and returns the cover-fit, centred
+/// image background that points at it. Copying the same image twice reuses the file.
+pub fn copy_background_asset(src: &Path, project_dir: &Path) -> Result<Background> {
+    let bytes = std::fs::read(src).map_err(|e| Error::io_at(e, "read background image", src))?;
+    let ext = image_ext(&bytes).ok_or_else(|| {
+        Error::Invalid(format!(
+            "background image must be PNG or JPEG: {}",
+            src.display()
+        ))
+    })?;
+    let sha = crate::sha::sha256_bytes(&bytes);
+    let asset = format!("assets/background-{}.{ext}", &sha[..12]);
+    let dst = project_dir.join(&asset);
+    let reuse = std::fs::metadata(&dst).is_ok_and(|m| m.len() == bytes.len() as u64)
+        && crate::sha::sha256_file(&dst).is_ok_and(|h| h == sha);
+    if !reuse {
+        let assets = project_dir.join("assets");
+        std::fs::create_dir_all(&assets).map_err(|e| Error::io_at(e, "create folder", &assets))?;
+        crate::fsio::atomic_write(&dst, &bytes)?;
+    }
+    Ok(Background::Image {
+        asset,
+        sha256: sha,
+        fit: Fit::Cover,
+        focus_norm: PointF { x: 0.5, y: 0.5 },
+    })
+}
+
+fn image_ext(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else {
+        None
+    }
 }

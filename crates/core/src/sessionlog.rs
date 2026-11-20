@@ -1,8 +1,13 @@
 //! `<project>/session.log`: plain lines, no tracing (plan §10 item 17).
 
-use std::path::Path;
+use std::fs::{File, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 
+use crate::folder::{LocalDateTime, rfc3339};
 use crate::{Error, Result};
+
+pub const FILE_NAME: &str = "session.log";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Level {
@@ -11,22 +16,51 @@ pub enum Level {
     Error,
 }
 
-/// Append-only, line-buffered and flushed per line: `"<rfc3339> <host_ns> LEVEL msg"`.
+impl Level {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Level::Info => "INFO",
+            Level::Warn => "WARN",
+            Level::Error => "ERROR",
+        }
+    }
+}
+
+/// Append-only, one `write` per line (so each line is flushed), no fsync:
+/// `"<rfc3339> <host_ns> LEVEL msg"`. Newlines in `msg` are escaped as `\n`.
 #[derive(Debug)]
 pub struct SessionLog {
-    _priv: (),
+    file: File,
+    path: PathBuf,
 }
 
 impl SessionLog {
-    pub fn open(_dir: &Path) -> Result<SessionLog> {
-        Err(Error::Unsupported(
-            "sc_core::sessionlog: not implemented yet",
-        ))
+    pub fn open(dir: &Path) -> Result<SessionLog> {
+        let path = dir.join(FILE_NAME);
+        let file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&path)
+            .map_err(|e| Error::io_at(e, "open session log", &path))?;
+        Ok(SessionLog { file, path })
     }
 
-    pub fn line(&mut self, _level: Level, _msg: &str) -> Result<()> {
-        Err(Error::Unsupported(
-            "sc_core::sessionlog: not implemented yet",
-        ))
+    pub fn line(&mut self, level: Level, msg: &str) -> Result<()> {
+        let line = format_line(
+            &LocalDateTime::now(),
+            crate::time::host_now_ns(),
+            level,
+            msg,
+        );
+        self.file
+            .write_all(line.as_bytes())
+            .and_then(|()| self.file.flush())
+            .map_err(|e| Error::io_at(e, "write session log", &self.path))
     }
+}
+
+/// One session.log line, newline included.
+pub fn format_line(t: &LocalDateTime, host_ns: i64, level: Level, msg: &str) -> String {
+    let msg = msg.replace('\r', "\\r").replace('\n', "\\n");
+    format!("{} {host_ns} {} {msg}\n", rfc3339(t), level.as_str())
 }
