@@ -37,7 +37,7 @@ use sc_platform::{
 use super::frames::{MacAudioSample, MacPixelFrame, PIX_420V};
 use super::pcm::{PcmFormat, copy_frames, f32_bytes, make_sample};
 use crate::util::{
-    as_obj, cfstr_as_ns, dict, ns_error_text, ns_to_cmtime, nsstr, num_b, num_f, num_i,
+    as_obj, cfstr_as_ns, dict, ns_error_text, ns_to_cmtime, nsstr, num_b, num_f, num_i, objc_try,
 };
 
 const FINISH_TIMEOUT: Duration = Duration::from_secs(30);
@@ -94,8 +94,9 @@ impl Common {
                         ns_error_text(&e)
                     ))
                 })?;
+        let what = format!("creating the writer input for {}", path.display());
         // SAFETY: configuring a writer that has not started.
-        let input = unsafe {
+        let input = objc_try(&what, || unsafe {
             writer.setMovieFragmentInterval(ns_to_cmtime((frag_s.max(0.1) * 1e9) as i64));
             writer.setShouldOptimizeForNetworkUse(false);
             if !writer.canApplyOutputSettings_forMediaType(Some(settings), mt) {
@@ -116,8 +117,8 @@ impl Common {
                 )));
             }
             writer.addInput(&input);
-            input
-        };
+            Ok(input)
+        })??;
         Ok(Common {
             path: path.to_path_buf(),
             writer,
@@ -129,18 +130,15 @@ impl Common {
     }
 
     fn start(&self) -> Result<()> {
+        let what = format!("startWriting {}", self.path.display());
         // SAFETY: inputs are added; the session starts at file time 0.
-        unsafe {
+        objc_try(&what, || unsafe {
             if !self.writer.startWriting() {
-                return Err(Error::Other(format!(
-                    "startWriting {}: {}",
-                    self.path.display(),
-                    self.error_text()
-                )));
+                return Err(Error::Other(format!("{what}: {}", self.error_text())));
             }
             self.writer.startSessionAtSourceTime(ns_to_cmtime(0));
-        }
-        Ok(())
+            Ok(())
+        })?
     }
 
     fn error_text(&self) -> String {
@@ -191,13 +189,17 @@ impl Common {
             let _ = tx.send(());
         });
         // SAFETY: the writer is writing; the block only signals the channel.
-        unsafe {
-            self.input.markAsFinished();
-            if let Some(end) = duration {
-                self.writer.endSessionAtSourceTime(ns_to_cmtime(end));
-            }
-            self.writer.finishWritingWithCompletionHandler(&blk);
-        }
+        objc_try(
+            &format!("finishWriting {}", self.path.display()),
+            || unsafe {
+                self.input.markAsFinished();
+                if let Some(end) = duration {
+                    self.writer.endSessionAtSourceTime(ns_to_cmtime(end));
+                }
+                self.writer.finishWritingWithCompletionHandler(&blk);
+            },
+        )
+        .map_err(|e| Error::Other(format!("{e}; writer: {}", self.error_text())))?;
         crate::util::wait_on(
             &rx,
             FINISH_TIMEOUT,
@@ -340,7 +342,7 @@ impl VideoWriter {
         let pf = num_i(i64::from(PIX_420V));
         let empty: Retained<NSDictionary<NSString, AnyObject>> = NSDictionary::new();
         // SAFETY: CoreVideo key constants; the adaptor is attached before startWriting.
-        let adaptor = unsafe {
+        let adaptor = objc_try("creating the pixel buffer adaptor", || unsafe {
             let attrs = dict(&[
                 (cfstr_as_ns(kCVPixelBufferPixelFormatTypeKey), as_obj(&*pf)),
                 (cfstr_as_ns(kCVPixelBufferWidthKey), as_obj(&*wv)),
@@ -354,7 +356,7 @@ impl VideoWriter {
                 &c.input,
                 Some(&attrs),
             )
-        };
+        })?;
         c.start()?;
         Ok(VideoWriter {
             c,
@@ -547,6 +549,11 @@ impl AudioWriter {
             return Err(Error::Other(format!(
                 "audio writer spec needs a rate and channels: {spec:?}"
             )));
+        }
+        if spec.channels > 2 {
+            return Err(Error::Unsupported(
+                "audio tracks are mono or stereo; downmix the source first",
+            ));
         }
         let fmt = num_i(i64::from(u32::from_be_bytes(*b"aac ")));
         let sr = num_f(f64::from(spec.sample_rate));

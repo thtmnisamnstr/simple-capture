@@ -133,6 +133,16 @@ pub(crate) fn ns_error_text(e: &NSError) -> String {
     format!("{} (code {})", e.localizedDescription(), e.code())
 }
 
+/// Runs `f`, turning an Objective-C exception into an error. An exception that reaches Rust
+/// aborts the process.
+pub(crate) fn objc_try<R>(what: &str, f: impl FnOnce() -> R) -> Result<R> {
+    objc2::exception::catch(std::panic::AssertUnwindSafe(f)).map_err(|e| {
+        let text = e.map_or_else(|| "nil exception".to_string(), |e| format!("{e:?}"));
+        tracing::warn!(what, exception = %text, "Objective-C exception");
+        Error::Other(format!("{what}: {text}"))
+    })
+}
+
 /// Waits on a channel WITHOUT pumping a run loop.
 pub(crate) fn wait_on<T>(rx: &mpsc::Receiver<T>, timeout: Duration, what: &str) -> Result<T> {
     match rx.recv_timeout(timeout) {
@@ -166,6 +176,18 @@ pub(crate) fn wait_err(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn objc_try_turns_an_exception_into_an_error() {
+        let empty = objc2_foundation::NSArray::<NSString>::new();
+        let r = objc_try("reading past the end", || {
+            // SAFETY: deliberately out of range; the exception is caught.
+            let _: *mut AnyObject = unsafe { objc2::msg_send![&*empty, objectAtIndex: 3usize] };
+        });
+        let e = r.expect_err("the exception must become an error").to_string();
+        assert!(e.contains("NSRangeException"), "{e}");
+        assert_eq!(objc_try("no exception", || 7).ok(), Some(7));
+    }
 
     #[test]
     fn mach_ns_round_trip() {

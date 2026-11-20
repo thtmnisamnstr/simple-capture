@@ -424,3 +424,100 @@ fn sck_sample_buffers_append() {
     assert_eq!(fin.samples, 20 * 960);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+fn discrete(fps: f64, value: i64, timescale: i32) -> devices::RateRange {
+    devices::RateRange {
+        min_fps: fps,
+        max_fps: fps,
+        min_duration: (value, timescale),
+        max_duration: (value, timescale),
+    }
+}
+
+fn continuous(min_fps: f64, max_fps: f64) -> devices::RateRange {
+    devices::RateRange {
+        min_fps,
+        max_fps,
+        min_duration: (1_000_000, (max_fps * 1_000_000.0) as i32),
+        max_duration: (1_000_000, (min_fps * 1_000_000.0) as i32),
+    }
+}
+
+fn obsbot_1080p() -> Vec<devices::RateRange> {
+    vec![
+        discrete(60.0002, 1_000_000, 60_000_240),
+        discrete(59.9402, 1001, 60_000),
+        discrete(50.0, 1_000_000, 50_000_000),
+        discrete(30.00003, 1_000_000, 30_000_030),
+        discrete(29.97003, 1001, 30_000),
+        discrete(25.0, 1_000_000, 25_000_000),
+        discrete(24.000038, 1_000_000, 24_000_038),
+        discrete(20.0, 1_000_000, 20_000_000),
+        discrete(15.000015, 1_000_000, 15_000_015),
+    ]
+}
+
+#[test]
+fn discrete_ranges_use_the_device_duration_verbatim() {
+    let (d, fps) = devices::frame_duration_for(&obsbot_1080p(), 30.0).expect("a duration");
+    assert_eq!(d, (1_000_000, 30_000_030));
+    assert!((fps - 30.0).abs() < 0.001);
+    let (d, _) = devices::frame_duration_for(&obsbot_1080p(), 60.0).expect("a duration");
+    assert_eq!(d, (1_000_000, 60_000_240));
+    let (d, _) = devices::frame_duration_for(&obsbot_1080p(), 24.0).expect("a duration");
+    assert_eq!(d, (1_000_000, 24_000_038));
+}
+
+#[test]
+fn discrete_ranges_without_the_target_take_the_nearest_rate() {
+    let only_fast = [discrete(60.0, 1, 60), discrete(50.0, 1, 50)];
+    assert_eq!(
+        devices::frame_duration_for(&only_fast, 30.0).map(|p| p.0),
+        Some((1, 50))
+    );
+    let eos = [discrete(30.0, 1_000_000, 30_000_000)];
+    assert_eq!(
+        devices::frame_duration_for(&eos, 24.0).map(|p| p.0),
+        Some((1_000_000, 30_000_000))
+    );
+}
+
+#[test]
+fn continuous_ranges_take_the_exact_rate_or_the_range_end() {
+    let facetime = [continuous(15.0, 30.0)];
+    assert_eq!(
+        devices::frame_duration_for(&facetime, 30.0).map(|p| p.0),
+        Some((1_000_000, 30_000_000))
+    );
+    assert_eq!(
+        devices::frame_duration_for(&facetime, 24.0).map(|p| p.0),
+        Some((1000, 24_000))
+    );
+    let iphone = [continuous(1.0, 30.0), continuous(1.0, 60.0)];
+    let (d, fps) = devices::frame_duration_for(&iphone, 30.0).expect("a duration");
+    assert!((fps - 30.0).abs() < 1e-9);
+    assert!(d == (1_000_000, 30_000_000) || d == (1000, 30_000));
+}
+
+#[test]
+fn no_usable_range_gives_none() {
+    assert_eq!(devices::frame_duration_for(&[], 30.0), None);
+    assert_eq!(
+        devices::frame_duration_for(&[discrete(30.0, 0, 0)], 30.0),
+        None
+    );
+}
+
+#[test]
+fn audio_writer_refuses_more_than_two_channels_without_raising() {
+    let d = tmp("multichannel");
+    for channels in [3, 4, 8] {
+        let spec = AudioWriterSpec {
+            sample_rate: 48_000,
+            channels,
+            bitrate: 96_000,
+            fragment_interval_s: 1.0,
+        };
+        assert!(AudioWriter::create(&d.join(format!("mic-{channels}.mov")), &spec).is_err());
+    }
+}

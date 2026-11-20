@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use block2::RcBlock;
 use dispatch2::{DispatchQueue, DispatchQueueAttr, DispatchRetained};
 use objc2::rc::Retained;
-use objc2::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
+use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, ProtocolObject};
 use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send};
 use objc2_av_foundation::{
     AVAuthorizationStatus, AVCaptureAudioDataOutput, AVCaptureAudioDataOutputSampleBufferDelegate,
@@ -22,7 +22,7 @@ use objc2_core_media::{
     CMClock, CMSampleBuffer, CMSyncConvertTime, CMTime, CMVideoFormatDescriptionGetDimensions,
 };
 use objc2_core_video::kCVPixelBufferPixelFormatTypeKey;
-use objc2_foundation::{NSArray, NSNotification, NSNotificationCenter, NSString};
+use objc2_foundation::{NSArray, NSDictionary, NSNotification, NSNotificationCenter, NSString};
 use sc_core::time::HostTime;
 use sc_geometry::SizePx;
 use sc_platform::{
@@ -32,7 +32,10 @@ use sc_platform::{
 
 use super::frames::{MacAudioSample, MacPixelFrame, PIX_420F, PIX_420V, asbd_of_desc};
 use super::writer::key;
-use crate::util::{as_obj, cfstr_as_ns, cmtime_to_ns, dict, fourcc, ns_error_text, nsstr, num_i};
+use crate::util::{
+    as_obj, cfstr_as_ns, cmtime_to_ns, dict, fourcc, ns_error_text, nsstr, num_b, num_f, num_i,
+    objc_try,
+};
 
 pub const CAMERA_TAG_BASE: u64 = 1 << 48;
 static NEXT_CAMERA_TAG: AtomicU64 = AtomicU64::new(CAMERA_TAG_BASE);
@@ -197,6 +200,58 @@ pub(crate) fn best_format(
     best.map(|b| (b.0, b.1))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct RateRange {
+    pub min_fps: f64,
+    pub max_fps: f64,
+    pub min_duration: (i64, i32),
+    pub max_duration: (i64, i32),
+}
+
+fn rate_ranges(f: &AVCaptureDeviceFormat) -> Vec<RateRange> {
+    // SAFETY: plain getters on a format's frame rate ranges.
+    unsafe {
+        f.videoSupportedFrameRateRanges()
+            .iter()
+            .map(|r| {
+                let (mn, mx) = (r.minFrameDuration(), r.maxFrameDuration());
+                RateRange {
+                    min_fps: r.minFrameRate(),
+                    max_fps: r.maxFrameRate(),
+                    min_duration: ({ mn.value }, { mn.timescale }),
+                    max_duration: ({ mx.value }, { mx.timescale }),
+                }
+            })
+            .collect()
+    }
+}
+
+/// The frame duration (value, timescale) closest to `target_fps` that the device accepts, and
+/// its rate. AVFoundation raises an exception for any duration outside every supported range,
+/// and a discrete range's own duration (1000000/30000030 on some webcams) never equals a
+/// rounded 1/30, so range ends are always taken verbatim from the device.
+pub(crate) fn frame_duration_for(
+    ranges: &[RateRange],
+    target_fps: f64,
+) -> Option<((i64, i32), f64)> {
+    ranges
+        .iter()
+        .map(|r| {
+            if target_fps >= r.max_fps {
+                (r.min_duration, r.max_fps)
+            } else if target_fps <= r.min_fps {
+                (r.max_duration, r.min_fps)
+            } else {
+                ((1000, (target_fps * 1000.0).round() as i32), target_fps)
+            }
+        })
+        .filter(|((v, ts), fps)| *v > 0 && *ts > 0 && fps.is_finite() && *fps > 0.0)
+        .min_by(|a, b| {
+            let (da, db) = ((a.1 - target_fps).abs(), (b.1 - target_fps).abs());
+            da.total_cmp(&db).then(b.1.total_cmp(&a.1))
+        })
+}
+
 struct SendClock(Retained<CMClock>);
 // SAFETY: CMClocks are thread-safe CF objects.
 unsafe impl Send for SendClock {}
@@ -341,6 +396,64 @@ impl DeviceStream for AvDeviceStream {
     }
 }
 
+fn stereo_f32_settings(rate: f64) -> Retained<NSDictionary<NSString, AnyObject>> {
+    let lpcm = num_i(i64::from(u32::from_be_bytes(*b"lpcm")));
+    let (yes, no, bits, sr, ch) = (num_b(true), num_b(false), num_i(32), num_f(rate), num_i(2));
+    let keys = [
+        nsstr("AVFormatIDKey"),
+        nsstr("AVLinearPCMIsFloatKey"),
+        nsstr("AVLinearPCMBitDepthKey"),
+        nsstr("AVLinearPCMIsNonInterleaved"),
+        nsstr("AVLinearPCMIsBigEndianKey"),
+        nsstr("AVSampleRateKey"),
+        nsstr("AVNumberOfChannelsKey"),
+    ];
+    dict(&[
+        (&keys[0], as_obj(&*lpcm)),
+        (&keys[1], as_obj(&*yes)),
+        (&keys[2], as_obj(&*bits)),
+        (&keys[3], as_obj(&*no)),
+        (&keys[4], as_obj(&*no)),
+        (&keys[5], as_obj(&*sr)),
+        (&keys[6], as_obj(&*ch)),
+    ])
+}
+
+fn apply_camera_format(
+    dev: &AVCaptureDevice,
+    f: &AVCaptureDeviceFormat,
+    choice: &FormatChoice,
+    limit: CameraLimit,
+) -> Result<String> {
+    let target = f64::from(limit.max_fps).min(choice.max_fps).max(1.0);
+    let picked = frame_duration_for(&rate_ranges(f), target);
+    // SAFETY: the device is locked for configuration around every setter.
+    unsafe {
+        dev.lockForConfiguration()
+            .map_err(|e| Error::Other(format!("lockForConfiguration: {}", ns_error_text(&e))))?;
+        let set = objc_try("setting the camera format", || {
+            dev.setActiveFormat(f);
+            if let Some(((value, timescale), _)) = picked {
+                let d = CMTime::new(value, timescale);
+                dev.setActiveVideoMinFrameDuration(d);
+                dev.setActiveVideoMaxFrameDuration(d);
+            }
+        });
+        dev.unlockForConfiguration();
+        let size = format!(
+            "{}x{} {}",
+            choice.size.w,
+            choice.size.h,
+            fourcc(choice.subtype)
+        );
+        Ok(match (set, picked) {
+            (Ok(()), Some((_, fps))) => format!("{size} @ {fps:.2} fps (delivered as 420v)"),
+            (Ok(()), None) => format!("{size} @ device default fps (delivered as 420v)"),
+            (Err(e), _) => format!("{size}, device default rate ({e})"),
+        })
+    }
+}
+
 pub(crate) fn start(
     kind: DeviceKind,
     device_id: &str,
@@ -374,115 +487,114 @@ pub(crate) fn start(
         },
         DispatchQueueAttr::SERIAL,
     );
-    // SAFETY: standard AVCaptureSession configuration on a device this process may open.
-    let (session, output, format) = unsafe {
-        let session = AVCaptureSession::new();
-        session.beginConfiguration();
-        let input = AVCaptureDeviceInput::deviceInputWithDevice_error(&dev).map_err(|e| {
-            Error::Other(format!(
-                "opening {kind:?} {device_id}: {}",
-                ns_error_text(&e)
-            ))
-        })?;
-        if !session.canAddInput(&input) {
+    let configure = || -> Result<_> {
+        // SAFETY: standard AVCaptureSession configuration on a device this process may open.
+        let configured = unsafe {
+            let session = AVCaptureSession::new();
+            session.beginConfiguration();
+            let input = AVCaptureDeviceInput::deviceInputWithDevice_error(&dev).map_err(|e| {
+                Error::Other(format!(
+                    "opening {kind:?} {device_id}: {}",
+                    ns_error_text(&e)
+                ))
+            })?;
+            if !session.canAddInput(&input) {
+                session.commitConfiguration();
+                return Err(Error::Busy(format!(
+                    "cannot add {kind:?} input {device_id}"
+                )));
+            }
+            session.addInput(&input);
+            let (output, format) = match kind {
+                DeviceKind::Camera => {
+                    let out = AVCaptureVideoDataOutput::new();
+                    let pf = num_i(i64::from(PIX_420V));
+                    let vs = dict(&[(cfstr_as_ns(kCVPixelBufferPixelFormatTypeKey), as_obj(&*pf))]);
+                    out.setVideoSettings(Some(&vs));
+                    out.setAlwaysDiscardsLateVideoFrames(true);
+                    out.setSampleBufferDelegate_queue(
+                        Some(ProtocolObject::from_ref(&*delegate)),
+                        Some(&queue),
+                    );
+                    if !session.canAddOutput(&out) {
+                        session.commitConfiguration();
+                        return Err(Error::Other("cannot add the camera output".into()));
+                    }
+                    session.addOutput(&out);
+                    let limit = limit.unwrap_or(CameraLimit {
+                        max: SizePx { w: 1920, h: 1080 },
+                        max_fps: 30,
+                    });
+                    let format = match best_format(&dev, limit) {
+                        Some((f, choice)) => apply_camera_format(&dev, &f, &choice, limit)?,
+                        None => {
+                            let fd = dev.activeFormat().formatDescription();
+                            let dims = CMVideoFormatDescriptionGetDimensions(&fd);
+                            format!(
+                                "{}x{} {} (no format within {}x{} @ {}; device default)",
+                                dims.width,
+                                dims.height,
+                                fourcc(fd.media_sub_type()),
+                                limit.max.w,
+                                limit.max.h,
+                                limit.max_fps
+                            )
+                        }
+                    };
+                    (Output::Video(out), format)
+                }
+                DeviceKind::Mic => {
+                    let out = AVCaptureAudioDataOutput::new();
+                    out.setSampleBufferDelegate_queue(
+                        Some(ProtocolObject::from_ref(&*delegate)),
+                        Some(&queue),
+                    );
+                    let fd = dev.activeFormat().formatDescription();
+                    let asbd = asbd_of_desc(&fd);
+                    let downmix = asbd.as_ref().filter(|a| a.mChannelsPerFrame > 2);
+                    if let Some(a) = downmix {
+                        out.setAudioSettings(Some(&stereo_f32_settings(a.mSampleRate)));
+                    }
+                    if !session.canAddOutput(&out) {
+                        session.commitConfiguration();
+                        return Err(Error::Other("cannot add the microphone output".into()));
+                    }
+                    session.addOutput(&out);
+                    let format = match &asbd {
+                        Some(a) => format!(
+                            "{} Hz {} ch {} {}-bit{}",
+                            a.mSampleRate,
+                            a.mChannelsPerFrame,
+                            fourcc(a.mFormatID),
+                            a.mBitsPerChannel,
+                            if downmix.is_some() {
+                                " (downmixed to stereo)"
+                            } else {
+                                ""
+                            }
+                        ),
+                        None => "audio".to_string(),
+                    };
+                    (Output::Audio(out), format)
+                }
+            };
             session.commitConfiguration();
-            return Err(Error::Busy(format!(
-                "cannot add {kind:?} input {device_id}"
-            )));
-        }
-        session.addInput(&input);
-        let (output, format) = match kind {
-            DeviceKind::Camera => {
-                let out = AVCaptureVideoDataOutput::new();
-                let pf = num_i(i64::from(PIX_420V));
-                let vs = dict(&[(cfstr_as_ns(kCVPixelBufferPixelFormatTypeKey), as_obj(&*pf))]);
-                out.setVideoSettings(Some(&vs));
-                out.setAlwaysDiscardsLateVideoFrames(true);
-                out.setSampleBufferDelegate_queue(
-                    Some(ProtocolObject::from_ref(&*delegate)),
-                    Some(&queue),
-                );
-                if !session.canAddOutput(&out) {
-                    session.commitConfiguration();
-                    return Err(Error::Other("cannot add the camera output".into()));
-                }
-                session.addOutput(&out);
-                let limit = limit.unwrap_or(CameraLimit {
-                    max: SizePx { w: 1920, h: 1080 },
-                    max_fps: 30,
-                });
-                let format = match best_format(&dev, limit) {
-                    Some((f, choice)) => {
-                        dev.lockForConfiguration().map_err(|e| {
-                            Error::Other(format!("lockForConfiguration: {}", ns_error_text(&e)))
-                        })?;
-                        dev.setActiveFormat(&f);
-                        let fps = f64::from(limit.max_fps).min(choice.max_fps).max(1.0);
-                        let d = CMTime::new(1000, (fps * 1000.0).round() as i32);
-                        dev.setActiveVideoMinFrameDuration(d);
-                        dev.setActiveVideoMaxFrameDuration(d);
-                        dev.unlockForConfiguration();
-                        format!(
-                            "{}x{} {} @ {} fps (delivered as 420v)",
-                            choice.size.w,
-                            choice.size.h,
-                            fourcc(choice.subtype),
-                            fps
-                        )
-                    }
-                    None => {
-                        let fd = dev.activeFormat().formatDescription();
-                        let dims = CMVideoFormatDescriptionGetDimensions(&fd);
-                        format!(
-                            "{}x{} {} (no format within {}x{} @ {}; device default)",
-                            dims.width,
-                            dims.height,
-                            fourcc(fd.media_sub_type()),
-                            limit.max.w,
-                            limit.max.h,
-                            limit.max_fps
-                        )
-                    }
-                };
-                (Output::Video(out), format)
-            }
-            DeviceKind::Mic => {
-                let out = AVCaptureAudioDataOutput::new();
-                out.setSampleBufferDelegate_queue(
-                    Some(ProtocolObject::from_ref(&*delegate)),
-                    Some(&queue),
-                );
-                if !session.canAddOutput(&out) {
-                    session.commitConfiguration();
-                    return Err(Error::Other("cannot add the microphone output".into()));
-                }
-                session.addOutput(&out);
-                let fd = dev.activeFormat().formatDescription();
-                let format = match asbd_of_desc(&fd) {
-                    Some(a) => format!(
-                        "{} Hz {} ch {} {}-bit",
-                        a.mSampleRate,
-                        a.mChannelsPerFrame,
-                        fourcc(a.mFormatID),
-                        a.mBitsPerChannel
-                    ),
-                    None => "audio".to_string(),
-                };
-                (Output::Audio(out), format)
-            }
+            (session, output, format)
         };
-        session.commitConfiguration();
-        (session, output, format)
+        Ok(configured)
     };
+    let (session, output, format) =
+        objc_try(&format!("configuring {kind:?} {device_id}"), configure)??;
     // SAFETY: plain getter.
     if let Some(c) = unsafe { session.synchronizationClock() } {
         *state.clock.lock().unwrap_or_else(|p| p.into_inner()) = Some(SendClock(c));
     }
     // SAFETY: blocks until running; called off the main thread per the threading contract.
-    let ok = unsafe {
+    let ok = objc_try(&format!("starting {kind:?} {device_id}"), || unsafe {
         session.startRunning();
         session.isRunning()
-    };
+    })
+    .unwrap_or(false);
     if !ok {
         state.accepting.store(false, Ordering::Release);
         return Err(Error::Other(format!(
