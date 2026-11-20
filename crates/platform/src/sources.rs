@@ -207,6 +207,8 @@ pub enum OverlayRole {
     PickOverlay,
     Saved,
     Onboarding,
+    Bubble,
+    Stage,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

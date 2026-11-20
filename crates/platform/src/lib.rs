@@ -3,6 +3,7 @@
 
 mod error;
 mod media;
+mod shared_camera;
 mod sources;
 mod traits;
 
@@ -20,6 +21,7 @@ pub use sc_core::folder::LocalDateTime;
 pub use sc_core::image::RgbaImage;
 pub use sc_core::project::{Resolution, SourceDescriptor, SystemAudioMode};
 pub use sc_core::time::HostTime;
+pub use shared_camera::{SharedCamera, WithSharedCamera};
 pub use sources::{
     AppInfo, AppRef, CameraLimit, Capabilities, CaptureDevice, DeviceKind, DisplayId, DisplayInfo,
     ExclusionKind, OverlayRole, PermissionKind, PermissionStatus, PickedSource, PickerRequest,

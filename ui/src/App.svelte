@@ -7,6 +7,7 @@
   import Region from './routes/Region.svelte';
   import Pick from './routes/Pick.svelte';
   import Saved from './routes/Saved.svelte';
+  import Bubble from './routes/Bubble.svelte';
 
   let route: Route = $state(routeFromHash(window.location.hash));
 
@@ -30,6 +31,8 @@
     <Region />
   {:else if route === 'pick'}
     <Pick />
+  {:else if route === 'bubble'}
+    <Bubble />
   {:else}
     <Saved />
   {/if}

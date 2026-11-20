@@ -13,7 +13,8 @@ use sc_export::{ExportJob, ExportObserver, ExportProgress, ExportState, QuickExp
 use sc_geometry::{PointF, RectPt, SizePx};
 use sc_platform::{
     AudioBuffer, DeviceStream, FrameSink, OverlayRole, PermissionKind, PermissionStatus,
-    PickedSource, PickerRequest, Platform, Resolution, SourceEvent, VideoFrame, WindowId,
+    PickedSource, PickerRequest, Platform, Resolution, SharedCamera, SourceEvent, VideoFrame,
+    WindowId, WithSharedCamera,
 };
 use sc_record::recovery::RecoveryReport;
 use sc_record::{HealthSnapshot, Notice, Session, SessionObserver, SessionState};
@@ -25,7 +26,7 @@ use crate::settings::{CanvasDto, RecorderSettings, SettingsStore};
 use crate::state::{Input, Phase};
 use crate::still::{self, StillCache};
 
-pub const WINDOWS: [(&str, OverlayRole); 7] = [
+pub const WINDOWS: [(&str, OverlayRole); 8] = [
     ("panel", OverlayRole::Panel),
     ("onboarding", OverlayRole::Onboarding),
     ("bar", OverlayRole::FloatingBar),
@@ -33,6 +34,7 @@ pub const WINDOWS: [(&str, OverlayRole); 7] = [
     ("region", OverlayRole::RegionOverlay),
     ("pick", OverlayRole::PickOverlay),
     ("saved", OverlayRole::Saved),
+    ("bubble", OverlayRole::Bubble),
 ];
 
 pub type Reply = Result<Value, String>;
@@ -44,6 +46,9 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 pub struct Core {
     pub app: AppHandle,
     pub platform: Arc<dyn Platform>,
+    pub camera: Arc<SharedCamera>,
+    pub live: crate::live::LiveHub,
+    pub bubble: Mutex<crate::bubble::BubbleState>,
     pub data_dir: PathBuf,
     projects_dir: PathBuf,
     settings: SettingsStore,
@@ -77,10 +82,14 @@ impl Core {
         projects_dir: PathBuf,
         no_key_windows: bool,
     ) -> Core {
+        let (platform, camera) = WithSharedCamera::new(platform);
         Core {
             settings: SettingsStore::new(&data_dir),
             app,
             platform,
+            camera,
+            live: crate::live::LiveHub::default(),
+            bubble: Mutex::new(crate::bubble::BubbleState::default()),
             data_dir,
             projects_dir,
             phase: Mutex::new(Phase::Idle),
@@ -111,9 +120,16 @@ impl Core {
     }
 
     fn advance(&self, input: Input) -> Result<Phase, String> {
-        let mut p = lock(&self.phase);
-        let next = p.next(input)?;
-        *p = next.clone();
+        let (before, next) = {
+            let mut p = lock(&self.phase);
+            let next = p.next(input)?;
+            (std::mem::replace(&mut *p, next.clone()), next)
+        };
+        if is_recording(&before) != is_recording(&next)
+            && let Err(e) = self.refresh_camera()
+        {
+            tracing::warn!("camera after {next:?}: {e}");
+        }
         Ok(next)
     }
 
@@ -199,12 +215,24 @@ impl Core {
             .get_webview_window(label)
             .ok_or_else(|| format!("no window {label:?}"))?;
         if key && !self.no_key_windows {
-            return w.show().map_err(|e| format!("show {label}: {e}"));
+            w.show().map_err(|e| format!("show {label}: {e}"))?;
+        } else {
+            show_without_key(&w)?;
         }
-        show_without_key(&w)
+        if label == "panel"
+            && let Err(e) = self.camera_preview(true)
+        {
+            tracing::warn!("camera preview: {e}");
+        }
+        Ok(())
     }
 
     pub fn hide_window(&self, label: &str) {
+        if label == "panel"
+            && let Err(e) = self.camera_preview(false)
+        {
+            tracing::warn!("camera preview: {e}");
+        }
         if let Some(w) = self.app.get_webview_window(label)
             && let Err(e) = w.hide()
         {
@@ -372,7 +400,12 @@ impl Core {
 
     pub fn set_settings(&self, s: RecorderSettings) -> Reply {
         self.settings.save(&s)?;
-        serde_json::to_value(s).map_err(|e| e.to_string())
+        if let Err(e) = self.refresh_camera() {
+            tracing::warn!("camera after settings: {e}");
+        }
+        let v = serde_json::to_value(s).map_err(|e| e.to_string())?;
+        self.emit("settings-changed", v.clone());
+        Ok(v)
     }
 
     pub fn get_capabilities(&self) -> Reply {
@@ -1155,6 +1188,145 @@ impl FrameSink for SystemSink {
     fn on_event(&self, e: SourceEvent) {
         if let Some(c) = self.core.upgrade() {
             c.on_system_event(e);
+        }
+    }
+}
+
+fn is_recording(p: &Phase) -> bool {
+    matches!(p, Phase::Recording | Phase::Switching | Phase::Stopping)
+}
+
+impl Core {
+    pub fn exiting(&self) -> bool {
+        self.exiting.load(Ordering::SeqCst)
+    }
+
+    /// The recorder panel opened (`true`) or closed. The camera runs while the panel is open or a
+    /// recording is on (ADR-041).
+    pub fn camera_preview(&self, active: bool) -> Reply {
+        lock(&self.bubble).preview_active = active;
+        self.refresh_camera()
+    }
+
+    /// Opens or releases the camera and shows, moves or hides the bubble to match the settings.
+    pub fn refresh_camera(&self) -> Reply {
+        let s = self.settings.load();
+        let recording = is_recording(&self.phase());
+        let active = lock(&self.bubble).preview_active || recording;
+        let device = if active { s.camera.clone() } else { None };
+        if let Err(e) = self.camera.set_preview(device.clone()) {
+            if !recording {
+                return Err(format!("camera: {e}"));
+            }
+            tracing::warn!("camera preview while recording: {e}");
+        }
+        {
+            let mut b = lock(&self.bubble);
+            b.key = Some(s.camera_key.clone());
+            b.shown = device.is_some() && s.bubble_shown && s.camera_key.visible;
+        }
+        self.place_bubble(&s)
+    }
+
+    fn place_bubble(&self, s: &RecorderSettings) -> Reply {
+        let displays = self
+            .platform
+            .screen()
+            .displays()
+            .map_err(|e| e.to_string())?;
+        let maps = crate::bubble::maps_output(s);
+        let placed = crate::bubble::display_for(s, &displays).and_then(|d| {
+            let mut b = lock(&self.bubble);
+            let key = b.key.clone()?;
+            let g = crate::bubble::geometry(&key, d, maps, b.floating_at);
+            b.geom = Some(g);
+            b.version += 1;
+            Some((g, b.shown))
+        });
+        match placed {
+            Some((g, true)) => {
+                self.move_bubble(&g);
+                self.show_window("bubble", false)?;
+                Ok(json!(g))
+            }
+            other => {
+                self.hide_window("bubble");
+                self.live.clear("bubble");
+                Ok(json!(other.map(|p| p.0)))
+            }
+        }
+    }
+
+    fn move_bubble(&self, g: &crate::bubble::Geom) {
+        if let Some(w) = self.app.get_webview_window("bubble")
+            && let Err(e) = w
+                .set_size(LogicalSize::new(g.window.w, g.window.h))
+                .and_then(|_| w.set_position(LogicalPosition::new(g.window.x, g.window.y)))
+        {
+            tracing::warn!("move bubble: {e}");
+        }
+    }
+
+    pub fn bubble_state(&self) -> Reply {
+        let b = lock(&self.bubble);
+        Ok(json!({
+            "geom": b.geom,
+            "key": b.key,
+            "shown": b.shown,
+            "frame": self.live.latest_id("bubble"),
+            "camera_open": self.camera.open_device(),
+        }))
+    }
+
+    /// A drag on the bubble: `phase` is `begin`, `move` or `end`; `x`, `y` are global points;
+    /// `corner` is the resize handle's direction, `None` to move.
+    pub fn bubble_drag(&self, phase: &str, x: f64, y: f64, corner: Option<(f64, f64)>) -> Reply {
+        let at = sc_geometry::PointF { x, y };
+        match phase {
+            "begin" => {
+                lock(&self.bubble).drag_begin(corner, at);
+                Ok(Value::Null)
+            }
+            "move" => {
+                let s = self.settings.load();
+                let displays = self
+                    .platform
+                    .screen()
+                    .displays()
+                    .map_err(|e| e.to_string())?;
+                let Some(d) = crate::bubble::display_for(&s, &displays) else {
+                    return Ok(Value::Null);
+                };
+                let maps = crate::bubble::maps_output(&s);
+                let g = {
+                    let mut b = lock(&self.bubble);
+                    b.drag_to(at, d, maps);
+                    let key = b.key.clone().ok_or("no camera key")?;
+                    let g = crate::bubble::geometry(&key, d, maps, b.floating_at);
+                    b.geom = Some(g);
+                    b.version += 1;
+                    g
+                };
+                self.move_bubble(&g);
+                Ok(json!(g))
+            }
+            "end" => {
+                let key = {
+                    let mut b = lock(&self.bubble);
+                    b.drag_end();
+                    b.key.clone()
+                };
+                if let Some(key) = key {
+                    let mut s = self.settings.load();
+                    if s.camera_key != key {
+                        s.camera_key = key;
+                        self.settings.save(&s)?;
+                        self.emit("settings-changed", json!(s));
+                    }
+                }
+                Ok(Value::Null)
+            }
+            other => Err(format!("bubble_drag: unknown phase {other:?}")),
         }
     }
 }

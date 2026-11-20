@@ -130,3 +130,46 @@ pub struct RenderedFrame {
     pub format: OutputFormat,
     pub data: Vec<u8>,
 }
+
+/// The camera layer for `placement` drawn into `dst` (canvas or bubble pixels). The border width
+/// scales with the shape: `width_px_1080` is in 1080 units of the output canvas, whose short side
+/// is the shape's short side over `size_norm`, so the bubble and the output agree.
+pub fn camera_layer<'a>(
+    placement: &sc_core::camera::CameraPlacement,
+    frame: &'a FrameBuffer,
+    dst: sc_geometry::RectF,
+) -> CameraLayer<'a> {
+    let aspect = placement.shape.aspect();
+    let src = sc_geometry::camera_rects(
+        SizePx { w: 1, h: 1 },
+        frame.0.size(),
+        aspect,
+        &placement.pose,
+    )
+    .src;
+    let round = |r: sc_geometry::RectF| RectPx {
+        x: r.x.round() as i32,
+        y: r.y.round() as i32,
+        w: r.w.round().max(1.0) as u32,
+        h: r.h.round().max(1.0) as u32,
+    };
+    let dst = round(dst);
+    let short = f64::from(dst.w.min(dst.h));
+    let unit = short / (1080.0 * placement.pose.size.max(1e-6));
+    let byte = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    CameraLayer {
+        frame,
+        src: round(src),
+        dst,
+        radius_px: (placement.pose.radius.clamp(0.0, 1.0) * short / 2.0).round() as u32,
+        mirror: placement.mirror,
+        border: placement.border.as_ref().map(|b| {
+            let c = b.color.0;
+            (
+                (b.width_px_1080 * unit).round().max(1.0) as u32,
+                [byte(c[0]), byte(c[1]), byte(c[2])],
+            )
+        }),
+        shadow: placement.shadow.as_ref().map_or(0, |s| byte(s.strength)),
+    }
+}

@@ -10,7 +10,7 @@ pub mod cpu;
 
 pub use compositor::{
     AdapterSummary, Backend, CameraLayer, Compositor, FrameJob, OutputFormat, RenderedFrame,
-    ScreenLayer,
+    ScreenLayer, camera_layer,
 };
 pub use diff::{DiffStats, diff};
 pub use sc_platform::{Error, Result};

@@ -10,7 +10,7 @@ use tauri::State;
 use crate::core::{Core, Reply};
 
 #[cfg(test)]
-const COMMANDS: [&str; 23] = [
+const COMMANDS: [&str; 26] = [
     "get_permissions",
     "request_permission",
     "open_permission_settings",
@@ -34,6 +34,9 @@ const COMMANDS: [&str; 23] = [
     "cancel_export",
     "reveal",
     "recovery_report",
+    "camera_preview",
+    "bubble_state",
+    "bubble_drag",
 ];
 
 fn snake_to_camel(s: &str) -> String {
@@ -101,6 +104,14 @@ pub fn dispatch(core: &Arc<Core>, name: &str, args: &Value) -> Reply {
         "cancel_export" => core.cancel_export(&arg::<String>(args, "id")?),
         "reveal" => core.reveal(&arg::<String>(args, "path")?),
         "recovery_report" => core.recovery_report(),
+        "camera_preview" => core.camera_preview(arg(args, "active")?),
+        "bubble_state" => core.bubble_state(),
+        "bubble_drag" => core.bubble_drag(
+            &arg::<String>(args, "phase")?,
+            arg(args, "x")?,
+            arg(args, "y")?,
+            opt_arg::<(f64, f64)>(args, "corner")?,
+        ),
         other => Err(format!("unknown command {other:?}")),
     }
 }

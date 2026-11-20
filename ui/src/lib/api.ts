@@ -17,6 +17,8 @@ import type {
   SourceList,
   SourceSpecDto,
   CanvasDto,
+  BubbleGeom,
+  BubbleStateDto,
 } from './types.ts';
 
 export const inTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -50,6 +52,10 @@ export const api = {
   cancelExport: (id: string) => call<void>('cancel_export', { id }),
   reveal: (path: string) => call<void>('reveal', { path }),
   recoveryReport: () => call<RecoveryReportDto[]>('recovery_report'),
+  cameraPreview: (active: boolean) => call<BubbleGeom | null>('camera_preview', { active }),
+  bubbleState: () => call<BubbleStateDto>('bubble_state'),
+  bubbleDrag: (phase: 'begin' | 'move' | 'end', x: number, y: number, corner: [number, number] | null = null) =>
+    call<BubbleGeom | null>('bubble_drag', { phase, x, y, corner }),
 };
 
 export const COMMANDS = [
@@ -76,6 +82,9 @@ export const COMMANDS = [
   'cancel_export',
   'reveal',
   'recovery_report',
+  'camera_preview',
+  'bubble_state',
+  'bubble_drag',
 ] as const;
 
 export function errorText(err: unknown): string {

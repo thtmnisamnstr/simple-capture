@@ -168,8 +168,8 @@ if basic("01-onboarding", log):
     DISPLAYS = steps(log, "cmd list_displays")[0]["result"]
     rects = steps(log, "log-window-rects")[0]["result"]
     vis = {r["label"]: r["visible"] for r in rects}
-    check("01-onboarding", "seven windows, IDs > 0, onboarding shown",
-          len(rects) == 7 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
+    check("01-onboarding", "eight windows, IDs > 0, onboarding shown",
+          len(rects) == 8 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
     ui = ui_lines(steps(log, "ui-log")[0])
     text = next((l for l in ui if "onboarding " in l), "")
     check("01-onboarding", "onboarding renders the three statuses",
@@ -367,5 +367,28 @@ if basic("11-quit-export", log):
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)
 failed = [r for r in results if not r["ok"]]
+log = lines("12-bubble")
+if basic("12-bubble", log):
+    st = [s["result"] for s in steps(log, "cmd bubble_state")]
+    rects = [{r["label"]: r for r in s["result"]} for s in steps(log, "log-window-rects")]
+    if len(st) >= 3 and len(rects) >= 2:
+        a, b, c = st[0], st[1], st[2]
+        check("12-bubble", "camera opened for the bubble", bool(a.get("camera_open")), a.get("camera_open"))
+        check("12-bubble", "bubble shown with live frames", a.get("shown") and a.get("frame", 0) > 0, a)
+        fps = b.get("frame", 0) - a.get("frame", 0)
+        check("12-bubble", "bubble frames keep coming (>= 15 in 1 s)", fps >= 15, fps)
+        win, g = rects[0].get("bubble"), (a.get("geom") or {}).get("window")
+        check("12-bubble", "bubble window placed at its geometry",
+              bool(win and win["visible"] and g) and all(abs(win["rect_pt"][k] - g[k]) <= 1 for k in "xywh"),
+              {"window": win, "geom": g})
+        k0, k1 = (a.get("key") or {}).get("center_norm"), (c.get("key") or {}).get("center_norm")
+        check("12-bubble", "drag moved the camera left and up", bool(k0 and k1) and k1["x"] < k0["x"] and k1["y"] < k0["y"],
+              {"before": k0, "after": k1})
+        win2, g2 = rects[1].get("bubble"), (c.get("geom") or {}).get("window")
+        check("12-bubble", "bubble window followed the drag",
+              bool(win2 and g2) and all(abs(win2["rect_pt"][k] - g2[k]) <= 1 for k in "xy"), {"window": win2, "geom": g2})
+    else:
+        check("12-bubble", "bubble steps logged", False, {"states": len(st), "rects": len(rects)})
+
 print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")
 sys.exit(1 if failed else 0)

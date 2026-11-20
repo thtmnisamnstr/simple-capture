@@ -74,9 +74,11 @@ const LEVEL_SCREEN_SAVER: isize = 1000;
 
 pub(crate) fn level_for(role: OverlayRole) -> isize {
     match role {
-        OverlayRole::FloatingBar | OverlayRole::Popover => LEVEL_STATUS,
+        OverlayRole::FloatingBar | OverlayRole::Popover | OverlayRole::Bubble => LEVEL_STATUS,
         OverlayRole::RegionOverlay | OverlayRole::PickOverlay => LEVEL_SCREEN_SAVER,
-        OverlayRole::Panel | OverlayRole::Saved | OverlayRole::Onboarding => LEVEL_FLOATING,
+        OverlayRole::Panel | OverlayRole::Saved | OverlayRole::Onboarding | OverlayRole::Stage => {
+            LEVEL_FLOATING
+        }
     }
 }
 

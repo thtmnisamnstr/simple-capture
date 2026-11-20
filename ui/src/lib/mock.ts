@@ -85,6 +85,21 @@ let settings: RecorderSettings = {
   resolution: 'native',
   cursor: true,
   click_highlight: false,
+  camera_key: {
+    t_rec_ns: 0,
+    visible: true,
+    shape: 'circle',
+    corner_radius: 0,
+    center_norm: { x: 0.91, y: 0.84 },
+    size_norm: 0.26,
+    zoom: 1,
+    pan_norm: { x: 0, y: 0 },
+    mirror: false,
+    border: null,
+    shadow: null,
+    easing: 'linear',
+  },
+  bubble_shown: true,
 };
 
 const permissions: PermissionsDto = {
@@ -311,6 +326,9 @@ const handlers: Record<string, Handler> = {
   },
   reveal: () => null,
   recovery_report: () => recovery,
+  camera_preview: () => null,
+  bubble_state: () => ({ geom: null, key: settings.camera_key, shown: false }),
+  bubble_drag: () => null,
 };
 
 export const MOCK_COMMANDS = Object.keys(handlers);

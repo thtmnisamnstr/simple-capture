@@ -8,6 +8,7 @@
     DevicesDto,
     DisplayInfo,
     PermissionsDto,
+    CameraKey,
     PickedDto,
     RecorderSettings,
     RecoveryReportDto,
@@ -24,7 +25,17 @@
     sourceSizePx,
     windowTitle,
   } from '../lib/sources.ts';
-  import { aspectRatio, fitBox, ratioOf, referenceCanvasSize, smallContent } from '../lib/geometry.ts';
+  import {
+    aspectRatio,
+    CAMERA_SIZE_PRESETS,
+    cornerCenter,
+    fitBox,
+    ratioOf,
+    referenceCanvasSize,
+    smallContent,
+    type Corner,
+  } from '../lib/geometry.ts';
+  import { CAMERA_SHAPES, shapeAspect } from '../lib/camera.ts';
   const PREVIEW_MAX = 112;
   import { backgroundCss, backgroundSummary } from '../lib/backgrounds.ts';
   import { rememberSource } from '../lib/recent.ts';
@@ -147,6 +158,11 @@
           })
           .catch((e) => (error = errorText(e)));
       }),
+      onEvent('settings-changed', isObject, (next) => {
+        if (settings && JSON.stringify(next) !== JSON.stringify($state.snapshot(settings))) {
+          settings = next as unknown as RecorderSettings;
+        }
+      }),
       onEvent('recording-state', isRecordingState, (s) => {
         recording = s.state === 'preparing' || s.state === 'recording' || s.state === 'switching' || s.state === 'stopping';
         if (s.state === 'failed') error = s.error;
@@ -167,6 +183,17 @@
       window.removeEventListener('focus', onFocus);
     };
   });
+
+  function setKey(patch: Partial<CameraKey>) {
+    if (settings) settings.camera_key = { ...settings.camera_key, ...patch };
+  }
+
+  function placeCorner(corner: Corner) {
+    if (!settings) return;
+    const k = settings.camera_key;
+    const frame = canvasPx ?? { w: 1920, h: 1080 };
+    setKey({ center_norm: cornerCenter(frame, shapeAspect(k.shape), k.size_norm, corner) });
+  }
 
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
@@ -397,7 +424,53 @@
           {#each devices.cameras as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
         </select>
       </div>
-      {#if settings.camera}<p class="muted small indent">Recorded now, shown in M2.</p>{/if}
+      {#if settings.camera}
+        {@const k = settings.camera_key}
+        <div class="row">
+          <span class="label" id="shape-l">Shape</span>
+          <div class="segmented wrap" role="radiogroup" aria-labelledby="shape-l">
+            {#each CAMERA_SHAPES as sh (sh.value)}
+              <button role="radio" aria-checked={k.shape === sh.value} title={sh.title} onclick={() => setKey({ shape: sh.value })}>{sh.label}</button>
+            {/each}
+          </div>
+        </div>
+        {#if k.shape !== 'circle'}
+          <div class="row nowrap">
+            <label class="label" for="radius">Corners</label>
+            <input id="radius" type="range" min="0" max="1" step="0.01" value={k.corner_radius} oninput={(e) => setKey({ corner_radius: Number(e.currentTarget.value) })} />
+          </div>
+        {/if}
+        <div class="row">
+          <span class="label" id="size-l">Size</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="size-l">
+            {#each ['S', 'M', 'L'] as label, i (label)}
+              <button role="radio" aria-checked={Math.abs(k.size_norm - CAMERA_SIZE_PRESETS[i]) < 0.005} onclick={() => setKey({ size_norm: CAMERA_SIZE_PRESETS[i] })}>{label}</button>
+            {/each}
+          </div>
+          <div class="segmented" role="group" aria-label="Corner">
+            <button title="Top left" onclick={() => placeCorner('top_left')}>↖</button>
+            <button title="Top right" onclick={() => placeCorner('top_right')}>↗</button>
+            <button title="Bottom left" onclick={() => placeCorner('bottom_left')}>↙</button>
+            <button title="Bottom right" onclick={() => placeCorner('bottom_right')}>↘</button>
+          </div>
+        </div>
+        <div class="row indent">
+          <label><input type="checkbox" checked={k.mirror} onchange={(e) => setKey({ mirror: e.currentTarget.checked })} /> Mirror</label>
+          <label
+            ><input
+              type="checkbox"
+              checked={!!k.border}
+              onchange={(e) => setKey({ border: e.currentTarget.checked ? { width_px_1080: 6, color: [1, 1, 1, 1] } : null })}
+            /> Border</label
+          >
+          <label><input type="checkbox" checked={!!k.shadow} onchange={(e) => setKey({ shadow: e.currentTarget.checked ? { strength: 0.7 } : null })} /> Shadow</label>
+          <label><input type="checkbox" bind:checked={settings.bubble_shown} /> Show bubble</label>
+          {#if k.zoom > 1 || k.pan_norm.x !== 0 || k.pan_norm.y !== 0}
+            <button class="link" onclick={() => setKey({ zoom: 1, pan_norm: { x: 0, y: 0 } })}>Reset framing</button>
+          {/if}
+        </div>
+        <p class="muted small indent">Drag the bubble to place it; scroll on it to zoom, ⌥-drag to pan.</p>
+      {/if}
       <div class="row nowrap">
         <label class="label" for="mic">Microphone</label>
         <select id="mic" bind:value={settings.mic}>

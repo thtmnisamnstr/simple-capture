@@ -3,8 +3,8 @@
 
 use std::path::{Path, PathBuf};
 
-use sc_core::project::{Background, Rgba};
-use sc_geometry::Aspect;
+use sc_core::project::{Background, CameraKey, CameraShape, Rgba};
+use sc_geometry::{Aspect, CAMERA_SIZE_PRESETS, PointF};
 use serde::{Deserialize, Serialize};
 
 use crate::dto::SourceSpecDto;
@@ -59,6 +59,18 @@ pub struct RecorderSettings {
     pub resolution: ResolutionDto,
     pub cursor: bool,
     pub click_highlight: bool,
+    pub camera_key: CameraKey,
+    pub bubble_shown: bool,
+}
+
+/// A medium circle in the bottom-right corner of a 16:9 frame.
+pub fn default_camera_key() -> CameraKey {
+    CameraKey::new(
+        0,
+        CameraShape::Circle,
+        PointF { x: 0.91, y: 0.84 },
+        CAMERA_SIZE_PRESETS[1],
+    )
 }
 
 impl Default for RecorderSettings {
@@ -73,6 +85,8 @@ impl Default for RecorderSettings {
             resolution: ResolutionDto::Native,
             cursor: true,
             click_highlight: false,
+            camera_key: default_camera_key(),
+            bubble_shown: true,
         }
     }
 }
@@ -82,6 +96,19 @@ impl RecorderSettings {
     pub fn validate(&self) -> Result<(), String> {
         if self.fps != 30 && self.fps != 60 {
             return Err(format!("fps must be 30 or 60, got {}", self.fps));
+        }
+        let k = &self.camera_key;
+        let finite = [
+            k.center_norm.x,
+            k.center_norm.y,
+            k.size_norm,
+            k.zoom,
+            k.pan_norm.x,
+            k.pan_norm.y,
+            k.corner_radius,
+        ];
+        if finite.iter().any(|v| !v.is_finite()) {
+            return Err("camera_key has a non-finite value".into());
         }
         Ok(())
     }
@@ -183,6 +210,12 @@ mod tests {
             resolution: ResolutionDto::OneX,
             cursor: false,
             click_highlight: true,
+            camera_key: CameraKey {
+                mirror: true,
+                zoom: 1.5,
+                ..default_camera_key()
+            },
+            bubble_shown: false,
         };
         store.save(&s).expect("save");
         assert_eq!(store.load(), s);

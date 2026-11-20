@@ -1,10 +1,12 @@
 //! Simple Capture desktop app: Tauri 2 shell (M1 plan §5.2–§5.4).
 
+mod bubble;
 mod commands;
 mod core;
 #[cfg(debug_assertions)]
 mod driver;
 mod dto;
+mod live;
 #[cfg(target_os = "macos")]
 mod objc;
 mod protocol;
@@ -171,6 +173,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     core.configure_windows()?;
+    bubble::spawn(&core);
     let tray = tray::Tray::build(app.handle(), core.clone())?;
     let _ = core.tray.set(tray);
     tracing::info!("tray ready");
@@ -199,6 +202,12 @@ fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
             ..
         } => {
             api.prevent_close();
+            if label == "panel"
+                && let Some(core) = app.try_state::<Arc<Core>>()
+                && let Err(e) = core.camera_preview(false)
+            {
+                tracing::warn!("camera preview: {e}");
+            }
             if let Some(w) = app.get_webview_window(&label)
                 && let Err(e) = w.hide()
             {

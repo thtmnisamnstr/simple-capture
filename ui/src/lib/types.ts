@@ -88,6 +88,25 @@ export interface RecorderSettings {
   resolution: 'native' | '1x';
   cursor: boolean;
   click_highlight: boolean;
+  camera_key: CameraKey;
+  bubble_shown: boolean;
+}
+
+export type CameraShape = 'circle' | 'square' | 'rect_4_3' | 'rect_16_9' | 'rect_3_4' | 'rect_9_16' | 'rounded';
+
+export interface CameraKey {
+  t_rec_ns: number;
+  visible: boolean;
+  shape: CameraShape;
+  corner_radius: number;
+  center_norm: PointF;
+  size_norm: number;
+  zoom: number;
+  pan_norm: PointF;
+  mirror: boolean;
+  border?: { width_px_1080: number; color: [number, number, number, number] } | null;
+  shadow?: { strength: number } | null;
+  easing: 'step' | 'linear' | 'ease_in_out';
 }
 
 export interface RecordRequestDto {
@@ -160,3 +179,6 @@ export const EVENTS = {
   exportProgress: 'export-progress',
   exportState: 'export-state',
 } as const;
+
+export interface BubbleGeom { window: RectPt; shape: RectPt; scale: number; maps_output: boolean }
+export interface BubbleStateDto { geom: BubbleGeom | null; key: CameraKey | null; shown: boolean }

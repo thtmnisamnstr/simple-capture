@@ -1,4 +1,5 @@
-//! `sc://` scheme: compositor stills (`sc://still/<id>.png`, ARCHITECTURE §9).
+//! `sc://` scheme: compositor stills (`sc://still/<id>.png`, ARCHITECTURE §9) and live frames
+//! (`sc://live/<name>?after=<id>`, see `live.rs`).
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -33,6 +34,28 @@ pub fn handle<R: Runtime>(
         .map(|s| s.inner().clone());
     let uri = req.uri().clone();
     std::thread::spawn(move || {
+        if let Some((name, after)) = crate::live::parse(uri.host(), uri.path(), uri.query()) {
+            let frame = core.as_ref().and_then(|c| {
+                c.live
+                    .next(&name, after, std::time::Duration::from_millis(500))
+            });
+            let resp = match frame {
+                Some(f) => Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, "application/octet-stream")
+                    .header(header::CACHE_CONTROL, "no-store")
+                    .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .body(Cow::Owned(f.body.to_vec()))
+                    .unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..]))),
+                None => Response::builder()
+                    .status(StatusCode::NO_CONTENT)
+                    .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .body(Cow::Borrowed(&b""[..]))
+                    .unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..]))),
+            };
+            responder.respond(resp);
+            return;
+        }
         let png = still::id_from_path(uri.host(), uri.path())
             .and_then(|id| core.as_ref().and_then(|c| c.still_png(&id)));
         let resp = match png {
