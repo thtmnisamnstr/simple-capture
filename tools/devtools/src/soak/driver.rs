@@ -491,7 +491,13 @@ pub fn analyze(log: &RunLog) -> Result<Report> {
             writer_not_ready: t.health.writer_not_ready,
             gaps: t.health.gaps.len() as u64,
             overlaps: h.and_then(|h| h["overlaps"].as_u64()),
-            gap_total_ms: t.health.gaps.iter().map(|g| g.dur_ns as f64 / 1e6).sum(),
+            gap_total_ms: t
+                .health
+                .gaps
+                .iter()
+                .map(|g| g.dur_ns as f64 / 1e6)
+                .sum::<f64>()
+                + 0.0,
             duration_s: t.duration_ns.map(|d| d as f64 / 1e9),
             drift_ms: matches!(t.kind, TrackKind::Mic | TrackKind::SystemAudio)
                 .then(|| h.and_then(|h| h["drift_ns"].as_f64()).map(|d| d / 1e6))
