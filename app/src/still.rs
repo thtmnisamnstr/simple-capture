@@ -84,6 +84,7 @@ pub fn compose_png(
     canvas: SizePx,
     project_dir: &Path,
     snapshot: Option<&RgbaImage>,
+    camera: Option<(&sc_core::camera::CameraPlacement, &FrameBuffer)>,
 ) -> Result<Vec<u8>, String> {
     let bg = sc_text::rasterize_background(background, canvas, project_dir)
         .map_err(|e| format!("still background: {e}"))?;
@@ -101,8 +102,12 @@ pub fn compose_png(
             dst: contain_fit(canvas, size),
         }
     });
+    let camera = camera.map(|(p, f)| {
+        let rects = sc_geometry::camera_rects(canvas, f.0.size(), p.shape.aspect(), &p.pose);
+        sc_render::camera_layer(p, f, rects.dst)
+    });
     let job = FrameJob {
-        camera: None,
+        camera,
         canvas,
         background: &bg,
         screen,
@@ -214,7 +219,8 @@ mod tests {
             data: vec![255; 64 * 64 * 4],
         };
         let canvas = still_canvas(Aspect::R16x9, None);
-        let png = compose_png(&bg, canvas, Path::new("/nonexistent"), Some(&snap)).expect("png");
+        let png =
+            compose_png(&bg, canvas, Path::new("/nonexistent"), Some(&snap), None).expect("png");
         let img = sc_text::decode_image(&png).expect("decode");
         assert_eq!(img.size, canvas);
         let at = |x: usize, y: usize| &img.data[y * img.stride + x * 4..y * img.stride + x * 4 + 4];
@@ -223,7 +229,7 @@ mod tests {
             "edge is background"
         );
         assert!(at(480, 270)[0] > 200, "centre is the snapshot");
-        let plain = compose_png(&bg, canvas, Path::new("/nonexistent"), None).expect("png");
+        let plain = compose_png(&bg, canvas, Path::new("/nonexistent"), None, None).expect("png");
         assert!(plain.starts_with(b"\x89PNG"));
     }
 

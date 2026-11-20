@@ -211,6 +211,75 @@ impl SegmentFrameSource {
     }
 }
 
+/// Sequential frames of one continuous video track (the camera), at recording time
+/// `first_sample_offset_ns + file time`. Holds the newest frame at or before the requested time;
+/// a request earlier than the previous one reopens the file.
+pub struct TrackFrameSource {
+    decoder: Arc<dyn Decoder>,
+    path: PathBuf,
+    offset: i64,
+    reader: Option<Box<dyn VideoReader>>,
+    current: Option<FrameBuffer>,
+    pending: Option<DecodedFrame>,
+    last_t: Option<i64>,
+}
+
+impl TrackFrameSource {
+    /// `None` when the project has no track `track_id`.
+    pub fn open(
+        project: &ProjectV1,
+        dir: &Path,
+        decoder: Arc<dyn Decoder>,
+        track_id: &str,
+    ) -> Result<Option<TrackFrameSource>> {
+        let Some(track) = project.recording.tracks.iter().find(|t| t.id == track_id) else {
+            return Ok(None);
+        };
+        let path = dir.join(&track.file);
+        let reader = decoder.open_video(&path)?;
+        Ok(Some(TrackFrameSource {
+            decoder,
+            path,
+            offset: track.first_sample_offset_ns,
+            reader: Some(reader),
+            current: None,
+            pending: None,
+            last_t: None,
+        }))
+    }
+
+    pub fn frame_at(&mut self, t_rec_ns: i64) -> Result<Option<FrameBuffer>> {
+        if self.last_t.is_some_and(|l| t_rec_ns < l) {
+            self.reader = Some(self.decoder.open_video(&self.path)?);
+            self.current = None;
+            self.pending = None;
+        }
+        self.last_t = Some(t_rec_ns);
+        let rel = t_rec_ns - self.offset;
+        loop {
+            let next = match self.pending.take() {
+                Some(f) => f,
+                None => match self.reader.as_mut() {
+                    Some(r) => match r.next_frame()? {
+                        Some(f) => f,
+                        None => {
+                            self.reader = None;
+                            break;
+                        }
+                    },
+                    None => break,
+                },
+            };
+            if next.file_ns > rel {
+                self.pending = Some(next);
+                break;
+            }
+            self.current = Some(next.frame);
+        }
+        Ok(self.current.clone())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SegmentFrame {
     pub segment_id: String,

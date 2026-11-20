@@ -291,6 +291,64 @@ impl Proj {
         self
     }
 
+    /// A camera track of `frame` from 0 to `end_ms` at 30 fps, placed by `keys`.
+    pub fn camera(
+        &mut self,
+        frame: CpuNv12Frame,
+        end_ms: i64,
+        keys: Vec<sc_core::project::CameraKey>,
+    ) -> &mut Self {
+        let file = "tracks/camera.sctrk".to_string();
+        let spec = VideoWriterSpec {
+            size: frame.size,
+            fps: 30,
+            codec: VideoCodec::Hevc,
+            keyframe_interval_s: 1.0,
+            fragment_interval_s: 1.0,
+            bits_per_pixel: 0.1,
+        };
+        let mut w = SctrkWriterFactory
+            .video(&self.dir.join(&file), &spec)
+            .expect("camera writer");
+        let mut ms = 0;
+        while ms < end_ms {
+            let vf = VideoFrame {
+                stream: StreamTag(99),
+                pts: HostTime(0),
+                size: frame.size,
+                content_rect_pt: None,
+                content_scale: None,
+                buffer: FrameBuffer(Arc::new(frame.clone())),
+            };
+            w.append_video(&vf, ms * MS).expect("append camera");
+            ms += 33;
+        }
+        w.finish(Some(end_ms * MS)).expect("finish camera");
+        self.project.recording.tracks.push(Track {
+            id: "camera".into(),
+            kind: TrackKind::Camera,
+            segment_id: None,
+            file,
+            container: "sctrk".into(),
+            codec: "sctrk".into(),
+            first_sample_offset_ns: 0,
+            duration_ns: Some(end_ms * MS),
+            video: None,
+            audio: None,
+            device: None,
+            health: health(),
+            fragment_interval_s: 1.0,
+            extra: Default::default(),
+        });
+        self.project.camera_layout.overlays = vec![sc_core::project::CameraOverlay {
+            id: "cam0".into(),
+            track_id: "camera".into(),
+            keyframes: keys,
+            extra: Default::default(),
+        }];
+        self
+    }
+
     pub fn save(&self) -> PathBuf {
         self.project.save(&self.dir).expect("save project");
         self.dir.clone()

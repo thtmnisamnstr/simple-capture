@@ -464,10 +464,27 @@ impl Core {
             },
             None => canvas.background.clone(),
         };
+        let settings = self.settings.load();
+        let cam_frame = settings
+            .camera
+            .as_ref()
+            .filter(|_| settings.camera_key.visible)
+            .and_then(|_| self.camera.latest());
+        let placement = sc_core::camera::camera_at(std::slice::from_ref(&settings.camera_key), 0);
+        let cam = cam_frame
+            .as_ref()
+            .zip(placement.as_ref())
+            .map(|(f, p)| (p, &f.buffer));
         let png =
-            still::compose_png(&bg, size, Path::new("/"), snapshot.as_ref()).or_else(|e| {
+            still::compose_png(&bg, size, Path::new("/"), snapshot.as_ref(), cam).or_else(|e| {
                 tracing::warn!("still: {e}; retrying with the canvas background");
-                still::compose_png(&canvas.background, size, Path::new("/"), snapshot.as_ref())
+                still::compose_png(
+                    &canvas.background,
+                    size,
+                    Path::new("/"),
+                    snapshot.as_ref(),
+                    cam,
+                )
             })?;
         let id = sc_core::ids::new_id();
         lock(&self.stills).insert(id.clone(), png);
@@ -1281,8 +1298,7 @@ impl Core {
             let mut b = lock(&self.bubble);
             let now = Instant::now();
             if !force
-                && b
-                    .last_key_sent
+                && b.last_key_sent
                     .is_some_and(|t| now.duration_since(t) < Duration::from_millis(33))
             {
                 return;

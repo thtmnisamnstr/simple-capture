@@ -3,10 +3,11 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use sc_core::camera::camera_at;
 use sc_core::image::RgbaImage;
-use sc_core::project::{Background, ProjectV1, TrackKind};
-use sc_decode::{SegmentFrameSource, cfr_frame_times};
-use sc_geometry::{Ratio, RectPx, SizePx, contain_fit, even_round, preset_size};
+use sc_core::project::{Background, CameraKey, ProjectV1, TrackKind};
+use sc_decode::{SegmentFrameSource, TrackFrameSource, cfr_frame_times};
+use sc_geometry::{Ratio, RectPx, SizePx, camera_rects, contain_fit, even_round, preset_size};
 use sc_platform::{Decoder, Error, Result};
 use sc_render::{Backend, Compositor, FrameJob, OutputFormat, RenderedFrame, ScreenLayer};
 use sc_text::BackgroundCache;
@@ -258,6 +259,7 @@ pub(crate) fn audio_track_ids(project: &ProjectV1) -> Vec<String> {
 pub struct FrameRenderer {
     source: SegmentFrameSource,
     compositor: Compositor,
+    camera: Option<(TrackFrameSource, Vec<CameraKey>)>,
     backgrounds: BackgroundCache,
     background: Background,
     project_dir: PathBuf,
@@ -283,7 +285,15 @@ impl FrameRenderer {
         backend: Backend,
         format: OutputFormat,
     ) -> Result<FrameRenderer> {
+        let camera = match project.camera_layout.overlays.first() {
+            Some(o) if !o.keyframes.is_empty() => {
+                TrackFrameSource::open(project, project_dir, decoder.clone(), &o.track_id)?
+                    .map(|src| (src, o.keyframes.clone()))
+            }
+            _ => None,
+        };
         Ok(FrameRenderer {
+            camera,
             source: SegmentFrameSource::open(project, project_dir, decoder)?,
             compositor: Compositor::new(backend)?,
             backgrounds: BackgroundCache::new(1),
@@ -323,8 +333,23 @@ impl FrameRenderer {
                 ),
             });
         let dst = layer.as_ref().map(|l| l.dst);
+        let mut cam_frame = None;
+        let mut placement = None;
+        if let Some((src, keys)) = self.camera.as_mut()
+            && let Some(p) = camera_at(keys, t_rec_ns)
+        {
+            cam_frame = src.frame_at(t_rec_ns)?;
+            placement = Some(p);
+        }
+        let camera = match (&cam_frame, &placement) {
+            (Some(f), Some(p)) => {
+                let rects = camera_rects(self.canvas, f.0.size(), p.shape.aspect(), &p.pose);
+                Some(sc_render::camera_layer(p, f, rects.dst))
+            }
+            _ => None,
+        };
         let job = FrameJob {
-            camera: None,
+            camera,
             canvas: self.canvas,
             background: &bg,
             screen: layer,

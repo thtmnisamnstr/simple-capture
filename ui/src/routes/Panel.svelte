@@ -209,6 +209,7 @@
     if (!settings?.source) return;
     const src = $state.snapshot(settings.source) as SourceSpecDto;
     const canvas = $state.snapshot(settings.canvas) as RecorderSettings['canvas'];
+    void [settings.camera, JSON.stringify(settings.camera_key)];
     clearTimeout(stillTimer);
     const seq = ++stillSeq;
     stillTimer = setTimeout(() => {
