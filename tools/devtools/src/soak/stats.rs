@@ -235,6 +235,79 @@ pub struct SyncRow {
     pub note: Option<String>,
 }
 
+pub const BURST: usize = 5;
+pub const BURST_GAP_S: f64 = 2.0;
+
+/// A 30 fps capture places each flash onset on a 33 ms grid, so one flash per point would make
+/// a one-frame threshold meaningless; a burst of five averages the frame phase out.
+pub fn flash_schedule(dur_s: f64) -> Vec<f64> {
+    let burst = |t0: f64| (0..BURST).map(move |k| t0 + k as f64 * BURST_GAP_S);
+    let mut v: Vec<f64> = burst(5.0).collect();
+    let end0 = dur_s - 60.0;
+    if end0 >= 5.0 + BURST as f64 * BURST_GAP_S + 2.0 {
+        v.extend(burst(end0));
+    }
+    v
+}
+
+fn mean(v: &[f64]) -> Option<f64> {
+    (!v.is_empty()).then(|| v.iter().sum::<f64>() / v.len() as f64)
+}
+
+pub fn merge_sync(rows: Vec<SyncRow>) -> Vec<SyncRow> {
+    let mut labels: Vec<String> = Vec::new();
+    for r in &rows {
+        if !labels.contains(&r.label) {
+            labels.push(r.label.clone());
+        }
+    }
+    labels
+        .into_iter()
+        .map(|l| {
+            let g: Vec<&SyncRow> = rows.iter().filter(|r| r.label == l).collect();
+            let lat: Vec<f64> = g.iter().filter_map(|r| r.video_latency_ms).collect();
+            let step: Vec<f64> = g.iter().filter_map(|r| r.video_step).collect();
+            let mut notes = vec![format!("screen saw {}/{} flashes", lat.len(), g.len())];
+            let mut offsets = Vec::new();
+            for (k, _) in &g[0].offsets_ms {
+                let v: Vec<f64> = g
+                    .iter()
+                    .filter_map(|r| r.offsets_ms.iter().find(|x| &x.0 == k).and_then(|x| x.1))
+                    .collect();
+                if v.is_empty() {
+                    notes.push(format!("{k}: no beep measured"));
+                } else {
+                    let lo = v.iter().copied().fold(f64::MAX, f64::min);
+                    let hi = v.iter().copied().fold(f64::MIN, f64::max);
+                    notes.push(format!(
+                        "{k}: {}/{} beeps, {lo:+.1}..{hi:+.1} ms",
+                        v.len(),
+                        g.len()
+                    ));
+                }
+                offsets.push((k.clone(), mean(&v)));
+            }
+            let mut extra: Vec<String> = Vec::new();
+            for r in &g {
+                if let Some(n) = &r.note
+                    && !extra.contains(n)
+                {
+                    extra.push(n.clone());
+                }
+            }
+            notes.extend(extra);
+            SyncRow {
+                label: format!("{l} (mean of {})", g.len()),
+                at_s: g[0].at_s,
+                video_latency_ms: mean(&lat),
+                video_step: mean(&step),
+                offsets_ms: offsets,
+                note: Some(notes.join("; ")),
+            }
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ProcRow {
     pub name: String,
@@ -743,6 +816,44 @@ mod tests {
         let mut slow = report();
         slow.longest_stall_s = 3.0;
         assert!(slow.collapse() && slow.adr010().starts_with("copy frames"));
+    }
+
+    #[test]
+    fn schedule_has_start_and_end_bursts() {
+        let s = flash_schedule(1800.0);
+        assert_eq!(s.len(), 10);
+        assert_eq!(s[..5], [5.0, 7.0, 9.0, 11.0, 13.0]);
+        assert_eq!(s[5], 1740.0);
+        assert_eq!(flash_schedule(60.0).len(), 5);
+    }
+
+    #[test]
+    fn merge_averages_each_burst() {
+        let row = |label: &str, lat: Option<f64>, off: Option<f64>| SyncRow {
+            label: label.into(),
+            at_s: 5.0,
+            video_latency_ms: lat,
+            video_step: lat.map(|_| 150.0),
+            offsets_ms: vec![("system_audio".into(), off), ("mic".into(), None)],
+            note: None,
+        };
+        let m = merge_sync(vec![
+            row("start", Some(60.0), Some(10.0)),
+            row("start", Some(90.0), Some(-20.0)),
+            row("start", None, None),
+            row("end", Some(70.0), Some(5.0)),
+        ]);
+        assert_eq!(m.len(), 2);
+        assert_eq!(m[0].label, "start (mean of 3)");
+        assert_eq!(m[0].video_latency_ms, Some(75.0));
+        assert_eq!(m[0].offsets_ms[0], ("system_audio".to_string(), Some(-5.0)));
+        assert_eq!(m[0].offsets_ms[1], ("mic".to_string(), None));
+        let note = m[0].note.clone().unwrap_or_default();
+        assert!(
+            note.contains("screen saw 2/3") && note.contains("mic: no beep"),
+            "{note}"
+        );
+        assert_eq!(m[1].offsets_ms[0].1, Some(5.0));
     }
 
     #[test]

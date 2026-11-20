@@ -8,7 +8,7 @@ use sc_platform::Decoder;
 
 use super::stats::{SyncRow, luma_onset, tone_onset};
 
-const WINDOW_NS: i64 = 1_500_000_000;
+const WINDOW_NS: i64 = 700_000_000;
 const RATE: u32 = 48_000;
 const MIN_LUMA_STEP: f64 = 40.0;
 const MIN_TONE_RATIO: f64 = 8.0;

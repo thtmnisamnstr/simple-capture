@@ -15,7 +15,8 @@ use sc_core::project::{ProjectV1, SourceDescriptor, TrackKind};
 
 use super::procstat::{self, host_now_ns};
 use super::stats::{
-    ProcRow, Report, Sample, TrackRow, cpu_pct, rss_trend, screen_delivery, summary_markdown,
+    ProcRow, Report, Sample, TrackRow, cpu_pct, flash_schedule, rss_trend, screen_delivery,
+    summary_markdown,
 };
 
 pub struct RunArgs {
@@ -233,7 +234,7 @@ pub fn run(a: &RunArgs) -> Result<bool> {
         flash_ready: ready,
         ..RunLog::default()
     };
-    let flash_at = [5.0, dur_s - 60.0];
+    let flash_at = flash_schedule(dur_s);
     let mut flash_i = 0;
     let mut per_track: BTreeMap<String, u64> = BTreeMap::new();
     let mut cum = 0u64;
@@ -291,10 +292,8 @@ pub fn run(a: &RunArgs) -> Result<bool> {
         if let Some(st) = log.started_host_ns {
             let now = host_now_ns();
             let el = (now - st) as f64 / 1e9;
-            if flash_i < flash_at.len() && flash_at[flash_i] > 0.0 && el >= flash_at[flash_i] {
+            if flash_i < flash_at.len() && el >= flash_at[flash_i] {
                 flash.flash();
-                flash_i += 1;
-            } else if flash_i < flash_at.len() && flash_at[flash_i] <= 0.0 {
                 flash_i += 1;
             }
             if child_pid.is_none() {
@@ -573,28 +572,25 @@ pub fn analyze(log: &RunLog) -> Result<Report> {
 #[cfg(target_os = "macos")]
 fn sync_rows(log: &RunLog, dir: &Path, start_host_ns: i64) -> Vec<super::stats::SyncRow> {
     use super::media::{FlashGeom, measure_sync};
+    use super::stats::merge_sync;
     let f = &log.flash_ready;
     let num = |v: &Value, i: usize| v.get(i).and_then(Value::as_f64).unwrap_or(0.0);
     let g = FlashGeom {
         rect_pt: [0, 1, 2, 3].map(|i| num(&f["rect_pt"], i)),
         display_pt: [0, 1].map(|i| num(&f["display_pt"], i)),
     };
-    let n = log.flashes_host_ns.len();
+    let half_ns = (log.minutes * 30.0 * 1e9) as i64;
     let flashes: Vec<(String, i64)> = log
         .flashes_host_ns
         .iter()
-        .enumerate()
-        .map(|(i, h)| {
-            let label = match i {
-                0 => "start".to_string(),
-                i if i + 1 == n => "end".to_string(),
-                i => format!("flash {i}"),
-            };
-            (label, h - start_host_ns)
+        .map(|h| {
+            let t = h - start_host_ns;
+            let label = if t < half_ns { "start" } else { "end" };
+            (label.to_string(), t)
         })
         .collect();
     match measure_sync(dir, sc_capture_macos::decoder(), &g, &flashes) {
-        Ok(rows) => rows,
+        Ok(rows) => merge_sync(rows),
         Err(e) => vec![super::stats::SyncRow {
             label: "all".into(),
             note: Some(format!("sync not measured: {e:#}")),
