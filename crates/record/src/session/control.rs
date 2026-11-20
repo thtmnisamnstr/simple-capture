@@ -252,6 +252,7 @@ pub(crate) fn start(
         registry: Registry::default(),
         state: Mutex::new(SessionState::Preparing),
         start_host: NOT_STARTED.into(),
+        stop_host: i64::MAX.into(),
         tuning: req.tuning.clone(),
         ctl: ctl_tx,
         screen_stats: Mutex::new(None),
@@ -1314,6 +1315,9 @@ impl Control {
         }
         self.sh.set_state(SessionState::Stopping);
         let stop_host = self.sh.now();
+        self.sh
+            .stop_host
+            .store(stop_host, std::sync::atomic::Ordering::Release);
         let start = self.sh.start_host();
         let done = self.shutdown(stop_host);
         if let Some(d) = &done {

@@ -23,7 +23,10 @@ if [ -z "${SC_E2E_INNER:-}" ]; then
   BIN="$ROOT/target/e2e/bin"
   mkdir -p "$BIN"
   for b in sc-devtools simple-capture; do
-    cmp -s "$TARGET_DIR/debug/$b" "$BIN/$b" || cp -f "$TARGET_DIR/debug/$b" "$BIN/$b" || exit 1
+    # A new inode each time: overwriting a signed binary in place gets it SIGKILLed at exec.
+    if ! cmp -s "$TARGET_DIR/debug/$b" "$BIN/$b"; then
+      cp "$TARGET_DIR/debug/$b" "$BIN/$b.new" && mv -f "$BIN/$b.new" "$BIN/$b" || exit 1
+    fi
   done
   export SC_DEVTOOLS="$BIN/sc-devtools"
   export SC_E2E_CLI="$BIN/simple-capture"

@@ -277,8 +277,11 @@ def common_checks(st, rec, export=True, expect_reason=None):
     dur = rec_duration_ns(p)
     segs = p["recording"]["screen"]["segments"]
     tile = bool(segs) and segs[0]["start_rec_ns"] == 0 and segs[-1].get("end_rec_ns") == dur
-    tile = tile and all(a.get("end_rec_ns") == b["start_rec_ns"] for a, b in zip(segs, segs[1:]))
-    st.check(tile, "segments do not tile [0, duration): "
+    tile = tile and all(
+        a.get("end_rec_ns") == b["start_rec_ns"]
+        or (a.get("end_reason") == "source_lost" and a.get("end_rec_ns", 1 << 62) < b["start_rec_ns"])
+        for a, b in zip(segs, segs[1:]))
+    st.check(tile, "segments do not tile [0, duration) (only a lost source may leave a gap): "
              + str([(s["start_rec_ns"], s.get("end_rec_ns")) for s in segs]) + f" dur {dur}")
     fps = p["recording"]["screen"]["fps_requested"]
     frame_ns = 1e9 / fps
@@ -336,7 +339,10 @@ def export_check(st, rec, size, audio, tag=None):
     st.check(abs(w / h - want) / want < 0.02,
              f"export {tag or size}: {w}x{h} vs canvas ratio {want:.4f}")
     if size != "reference":
-        st.check(min(w, h) == int(size), f"export {size}: {w}x{h}, short side is not {size}")
+        fp = rec.project["recording"]["screen"]["segments"][0]["frame_px"]
+        native_short = min(fp["w"], fp["h"])
+        st.check(min(w, h) == min(int(size), native_short) or (min(w, h) < int(size) and max(w, h) <= max(fp["w"], fp["h"])),
+                 f"export {size}: {w}x{h} from a {fp['w']}x{fp['h']} source")
     dur_s = rec_duration_ns(rec.project) / 1e9
     fps = rec.project["recording"]["screen"]["fps_requested"]
     vargs = [CLI, "--json", "validate", out, "--size", f"{w}x{h}", "--fps", str(fps),

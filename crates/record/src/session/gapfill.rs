@@ -59,6 +59,10 @@ impl GapFiller {
         self.anchor
     }
 
+    pub fn rate(&self) -> u32 {
+        self.rate
+    }
+
     pub fn written_frames(&self) -> u64 {
         self.written
     }

@@ -245,11 +245,19 @@ impl Router {
             }
             return;
         };
+        if f.pts.0 >= self.sh.stop_host() {
+            return;
+        }
         if for_pending {
             if f.pts.0 >= start
                 && let Some(p) = self.pending.take()
             {
-                let cut = f.pts.0;
+                // The first segment's first frame is re-stamped to the recording start.
+                let cut = if p.reason == StartReason::RecordStart {
+                    start
+                } else {
+                    f.pts.0
+                };
                 self.open(p, f, cut);
             }
             return;
