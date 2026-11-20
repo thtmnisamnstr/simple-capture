@@ -46,3 +46,13 @@ impl From<serde_json::Error> for Error {
         Error::Json(e.to_string())
     }
 }
+
+impl Error {
+    /// An `Io` error whose message names the operation and the path.
+    pub(crate) fn io_at(e: std::io::Error, what: &str, path: &std::path::Path) -> Error {
+        Error::Io(std::io::Error::new(
+            e.kind(),
+            format!("{what} {}: {e}", path.display()),
+        ))
+    }
+}

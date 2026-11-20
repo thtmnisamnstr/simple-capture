@@ -1,6 +1,8 @@
 //! journal.jsonl: append-only, fsync'd recording events (ARCHITECTURE §6, §12).
 
-use std::path::Path;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 
 use sc_geometry::{RectPt, RectPx, SizePx};
 use serde::{Deserialize, Serialize};
@@ -156,29 +158,104 @@ pub enum StopReason {
 /// Appends one JSON line per event and fsyncs it.
 #[derive(Debug)]
 pub struct JournalWriter {
-    _priv: (),
+    file: File,
+    path: PathBuf,
 }
 
 impl JournalWriter {
-    /// Stub until wp-core.
-    pub fn create(_dir: &Path) -> Result<JournalWriter> {
-        Err(Error::Unsupported("sc_core::journal: not implemented yet"))
+    /// Opens `<dir>/journal.jsonl` for appending (created if missing, never truncated). If an
+    /// earlier writer died mid-line, a newline is added first so the torn line stays on its own.
+    pub fn create(dir: &Path) -> Result<JournalWriter> {
+        let path = dir.join(FILE_NAME);
+        let existed = path.exists();
+        let mut file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .read(true)
+            .open(&path)
+            .map_err(|e| Error::io_at(e, "open journal", &path))?;
+        if existed
+            && !ends_with_newline(&mut file).map_err(|e| Error::io_at(e, "read journal", &path))?
+        {
+            file.write_all(b"\n")
+                .and_then(|()| file.sync_data())
+                .map_err(|e| Error::io_at(e, "repair journal", &path))?;
+        }
+        if !existed {
+            file.sync_all()
+                .map_err(|e| Error::io_at(e, "fsync journal", &path))?;
+            crate::fsio::fsync_dir(dir)?;
+        }
+        Ok(JournalWriter { file, path })
     }
 
-    /// Write + fsync. Stub until wp-core.
-    pub fn append(&mut self, _ev: &JournalEvent) -> Result<()> {
-        Err(Error::Unsupported("sc_core::journal: not implemented yet"))
+    /// One `write` of the whole line, then fsync.
+    pub fn append(&mut self, ev: &JournalEvent) -> Result<()> {
+        let mut line = serde_json::to_vec(ev)?;
+        line.push(b'\n');
+        self.file
+            .write_all(&line)
+            .and_then(|()| self.file.sync_data())
+            .map_err(|e| Error::io_at(e, "append to journal", &self.path))
     }
+}
+
+fn ends_with_newline(file: &mut File) -> std::io::Result<bool> {
+    let len = file.metadata()?.len();
+    if len == 0 {
+        return Ok(true);
+    }
+    file.seek(SeekFrom::Start(len - 1))?;
+    let mut last = [0u8; 1];
+    file.read_exact(&mut last)?;
+    Ok(last[0] == b'\n')
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct JournalRead {
     pub events: Vec<JournalEvent>,
+    /// The last line was cut off mid-write (no newline and not a complete event, or NUL fill).
     pub torn_tail: bool,
+    /// Complete lines that are not a known event: newer event kinds, or corrupt lines.
     pub unknown_lines: usize,
 }
 
-/// Stub until wp-core.
-pub fn read_journal(_dir: &Path) -> Result<JournalRead> {
-    Err(Error::Unsupported("sc_core::journal: not implemented yet"))
+/// Reads `<dir>/journal.jsonl`. A missing journal reads as empty. A torn last line and unknown
+/// lines are skipped and reported, never an error.
+pub fn read_journal(dir: &Path) -> Result<JournalRead> {
+    let path = dir.join(FILE_NAME);
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(JournalRead::default()),
+        Err(e) => return Err(Error::io_at(e, "read journal", &path)),
+    };
+    Ok(parse_journal(&bytes))
+}
+
+/// Parses journal bytes (see [`read_journal`]).
+pub fn parse_journal(bytes: &[u8]) -> JournalRead {
+    let mut out = JournalRead::default();
+    let trimmed_len = bytes.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
+    if trimmed_len < bytes.len() {
+        out.torn_tail = true;
+    }
+    let bytes = &bytes[..trimmed_len];
+    let complete = bytes.last().is_none_or(|&b| b == b'\n');
+    let mut lines: Vec<&[u8]> = bytes.split(|&b| b == b'\n').collect();
+    if complete {
+        lines.pop();
+    }
+    let last = lines.len().saturating_sub(1);
+    for (i, raw) in lines.into_iter().enumerate() {
+        let line = raw.strip_suffix(b"\r").unwrap_or(raw);
+        if line.iter().all(u8::is_ascii_whitespace) {
+            continue;
+        }
+        match serde_json::from_slice::<JournalEvent>(line) {
+            Ok(ev) => out.events.push(ev),
+            Err(_) if i == last && !complete => out.torn_tail = true,
+            Err(_) => out.unknown_lines += 1,
+        }
+    }
+    out
 }
