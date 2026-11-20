@@ -166,7 +166,7 @@ fn hevc_fps(platform: &dyn Platform, size: SizePx) -> Option<f64> {
         HEVC_PROBE_FRAMES,
         VideoCodec::Hevc,
     ) {
-        Ok(f) if f.is_finite() && f > 0.0 => Some(f),
+        Ok(f) if f.is_finite() && f > 0.0 => Some((f * 100.0).round() / 100.0),
         Ok(f) => {
             tracing::warn!(w = size.w, h = size.h, f, "encode_benchmark: no rate");
             None

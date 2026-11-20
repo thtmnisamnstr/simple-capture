@@ -5,7 +5,7 @@ dist/
 .DS_Store
 spikes/**/target/
 third_party/build/
-third_party/out/
+third_party/out
 .wt/
 ui/dist/
 ui/node_modules/
