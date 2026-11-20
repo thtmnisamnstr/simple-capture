@@ -270,6 +270,7 @@ pub(crate) fn start(
     let sink = SessionSink::new(sh.clone(), router_tx.clone());
     sh.rec
         .log(Level::Info, &format!("recording to {}", dir.display()));
+    sh.rec.log(Level::Info, &config_line(&req));
     let mut c = Control {
         sh: sh.clone(),
         req,
@@ -1436,4 +1437,21 @@ fn audio_spec(rate: u32, channels: u16, req: &RecordRequest) -> AudioWriterSpec 
         bitrate: 96_000 * u32::from(channels.clamp(1, 2)),
         fragment_interval_s: req.tuning.fragment_interval_s,
     }
+}
+
+/// The settings a recording was asked for, once at start (the config log the M1 e2e checks).
+pub(crate) fn config_line(req: &RecordRequest) -> String {
+    let v = serde_json::json!({
+        "source": format!("{:?}", req.source),
+        "fps": req.fps,
+        "resolution": req.resolution,
+        "cursor": req.show_cursor,
+        "click_highlight": req.click_highlight,
+        "camera": req.camera,
+        "mic": req.mic,
+        "system_audio": req.system_audio,
+        "aspect": req.canvas.aspect,
+        "excluded_windows": req.exclude.len(),
+    });
+    format!("config {v}")
 }

@@ -1163,3 +1163,32 @@ fn dropping_a_session_finalizes_it() {
     ));
     assert_eq!(p.active_screen_streams(), 0);
 }
+
+/// Regression (wp-e2e-cli): the session log had no record of the requested settings, so a run
+/// with `--no-cursor` could not be checked from its project folder.
+#[test]
+fn session_log_records_the_config() {
+    let dir = tmp("config_log");
+    let p = platform(Scenario::new().screen(
+        "main",
+        ScreenScript {
+            size: size(320, 180),
+            ..Default::default()
+        },
+    ));
+    let mut req = request(&dir, display_spec("main", None));
+    req.show_cursor = false;
+    req.resolution = Resolution::OneX;
+    let s = Session::start(as_dyn(&p), req, Arc::new(Obs::default())).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 300 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let log = std::fs::read_to_string(pdir.join("session.log")).expect("log");
+    let line = log
+        .lines()
+        .find(|l| l.contains(" INFO config {"))
+        .unwrap_or_else(|| panic!("no config line in {log}"));
+    assert!(line.contains(r#""cursor":false"#), "{line}");
+    assert!(line.contains(r#""resolution":"1x""#), "{line}");
+    assert!(line.contains(r#""system_audio":"off""#), "{line}");
+}
