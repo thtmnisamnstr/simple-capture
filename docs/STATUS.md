@@ -39,6 +39,23 @@ during the live M1 runs). **Nothing was measured on the base M1 8 GB target.**
   canvas width. Window sources were already window-sized. Preview sizes at 1x now match the
   recorded size for every source kind (e5b93af).
 
+**Owner hands-on, 2026-11-20 (second pass), and fixes:**
+- **Select region covered only the top part of the screen and could not select.** Overlays were
+  moved, then resized; AppKit resizes around the bottom-left corner, so the window grew above the
+  display. Now sized first, then placed (2360a18). The driver checks the overlay frames.
+- **Pick window by clicking never picked a window; Windows/Apps lists held menu-bar items,
+  Dock, Control Center and apps with nothing on screen.** The list included the WindowServer
+  "Cursor" window, which is always under the pointer. Lists now hold only on-screen windows of
+  regular apps (ADR-040): 37 → 12 windows and 10 → 7 apps on the build Mac.
+- **9:16 showed side bars for a wide window.** Only the panel's preview box was wrong (fixed size,
+  squashed to a square). A CLI 9:16 export of a 1920×949 pt window fills the full frame width, with
+  stereo audio.
+- **Simple Capture UI in the recording.** Most likely the unfiltered list (picking our own overlay
+  or the Cursor window). The exclusion driver flow now also shows the recorder panel during a
+  display recording. Our menu-bar icon is still captured in display recordings, like other apps'.
+- **Camera not shown while recording, and not in the export.** By design for M1: the camera is
+  recorded as its own track; the camera bubble and compositing are M2 (SPEC milestones).
+
 ---
 
 ## 1. M1 exit checklist (M1_PLAN §1), state on 2026-11-20
