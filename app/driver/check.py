@@ -397,5 +397,34 @@ if basic("12-bubble", log):
     else:
         check("12-bubble", "bubble steps logged", False, {"states": len(st), "rects": len(rects)})
 
+log = lines("14-bubble-capture")
+if basic("14-bubble-capture", log):
+    pr = P.get("drv bubble capture")
+    finalized("14-bubble-capture", pr, "drv bubble capture", reason="user")
+    if pr:
+        keys = [k for o in pr["project"].get("camera_layout", {}).get("overlays", []) for k in o.get("keyframes", [])]
+        check("14-bubble-capture", "keyframes: the start plus the drag", len(keys) >= 3 and keys[0]["t_rec_ns"] == 0
+              and keys[-1]["center_norm"]["x"] < keys[0]["center_norm"]["x"], [(k["t_rec_ns"], k["center_norm"]) for k in keys])
+        tracks = {t["kind"] for t in pr["project"]["recording"]["tracks"]}
+        check("14-bubble-capture", "camera track recorded", "camera" in tracks, sorted(tracks))
+    rects = steps(log, "log-window-rects")
+    shown_t = steps(log, "cmd set_settings")[1]["rec_ns"] / 1e9
+    drag_t = steps(log, "cmd bubble_drag")[0]["rec_ns"] / 1e9
+    if FFMPEG and DISPLAYS and pr and segments(pr) and rects:
+        bub = {r["label"]: r for r in rects[0]["result"]}.get("bubble")
+        check("14-bubble-capture", "bubble visible during the recording", bool(bub and bub["visible"]), bub)
+        if bub and bub["visible"]:
+            seg = segments(pr)[0]
+            path = os.path.join(pr["dir"], [e["file"] for e in pr["journal"] if e.get("ev") == "segment_open"][0])
+            disp = next((d for d in DISPLAYS if d["id"] == seg["source"].get("display_id")), DISPLAYS[0])
+            rp = bub["rect_pt"]
+            crop = crop_for([rp["x"], rp["y"], rp["w"], rp["h"]], disp, seg)
+            fps = pr["project"]["recording"]["screen"]["fps_requested"]
+            if crop:
+                compare("14-bubble-capture", "bubble", gray_frames(path, crop, fps),
+                        (0.6, shown_t - 0.2), (shown_t + 0.4, drag_t - 0.2), fps)
+            else:
+                check("14-bubble-capture", "bubble rect inside the frame", False, rp)
+
 print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")
 sys.exit(1 if failed else 0)
