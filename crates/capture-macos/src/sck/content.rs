@@ -6,7 +6,7 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject, Sel};
 use objc2::{ClassType, msg_send, sel};
-use objc2_app_kit::NSScreen;
+use objc2_app_kit::{NSApplicationActivationPolicy, NSRunningApplication, NSScreen};
 use objc2_core_foundation::{CFArray, CGRect};
 use objc2_core_graphics::{
     CGDisplayBounds, CGDisplayCopyDisplayMode, CGDisplayIsBuiltin, CGDisplayMode,
@@ -21,6 +21,7 @@ use sc_platform::{
 };
 
 use super::glue::{SendBox, main_sync};
+use super::listable::{ActivationPolicy, WindowFacts, listable_window, listed_apps};
 use crate::{tcc, util};
 
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
@@ -418,6 +419,28 @@ fn app_ref(a: &SCRunningApplication) -> AppRef {
     }
 }
 
+pub(crate) fn window_app(id: WindowId) -> Result<Option<AppRef>> {
+    let content = shareable(true)?;
+    Ok(find_window(&content, id)
+        .and_then(|w| unsafe { w.owningApplication() })
+        .map(|a| app_ref(&a)))
+}
+
+fn activation_policy(pid: i32) -> Option<ActivationPolicy> {
+    let app: Option<Retained<NSRunningApplication>> = unsafe {
+        msg_send![NSRunningApplication::class(), runningApplicationWithProcessIdentifier: pid]
+    };
+    let p = app?.activationPolicy();
+    Some(if p == NSApplicationActivationPolicy::Regular {
+        ActivationPolicy::Regular
+    } else if p == NSApplicationActivationPolicy::Accessory {
+        ActivationPolicy::Accessory
+    } else {
+        ActivationPolicy::Prohibited
+    })
+}
+
+/// On-screen windows a person would record (`listable::listable_window`) and the apps that own one.
 pub(crate) fn list(hide: &[WindowId]) -> Result<SourceList> {
     let content = shareable(true)?;
     let cg = cg_displays()?;
@@ -432,48 +455,57 @@ pub(crate) fn list(hide: &[WindowId]) -> Result<SourceList> {
         .into_iter()
         .filter(|d| parse_display_id(&d.id).is_ok_and(|id| sc_displays.contains(&id)))
         .collect();
+    let display_frames: Vec<RectPt> = cg.iter().map(|d| d.frame_pt).collect();
+    let mut policies: HashMap<i32, Option<ActivationPolicy>> = HashMap::new();
     let mut windows = Vec::new();
     for w in unsafe { content.windows() }.iter() {
-        let id = unsafe { w.windowID() };
-        let Some(app) = (unsafe { w.owningApplication() }) else {
+        let Some(owner) = (unsafe { w.owningApplication() }) else {
             continue;
         };
-        let app = app_ref(&app);
+        let app = app_ref(&owner);
+        let id = unsafe { w.windowID() };
+        let title = unsafe { w.title() }
+            .map(|t| t.to_string())
+            .unwrap_or_default();
         let frame_pt = cgrect_pt(unsafe { w.frame() });
-        if app.pid == pid || hide.iter().any(|h| h.0 == id) || frame_pt.w < 2.0 || frame_pt.h < 2.0
-        {
+        let on_screen = unsafe { w.isOnScreen() };
+        let layer = unsafe { w.windowLayer() };
+        let facts = WindowFacts {
+            id,
+            pid: app.pid,
+            bundled: app.bundle_id.is_some(),
+            policy: *policies
+                .entry(app.pid)
+                .or_insert_with(|| activation_policy(app.pid)),
+            layer,
+            on_screen,
+            frame_pt,
+            title: &title,
+        };
+        if !listable_window(&facts, pid, hide, &display_frames) {
             continue;
         }
-        let app_name = unsafe { w.owningApplication() }
-            .map(|a| unsafe { a.applicationName() }.to_string())
-            .unwrap_or_default();
         windows.push(WindowInfo {
             id: WindowId(id),
-            title: unsafe { w.title() }
-                .map(|t| t.to_string())
-                .unwrap_or_default(),
-            app_name,
+            title,
+            app_name: unsafe { owner.applicationName() }.to_string(),
             app,
             frame_pt,
             display: display_of(frame_pt, &cg),
-            on_screen: unsafe { w.isOnScreen() },
-            layer: unsafe { w.windowLayer() } as i32,
+            on_screen,
+            layer: layer as i32,
             z_index: z.get(&id).copied().unwrap_or(u32::MAX),
         });
     }
     windows.sort_by_key(|w| w.z_index);
-    let mut apps: Vec<AppInfo> = Vec::new();
-    for a in unsafe { content.applications() }.iter() {
-        let r = app_ref(&a);
-        if r.pid == pid || !windows.iter().any(|w| w.app.pid == r.pid) {
-            continue;
-        }
-        apps.push(AppInfo {
-            app: r,
+    let apps: Vec<AppInfo> = unsafe { content.applications() }
+        .iter()
+        .map(|a| AppInfo {
+            app: app_ref(&a),
             name: unsafe { a.applicationName() }.to_string(),
-        });
-    }
-    apps.sort_by_key(|a| a.name.to_lowercase());
+        })
+        .collect();
+    let apps = listed_apps(apps, &windows);
     Ok(SourceList {
         displays,
         windows,

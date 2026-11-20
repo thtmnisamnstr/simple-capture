@@ -8,6 +8,7 @@ mod content;
 mod desktop;
 mod frames;
 mod glue;
+mod listable;
 mod overlays;
 mod permissions;
 mod picker;

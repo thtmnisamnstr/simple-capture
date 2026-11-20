@@ -28,8 +28,18 @@ pub trait FrameSink: Send + Sync {
 pub trait ScreenSource: Send + Sync {
     /// CoreGraphics/NSScreen only: never touches TCC.
     fn displays(&self) -> Result<Vec<DisplayInfo>>;
-    /// Needs the grant; drops `hide` and every window owned by this process.
+    /// Needs the grant. Only windows a person would record, never `hide` or this process's; apps
+    /// are those owning a listed window.
     fn list(&self, hide: &[WindowId]) -> Result<SourceList>;
+    /// The owner of on-screen window `id`, whether `list` shows it or not.
+    fn window_app(&self, id: WindowId) -> Result<Option<AppRef>> {
+        Ok(self
+            .list(&[])?
+            .windows
+            .into_iter()
+            .find(|w| w.id == id)
+            .map(|w| w.app))
+    }
     fn describe(
         &self,
         spec: &SourceSpec,

@@ -756,16 +756,7 @@ impl Control {
     }
 
     fn app_for(&self, spec: &SourceSpec) -> Option<AppRef> {
-        let lookup = |w: WindowId| {
-            self.platform()
-                .screen()
-                .list(&[])
-                .ok()?
-                .windows
-                .into_iter()
-                .find(|i| i.id == w)
-                .map(|i| i.app)
-        };
+        let lookup = |w: WindowId| self.platform().screen().window_app(w).ok().flatten();
         match spec {
             SourceSpec::Application { app, .. } => Some(app.clone()),
             SourceSpec::Window { window } => lookup(*window),
