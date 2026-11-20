@@ -97,4 +97,21 @@ test('application sources are sized to the union of their windows on the display
   const small = size([aw(1, 42, 100, 50, 800, 600)]);
   assert.notDeepEqual(small, { w: 3024, h: 1964 }, 'a smaller app is not display-sized');
   assert.equal(sourceSizePx(app(42, '9'), { displays, windows: [], apps: [] }), null, 'unknown display');
+  assert.deepEqual(size([aw(1, 42, 10.25, 20, 300.5, 201)]), { w: 600, h: 402 }, 'odd points snap at native scale');
+});
+
+test('application sources at 1x match the 1x capture size', () => {
+  const displays = [{ id: '1', name: 'D', frame_pt: { x: 0, y: 0, w: 1512, h: 982 }, scale: 2, size_px: { w: 3024, h: 1964 }, is_main: true }];
+  const spec: SourceSpecDto = { kind: 'application', display_id: '1', pid: 42, bundle_id: null };
+  const at = (frames: [number, number, number, number][], res: 'native' | '1x') =>
+    sourceSizePx(spec, { displays, windows: frames.map(([x, y, ww, hh], i) => ({ ...w(i + 1, i, x, y, ww, hh), app: { pid: 42, bundle_id: null } })), apps: [] }, res);
+
+  assert.deepEqual(at([[100, 50, 800, 600]], '1x'), { w: 800, h: 600 }, 'one window at 1x');
+  assert.deepEqual(at([[100, 50, 800, 600]], 'native'), { w: 1600, h: 1200 }, 'same window at native');
+  assert.deepEqual(at([[0, 0, 301, 201]], '1x'), { w: 300, h: 200 }, 'odd-point window floors to even at 1x');
+  assert.deepEqual(at([[0, 0, 301, 201]], 'native'), { w: 602, h: 402 }, 'odd-point window at native');
+  assert.deepEqual(at([], '1x'), { w: 1512, h: 982 }, 'no windows at 1x: whole display in points');
+  const odd = [{ ...displays[0], frame_pt: { x: 0, y: 0, w: 1511, h: 981 }, size_px: { w: 3021, h: 1961 } }];
+  assert.deepEqual(sourceSizePx(spec, { displays: odd, windows: [], apps: [] }, '1x'), { w: 1512, h: 982 }, 'whole display at 1x is even');
+  assert.deepEqual(sourceSizePx(spec, { displays: odd, windows: [], apps: [] }), { w: 3022, h: 1962 }, 'whole display at native is even');
 });

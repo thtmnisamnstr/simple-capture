@@ -56,7 +56,6 @@ struct Live {
 #[derive(Clone)]
 struct Cur {
     spec: SourceSpec,
-    desc: SourceDescriptor,
     via: Via,
 }
 
@@ -398,14 +397,13 @@ impl Control {
             size,
             via: self.req.via,
             reason: StartReason::RecordStart,
-            source: desc.clone(),
+            source: desc,
             closes_old_with: EndReason::RecordStop,
         })));
         let stream = platform.screen().start(tag, &spec, &cfg, sink.clone())?;
         self.screen = Some(Live { tag, stream });
         self.cur = Some(Cur {
             spec,
-            desc,
             via: self.req.via,
         });
         let mut devices = Vec::new();
@@ -836,7 +834,6 @@ impl Control {
             }
             self.cur = Some(Cur {
                 spec: sw.spec,
-                desc: sw.desc,
                 via: sw.via,
             });
         }
@@ -1093,14 +1090,14 @@ impl Control {
         let Some(cur) = self.cur.clone() else {
             return self.lose(sw, error);
         };
-        let size = match self.platform().screen().describe(&cur.spec, &self.cfg()) {
-            Ok((_, size)) => size,
+        let (desc, size) = match self.platform().screen().describe(&cur.spec, &self.cfg()) {
+            Ok(x) => x,
             Err(e) => return self.lose(sw, format!("{error}; describe the old source: {e}")),
         };
         let mut nsw = Switch {
             spec: cur.spec,
             via: cur.via,
-            desc: cur.desc,
+            desc,
             size,
             tag: StreamTag(0),
             deadline: Instant::now(),

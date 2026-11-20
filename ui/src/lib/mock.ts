@@ -201,7 +201,7 @@ function svgBackground(bg: Background, w: number, h: number): string {
 }
 
 function stillUrl(source: SourceSpecDto, canvas: CanvasDto): string {
-  const content = sourceSizePx(source, sources) ?? { w: 1600, h: 1000 };
+  const content = sourceSizePx(source, sources, settings.resolution) ?? { w: 1600, h: 1000 };
   const fixed = aspectRatio(canvas.aspect);
   const size = referenceCanvasSize(canvas.aspect, fixed ?? ratioOf(content), [content]);
   const k = 320 / Math.max(size.w, size.h);

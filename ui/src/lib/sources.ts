@@ -1,7 +1,19 @@
 // Source helpers: stable keys, labels, pixel sizes, display lookup and the pick-mode hit test.
 
-import type { CapabilitiesDto, DisplayInfo, DisplayProbeDto, PointF, RectPt, SourceList, SourceSpecDto, WindowInfo } from './types.ts';
-import { appBoundsPt, ptToPx, rectContains, snappedRegionSizePx, type Size } from './geometry.ts';
+import type {
+  CapabilitiesDto,
+  DisplayInfo,
+  DisplayProbeDto,
+  PointF,
+  RecorderSettings,
+  RectPt,
+  SourceList,
+  SourceSpecDto,
+  WindowInfo,
+} from './types.ts';
+import { appBoundsPt, evenRound, ptToPx, rectContains, snappedRegionSizePx, type Size } from './geometry.ts';
+
+export type Resolution = RecorderSettings['resolution'];
 
 export function sourceKey(s: SourceSpecDto): string {
   switch (s.kind) {
@@ -60,13 +72,13 @@ export function displayOfSource(s: SourceSpecDto, list: Partial<SourceList>): Di
   }
 }
 
-export function sourceSizePx(s: SourceSpecDto, list: Partial<SourceList>): Size | null {
+export function sourceSizePx(s: SourceSpecDto, list: Partial<SourceList>, resolution: Resolution = 'native'): Size | null {
   const d = displayOfSource(s, list);
   switch (s.kind) {
     case 'display':
       return d ? { ...d.size_px } : null;
     case 'application':
-      return d ? appSizePx(s.pid, d, list.windows ?? []) : null;
+      return d ? appSizePx(s.pid, d, list.windows ?? [], resolution) : null;
     case 'region': {
       if (!d) return null;
       const r = ptToPx(s.region_pt, d.scale);
@@ -83,14 +95,19 @@ export function sourceSizePx(s: SourceSpecDto, list: Partial<SourceList>): Size 
 }
 
 /** An application source is captured as the snapped union of its on-screen, layer-0 windows on the
- *  display, or the whole display when it has none there or they cover it (ADR-039). */
-export function appSizePx(pid: number, d: DisplayInfo, windows: WindowInfo[]): Size {
+ *  display, or the whole display when it has none there or they cover it (ADR-039). At 1x the snap
+ *  and the whole-display size use 1 px per point, as sc-capture-macos's app_crop does. */
+export function appSizePx(pid: number, d: DisplayInfo, windows: WindowInfo[], resolution: Resolution = 'native'): Size {
   const frames = windows
     .filter((w) => w.app.pid === pid && w.on_screen && w.layer === 0 && w.frame_pt.w >= 2 && w.frame_pt.h >= 2)
     .map((w) => w.frame_pt);
   const b = appBoundsPt(frames, d.frame_pt);
-  if (!b || (b.w >= d.frame_pt.w && b.h >= d.frame_pt.h)) return { ...d.size_px };
-  return snappedRegionSizePx(b, d.scale);
+  const oneX = resolution === '1x';
+  if (!b || (b.w >= d.frame_pt.w && b.h >= d.frame_pt.h)) {
+    const full = oneX ? d.frame_pt : d.size_px;
+    return { w: evenRound(full.w), h: evenRound(full.h) };
+  }
+  return snappedRegionSizePx(b, oneX ? 1 : d.scale);
 }
 
 export function probeFor(caps: CapabilitiesDto | null, displayId: string | null): DisplayProbeDto | null {

@@ -374,6 +374,7 @@ struct State {
     lost_mic: bool,
     followed_apps: Vec<Option<AppRef>>,
     exclusion_updates: Vec<(StreamTag, Vec<WindowId>)>,
+    describes: Vec<(String, usize)>,
 }
 
 pub(super) struct Hub {
@@ -486,6 +487,21 @@ impl Hub {
         } else {
             Err(Error::PermissionDenied(k))
         }
+    }
+
+    fn next_crop(&self, key: &str, crops: &[RectPt]) -> Option<RectPt> {
+        let mut st = lock(&self.state);
+        let n = match st.describes.iter_mut().find(|(k, _)| k == key) {
+            Some((_, n)) => {
+                *n += 1;
+                *n
+            }
+            None => {
+                st.describes.push((key.to_string(), 0));
+                0
+            }
+        };
+        crops.get(n.min(crops.len().saturating_sub(1))).copied()
     }
 
     fn script_for(&self, key: &str, create: bool) -> Option<ScreenScript> {
@@ -909,7 +925,10 @@ impl ScreenSource for HubRef {
         _cfg: &ScreenStreamConfig,
     ) -> Result<(SourceDescriptor, SizePx)> {
         self.0.permission(PermissionKind::Screen)?;
-        let r = self.0.resolve(spec)?;
+        let mut r = self.0.resolve(spec)?;
+        if let SourceDescriptor::Application { crop_pt, .. } = &mut r.descriptor {
+            *crop_pt = self.0.next_crop(&r.key, &r.script.describe_crops);
+        }
         Ok((r.descriptor, r.size))
     }
 

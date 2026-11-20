@@ -38,7 +38,7 @@
       const [s, d]: [RecorderSettings, DisplayInfo[]] = await Promise.all([api.getSettings(), api.listDisplays()]);
       const perms = await api.getPermissions();
       const list: Partial<SourceList> = perms.screen === 'granted' ? await api.listSources() : { displays: d };
-      const content = s.source ? sourceSizePx(s.source, list) : null;
+      const content = s.source ? sourceSizePx(s.source, list, s.resolution) : null;
       if (!content) return;
       const fixed = aspectRatio(s.canvas.aspect);
       size = referenceCanvasSize(s.canvas.aspect, fixed ?? ratioOf(content), [content]);
