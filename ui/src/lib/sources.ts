@@ -11,7 +11,7 @@ import type {
   SourceSpecDto,
   WindowInfo,
 } from './types.ts';
-import { appBoundsPt, evenRound, ptToPx, rectContains, snappedRegionSizePx, type Size } from './geometry.ts';
+import { appBoundsPt, evenRound, rectContains, snappedRegionSizePx, type Size } from './geometry.ts';
 
 export type Resolution = RecorderSettings['resolution'];
 
@@ -74,21 +74,22 @@ export function displayOfSource(s: SourceSpecDto, list: Partial<SourceList>): Di
 
 export function sourceSizePx(s: SourceSpecDto, list: Partial<SourceList>, resolution: Resolution = 'native'): Size | null {
   const d = displayOfSource(s, list);
+  const oneX = resolution === '1x';
   switch (s.kind) {
-    case 'display':
-      return d ? { ...d.size_px } : null;
+    case 'display': {
+      if (!d) return null;
+      const full = oneX ? d.frame_pt : d.size_px;
+      return { w: evenRound(full.w), h: evenRound(full.h) };
+    }
     case 'application':
       return d ? appSizePx(s.pid, d, list.windows ?? [], resolution) : null;
-    case 'region': {
-      if (!d) return null;
-      const r = ptToPx(s.region_pt, d.scale);
-      return { w: r.w, h: r.h };
-    }
+    case 'region':
+      return d ? snappedRegionSizePx(s.region_pt, oneX ? 1 : d.scale) : null;
     case 'window': {
       const w = list.windows?.find((x) => x.id === s.window_id);
       if (!w) return null;
-      const r = ptToPx(w.frame_pt, d?.scale ?? 2);
-      return { w: r.w, h: r.h };
+      const scale = oneX ? 1 : (d?.scale ?? 2);
+      return { w: evenRound(w.frame_pt.w * scale), h: evenRound(w.frame_pt.h * scale) };
     }
     case 'picked': return null;
   }

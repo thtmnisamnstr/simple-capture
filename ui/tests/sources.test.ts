@@ -59,9 +59,18 @@ test('source pixel sizes', () => {
   const displays = [{ id: '1', name: 'D', frame_pt: { x: 0, y: 0, w: 1512, h: 982 }, scale: 2, size_px: { w: 3024, h: 1964 }, is_main: true }];
   const list = { displays, windows: [w(7, 0, 10, 10, 640.25, 360)], apps: [] };
   assert.deepEqual(sourceSizePx({ kind: 'display', display_id: '1' }, list), { w: 3024, h: 1964 });
-  assert.deepEqual(sourceSizePx({ kind: 'window', window_id: 7 }, list), { w: 1281, h: 720 });
+  assert.deepEqual(sourceSizePx({ kind: 'window', window_id: 7 }, list), { w: 1280, h: 720 });
   assert.deepEqual(sourceSizePx({ kind: 'region', display_id: '1', region_pt: { x: 0, y: 0, w: 640, h: 360 } }, list), { w: 1280, h: 720 });
   assert.equal(sourceSizePx({ kind: 'picked', pick_id: 'x', region_pt: null }, list), null);
+});
+
+test('source pixel sizes at 1x match the 1x capture size', () => {
+  const displays = [{ id: '1', name: 'D', frame_pt: { x: 0, y: 0, w: 1511, h: 982 }, scale: 2, size_px: { w: 3022, h: 1964 }, is_main: true }];
+  const list = { displays, windows: [w(7, 0, 10, 10, 641, 361)], apps: [] };
+  assert.deepEqual(sourceSizePx({ kind: 'display', display_id: '1' }, list, '1x'), { w: 1512, h: 982 });
+  assert.deepEqual(sourceSizePx({ kind: 'window', window_id: 7 }, list, '1x'), { w: 642, h: 362 });
+  assert.deepEqual(sourceSizePx({ kind: 'window', window_id: 7 }, list, 'native'), { w: 1282, h: 722 });
+  assert.deepEqual(sourceSizePx({ kind: 'region', display_id: '1', region_pt: { x: 0, y: 0, w: 640, h: 360 } }, list, '1x'), { w: 640, h: 360 });
 });
 
 test('application sources are sized to the union of their windows on the display', () => {
