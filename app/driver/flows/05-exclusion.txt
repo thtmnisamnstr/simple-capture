@@ -1,0 +1,16 @@
+# Tray menu, bar and switcher popover over a display recording: none may appear in the frames.
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv exclusion","settings":{}}}
+wait 2500
+log-window-rects
+eval bar window.__TAURI_INTERNALS__.invoke('plugin:window|hide', { label: 'bar' })
+wait 2000
+tray open-menu
+wait 2000
+show bar
+show switcher
+wait 300
+log-window-rects
+wait 2500
+cmd stop_recording
+wait-phase saved 30000
+quit

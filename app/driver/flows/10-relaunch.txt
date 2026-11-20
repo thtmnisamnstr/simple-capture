@@ -1,0 +1,8 @@
+# Relaunch after an earlier run: the recovery report and the panel's notice.
+wait-launch 120000
+wait 1000
+cmd recovery_report
+eval panel setTimeout(() => __scLog('panel ' + document.body.innerText.replace(/\s+/g, ' ').slice(0, 300)), 10)
+wait 800
+ui-log
+quit

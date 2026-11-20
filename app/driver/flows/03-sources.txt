@@ -1,0 +1,19 @@
+# Start from each source kind (cmd start_recording). The display run also records camera, mic and
+# system audio.
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv display","settings":{"camera":"@CAMERA@","mic":"@MIC@","system_audio":"all"}}}
+wait 4000
+cmd stop_recording
+wait-phase saved 30000
+cmd start_recording {"request":{"source":{"kind":"window","window_id":@RED_WID@},"via":"own_chooser","title":"drv window","settings":{}}}
+wait 3000
+cmd stop_recording
+wait-phase saved 30000
+cmd start_recording {"request":{"source":{"kind":"application","display_id":"@DISPLAY@","pid":@GREEN_PID@,"bundle_id":null},"via":"own_chooser","title":"drv application","settings":{"system_audio":"app"}}}
+wait 3000
+cmd stop_recording
+wait-phase saved 30000
+cmd start_recording {"request":{"source":{"kind":"region","display_id":"@DISPLAY@","region_pt":{"x":100,"y":150,"w":617,"h":283.5}},"via":"own_chooser","title":"drv region","settings":{"resolution":"1x"}}}
+wait 3000
+cmd stop_recording
+wait-phase saved 30000
+quit

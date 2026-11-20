@@ -116,12 +116,25 @@ impl Tray {
         0
     }
 
-    /// Opens the menu in-process (no synthetic input) and closes it after `hold`.
-    pub fn open_menu(&self, hold: Duration) -> Result<(), String> {
+    /// Opens the menu in-process (no synthetic input), closes it after `hold`, and returns this
+    /// process's on-screen windows listed halfway through (the menu is the one not in `known`).
+    pub fn open_menu(&self, hold: Duration, known: &[u32]) -> Result<Value, String> {
         let item = self.status_item();
         let icon = self.icon.clone();
         let opener = std::thread::spawn(move || icon.with_inner_tray_icon(|t| t.show_menu()));
-        std::thread::sleep(hold);
+        std::thread::sleep(hold / 2);
+        #[cfg(target_os = "macos")]
+        let windows: Vec<Value> = crate::objc::own_windows_on_screen()
+            .into_iter()
+            .filter(|w| !known.contains(&w.id))
+            .map(|w| serde_json::to_value(w).unwrap_or(Value::Null))
+            .collect();
+        #[cfg(not(target_os = "macos"))]
+        let windows: Vec<Value> = {
+            let _ = known;
+            Vec::new()
+        };
+        std::thread::sleep(hold - hold / 2);
         #[cfg(target_os = "macos")]
         crate::objc::cancel_status_item_menu(item);
         #[cfg(not(target_os = "macos"))]
@@ -129,7 +142,8 @@ impl Tray {
         opener
             .join()
             .map_err(|_| "tray menu thread panicked".to_string())?
-            .map_err(|e| format!("tray menu: {e}"))
+            .map_err(|e| format!("tray menu: {e}"))?;
+        Ok(serde_json::json!({ "other_windows": windows }))
     }
 
     fn below_icon(&self, app: &AppHandle, label: &str) {

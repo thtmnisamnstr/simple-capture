@@ -16,7 +16,8 @@ import type {
 
 type Obj = Record<string, unknown>;
 
-const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
+export const isObject = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isObj = isObject;
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
