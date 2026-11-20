@@ -1252,3 +1252,23 @@ they are not a substitute for an M1 run.
   layer 3, Chrome's tooltip and status bubble); after, only titled layer-0 windows of Chrome, Slack,
   Claude, Messages, Notion, Asana and Moonlight, and those 7 apps. The frontmost listed window is a
   real app window, so the pick hit test lands on it.
+
+## ADR-041: M2 camera bubble: placement, defaults and build approach
+
+- **Status:** Accepted by the owner (2026-11-20).
+- **Context:** M2 adds the live camera bubble (SPEC Camera overlay). The camera position is stored
+  in the output frame (canvas-normalized `CameraKey`), but the screen shows that frame truthfully
+  only for a whole-display source with the Original frame.
+- **Decision:**
+  - Whole-display source, Original frame: the floating bubble is the placement; its spot on screen
+    is its spot in the video.
+  - Window, app and region sources, and letterboxed frames: a floating bubble stays on screen so
+    the user sees themselves, and a stage preview window (live composed output, excluded from
+    capture) is where the camera is placed exactly.
+  - The camera is not mirrored by default; mirroring is a toggle. The preview always matches the
+    output.
+  - The camera session opens whenever a camera is selected and the recorder panel or a recording
+    is active, so the bubble can be set up before recording.
+  - M2 is built by one agent, package by package (docs/M2_PLAN.md §4), not a multi-agent workflow.
+- **Consequences:** an app-level camera hub feeds the bubble, the stage preview and the recording
+  from one device session (M2_PLAN §3.1).

@@ -1,8 +1,8 @@
 # Status
 
-**Current milestone: M1 ★ (macOS recording): built and verified by agents, CI green on all three
-OSes; waiting for the owner's ★ review.** Updated 2026-11-20. All M1 work is on branch `m1` (pushed to origin, not merged to
-`main`). The ★ review list is the last section of this file.
+**M1 ★ (macOS recording): accepted by the owner on 2026-11-20** after two hands-on passes (fixes
+below). Current milestone: **M2 ★ camera bubble on macOS**, being planned (docs/M2_PLAN.md).
+Updated 2026-11-20. M1 is merged to `main`. The M1 ★ review list is the last section of this file.
 
 M1 delivers (SPEC M1 line plus the 2026-11-19 additions): display, window, application, region and
 system-picker sources; permission onboarding that never prompts by itself; separate crash-safe
