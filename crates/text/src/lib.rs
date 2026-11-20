@@ -4,6 +4,7 @@
 mod background;
 mod build;
 mod codec;
+mod raster;
 
 pub mod layout;
 
