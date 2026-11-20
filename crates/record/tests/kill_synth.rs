@@ -16,7 +16,7 @@ use sc_record::recovery::{Outcome, recover_project};
 
 const S: i64 = 1_000_000_000;
 const MAX_LOSS_NS: i64 = S;
-/// `STARTED` is printed after `Session::start` returns, a little after `start_host`.
+/// How long the `STARTED` line may take to reach the test, which puts `t0` that much late.
 const START_SLACK_NS: i64 = S / 2;
 
 struct Rec {
@@ -24,7 +24,20 @@ struct Rec {
     err: Receiver<String>,
     err_seen: Vec<String>,
     dir: PathBuf,
+    /// Recording time 0, as an instant of this process.
     t0: Instant,
+    started_rec_ns: i64,
+}
+
+/// When the test killed the recorder, in recording time.
+#[derive(Clone, Copy)]
+struct Kill {
+    /// Just before the kill, or the last `health` if later: a lower bound.
+    rec_ns: i64,
+    /// Once the process has exited: an upper bound, give or take `START_SLACK_NS`.
+    exited_rec_ns: i64,
+    /// When the recorder printed `STARTED`.
+    started_rec_ns: i64,
 }
 
 impl Drop for Rec {
@@ -82,14 +95,22 @@ fn start(name: &str, args: &[&str]) -> Rec {
     let out = lines(child.stdout.take().expect("stdout"));
     let err = lines(child.stderr.take().expect("stderr"));
     let started = wait_line(&out, Duration::from_secs(20), |l| l.starts_with("STARTED "));
-    let t0 = Instant::now();
-    let dir = PathBuf::from(started.trim_start_matches("STARTED "));
+    let seen = Instant::now();
+    let (rec_ns, dir) = started
+        .trim_start_matches("STARTED ")
+        .split_once(' ')
+        .expect("STARTED <rec ns> <dir>");
+    let started_rec_ns: i64 = rec_ns.parse().expect("STARTED rec ns");
+    let since_t0 = Duration::from_nanos(u64::try_from(started_rec_ns).expect("rec ns >= 0"));
     Rec {
         child,
         err,
         err_seen: Vec::new(),
-        dir,
-        t0,
+        dir: PathBuf::from(dir),
+        t0: seen
+            .checked_sub(since_t0)
+            .expect("recording time 0 as an Instant"),
+        started_rec_ns,
     }
 }
 
@@ -118,12 +139,12 @@ impl Rec {
         panic!("journal never reached the state: {:#?}", events(&self.dir));
     }
 
-    /// Returns the recording time of the kill, a lower bound.
-    fn kill(mut self) -> (PathBuf, i64) {
-        let at = self.t0.elapsed();
+    fn kill(mut self) -> (PathBuf, Kill) {
+        let ns = |d: Duration| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX);
+        let elapsed = ns(self.t0.elapsed());
         self.child.kill().expect("kill");
         self.child.wait().expect("wait");
-        let elapsed = i64::try_from(at.as_nanos()).unwrap_or(i64::MAX);
+        let exited = ns(self.t0.elapsed());
         let health = events(&self.dir)
             .iter()
             .filter_map(|e| match e {
@@ -132,7 +153,12 @@ impl Rec {
             })
             .max()
             .unwrap_or(0);
-        (self.dir.clone(), elapsed.max(health))
+        let kill = Kill {
+            rec_ns: elapsed.max(health),
+            exited_rec_ns: exited.max(health),
+            started_rec_ns: self.started_rec_ns,
+        };
+        (self.dir.clone(), kill)
     }
 }
 
@@ -166,7 +192,7 @@ fn switched(ev: &[JournalEvent]) -> bool {
         .any(|e| matches!(e, JournalEvent::SegmentClose { seg, .. } if seg == "s0"))
 }
 
-fn recover_and_check(dir: &Path, kill_rec: i64, segments: usize) -> ProjectV1 {
+fn recover_and_check(dir: &Path, kill: Kill, segments: usize) -> ProjectV1 {
     let r = recover_project(dir, &SctrkDecoder).expect("recover");
     assert_eq!(r.outcome, Outcome::Recovered, "{r:#?}");
     assert_eq!(r.segments, segments, "{r:#?}");
@@ -187,18 +213,18 @@ fn recover_and_check(dir: &Path, kill_rec: i64, segments: usize) -> ProjectV1 {
             ends.push((t.id.clone(), t.first_sample_offset_ns + d));
         }
     }
+    let total = p.duration_ns().expect("duration");
+    ends.push(("duration".to_string(), total));
     for (id, end) in &ends {
-        let loss = kill_rec - end;
+        let loss = kill.rec_ns - end;
         assert!(
-            (-START_SLACK_NS..=MAX_LOSS_NS).contains(&loss),
-            "{id}: ends at {end} ns, killed at {kill_rec} ns (loss {loss} ns)"
+            loss <= MAX_LOSS_NS && *end <= kill.exited_rec_ns + START_SLACK_NS,
+            "{id}: ends at {end} ns, loss {loss} ns; killed at {} ns, exited by {} ns, STARTED at {} ns",
+            kill.rec_ns,
+            kill.exited_rec_ns,
+            kill.started_rec_ns
         );
     }
-    let total = p.duration_ns().expect("duration");
-    assert!(
-        (kill_rec - total).abs() <= MAX_LOSS_NS,
-        "duration {total} vs kill {kill_rec}"
-    );
     let again = recover_project(dir, &SctrkDecoder).expect("recover again");
     assert_eq!(again.outcome, Outcome::AlreadyFinal);
     p
@@ -218,7 +244,7 @@ fn kill_mid_first_segment_with_camera_mic_and_system_audio() {
         ev.iter().any(|e| matches!(e, JournalEvent::Health { .. }))
     });
     std::thread::sleep(Duration::from_millis(800));
-    let (dir, kill_rec) = rec.kill();
+    let (dir, kill) = rec.kill();
     let s = story(&dir);
     assert_eq!(
         s.last().map(String::as_str),
@@ -226,11 +252,22 @@ fn kill_mid_first_segment_with_camera_mic_and_system_audio() {
         "{s:?}"
     );
     assert!(!s.iter().any(|e| e == "stop"), "{s:?}");
-    let p = recover_and_check(&dir, kill_rec, 1);
+    let p = recover_and_check(&dir, kill, 1);
     let kinds: Vec<TrackKind> = p.recording.tracks.iter().map(|t| t.kind).collect();
     for k in [TrackKind::Camera, TrackKind::Mic, TrackKind::SystemAudio] {
         assert!(kinds.contains(&k), "{k:?} missing from {kinds:?}");
     }
+}
+
+/// Windows CI saw `STARTED` 0.9 s into the recording (slow writes in `Session::start`), and the
+/// test, timing the kill from that line, put it 0.9 s before the last frame.
+#[test]
+fn kill_mid_first_segment_after_a_slow_start() {
+    let rec = start("slow-start", &["--slow-start-ms", "900"]);
+    assert!(rec.started_rec_ns >= 900_000_000, "{}", rec.started_rec_ns);
+    std::thread::sleep(Duration::from_millis(800));
+    let (dir, kill) = rec.kill();
+    recover_and_check(&dir, kill, 1);
 }
 
 #[test]
@@ -238,7 +275,7 @@ fn kill_mid_second_segment() {
     let rec = start("mid-s1", &["--switch-at-ms", "500", "--audio"]);
     rec.wait_journal(Duration::from_secs(10), switched);
     std::thread::sleep(Duration::from_millis(700));
-    let (dir, kill_rec) = rec.kill();
+    let (dir, kill) = rec.kill();
     let s = story(&dir);
     let kept: Vec<&str> = s
         .iter()
@@ -256,7 +293,7 @@ fn kill_mid_second_segment() {
         ],
         "{s:?}"
     );
-    let p = recover_and_check(&dir, kill_rec, 2);
+    let p = recover_and_check(&dir, kill, 2);
     assert_eq!(
         p.recording.screen.segments[0].end_reason,
         Some(EndReason::UserSwitch)
@@ -273,7 +310,7 @@ fn kill_after_switch_begin() {
         &["--switch-at-ms", "700", "--hold-at", "after_switch_begin"],
     );
     rec.wait_hold("after_switch_begin");
-    let (dir, kill_rec) = rec.kill();
+    let (dir, kill) = rec.kill();
     let s = story(&dir);
     assert_eq!(
         s[s.len() - 2..],
@@ -281,7 +318,7 @@ fn kill_after_switch_begin() {
         "{s:?}"
     );
     assert!(!s.iter().any(|e| e.contains(":s1")), "{s:?}");
-    recover_and_check(&dir, kill_rec, 1);
+    recover_and_check(&dir, kill, 1);
 }
 
 #[test]
@@ -300,20 +337,20 @@ fn kill_after_segment_prepare() {
         ],
     );
     rec.wait_hold("after_segment_prepare");
-    let (dir, kill_rec) = rec.kill();
+    let (dir, kill) = rec.kill();
     let s = story(&dir);
     assert_eq!(
         s[s.len() - 3..],
         ["segment_open:s0", "switch_begin", "segment_prepare:s1"],
         "{s:?}"
     );
-    let r = recover_and_check(&dir, kill_rec, 1);
+    let r = recover_and_check(&dir, kill, 1);
     let notes = serde_json::to_string(&r.recording.extra).expect("json");
     assert!(notes.contains("prepared but never opened"), "{notes}");
 }
 
 /// Kills at `after_segment_open` and returns the folder, the kill time and s1's file.
-fn killed_after_segment_open(name: &str) -> Option<(PathBuf, i64, PathBuf)> {
+fn killed_after_segment_open(name: &str) -> Option<(PathBuf, Kill, PathBuf)> {
     if !hooks() {
         return None;
     }
@@ -328,7 +365,7 @@ fn killed_after_segment_open(name: &str) -> Option<(PathBuf, i64, PathBuf)> {
         ],
     );
     rec.wait_hold("after_segment_open");
-    let (dir, kill_rec) = rec.kill();
+    let (dir, kill) = rec.kill();
     let s = story(&dir);
     assert_eq!(
         s[s.len() - 3..],
@@ -343,16 +380,16 @@ fn killed_after_segment_open(name: &str) -> Option<(PathBuf, i64, PathBuf)> {
             _ => None,
         })
         .expect("segment_open:s1 names its file");
-    Some((dir, kill_rec, file))
+    Some((dir, kill, file))
 }
 
 #[test]
 fn kill_after_segment_open() {
-    let Some((dir, kill_rec, _)) = killed_after_segment_open("open") else {
+    let Some((dir, kill, _)) = killed_after_segment_open("open") else {
         return;
     };
     // The router holds before s1's first append, so recovery drops the empty s1.
-    let p = recover_and_check(&dir, kill_rec, 1);
+    let p = recover_and_check(&dir, kill, 1);
     assert_eq!(p.recording.screen.segments[0].id, "s0");
 }
 
@@ -360,11 +397,11 @@ fn kill_after_segment_open() {
 /// finds s1 at 0 bytes. Recovery must drop it like an empty segment, not call the project damaged.
 #[test]
 fn kill_after_segment_open_with_zero_byte_segment_file() {
-    let Some((dir, kill_rec, s1)) = killed_after_segment_open("open-empty") else {
+    let Some((dir, kill, s1)) = killed_after_segment_open("open-empty") else {
         return;
     };
     std::fs::File::create(&s1).expect("truncate s1 to 0 bytes");
-    let p = recover_and_check(&dir, kill_rec, 1);
+    let p = recover_and_check(&dir, kill, 1);
     assert_eq!(p.recording.screen.segments[0].id, "s0");
     assert!(s1.exists(), "recovery keeps the original file");
 }
