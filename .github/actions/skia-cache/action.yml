@@ -2,7 +2,8 @@ name: skia-cache
 description: >-
   Cache the Skia FreeType source build (ADR-018) separately from target/: the skia-bindings crate
   source (Skia plus the third-party sources its build syncs) and its build-script output, keyed by
-  skia-bindings version + .cargo/config.toml (FORCE_SKIA_BUILD, SKIA_GN_ARGS) + OS. Both halves
+  skia-bindings version + skia-safe features (root Cargo.toml) + .cargo/config.toml
+  (FORCE_SKIA_BUILD, SKIA_GN_ARGS) + OS. Both halves
   are restored together so ninja's timestamps stay consistent and the rebuild is a no-op.
   mode=restore before the first cargo build; mode=save right after it (runs even if later steps
   fail, so a red test run still keeps the 20-40 min Skia build).
@@ -23,8 +24,9 @@ runs:
       run: |
         v=$(grep -A1 '^name = "skia-bindings"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
         test -n "$v"
+        f=$(grep -E '^skia-safe *=' Cargo.toml | git hash-object --stdin | cut -c1-12)
         echo "version=$v" >> "$GITHUB_OUTPUT"
-        echo "key=skia-$RUNNER_OS-$RUNNER_ARCH-$v-${{ hashFiles('.cargo/config.toml') }}" >> "$GITHUB_OUTPUT"
+        echo "key=skia-$RUNNER_OS-$RUNNER_ARCH-$v-$f-${{ hashFiles('.cargo/config.toml') }}" >> "$GITHUB_OUTPUT"
 
     - name: Restore Skia build
       id: restore
