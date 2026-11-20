@@ -3,6 +3,13 @@
 
 mod args;
 mod commands;
+#[cfg(feature = "export")]
+mod export;
+mod host;
+#[cfg(all(target_os = "macos", debug_assertions))]
+mod ownwin;
+mod record;
+mod spec;
 
 use std::process::ExitCode;
 
