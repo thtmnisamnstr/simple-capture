@@ -140,7 +140,7 @@ fn recipe_args() {
     let joined = a.join(" ");
     for want in [
         "-f yuv4mpegpipe -i pipe:0",
-        "-f wav -i /x/Demo.mp4.wav.part",
+        &format!("-f wav -i {}", mix_wav_path(out).display()),
         "-map 0:v:0 -map 1:a:0",
         "-c:v libx264 -preset medium -profile:v high -pix_fmt yuv420p -crf 22",
         "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv",
