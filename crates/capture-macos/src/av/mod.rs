@@ -1,5 +1,13 @@
-//! AVFoundation devices, writers and readers. Stubs until wp-mac-av; camera and mic opens must
-//! call `crate::tcc::guard` first (writers, readers and VideoToolbox are not TCC-touching).
+//! AVFoundation devices, writers and readers. Camera and mic opens call `crate::tcc::guard`
+//! first; writers, readers and VideoToolbox are not TCC-touching.
+
+mod devices;
+mod frames;
+mod pcm;
+mod reader;
+#[cfg(test)]
+mod tests;
+mod writer;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -7,15 +15,15 @@ use std::sync::Arc;
 use sc_geometry::SizePx;
 use sc_platform::{
     AudioReader, AudioSource, AudioWriterSpec, CameraLimit, CameraSource, CaptureDevice, Decoder,
-    DeviceStream, Error, FrameSink, Result, TrackProbe, TrackWriter, VideoCodec, VideoReader,
+    DeviceKind, DeviceStream, FrameSink, Result, TrackProbe, TrackWriter, VideoCodec, VideoReader,
     VideoWriterSpec, WriterFactory,
 };
 
-const STUB: &str = "sc_capture_macos::av: not implemented yet";
+pub use devices::CAMERA_TAG_BASE;
+pub use frames::{MacAudioSample, MacPixelFrame, PIX_420F, PIX_420V};
 
-fn stub<T>() -> Result<T> {
-    Err(Error::Unsupported(STUB))
-}
+/// Spike 3 `encbench` default (0.05 bits per pixel per frame).
+pub const DEFAULT_BITS_PER_PIXEL: f64 = 0.05;
 
 #[derive(Debug, Default)]
 pub struct MacMic {
@@ -30,13 +38,13 @@ impl MacMic {
 
 impl AudioSource for MacMic {
     fn devices(&self) -> Result<Vec<CaptureDevice>> {
-        stub()
+        devices::list(DeviceKind::Mic)
     }
-    fn start(&self, _device_id: &str, _sink: Arc<dyn FrameSink>) -> Result<Box<dyn DeviceStream>> {
-        stub()
+    fn start(&self, device_id: &str, sink: Arc<dyn FrameSink>) -> Result<Box<dyn DeviceStream>> {
+        devices::start(DeviceKind::Mic, device_id, None, sink)
     }
     fn show_mic_modes(&self) -> Result<()> {
-        stub()
+        devices::show_mic_modes()
     }
 }
 
@@ -53,15 +61,15 @@ impl MacCamera {
 
 impl CameraSource for MacCamera {
     fn devices(&self) -> Result<Vec<CaptureDevice>> {
-        stub()
+        devices::list(DeviceKind::Camera)
     }
     fn start(
         &self,
-        _device_id: &str,
-        _limit: CameraLimit,
-        _sink: Arc<dyn FrameSink>,
+        device_id: &str,
+        limit: CameraLimit,
+        sink: Arc<dyn FrameSink>,
     ) -> Result<Box<dyn DeviceStream>> {
-        stub()
+        devices::start(DeviceKind::Camera, device_id, Some(limit), sink)
     }
 }
 
@@ -80,20 +88,20 @@ impl WriterFactory for MacWriterFactory {
     fn extension(&self) -> &'static str {
         "mov"
     }
-    fn video(&self, _path: &Path, _spec: &VideoWriterSpec) -> Result<Box<dyn TrackWriter>> {
-        stub()
+    fn video(&self, path: &Path, spec: &VideoWriterSpec) -> Result<Box<dyn TrackWriter>> {
+        Ok(Box::new(writer::VideoWriter::create(path, spec)?))
     }
-    fn audio(&self, _path: &Path, _spec: &AudioWriterSpec) -> Result<Box<dyn TrackWriter>> {
-        stub()
+    fn audio(&self, path: &Path, spec: &AudioWriterSpec) -> Result<Box<dyn TrackWriter>> {
+        Ok(Box::new(writer::AudioWriter::create(path, spec)?))
     }
     fn encode_benchmark(
         &self,
-        _size: SizePx,
-        _fps: u32,
-        _frames: u32,
-        _codec: VideoCodec,
+        size: SizePx,
+        fps: u32,
+        frames: u32,
+        codec: VideoCodec,
     ) -> Result<f64> {
-        stub()
+        writer::encode_benchmark(size, fps, frames, codec)
     }
 }
 
@@ -109,18 +117,21 @@ impl MacDecoder {
 }
 
 impl Decoder for MacDecoder {
-    fn open_video(&self, _path: &Path) -> Result<Box<dyn VideoReader>> {
-        stub()
+    fn open_video(&self, path: &Path) -> Result<Box<dyn VideoReader>> {
+        Ok(Box::new(reader::MacVideoReader::open(path)?))
     }
-    fn open_audio(&self, _path: &Path, _rate: u32, _channels: u16) -> Result<Box<dyn AudioReader>> {
-        stub()
+    fn open_audio(&self, path: &Path, rate: u32, channels: u16) -> Result<Box<dyn AudioReader>> {
+        Ok(Box::new(reader::MacAudioReader::open(
+            path, rate, channels,
+        )?))
     }
-    fn probe(&self, _path: &Path) -> Result<TrackProbe> {
-        stub()
+    fn probe(&self, path: &Path) -> Result<TrackProbe> {
+        reader::probe(path)
     }
 }
 
-/// Camera and mic hot-plug notifications.
-pub fn watch_devices(_sink: Arc<dyn FrameSink>) -> Result<Box<dyn DeviceStream>> {
-    stub()
+/// Camera and mic hot-plug: `DevicesChanged` on connect/disconnect, plus `DeviceLost` when a
+/// device this process is capturing from disconnects.
+pub fn watch_devices(sink: Arc<dyn FrameSink>) -> Result<Box<dyn DeviceStream>> {
+    devices::watch(sink)
 }

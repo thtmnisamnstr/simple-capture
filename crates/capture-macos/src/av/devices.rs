@@ -1,0 +1,595 @@
+use std::ptr::NonNull;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+
+use block2::RcBlock;
+use dispatch2::{DispatchQueue, DispatchQueueAttr, DispatchRetained};
+use objc2::rc::Retained;
+use objc2::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
+use objc2::{AnyThread, DefinedClass, MainThreadMarker, define_class, msg_send};
+use objc2_av_foundation::{
+    AVAuthorizationStatus, AVCaptureAudioDataOutput, AVCaptureAudioDataOutputSampleBufferDelegate,
+    AVCaptureConnection, AVCaptureDevice, AVCaptureDeviceDiscoverySession, AVCaptureDeviceFormat,
+    AVCaptureDeviceInput, AVCaptureDevicePosition, AVCaptureDeviceTypeBuiltInWideAngleCamera,
+    AVCaptureDeviceTypeContinuityCamera, AVCaptureDeviceTypeDeskViewCamera,
+    AVCaptureDeviceTypeExternal, AVCaptureDeviceTypeMicrophone,
+    AVCaptureDeviceWasConnectedNotification, AVCaptureDeviceWasDisconnectedNotification,
+    AVCaptureOutput, AVCaptureSession, AVCaptureSystemUserInterface, AVCaptureVideoDataOutput,
+    AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaTypeAudio, AVMediaTypeVideo,
+};
+use objc2_core_foundation::CFType;
+use objc2_core_media::{
+    CMClock, CMSampleBuffer, CMSyncConvertTime, CMTime, CMVideoFormatDescriptionGetDimensions,
+};
+use objc2_core_video::kCVPixelBufferPixelFormatTypeKey;
+use objc2_foundation::{NSArray, NSNotification, NSNotificationCenter, NSString};
+use sc_core::time::HostTime;
+use sc_geometry::SizePx;
+use sc_platform::{
+    AudioTrackKind, CameraLimit, CaptureDevice, DeviceKind, DeviceStream, Error, FrameBuffer,
+    FrameSink, PermissionKind, Result, SourceEvent, StreamTag, VideoFrame,
+};
+
+use super::frames::{MacAudioSample, MacPixelFrame, PIX_420F, PIX_420V, asbd_of_desc};
+use super::writer::key;
+use crate::util::{as_obj, cfstr_as_ns, cmtime_to_ns, dict, fourcc, ns_error_text, nsstr, num_i};
+
+pub const CAMERA_TAG_BASE: u64 = 1 << 48;
+static NEXT_CAMERA_TAG: AtomicU64 = AtomicU64::new(CAMERA_TAG_BASE);
+static RUNNING: Mutex<Vec<(DeviceKind, String)>> = Mutex::new(Vec::new());
+
+fn running() -> MutexGuard<'static, Vec<(DeviceKind, String)>> {
+    RUNNING.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+fn media_type(kind: DeviceKind) -> Result<&'static NSString> {
+    // SAFETY: framework constants.
+    unsafe {
+        match kind {
+            DeviceKind::Camera => key(AVMediaTypeVideo, "AVMediaTypeVideo"),
+            DeviceKind::Mic => key(AVMediaTypeAudio, "AVMediaTypeAudio"),
+        }
+    }
+}
+
+fn discover(kind: DeviceKind) -> Result<Vec<Retained<AVCaptureDevice>>> {
+    // SAFETY: framework constants; discovery needs no permission and never prompts.
+    unsafe {
+        let types: Vec<&NSString> = match kind {
+            DeviceKind::Camera => vec![
+                AVCaptureDeviceTypeBuiltInWideAngleCamera,
+                AVCaptureDeviceTypeExternal,
+                AVCaptureDeviceTypeContinuityCamera,
+                AVCaptureDeviceTypeDeskViewCamera,
+            ],
+            DeviceKind::Mic => vec![AVCaptureDeviceTypeMicrophone, AVCaptureDeviceTypeExternal],
+        };
+        let arr = NSArray::from_slice(&types);
+        let ds =
+            AVCaptureDeviceDiscoverySession::discoverySessionWithDeviceTypes_mediaType_position(
+                &arr,
+                Some(media_type(kind)?),
+                AVCaptureDevicePosition::Unspecified,
+            );
+        Ok(ds.devices().iter().collect())
+    }
+}
+
+fn kind_hint(dev: &AVCaptureDevice) -> Option<String> {
+    // SAFETY: plain getters; framework constants.
+    unsafe {
+        let t = dev.deviceType();
+        let hint = if dev.isContinuityCamera() || &*t == AVCaptureDeviceTypeContinuityCamera {
+            "continuity"
+        } else if &*t == AVCaptureDeviceTypeDeskViewCamera {
+            "desk_view"
+        } else if &*t == AVCaptureDeviceTypeBuiltInWideAngleCamera {
+            "builtin"
+        } else if &*t == AVCaptureDeviceTypeExternal {
+            "external"
+        } else if &*t == AVCaptureDeviceTypeMicrophone {
+            "microphone"
+        } else {
+            return Some(t.to_string());
+        };
+        Some(hint.to_string())
+    }
+}
+
+pub(crate) fn list(kind: DeviceKind) -> Result<Vec<CaptureDevice>> {
+    // SAFETY: plain getters.
+    let default_id = unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media_type(kind)?) }
+        .map(|d| unsafe { d.uniqueID() }.to_string());
+    let mut out: Vec<CaptureDevice> = Vec::new();
+    for d in discover(kind)? {
+        // SAFETY: plain getters.
+        let (id, name, model) = unsafe {
+            (
+                d.uniqueID().to_string(),
+                d.localizedName().to_string(),
+                d.modelID().to_string(),
+            )
+        };
+        if out.iter().any(|c| c.id == id) {
+            continue;
+        }
+        out.push(CaptureDevice {
+            is_default: default_id.as_deref() == Some(id.as_str()),
+            id,
+            name,
+            model_id: (!model.is_empty()).then_some(model),
+            kind_hint: kind_hint(&d),
+        });
+    }
+    Ok(out)
+}
+
+fn find(kind: DeviceKind, id: &str) -> Result<Retained<AVCaptureDevice>> {
+    // SAFETY: plain lookup.
+    let dev = unsafe { AVCaptureDevice::deviceWithUniqueID(&nsstr(id)) }
+        .ok_or_else(|| Error::NotFound(format!("{kind:?} device {id}")))?;
+    // SAFETY: plain getter.
+    if !unsafe { dev.hasMediaType(media_type(kind)?) } {
+        return Err(Error::NotFound(format!("{id} is not a {kind:?} device")));
+    }
+    Ok(dev)
+}
+
+fn require_authorized(kind: DeviceKind) -> Result<()> {
+    // SAFETY: a status read; never prompts.
+    let st = unsafe { AVCaptureDevice::authorizationStatusForMediaType(media_type(kind)?) };
+    if st == AVAuthorizationStatus::Authorized {
+        Ok(())
+    } else {
+        Err(Error::PermissionDenied(match kind {
+            DeviceKind::Camera => PermissionKind::Camera,
+            DeviceKind::Mic => PermissionKind::Microphone,
+        }))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FormatChoice {
+    pub size: SizePx,
+    pub subtype: u32,
+    pub max_fps: f64,
+}
+
+/// Largest format within `limit` that reaches `limit.max_fps`, preferring 420v/420f.
+pub(crate) fn best_format(
+    dev: &AVCaptureDevice,
+    limit: CameraLimit,
+) -> Option<(Retained<AVCaptureDeviceFormat>, FormatChoice)> {
+    let mut best: Option<(Retained<AVCaptureDeviceFormat>, FormatChoice, i64)> = None;
+    // SAFETY: plain getters on a device and its formats.
+    unsafe {
+        for f in dev.formats().iter() {
+            let fd = f.formatDescription();
+            let dims = CMVideoFormatDescriptionGetDimensions(&fd);
+            let (w, h) = (
+                u32::try_from(dims.width).unwrap_or(0),
+                u32::try_from(dims.height).unwrap_or(0),
+            );
+            if w == 0 || h == 0 || w > limit.max.w || h > limit.max.h {
+                continue;
+            }
+            let max_fps = f
+                .videoSupportedFrameRateRanges()
+                .iter()
+                .map(|r| r.maxFrameRate())
+                .fold(0.0, f64::max);
+            if max_fps + 0.01 < f64::from(limit.max_fps) {
+                continue;
+            }
+            let sub = fd.media_sub_type();
+            let nv12 = i64::from(sub == PIX_420V || sub == PIX_420F);
+            let score = i64::from(w) * i64::from(h) * 4 + nv12 * 2 - i64::from(max_fps > 60.0);
+            if best.as_ref().is_none_or(|b| score > b.2) {
+                let choice = FormatChoice {
+                    size: SizePx { w, h },
+                    subtype: sub,
+                    max_fps,
+                };
+                best = Some((f.clone(), choice, score));
+            }
+        }
+    }
+    best.map(|b| (b.0, b.1))
+}
+
+struct SendClock(Retained<CMClock>);
+// SAFETY: CMClocks are thread-safe CF objects.
+unsafe impl Send for SendClock {}
+
+pub(crate) struct DelegateState {
+    kind: DeviceKind,
+    tag: StreamTag,
+    sink: Arc<dyn FrameSink>,
+    accepting: AtomicBool,
+    clock: Mutex<Option<SendClock>>,
+    delivered: AtomicU64,
+    dropped: AtomicU64,
+}
+
+impl DelegateState {
+    fn host_ns(&self, pts: CMTime) -> Option<i64> {
+        let g = self.clock.lock().unwrap_or_else(|p| p.into_inner());
+        let t = match &*g {
+            Some(c) => {
+                // SAFETY: the host time clock is a process-wide singleton.
+                let host = unsafe { CMClock::host_time_clock() };
+                let from: &CFType = &c.0;
+                let to: &CFType = &host;
+                // SAFETY: both arguments are clocks.
+                unsafe { CMSyncConvertTime(pts, from, to) }
+            }
+            None => pts,
+        };
+        cmtime_to_ns(t)
+    }
+
+    fn on_sample(&self, sb: &CMSampleBuffer) {
+        if !self.accepting.load(Ordering::Acquire) {
+            return;
+        }
+        // SAFETY: valid sample buffer.
+        let Some(pts) = self.host_ns(unsafe { sb.presentation_time_stamp() }) else {
+            return;
+        };
+        match self.kind {
+            DeviceKind::Camera => {
+                let Some(frame) = MacPixelFrame::from_sample_buffer(sb) else {
+                    return;
+                };
+                let size = sc_platform::NativeFrame::size(&frame);
+                self.sink.on_camera(VideoFrame {
+                    stream: self.tag,
+                    pts: HostTime(pts),
+                    size,
+                    content_rect_pt: None,
+                    content_scale: None,
+                    buffer: FrameBuffer(Arc::new(frame)),
+                });
+            }
+            DeviceKind::Mic => {
+                let Some(mut a) = MacAudioSample::audio_buffer(sb) else {
+                    return;
+                };
+                a.pts = HostTime(pts);
+                self.sink.on_audio(AudioTrackKind::Mic, a);
+            }
+        }
+        self.delivered.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[name = "SCAvCaptureDelegate"]
+    #[ivars = Arc<DelegateState>]
+    struct CaptureDelegate;
+
+    unsafe impl NSObjectProtocol for CaptureDelegate {}
+
+    unsafe impl AVCaptureVideoDataOutputSampleBufferDelegate for CaptureDelegate {
+        #[unsafe(method(captureOutput:didOutputSampleBuffer:fromConnection:))]
+        fn did_output(&self, _o: &AVCaptureOutput, sb: &CMSampleBuffer, _c: &AVCaptureConnection) {
+            self.ivars().on_sample(sb);
+        }
+
+        #[unsafe(method(captureOutput:didDropSampleBuffer:fromConnection:))]
+        fn did_drop(&self, _o: &AVCaptureOutput, _sb: &CMSampleBuffer, _c: &AVCaptureConnection) {
+            self.ivars().dropped.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    unsafe impl AVCaptureAudioDataOutputSampleBufferDelegate for CaptureDelegate {}
+);
+
+impl CaptureDelegate {
+    fn new(state: Arc<DelegateState>) -> Retained<Self> {
+        let this = Self::alloc().set_ivars(state);
+        // SAFETY: NSObject's init.
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+enum Output {
+    Video(Retained<AVCaptureVideoDataOutput>),
+    Audio(Retained<AVCaptureAudioDataOutput>),
+}
+
+pub(crate) struct AvDeviceStream {
+    session: Retained<AVCaptureSession>,
+    output: Output,
+    state: Arc<DelegateState>,
+    _delegate: Retained<CaptureDelegate>,
+    _queue: DispatchRetained<DispatchQueue>,
+    format: String,
+    device_id: String,
+}
+
+// SAFETY: AVCaptureSession is documented as thread-safe for start/stop; the stream is only
+// stopped once (`self: Box<Self>`).
+unsafe impl Send for AvDeviceStream {}
+
+impl AvDeviceStream {
+    #[allow(dead_code)]
+    pub(crate) fn delivered(&self) -> u64 {
+        self.state.delivered.load(Ordering::Relaxed)
+    }
+}
+
+impl DeviceStream for AvDeviceStream {
+    fn format(&self) -> String {
+        self.format.clone()
+    }
+
+    fn stop(self: Box<Self>) -> Result<()> {
+        self.state.accepting.store(false, Ordering::Release);
+        // SAFETY: stopping a configured session; detaching the delegate afterwards.
+        unsafe {
+            self.session.stopRunning();
+            match &self.output {
+                Output::Video(o) => o.setSampleBufferDelegate_queue(None, None),
+                Output::Audio(o) => o.setSampleBufferDelegate_queue(None, None),
+            }
+        }
+        let kind = self.state.kind;
+        running().retain(|(k, id)| !(*k == kind && *id == self.device_id));
+        Ok(())
+    }
+}
+
+pub(crate) fn start(
+    kind: DeviceKind,
+    device_id: &str,
+    limit: Option<CameraLimit>,
+    sink: Arc<dyn FrameSink>,
+) -> Result<Box<dyn DeviceStream>> {
+    crate::tcc::guard(match kind {
+        DeviceKind::Camera => "AVCaptureSession camera",
+        DeviceKind::Mic => "AVCaptureSession microphone",
+    })?;
+    require_authorized(kind)?;
+    let dev = find(kind, device_id)?;
+    let tag = match kind {
+        DeviceKind::Camera => StreamTag(NEXT_CAMERA_TAG.fetch_add(1, Ordering::Relaxed)),
+        DeviceKind::Mic => StreamTag(0),
+    };
+    let state = Arc::new(DelegateState {
+        kind,
+        tag,
+        sink,
+        accepting: AtomicBool::new(true),
+        clock: Mutex::new(None),
+        delivered: AtomicU64::new(0),
+        dropped: AtomicU64::new(0),
+    });
+    let delegate = CaptureDelegate::new(state.clone());
+    let queue = DispatchQueue::new(
+        match kind {
+            DeviceKind::Camera => "com.simplecapture.av.camera",
+            DeviceKind::Mic => "com.simplecapture.av.mic",
+        },
+        DispatchQueueAttr::SERIAL,
+    );
+    // SAFETY: standard AVCaptureSession configuration on a device this process may open.
+    let (session, output, format) = unsafe {
+        let session = AVCaptureSession::new();
+        session.beginConfiguration();
+        let input = AVCaptureDeviceInput::deviceInputWithDevice_error(&dev).map_err(|e| {
+            Error::Other(format!(
+                "opening {kind:?} {device_id}: {}",
+                ns_error_text(&e)
+            ))
+        })?;
+        if !session.canAddInput(&input) {
+            session.commitConfiguration();
+            return Err(Error::Busy(format!(
+                "cannot add {kind:?} input {device_id}"
+            )));
+        }
+        session.addInput(&input);
+        let (output, format) = match kind {
+            DeviceKind::Camera => {
+                let out = AVCaptureVideoDataOutput::new();
+                let pf = num_i(i64::from(PIX_420V));
+                let vs = dict(&[(cfstr_as_ns(kCVPixelBufferPixelFormatTypeKey), as_obj(&*pf))]);
+                out.setVideoSettings(Some(&vs));
+                out.setAlwaysDiscardsLateVideoFrames(true);
+                out.setSampleBufferDelegate_queue(
+                    Some(ProtocolObject::from_ref(&*delegate)),
+                    Some(&queue),
+                );
+                if !session.canAddOutput(&out) {
+                    session.commitConfiguration();
+                    return Err(Error::Other("cannot add the camera output".into()));
+                }
+                session.addOutput(&out);
+                let limit = limit.unwrap_or(CameraLimit {
+                    max: SizePx { w: 1920, h: 1080 },
+                    max_fps: 30,
+                });
+                let format = match best_format(&dev, limit) {
+                    Some((f, choice)) => {
+                        dev.lockForConfiguration().map_err(|e| {
+                            Error::Other(format!("lockForConfiguration: {}", ns_error_text(&e)))
+                        })?;
+                        dev.setActiveFormat(&f);
+                        let fps = f64::from(limit.max_fps).min(choice.max_fps).max(1.0);
+                        let d = CMTime::new(1000, (fps * 1000.0).round() as i32);
+                        dev.setActiveVideoMinFrameDuration(d);
+                        dev.setActiveVideoMaxFrameDuration(d);
+                        dev.unlockForConfiguration();
+                        format!(
+                            "{}x{} {} @ {} fps (delivered as 420v)",
+                            choice.size.w,
+                            choice.size.h,
+                            fourcc(choice.subtype),
+                            fps
+                        )
+                    }
+                    None => {
+                        let fd = dev.activeFormat().formatDescription();
+                        let dims = CMVideoFormatDescriptionGetDimensions(&fd);
+                        format!(
+                            "{}x{} {} (no format within {}x{} @ {}; device default)",
+                            dims.width,
+                            dims.height,
+                            fourcc(fd.media_sub_type()),
+                            limit.max.w,
+                            limit.max.h,
+                            limit.max_fps
+                        )
+                    }
+                };
+                (Output::Video(out), format)
+            }
+            DeviceKind::Mic => {
+                let out = AVCaptureAudioDataOutput::new();
+                out.setSampleBufferDelegate_queue(
+                    Some(ProtocolObject::from_ref(&*delegate)),
+                    Some(&queue),
+                );
+                if !session.canAddOutput(&out) {
+                    session.commitConfiguration();
+                    return Err(Error::Other("cannot add the microphone output".into()));
+                }
+                session.addOutput(&out);
+                let fd = dev.activeFormat().formatDescription();
+                let format = match asbd_of_desc(&fd) {
+                    Some(a) => format!(
+                        "{} Hz {} ch {} {}-bit",
+                        a.mSampleRate,
+                        a.mChannelsPerFrame,
+                        fourcc(a.mFormatID),
+                        a.mBitsPerChannel
+                    ),
+                    None => "audio".to_string(),
+                };
+                (Output::Audio(out), format)
+            }
+        };
+        session.commitConfiguration();
+        (session, output, format)
+    };
+    // SAFETY: plain getter.
+    if let Some(c) = unsafe { session.synchronizationClock() } {
+        *state.clock.lock().unwrap_or_else(|p| p.into_inner()) = Some(SendClock(c));
+    }
+    // SAFETY: blocks until running; called off the main thread per the threading contract.
+    let ok = unsafe {
+        session.startRunning();
+        session.isRunning()
+    };
+    if !ok {
+        state.accepting.store(false, Ordering::Release);
+        return Err(Error::Other(format!(
+            "{kind:?} {device_id}: the capture session did not start"
+        )));
+    }
+    running().push((kind, device_id.to_string()));
+    Ok(Box::new(AvDeviceStream {
+        session,
+        output,
+        state,
+        _delegate: delegate,
+        _queue: queue,
+        format,
+        device_id: device_id.to_string(),
+    }))
+}
+
+pub(crate) fn show_mic_modes() -> Result<()> {
+    let show = || {
+        // SAFETY: AppKit-side system UI request; on the main thread here.
+        unsafe {
+            AVCaptureDevice::showSystemUserInterface(AVCaptureSystemUserInterface::MicrophoneModes)
+        }
+    };
+    if MainThreadMarker::new().is_some() {
+        show();
+    } else {
+        DispatchQueue::main().exec_async(show);
+    }
+    Ok(())
+}
+
+struct Observer(Retained<ProtocolObject<dyn NSObjectProtocol>>);
+// SAFETY: observer tokens are only passed back to NSNotificationCenter, which is thread-safe.
+unsafe impl Send for Observer {}
+
+pub(crate) struct DeviceWatcher {
+    observers: Vec<Observer>,
+}
+
+impl DeviceStream for DeviceWatcher {
+    fn format(&self) -> String {
+        "AVCaptureDevice connect/disconnect notifications".into()
+    }
+
+    fn stop(self: Box<Self>) -> Result<()> {
+        let center = NSNotificationCenter::defaultCenter();
+        for o in self.observers {
+            // SAFETY: a token returned by addObserverForName.
+            unsafe { center.removeObserver(as_obj(&*o.0)) };
+        }
+        Ok(())
+    }
+}
+
+fn on_device_note(note: &NSNotification, connected: bool, sink: &Arc<dyn FrameSink>) {
+    let Some(obj) = note.object() else {
+        return;
+    };
+    let Ok(dev) = obj.downcast::<AVCaptureDevice>() else {
+        return;
+    };
+    for kind in [DeviceKind::Camera, DeviceKind::Mic] {
+        let Ok(mt) = media_type(kind) else {
+            continue;
+        };
+        // SAFETY: plain getter.
+        if !unsafe { dev.hasMediaType(mt) } {
+            continue;
+        }
+        sink.on_event(SourceEvent::DevicesChanged { kind });
+        if !connected {
+            // SAFETY: plain getter.
+            let id = unsafe { dev.uniqueID() }.to_string();
+            let was_running = running().iter().any(|(k, d)| *k == kind && *d == id);
+            if was_running {
+                sink.on_event(SourceEvent::DeviceLost {
+                    kind,
+                    device_id: id,
+                });
+            }
+        }
+    }
+}
+
+pub(crate) fn watch(sink: Arc<dyn FrameSink>) -> Result<Box<dyn DeviceStream>> {
+    let center = NSNotificationCenter::defaultCenter();
+    let mut observers = Vec::new();
+    // SAFETY: framework notification names.
+    let names = unsafe {
+        [
+            (AVCaptureDeviceWasConnectedNotification, true),
+            (AVCaptureDeviceWasDisconnectedNotification, false),
+        ]
+    };
+    for (name, connected) in names {
+        let sink = sink.clone();
+        let block = RcBlock::new(move |n: NonNull<NSNotification>| {
+            // SAFETY: the center passes a valid notification.
+            on_device_note(unsafe { n.as_ref() }, connected, &sink);
+        });
+        // SAFETY: no queue: the block runs on the posting thread and only forwards to the sink.
+        let token = unsafe {
+            center.addObserverForName_object_queue_usingBlock(Some(name), None, None, &block)
+        };
+        observers.push(Observer(token));
+    }
+    Ok(Box::new(DeviceWatcher { observers }))
+}
