@@ -9,6 +9,9 @@ pub mod wav;
 pub mod y4m;
 
 pub use info::{HelperInfo, helper_info};
-pub use locate::{HelperKind, locate};
-pub use process::{CancelReport, ExitReport, HelperProcess, Progress, SpawnSpec};
+pub use locate::{HelperKind, locate, platform_dir_name};
+pub use process::{
+    CANCEL_GRACE, CancelReport, DEFAULT_QUEUE_FRAMES, ExitReport, HelperProcess, Interrupter,
+    Progress, SpawnSpec,
+};
 pub use sc_core::{Error, Result};
