@@ -1,7 +1,7 @@
 # Status
 
-**Current milestone: M1 ★ (macOS recording): built and verified by agents; waiting for the owner's
-★ review.** Updated 2026-11-20. All M1 work is on branch `m1` (pushed to origin, not merged to
+**Current milestone: M1 ★ (macOS recording): built and verified by agents, CI green on all three
+OSes; waiting for the owner's ★ review.** Updated 2026-11-20. All M1 work is on branch `m1` (pushed to origin, not merged to
 `main`). The ★ review list is the last section of this file.
 
 M1 delivers (SPEC M1 line plus the 2026-11-19 additions): display, window, application, region and
@@ -34,7 +34,7 @@ during the live M1 runs). **Nothing was measured on the base M1 8 GB target.**
 | 4 | Kill tests recover; killed app recovers on launch; Quit/SIGTERM finalize | **Met** (loss bound is an owner question) | Live 12 of 12 kills recover and export; CI `kill_synth` 6 of 6 [M1:kill-recovery-test, merge 76426a6]; driver: `kill -9` → `recovered`, Quit and SIGTERM → `finalized` [M1:app-integration]. Loss per track up to 1.076 s with 1 s fragments (ADR-008, §4). |
 | 5 | Sync at start, after each switch, at end; system audio, mic, camera | **Partly met** | System audio: median −10.2 ms, 27 of 30 events within ±33 ms; no fixed compensation (ADR-011). **Mic and camera not measured**: the output was muted and the room dark [M1:sync-test]. Owner rerun (§4). Sync across pauses is M7. |
 | 6 | 30-minute soak decides ADR-010 | **Met** | Agent run on the real screen, camera, mic and system audio: every threshold passed; **no frame copy** [M1:soak, `target/soak/20261120-000343/summary.md`]. Mic end sync n/a (mic did not hear the beep). |
-| 7 | CI green on all three OSes | **Not met: macOS and Linux green, Windows red** | Run 44710191597 (m1 @ 76426a6): ui, licenses, fast and full macos-15, fast and full ubuntu-24.04 **pass**; both Windows jobs **fail**. fast windows-2025: `kill_synth` mid-s0 and mid-s1 get `Locked` instead of `Recovered`, because on Windows an existing project `.lock` always counts as held (ADR-038, core), so a killed recorder's lock is never stale. full windows-2025: the Skia cache was restored, the LLVM upgrade skipped, but skia-bindings still built from source and clang-cl 20 failed with STL1000 (ADR-018). Both are for the orchestrator to route (CI config and `crates/core` / the kill test); docs only here. |
+| 7 | CI green on all three OSes | **Met** | GitHub run 44719974664 (m1, 2026-11-20): all 8 jobs pass: ui, licenses, fast and full on macos-15, ubuntu-24.04 and windows-2025. Windows needed the stale-lock fix at close-out; the Windows Skia FreeType build passed in this run but failed in earlier ones (STL1000), so watch it (§3 item 2). |
 | 8 | cargo-deny, pnpm licences, no networking, approved deps only | **Met** | `licenses` job green in runs 44695891492, 44705677113 and 44710191597; `netcheck: ok`; Cargo.lock unchanged since the scaffold (LICENSES §10). |
 | 9 | Release bundle built and inspected, not launched | **Met** | App and both helpers signed `adhoc,runtime`; both entitlements; three usage strings [M1:app-shell]. |
 | 10 | MANUAL_TEST; STATUS, DECISIONS, ARCHITECTURE updated | **Met** | docs/MANUAL_TEST.md (53 owner steps) [M1:manual-test]; this update (ADR-037, ADR-038 and M1 updates to ADR-008/009/010/011/018/022/024/028/031/034/035). |
@@ -150,10 +150,8 @@ its file was exactly 1800.0 s; not growing with run length [M1:soak].
 
 1. **No M1 8 GB data.** Every number is from the M3 Pro, including the soak (one debug-build run),
    export speeds (synthetic content) and the probe.
-2. **CI is not green on Windows** (§1 item 7): the Windows Skia FreeType build has not yet passed
-   with the current workspace (clang-cl 20 vs the VS 18 STL; the LLVM 22.1.8 upgrade only runs on a
-   cache miss), and `kill_synth` fails on Windows because a `.lock` there is never treated as stale.
-   macOS and Linux are green (run 44710191597).
+2. **Windows CI is green but young** (run 44719974664). The Windows Skia FreeType build failed in
+   earlier runs with STL1000 (clang-cl vs the VS 18 STL) and passed here; it may be cache-dependent.
 3. **Kill loss is up to about 1.08 s per track** with 1 s fragments, over the documented ≤ 1 s
    (ADR-008, owner question).
 4. **The open tray menu can leak 0–1 frame** into a display recording (ADR-010, owner question).
@@ -176,11 +174,21 @@ its file was exactly 1800.0 s; not growing with run length [M1:soak].
     `just test-live` and `just app-driver` still start from the repo. Builds into the shared
     `target/skia` from different worktrees can link another worktree's crates.
 13. **60 fps** delivered 51–52 fps at 3024×1964 on a changing test screen (probe allows it).
+15. **Timing-sensitive synthetic tests.** `session_synthetic` passed 9 of 10 runs locally; the
+    failing run (2 tests, different ones each time) happened while the machine was busy. Watch CI;
+    widen the waits if they flake there.
+
+**Fixed at close-out (orchestrator, 2026-11-20, commit after 1b17b1b):**
+- The acceptance check found that at 60 fps the last segment could end up to one frame after the
+  recording's stop (e2e step 9 failed 2 of 4 runs): a frame stamped just after the stop time could
+  reach the router first. The stop now moves to the last segment's end. Step 9: 3 of 3 live runs
+  pass.
+- Windows: a project `.lock` held by a dead process is now detected (`OpenProcess` /
+  `GetExitCodeProcess`), which was why `kill_synth` returned `Locked` on Windows CI.
 14. **Carried from M0, unchanged:** gifski notice texts and the gifsicle-feature provenance; BtbN
     for Windows/Linux and the Windows 10 minimum (M6); FFmpeg GPG signature unverified; the helper's
     missing PNG and AV1 decoders; gifski x86_64 not built; Small and High quality tiers untested;
-    Linux WebKitGTK and Windows WebView2 preview cost (M6); Apache-2.0 fonts vs "OFL fonts" in
-    the spec; on Windows an existing project `.lock` always counts as held (M6).
+    Linux WebKitGTK and Windows WebView2 preview cost (M6).
 
 Resolved in M1 (were M0 risks): SCK frame copy (not needed), own-UI exclusion across switches,
 region/application/app-audio/hot-plug/onboarding/Mic Mode untested (built and tested; see the
@@ -208,13 +216,13 @@ caveats above), objc2-app-kit linking CloudKit and CoreData (trimmed), Skia Free
 |---|---|---|
 | 1 | Work through docs/MANUAL_TEST.md (about 53 steps; the ★ list below orders them). | ★ review |
 | 2 | Unmute the speakers, light the room, put something in front of the camera, and run `SC_SYNC_RUNS=3 just sync-test`; then the clap step C1. | Gives the missing mic and camera sync numbers (§1 item 5) |
-| 3 | If a "Simple Capture Dev would like to access files in your Documents folder" dialog is waiting, answer it ("Don't Allow" is fine). Agents saw hosted processes hang on `~/Documents` paths from about 22:23 on 2026-11-19 and never clicked anything. | Before `just test-live` / `just app-driver` from the repo |
+| 3 | Probably nothing to do: agents saw hosted processes hang on `~/Documents` paths from about 22:23 on 2026-11-19, but at close-out (2026-11-20) the dev host read the repo without hanging. If a "would like to access files in your Documents folder" dialog for Simple Capture Dev or `sc-devtools` is still open, answer it. | Only if one is open |
 | 4 | Optional: `SC_LIVE_MIC_MODES=1 just test-live simple-capture-capture-macos av_ av_show_mic_modes` (opens Control Center's Mic Mode panel). | Agents skip it to keep your focus |
 | 5 | Connect a second display at a different scale for MANUAL_TEST S7 and W4. | Only live gap in sources |
 | 6 | **Do not** rebuild or re-sign `~/Applications/Simple Capture Dev.app` (`install.sh --force`). It holds the Screen Recording, Camera and Microphone grants. | Always |
 | 7 | Run the benches and a soak on a **base M1 8 GB** if you can get one. | Before M2 (encoder headroom) and M3 (preview, memory) |
 | 8 | Arrange a **physical Linux machine** (Intel/AMD iGPU, Wayland and X11) for the WebKitGTK preview bench. | Before M3 preview work, so a fallback decision does not land in M6 |
-| 9 | Choose the Windows minimum (10 22H2 vs 10 2004) and BtbN vs our own Windows/Linux FFmpeg (ADR-013). | Before M6 |
+| 9 | Choose the Windows minimum (10 22H2 vs 10 2004) once our own Windows FFmpeg build exists (you already chose our own builds with networking off, ADR-013). | Before M6 |
 | 10 | Review the Small and High quality tiers on a real screen recording (ADR-016). | Before M5 |
 
 ---
@@ -282,8 +290,7 @@ Allow about 2–3 hours for everything; items 1–5 take about 30 minutes and ne
    "M1 result/update" blocks in ADR-008, 009, 010, 011, 018, 022, 024, 028, 031, 034 and 035.
 2. **Answer** questions Q-a to Q-e in §4 (fragment interval, tray menu, mic meter/debug overlay
    milestone, App audio wording, optional Skia features).
-3. **CI:** open GitHub run 44710191597 (or the newest run on `m1`) and check all eight jobs.
-   At the time of writing macOS and Linux were green and both Windows jobs failed (§1 item 7).
+3. **CI:** GitHub run 44719974664 on `m1`: all eight jobs green (macOS, Ubuntu, Windows).
 4. **Code tour:** `git diff main...m1 --stat`; ARCHITECTURE §4 (switching as built), §6 (journal
    table), §11 (probe-size rule), §12 (recovery and kill tests).
 5. **Licences:** LICENSES §2 (MPL exceptions, Skia vendored set) and §10.
