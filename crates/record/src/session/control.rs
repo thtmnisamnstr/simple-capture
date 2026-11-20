@@ -389,7 +389,7 @@ impl Control {
         let (desc, size) = platform.screen().describe(&spec, &cfg)?;
         let tag = self.tag();
         let (seg, track_id, file) = self.seg_names();
-        self.router(RouterCmd::Prepare(Prepared {
+        self.router(RouterCmd::Prepare(Box::new(Prepared {
             tag,
             seg,
             track_id,
@@ -400,7 +400,7 @@ impl Control {
             reason: StartReason::RecordStart,
             source: desc.clone(),
             closes_old_with: EndReason::RecordStop,
-        }));
+        })));
         let stream = platform.screen().start(tag, &spec, &cfg, sink.clone())?;
         self.screen = Some(Live { tag, stream });
         self.cur = Some(Cur {
@@ -968,7 +968,7 @@ impl Control {
             .video(&self.sh.dir.join(&file), &spec)?;
         self.log(Level::Info, &format!("{seg}: writer created ({file})"));
         sw.tag = self.tag();
-        self.router(RouterCmd::Prepare(Prepared {
+        self.router(RouterCmd::Prepare(Box::new(Prepared {
             tag: sw.tag,
             seg,
             track_id,
@@ -979,7 +979,7 @@ impl Control {
             reason: StartReason::UserSwitch,
             source: sw.desc.clone(),
             closes_old_with: EndReason::UserSwitch,
-        }));
+        })));
         Ok(())
     }
 

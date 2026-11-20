@@ -1,7 +1,7 @@
 // Source helpers: stable keys, labels, pixel sizes, display lookup and the pick-mode hit test.
 
 import type { CapabilitiesDto, DisplayInfo, DisplayProbeDto, PointF, RectPt, SourceList, SourceSpecDto, WindowInfo } from './types.ts';
-import { ptToPx, rectContains, type Size } from './geometry.ts';
+import { appBoundsPt, ptToPx, rectContains, snappedRegionSizePx, type Size } from './geometry.ts';
 
 export function sourceKey(s: SourceSpecDto): string {
   switch (s.kind) {
@@ -64,8 +64,9 @@ export function sourceSizePx(s: SourceSpecDto, list: Partial<SourceList>): Size 
   const d = displayOfSource(s, list);
   switch (s.kind) {
     case 'display':
-    case 'application':
       return d ? { ...d.size_px } : null;
+    case 'application':
+      return d ? appSizePx(s.pid, d, list.windows ?? []) : null;
     case 'region': {
       if (!d) return null;
       const r = ptToPx(s.region_pt, d.scale);
@@ -79,6 +80,17 @@ export function sourceSizePx(s: SourceSpecDto, list: Partial<SourceList>): Size 
     }
     case 'picked': return null;
   }
+}
+
+/** An application source is captured as the snapped union of its on-screen, layer-0 windows on the
+ *  display, or the whole display when it has none there or they cover it (ADR-039). */
+export function appSizePx(pid: number, d: DisplayInfo, windows: WindowInfo[]): Size {
+  const frames = windows
+    .filter((w) => w.app.pid === pid && w.on_screen && w.layer === 0 && w.frame_pt.w >= 2 && w.frame_pt.h >= 2)
+    .map((w) => w.frame_pt);
+  const b = appBoundsPt(frames, d.frame_pt);
+  if (!b || (b.w >= d.frame_pt.w && b.h >= d.frame_pt.h)) return { ...d.size_px };
+  return snappedRegionSizePx(b, d.scale);
 }
 
 export function probeFor(caps: CapabilitiesDto | null, displayId: string | null): DisplayProbeDto | null {

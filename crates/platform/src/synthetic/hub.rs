@@ -576,6 +576,7 @@ impl Hub {
                         app_pid: Some(app.pid),
                         app_name: Some(key.clone()),
                         scale: 1.0,
+                        crop_pt: None,
                     },
                     size: script.size,
                     key,

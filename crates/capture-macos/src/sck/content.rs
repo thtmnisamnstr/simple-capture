@@ -190,6 +190,32 @@ pub(crate) fn exclusion_windows(
     out
 }
 
+/// Frames (global points) of `pid`'s on-screen, layer-0 windows that are at least 2 pt on a side,
+/// not in `exclude`, and intersect `display_frame_pt`: the input of `app_bounds_pt` (ADR-039).
+pub(crate) fn app_window_frames(
+    content: &SCShareableContent,
+    pid: i32,
+    display_frame_pt: RectPt,
+    exclude: &[WindowId],
+) -> Vec<RectPt> {
+    let d = display_frame_pt;
+    unsafe { content.windows() }
+        .iter()
+        .filter(|w| window_pid(w) == Some(pid))
+        .filter(|w| unsafe { w.isOnScreen() && w.windowLayer() == 0 })
+        .filter(|w| !exclude.iter().any(|e| e.0 == unsafe { w.windowID() }))
+        .map(|w| cgrect_pt(unsafe { w.frame() }))
+        .filter(|f| {
+            f.w >= 2.0
+                && f.h >= 2.0
+                && f.x < d.x + d.w
+                && f.x + f.w > d.x
+                && f.y < d.y + d.h
+                && f.y + f.h > d.y
+        })
+        .collect()
+}
+
 pub(crate) fn find_window(
     content: &SCShareableContent,
     id: WindowId,

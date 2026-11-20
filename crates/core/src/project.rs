@@ -137,7 +137,8 @@ pub enum Via {
     Portal,
 }
 
-/// What a segment captured. `Region.region_pt` is display-local points, top-left origin.
+/// What a segment captured. `Region.region_pt` and `Application.crop_pt` are display-local
+/// points, top-left origin.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SourceDescriptor {
@@ -168,6 +169,10 @@ pub enum SourceDescriptor {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         app_name: Option<String>,
         scale: f64,
+        /// The snapped union of the app's windows at segment start (ADR-039); `None` when the
+        /// whole display was captured.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        crop_pt: Option<RectPt>,
     },
     Region {
         display_id: String,

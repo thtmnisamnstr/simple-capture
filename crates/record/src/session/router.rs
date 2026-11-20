@@ -30,7 +30,7 @@ pub(crate) enum RouterIn {
 }
 
 pub(crate) enum RouterCmd {
-    Prepare(Prepared),
+    Prepare(Box<Prepared>),
     Begin {
         start_host: i64,
     },
@@ -469,7 +469,7 @@ impl Router {
     fn cmd(&mut self, c: RouterCmd) -> bool {
         match c {
             RouterCmd::Prepare(p) => {
-                if let Some(old) = self.pending.replace(p) {
+                if let Some(old) = self.pending.replace(*p) {
                     self.drop_prepared(old);
                 }
             }

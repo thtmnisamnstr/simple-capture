@@ -1193,3 +1193,33 @@ they are not a substitute for an M1 run.
   - Shared `target/skia` hazard: a build from one worktree can link crates compiled from another
     worktree's sources, so live results from shared-target binaries may not match the branch under
     test. The kill tool builds in a private target dir for this reason.
+
+## ADR-039: Application sources are cropped to their windows at segment start
+- **Status:** Accepted (bug fix for the owner's hands-on report, 2026-11-20: at 9:16 an application
+  source was fit as the whole display, so the app's windows were tiny). The owner may revisit it at
+  the ★ review.
+- **Evidence:** an application source used `SCContentFilter(display:including:exceptingWindows:)`
+  at the display's full size with no `sourceRect`, so the frame, `content_px`, the Original ratio,
+  the preview and the export all followed the display, not the app.
+- **Decision:**
+  - At segment start the capture crop is the union of the app's on-screen, layer-0 windows (at
+    least 2 pt on a side, minus excluded windows), each clipped to the segment's display
+    (`sc_geometry::app_bounds_pt`). It is snapped like a region (`snap_region_even_px`, Native =
+    display scale, 1x = 1) and captured with `sourceRect`, so the frame is crop-sized and every
+    later step (router `content_px`, Original ratio, export) follows it unchanged.
+  - The crop is fixed for the segment. Windows moved or opened outside it later are clipped;
+    exclusion updates (`updateContentFilter`) keep the configuration and so the crop. A source
+    switch or a re-pick (own chooser or system picker, single application) starts a new segment and
+    re-crops.
+  - An app with no such window on the display, or whose windows cover the whole display, records
+    the whole display with no `sourceRect` (as before).
+  - `SourceDescriptor::Application.crop_pt` (optional, display-local points) records the crop;
+    projects without it still load. The UI sizes the preview the same way from the source list
+    (`appBoundsPt`, `snappedRegionSizePx` in ui/src/lib/geometry.ts mirror the Rust rules).
+  - Snapshots (`SCScreenshotManager`) set `scalesToFit` so a crop or window larger than the
+    preview's maximum is scaled, not clipped.
+- **Result** [live, 2026-11-20, CLI under the dev host]: `record --source app:com.apple.finder
+  --aspect 9:16` on a 3840×1080 pt display at 2x with one 920×436 pt Finder window: `sourceRect`
+  works with the `includingApplications` display filter (no SCStream error), the segment is
+  1840×872 (`crop_pt` 1781,185 920×436, `content_px` the whole frame) instead of 7680×2160, and
+  the export is 1840×3272 (9:16) with the window filling the canvas width (rows 1200–2072).

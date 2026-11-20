@@ -498,7 +498,10 @@ type SourceDescriptor =
   | { kind: "application"; display_id: string;
       app_bundle_id?: string;       // optional: unbundled processes have none (M1)
       app_pid?: number;             // the app's pid at record time (AppRef { pid, bundle_id? })
-      app_name?: string; scale: number }
+      app_name?: string; scale: number;
+      crop_pt?: Rect }              // display-local, snapped: the union of the app's on-screen
+                                    // windows at segment start, captured with sourceRect; absent
+                                    // = the whole display (ADR-039)
   | { kind: "region"; display_id: string; scale: number;
       region_pt: Rect;              // in points, top-left origin, LOCAL to the display
       method: "source_rect" | "crop" };   // M1 always uses source_rect (verified)
@@ -1171,7 +1174,8 @@ in the app data folder and shown on the Diagnostics page and in `--self-test`.
 - Gap-filler threshold (2 ms) and overlap trimming (symmetric) (§4).
 - Region: `sourceRect` works, including Retina scale and odd sizes (floored to even pixels); no
   crop.
-- Application capture picks up new windows of the app automatically (66–77 ms).
+- Application capture picks up new windows of the app automatically (66–77 ms). Since ADR-039 only
+  inside the segment's crop (the window union at segment start).
 - Device hot-plug: lists update through device notifications and a lost device finalizes its
   track (unit-tested and in the app; real unplugging is an owner step). Mic Mode: implemented, run
   live only on request (it opens Control Center). Click highlight: `showMouseClicks` on 15+ (Q5).
