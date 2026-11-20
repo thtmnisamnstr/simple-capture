@@ -1234,7 +1234,9 @@ they are not a substitute for an M1 run.
   and the pick overlay agree) keeps a window only if it is on screen and overlaps a display, is on
   an app content layer (0–23, as ADR-039), is at least 40 pt on each side (the pointer, status
   items, the menu bar, tooltips and status bubbles are smaller; a title bar alone is 28 pt), has a
-  non-blank title, is not ours or in `hide`, and its owner is a regular app
+  non-blank title or is at least 160 pt on each side (untitled helpers such as find bars and hover
+  cards are small; some real windows, such as games and video players, are untitled), is not ours
+  or in `hide`, and its owner is a regular app
   (`NSRunningApplication.activationPolicy`) or an unbundled program with the accessory policy.
   Dock, Control Center, Notification Center, SystemUIServer, loginwindow and menu-bar apps are
   bundled accessory or prohibited apps, and WindowServer is not an app. The unbundled exception

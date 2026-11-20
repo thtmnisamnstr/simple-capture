@@ -7,6 +7,10 @@ use super::content::app_content_layer;
 /// on one side; a titled window's title bar alone is 28 pt tall.
 pub(crate) const MIN_SIDE_PT: f64 = 40.0;
 
+/// Untitled helpers (find bars, hover cards, popovers) are small; some real windows (games, video
+/// players, some Electron apps) have no title but are large.
+pub(crate) const MIN_UNTITLED_SIDE_PT: f64 = 160.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ActivationPolicy {
     Regular,
@@ -55,7 +59,8 @@ pub(crate) fn listable_window(
         && w.frame_pt.w >= MIN_SIDE_PT
         && w.frame_pt.h >= MIN_SIDE_PT
         && displays_pt.iter().any(|d| overlaps(w.frame_pt, *d))
-        && !w.title.trim().is_empty()
+        && (!w.title.trim().is_empty()
+            || (w.frame_pt.w >= MIN_UNTITLED_SIDE_PT && w.frame_pt.h >= MIN_UNTITLED_SIDE_PT))
 }
 
 /// Apps with at least one listed window, by name.
@@ -227,9 +232,14 @@ mod tests {
     }
 
     #[test]
-    fn untitled_windows_are_not_listed() {
+    fn small_untitled_windows_are_not_listed_large_ones_are() {
         for title in ["", "  "] {
-            assert!(!listed(&WindowFacts { title, ..chrome() }));
+            assert!(!listed(&WindowFacts {
+                title,
+                frame_pt: rect(100.0, 100.0, 420.0, 120.0),
+                ..chrome()
+            }));
+            assert!(listed(&WindowFacts { title, ..chrome() }));
         }
     }
 
