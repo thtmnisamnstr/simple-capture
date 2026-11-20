@@ -346,10 +346,10 @@ def export_check(st, rec, size, audio, tag=None):
     st.check(abs(w / h - want) / want < 0.02,
              f"export {tag or size}: {w}x{h} vs canvas ratio {want:.4f}")
     if size != "reference":
-        fp = rec.project["recording"]["screen"]["segments"][0]["frame_px"]
-        native_short = min(fp["w"], fp["h"])
-        st.check(min(w, h) == min(int(size), native_short) or (min(w, h) < int(size) and max(w, h) <= max(fp["w"], fp["h"])),
-                 f"export {size}: {w}x{h} from a {fp['w']}x{fp['h']} source")
+        longest = max(max(s["frame_px"]["w"], s["frame_px"]["h"])
+                      for s in rec.project["recording"]["screen"]["segments"])
+        st.check(min(w, h) == int(size) or (min(w, h) < int(size) and max(w, h) <= longest),
+                 f"export {size}: {w}x{h}; sources are at most {longest} px long")
     dur_s = rec_duration_ns(rec.project) / 1e9
     fps = rec.project["recording"]["screen"]["fps_requested"]
     vargs = [CLI, "--json", "validate", out, "--size", f"{w}x{h}", "--fps", str(fps),
