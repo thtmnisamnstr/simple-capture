@@ -167,6 +167,99 @@ pub(crate) fn plan_screen(
     }))
 }
 
+/// The camera layer as both renderers consume it: the screen-style sampling plan for the shape
+/// rectangle, plus the region actually drawn (the shape, grown by the shadow) and the mask.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct CameraPlan {
+    pub sample: ScreenPlan,
+    /// x0, y0, x1, y1 on the canvas.
+    pub region: [i32; 4],
+    pub radius: f32,
+    pub mirror: bool,
+    pub border_px: f32,
+    pub border_rgb: Option<[i32; 3]>,
+    pub shadow: i32,
+    pub shadow_dy: i32,
+    pub shadow_blur: f32,
+}
+
+pub(crate) fn plan_camera(
+    canvas: SizePx,
+    frame: SizePx,
+    full_range: bool,
+    layer: &crate::CameraLayer<'_>,
+) -> Result<Option<CameraPlan>> {
+    let Some(sample) = plan_screen(canvas, frame, full_range, layer.src, layer.dst)? else {
+        return Ok(None);
+    };
+    let [dx, dy, dw, dh] = sample.dst;
+    let short = dw.min(dh) as f32;
+    let shadow = i32::from(layer.shadow);
+    let (shadow_dy, shadow_blur) = if shadow > 0 {
+        ((short * 0.02).round() as i32, (short * 0.06).max(1.0))
+    } else {
+        (0, 1.0)
+    };
+    let grow = if shadow > 0 {
+        shadow_blur.ceil() as i32 + shadow_dy + 2
+    } else {
+        0
+    };
+    let region = [
+        (dx - grow).max(0),
+        (dy - grow).max(0),
+        (dx + dw + grow).min(canvas.w as i32),
+        (dy + dh + grow).min(canvas.h as i32),
+    ];
+    if region[2] <= region[0] || region[3] <= region[1] {
+        return Ok(None);
+    }
+    Ok(Some(CameraPlan {
+        sample,
+        region,
+        radius: (layer.radius_px as f32).min(short / 2.0),
+        mirror: layer.mirror,
+        border_px: layer.border.map_or(0.0, |b| b.0 as f32),
+        border_rgb: layer
+            .border
+            .map(|b| [i32::from(b.1[0]), i32::from(b.1[1]), i32::from(b.1[2])]),
+        shadow,
+        shadow_dy,
+        shadow_blur,
+    }))
+}
+
+/// Signed distance from a point to a rounded rectangle centred on the origin with half extents
+/// `hw`, `hh` and corner radius `r`; negative inside. Written as the WGSL in `gpu.rs` writes it.
+#[inline]
+pub(crate) fn sdf_rrect(px: f32, py: f32, hw: f32, hh: f32, r: f32) -> f32 {
+    let qx = px.abs() - hw + r;
+    let qy = py.abs() - hh + r;
+    let mx = qx.max(0.0);
+    let my = qy.max(0.0);
+    (mx * mx + my * my).sqrt() + qx.max(qy).min(0.0) - r
+}
+
+/// Pixel coverage in 1/256 for a signed distance at the pixel centre.
+#[inline]
+pub(crate) fn coverage(d: f32) -> i32 {
+    ((0.5 - d).clamp(0.0, 1.0) * 256.0 + 0.5).floor() as i32
+}
+
+/// Soft shadow opacity in 1/256 for a signed distance `ds` to the offset shape.
+#[inline]
+pub(crate) fn shadow_alpha(ds: f32, blur: f32, strength: i32) -> i32 {
+    let t = ((blur - ds) / (2.0 * blur)).clamp(0.0, 1.0);
+    let s = t * t * (3.0 - 2.0 * t);
+    (s * strength as f32 * 0.45 / 255.0 * 256.0 + 0.5).floor() as i32
+}
+
+/// `a` over `b` with `w`/256 of `a`.
+#[inline]
+pub(crate) fn mix256(a: i32, b: i32, w: i32) -> i32 {
+    (a * w + b * (256 - w) + 128) >> 8
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

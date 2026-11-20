@@ -7,7 +7,7 @@ use sc_geometry::SizePx;
 use sc_platform::{Error, Nv12View, Result};
 
 use crate::cpu::{check_job, check_view};
-use crate::maths::{self, ScreenPlan};
+use crate::maths::{self, CameraPlan, ScreenPlan};
 use crate::{AdapterSummary, FrameJob, OutputFormat, RenderedFrame};
 
 const VS: &str = r#"
@@ -119,6 +119,86 @@ fn fs_uv(@builtin(position) pos: vec4<f32>) -> Uv {
 }
 "#;
 
+const CAMERA: &str = r#"
+struct Cam { dst: vec4<i32>, sk: vec4<i32>, p: vec4<i32>, misc: vec4<i32>, border: vec4<i32>, f: vec4<f32> };
+@group(0) @binding(0) var<uniform> u: Cam;
+@group(0) @binding(1) var tp: texture_2d<u32>;
+@group(0) @binding(2) var tu: texture_2d<f32>;
+
+fn axis(rel: i32, s: i32, d: i32, k: i32, p: i32) -> vec3<i32> {
+  let den = 2 * d * k;
+  let n = (2 * rel + 1) * s - d * k;
+  var i0 = n / den;
+  if (i0 * den > n) {
+    i0 = i0 - 1;
+  }
+  let rem = n - i0 * den;
+  let w = (rem * 256 + d * k) / den;
+  return vec3<i32>(clamp(i0, 0, p - 1), clamp(i0 + 1, 0, p - 1), w);
+}
+
+fn texel(x: i32, y: i32) -> vec3<i32> {
+  return vec3<i32>(textureLoad(tp, vec2<i32>(x, y), 0).rgb);
+}
+
+fn sdf(px: f32, py: f32, hw: f32, hh: f32, r: f32) -> f32 {
+  let qx = abs(px) - hw + r;
+  let qy = abs(py) - hh + r;
+  let mx = max(qx, 0.0);
+  let my = max(qy, 0.0);
+  return sqrt(mx * mx + my * my) + min(max(qx, qy), 0.0) - r;
+}
+
+fn cov(d: f32) -> i32 {
+  return i32(floor(clamp(0.5 - d, 0.0, 1.0) * 256.0 + 0.5));
+}
+
+fn shadow_a(ds: f32, blur: f32, strength: i32) -> i32 {
+  let t = clamp((blur - ds) / (2.0 * blur), 0.0, 1.0);
+  let s = t * t * (3.0 - 2.0 * t);
+  return i32(floor(s * f32(strength) * 0.45 / 255.0 * 256.0 + 0.5));
+}
+
+fn mix256(a: i32, b: i32, w: i32) -> i32 {
+  return (a * w + b * (256 - w) + 128) >> 8u;
+}
+
+@fragment
+fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  let x = i32(pos.x);
+  let y = i32(pos.y);
+  var c = vec4<i32>(round(textureLoad(tu, vec2<i32>(x, y), 0) * 255.0));
+  let hw = f32(u.dst.z) * 0.5;
+  let hh = f32(u.dst.w) * 0.5;
+  let px = f32(x) + 0.5 - (f32(u.dst.x) + hw);
+  let py = f32(y) + 0.5 - (f32(u.dst.y) + hh);
+  let r = u.f.x;
+  if (u.misc.y > 0) {
+    let sa = shadow_a(sdf(px, py - f32(u.misc.z), hw, hh, r), u.f.z, u.misc.y);
+    c = vec4<i32>(mix256(0, c.r, sa), mix256(0, c.g, sa), mix256(0, c.b, sa), mix256(255, c.a, sa));
+  }
+  let d = sdf(px, py, hw, hh, r);
+  let k = cov(d);
+  if (k > 0) {
+    var rx = x - u.dst.x;
+    if (u.misc.x != 0) {
+      rx = u.dst.z - 1 - rx;
+    }
+    let ax = axis(rx, u.sk.x, u.dst.z, u.sk.z, u.p.x);
+    let ay = axis(y - u.dst.y, u.sk.y, u.dst.w, u.sk.w, u.p.y);
+    let top = texel(ax.x, ay.x) * (256 - ax.z) + texel(ax.y, ay.x) * ax.z;
+    let bot = texel(ax.x, ay.y) * (256 - ax.z) + texel(ax.y, ay.y) * ax.z;
+    var v = (top * (256 - ay.z) + bot * ay.z + vec3<i32>(32768)) >> vec3<u32>(16u);
+    if (u.misc.w != 0) {
+      let ci = cov(d + u.f.y);
+      v = vec3<i32>(mix256(v.r, u.border.r, ci), mix256(v.g, u.border.g, ci), mix256(v.b, u.border.b, ci));
+    }
+    c = vec4<i32>(mix256(v.r, c.r, k), mix256(v.g, c.g, k), mix256(v.b, c.b, k), mix256(255, c.a, k));
+  }
+  return vec4<f32>(c) / 255.0;
+}
+"#;
+
 const TARGET: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const ROW_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
@@ -136,11 +216,18 @@ pub(crate) struct Gpu {
     composite: wgpu::RenderPipeline,
     to_y: wgpu::RenderPipeline,
     to_uv: wgpu::RenderPipeline,
+    camera: wgpu::RenderPipeline,
     pre_ubuf: wgpu::Buffer,
     comp_ubuf: wgpu::Buffer,
+    cam_pre_ubuf: wgpu::Buffer,
+    cam_ubuf: wgpu::Buffer,
     frame_y: Option<Tex>,
     frame_uv: Option<Tex>,
     pre: Option<Tex>,
+    cam_y: Option<Tex>,
+    cam_uv: Option<Tex>,
+    cam_pre: Option<Tex>,
+    under: Option<Tex>,
     target: Option<Tex>,
     out_y: Option<Tex>,
     out_u: Option<Tex>,
@@ -304,6 +391,55 @@ fn tex_of(slot: &Option<Tex>) -> Result<&Tex> {
         .ok_or_else(|| Error::Other("sc_render: internal texture missing".into()))
 }
 
+fn upload_nv12(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    (y_slot, uv_slot): (&mut Option<Tex>, &mut Option<Tex>),
+    label: &str,
+    view: &Nv12View<'_>,
+) -> Result<()> {
+    let (w, h) = (view.size.w, view.size.h);
+    let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
+    let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
+    ensure_tex(
+        device,
+        y_slot,
+        &format!("{label} y"),
+        (w, h),
+        wgpu::TextureFormat::R8Uint,
+        usage,
+    );
+    ensure_tex(
+        device,
+        uv_slot,
+        &format!("{label} uv"),
+        (cw, ch),
+        wgpu::TextureFormat::Rg8Uint,
+        usage,
+    );
+    queue.write_texture(
+        tex_of(y_slot)?.tex.as_image_copy(),
+        &view.y[..view.y_stride * (h as usize - 1) + w as usize],
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(view.y_stride as u32),
+            rows_per_image: Some(h),
+        },
+        extent(w, h),
+    );
+    queue.write_texture(
+        tex_of(uv_slot)?.tex.as_image_copy(),
+        &view.uv[..view.uv_stride * (ch as usize - 1) + 2 * cw as usize],
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(view.uv_stride as u32),
+            rows_per_image: Some(ch),
+        },
+        extent(cw, ch),
+    );
+    Ok(())
+}
+
 fn i32s(v: &[i32]) -> Vec<u8> {
     v.iter().flat_map(|x| x.to_ne_bytes()).collect()
 }
@@ -394,16 +530,29 @@ impl Gpu {
                 uint_target(wgpu::TextureFormat::R8Uint),
             ],
         );
+        let camera = pipeline(
+            &device,
+            "sc_render camera",
+            CAMERA,
+            "fs",
+            &[Some(wgpu::ColorTargetState {
+                format: TARGET,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        );
         let ubuf = |label| {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
-                size: 64,
+                size: 96,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             })
         };
         let pre_ubuf = ubuf("sc_render pre uniforms");
         let comp_ubuf = ubuf("sc_render comp uniforms");
+        let cam_pre_ubuf = ubuf("sc_render camera pre uniforms");
+        let cam_ubuf = ubuf("sc_render camera uniforms");
         if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(other("pipeline setup", e));
         }
@@ -416,11 +565,18 @@ impl Gpu {
             composite,
             to_y,
             to_uv,
+            camera,
             pre_ubuf,
             comp_ubuf,
+            cam_pre_ubuf,
+            cam_ubuf,
             frame_y: None,
             frame_uv: None,
             pre: None,
+            cam_y: None,
+            cam_uv: None,
+            cam_pre: None,
+            under: None,
             target: None,
             out_y: None,
             out_u: None,
@@ -488,9 +644,21 @@ impl Gpu {
             plan = result?;
         }
 
+        let mut cam_plan = None;
+        if let Some(layer) = &job.camera {
+            let mut result = Ok(None);
+            layer.frame.0.with_nv12(&mut |view| {
+                result = self.upload_camera(canvas, layer, &view);
+            })?;
+            cam_plan = result?;
+        }
+
         let mut enc = self.device.create_command_encoder(&Default::default());
         if let Some(plan) = &plan {
             self.encode_screen(&mut enc, plan)?;
+        }
+        if let Some(plan) = &cam_plan {
+            self.encode_camera(&mut enc, canvas, plan)?;
         }
         let (copies, total) = self.encode_output(&mut enc, canvas, out)?;
         self.queue.submit([enc.finish()]);
@@ -520,45 +688,13 @@ impl Gpu {
         let Some(plan) = maths::plan_screen(canvas, view.size, view.full_range, src, dst)? else {
             return Ok(None);
         };
-        let (w, h) = (view.size.w, view.size.h);
-        let (cw, ch) = (w.div_ceil(2), h.div_ceil(2));
-        let usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
-        ensure_tex(
+        upload_nv12(
             &self.device,
-            &mut self.frame_y,
-            "sc_render frame y",
-            (w, h),
-            wgpu::TextureFormat::R8Uint,
-            usage,
-        );
-        ensure_tex(
-            &self.device,
-            &mut self.frame_uv,
-            "sc_render frame uv",
-            (cw, ch),
-            wgpu::TextureFormat::Rg8Uint,
-            usage,
-        );
-        self.queue.write_texture(
-            tex_of(&self.frame_y)?.tex.as_image_copy(),
-            &view.y[..view.y_stride * (h as usize - 1) + w as usize],
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(view.y_stride as u32),
-                rows_per_image: Some(h),
-            },
-            extent(w, h),
-        );
-        self.queue.write_texture(
-            tex_of(&self.frame_uv)?.tex.as_image_copy(),
-            &view.uv[..view.uv_stride * (ch as usize - 1) + 2 * cw as usize],
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(view.uv_stride as u32),
-                rows_per_image: Some(ch),
-            },
-            extent(cw, ch),
-        );
+            &self.queue,
+            (&mut self.frame_y, &mut self.frame_uv),
+            "sc_render frame",
+            view,
+        )?;
         Ok(Some(plan))
     }
 
@@ -632,6 +768,156 @@ impl Gpu {
             let mut p = pass(enc, &[&tex_of(&self.target)?.view], true);
             p.set_pipeline(&self.composite);
             p.set_bind_group(0, &comp_bind, &[]);
+            p.set_scissor_rect(x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32);
+            p.draw(0..3, 0..1);
+        }
+        Ok(())
+    }
+
+    fn upload_camera(
+        &mut self,
+        canvas: SizePx,
+        layer: &crate::CameraLayer<'_>,
+        view: &Nv12View<'_>,
+    ) -> Result<Option<CameraPlan>> {
+        maths::check_size("camera frame", view.size)?;
+        check_view(view)?;
+        if view.size.w > self.max_dim || view.size.h > self.max_dim {
+            return Err(Error::Other(format!(
+                "sc_render: camera frame {}x{} exceeds the adapter's {} px texture limit",
+                view.size.w, view.size.h, self.max_dim
+            )));
+        }
+        let Some(plan) = maths::plan_camera(canvas, view.size, view.full_range, layer)? else {
+            return Ok(None);
+        };
+        upload_nv12(
+            &self.device,
+            &self.queue,
+            (&mut self.cam_y, &mut self.cam_uv),
+            "sc_render camera",
+            view,
+        )?;
+        Ok(Some(plan))
+    }
+
+    fn encode_camera(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        canvas: SizePx,
+        plan: &CameraPlan,
+    ) -> Result<()> {
+        let s = &plan.sample;
+        let c = maths::coeffs(s.full_range);
+        let [sx, sy, sw, sh] = s.src;
+        let [kx, ky] = s.k;
+        let [pw, ph] = s.p;
+        let [dx, dy, dw, dh] = s.dst;
+        self.queue.write_buffer(
+            &self.cam_pre_ubuf,
+            0,
+            &i32s(&[
+                sx, sy, sw, sh, kx, ky, 0, 0, c.y_mul, c.y_off, c.rv, c.gu, c.gv, c.bu, 0, 0,
+            ]),
+        );
+        let border = plan.border_rgb.unwrap_or([0; 3]);
+        let mut uniforms = i32s(&[
+            dx,
+            dy,
+            dw,
+            dh,
+            sw,
+            sh,
+            kx,
+            ky,
+            pw,
+            ph,
+            0,
+            0,
+            i32::from(plan.mirror),
+            plan.shadow,
+            plan.shadow_dy,
+            i32::from(plan.border_rgb.is_some()),
+            border[0],
+            border[1],
+            border[2],
+            0,
+        ]);
+        for f in [plan.radius, plan.border_px, plan.shadow_blur, 0.0f32] {
+            uniforms.extend_from_slice(&f.to_ne_bytes());
+        }
+        self.queue.write_buffer(&self.cam_ubuf, 0, &uniforms);
+        ensure_tex(
+            &self.device,
+            &mut self.cam_pre,
+            "sc_render camera prefiltered",
+            (pw as u32, ph as u32),
+            wgpu::TextureFormat::Rgba8Uint,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        );
+        ensure_tex(
+            &self.device,
+            &mut self.under,
+            "sc_render under camera",
+            (canvas.w, canvas.h),
+            TARGET,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        );
+        let cam_pre = tex_of(&self.cam_pre)?;
+        let under = tex_of(&self.under)?;
+        let target = tex_of(&self.target)?;
+        let pre_bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &self.prefilter.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.cam_pre_ubuf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&tex_of(&self.cam_y)?.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&tex_of(&self.cam_uv)?.view),
+                },
+            ],
+        });
+        let cam_bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &self.camera.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.cam_ubuf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&cam_pre.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&under.view),
+                },
+            ],
+        });
+        {
+            let mut p = pass(enc, &[&cam_pre.view], false);
+            p.set_pipeline(&self.prefilter);
+            p.set_bind_group(0, &pre_bind, &[]);
+            p.draw(0..3, 0..1);
+        }
+        enc.copy_texture_to_texture(
+            target.tex.as_image_copy(),
+            under.tex.as_image_copy(),
+            extent(canvas.w, canvas.h),
+        );
+        {
+            let [x0, y0, x1, y1] = plan.region;
+            let mut p = pass(enc, &[&target.view], true);
+            p.set_pipeline(&self.camera);
+            p.set_bind_group(0, &cam_bind, &[]);
             p.set_scissor_rect(x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32);
             p.draw(0..3, 0..1);
         }

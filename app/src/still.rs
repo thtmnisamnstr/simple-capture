@@ -102,6 +102,7 @@ pub fn compose_png(
         }
     });
     let job = FrameJob {
+        camera: None,
         canvas,
         background: &bg,
         screen,

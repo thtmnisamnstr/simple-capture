@@ -92,6 +92,7 @@ pub struct FrameJob<'a> {
     pub canvas: SizePx,
     pub background: &'a RgbaImage,
     pub screen: Option<ScreenLayer<'a>>,
+    pub camera: Option<CameraLayer<'a>>,
 }
 
 /// BT.709 limited input.
@@ -100,6 +101,20 @@ pub struct ScreenLayer<'a> {
     pub frame: &'a FrameBuffer,
     pub src: RectPx,
     pub dst: RectPx,
+}
+
+/// The camera drawn over the screen: `src` of the camera frame (BT.709, either range) scaled
+/// into the rounded rectangle `dst`, optionally mirrored, with an optional opaque border inside
+/// the edge and an optional soft shadow (`shadow` 0..=255, 0 = none).
+#[derive(Debug, Clone)]
+pub struct CameraLayer<'a> {
+    pub frame: &'a FrameBuffer,
+    pub src: RectPx,
+    pub dst: RectPx,
+    pub radius_px: u32,
+    pub mirror: bool,
+    pub border: Option<(u32, [u8; 3])>,
+    pub shadow: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

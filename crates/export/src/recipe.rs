@@ -324,6 +324,7 @@ impl FrameRenderer {
             });
         let dst = layer.as_ref().map(|l| l.dst);
         let job = FrameJob {
+            camera: None,
             canvas: self.canvas,
             background: &bg,
             screen: layer,

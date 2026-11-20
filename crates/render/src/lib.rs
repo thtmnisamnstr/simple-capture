@@ -1,4 +1,4 @@
-//! Canvas compositor: background + contain-fit screen layer, BT.709 limited in, RGBA or I420
+//! Canvas compositor: background + contain-fit screen layer + camera overlay, BT.709 limited in, RGBA or I420
 //! out (plan §4.6, ARCHITECTURE §8).
 
 mod compositor;
@@ -9,7 +9,8 @@ mod maths;
 pub mod cpu;
 
 pub use compositor::{
-    AdapterSummary, Backend, Compositor, FrameJob, OutputFormat, RenderedFrame, ScreenLayer,
+    AdapterSummary, Backend, CameraLayer, Compositor, FrameJob, OutputFormat, RenderedFrame,
+    ScreenLayer,
 };
 pub use diff::{DiffStats, diff};
 pub use sc_platform::{Error, Result};

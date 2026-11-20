@@ -5,8 +5,8 @@ use sc_core::image::RgbaImage;
 use sc_geometry::SizePx;
 use sc_platform::{Error, Nv12View, Result};
 
-use crate::maths::{self, ScreenPlan};
-use crate::{FrameJob, OutputFormat, RenderedFrame};
+use crate::maths::{self, CameraPlan, ScreenPlan};
+use crate::{CameraLayer, FrameJob, OutputFormat, RenderedFrame};
 
 pub fn render_cpu(job: &FrameJob, out: OutputFormat) -> Result<RenderedFrame> {
     let canvas = job.canvas;
@@ -16,6 +16,13 @@ pub fn render_cpu(job: &FrameJob, out: OutputFormat) -> Result<RenderedFrame> {
         let mut result = Ok(());
         layer.frame.0.with_nv12(&mut |view| {
             result = draw_screen(&mut rgba, canvas, layer.src, layer.dst, &view);
+        })?;
+        result?;
+    }
+    if let Some(layer) = &job.camera {
+        let mut result = Ok(());
+        layer.frame.0.with_nv12(&mut |view| {
+            result = draw_camera(&mut rgba, canvas, layer, &view);
         })?;
         result?;
     }
@@ -181,6 +188,87 @@ fn composite(rgba: &mut [u8], canvas: SizePx, plan: &ScreenPlan, pre: &[[u8; 3]]
                 ) as u8;
             }
             rgba[o + 3] = 255;
+        }
+    }
+}
+
+fn draw_camera(
+    rgba: &mut [u8],
+    canvas: SizePx,
+    layer: &CameraLayer<'_>,
+    view: &Nv12View<'_>,
+) -> Result<()> {
+    maths::check_size("camera frame", view.size)?;
+    check_view(view)?;
+    let Some(plan) = maths::plan_camera(canvas, view.size, view.full_range, layer)? else {
+        return Ok(());
+    };
+    let pre = prefilter(&plan.sample, view);
+    composite_camera(rgba, canvas, &plan, &pre);
+    Ok(())
+}
+
+fn composite_camera(rgba: &mut [u8], canvas: SizePx, plan: &CameraPlan, pre: &[[u8; 3]]) {
+    let s = &plan.sample;
+    let [_, _, sw, sh] = s.src;
+    let [dx, dy, dw, dh] = s.dst;
+    let [kx, ky] = s.k;
+    let [pw, ph] = s.p;
+    let [x0, y0, x1, y1] = plan.region;
+    let (hw, hh) = (dw as f32 * 0.5, dh as f32 * 0.5);
+    let (cx, cy) = (dx as f32 + hw, dy as f32 + hh);
+    for y in y0..y1 {
+        let py = y as f32 + 0.5 - cy;
+        for x in x0..x1 {
+            let px = x as f32 + 0.5 - cx;
+            let o = (y as usize * canvas.w as usize + x as usize) * 4;
+            let mut c = [
+                i32::from(rgba[o]),
+                i32::from(rgba[o + 1]),
+                i32::from(rgba[o + 2]),
+                i32::from(rgba[o + 3]),
+            ];
+            if plan.shadow > 0 {
+                let ds = maths::sdf_rrect(px, py - plan.shadow_dy as f32, hw, hh, plan.radius);
+                let sa = maths::shadow_alpha(ds, plan.shadow_blur, plan.shadow);
+                for v in &mut c[..3] {
+                    *v = maths::mix256(0, *v, sa);
+                }
+                c[3] = maths::mix256(255, c[3], sa);
+            }
+            let d = maths::sdf_rrect(px, py, hw, hh, plan.radius);
+            let cov = maths::coverage(d);
+            if cov > 0 {
+                let rx = if plan.mirror {
+                    dw - 1 - (x - dx)
+                } else {
+                    x - dx
+                };
+                let (ax0, ax1, wx) = maths::axis(rx, sw, dw, kx, pw);
+                let (ay0, ay1, wy) = maths::axis(y - dy, sh, dh, ky, ph);
+                let (r0, r1) = ((ay0 * pw) as usize, (ay1 * pw) as usize);
+                let (p00, p10) = (pre[r0 + ax0 as usize], pre[r0 + ax1 as usize]);
+                let (p01, p11) = (pre[r1 + ax0 as usize], pre[r1 + ax1 as usize]);
+                let inner = plan.border_rgb.map(|_| maths::coverage(d + plan.border_px));
+                for ch in 0..3 {
+                    let mut v = maths::bilerp(
+                        i32::from(p00[ch]),
+                        i32::from(p10[ch]),
+                        i32::from(p01[ch]),
+                        i32::from(p11[ch]),
+                        wx,
+                        wy,
+                    );
+                    if let (Some(b), Some(ci)) = (plan.border_rgb, inner) {
+                        v = maths::mix256(v, b[ch], ci);
+                    }
+                    c[ch] = maths::mix256(v, c[ch], cov);
+                }
+                c[3] = maths::mix256(255, c[3], cov);
+            }
+            for ch in 0..4 {
+                rgba[o + ch] = c[ch] as u8;
+            }
         }
     }
 }
