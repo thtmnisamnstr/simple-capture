@@ -184,7 +184,9 @@ mod tests {
             // SAFETY: deliberately out of range; the exception is caught.
             let _: *mut AnyObject = unsafe { objc2::msg_send![&*empty, objectAtIndex: 3usize] };
         });
-        let e = r.expect_err("the exception must become an error").to_string();
+        let e = r
+            .expect_err("the exception must become an error")
+            .to_string();
         assert!(e.contains("NSRangeException"), "{e}");
         assert_eq!(objc_try("no exception", || 7).ok(), Some(7));
     }
