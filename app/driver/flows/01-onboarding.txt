@@ -1,0 +1,15 @@
+# Onboarding statuses, displays, devices, capabilities; waits for the launch tasks (probe cache).
+wait-launch 120000
+cmd get_permissions
+show onboarding
+wait 1500
+eval onboarding setTimeout(() => __scLog('onboarding ' + document.body.innerText.replace(/\s+/g, ' ').slice(0, 2000)), 10)
+cmd list_displays
+cmd list_devices
+cmd get_capabilities
+cmd get_settings
+cmd recovery_report
+wait 500
+log-window-rects
+ui-log
+quit

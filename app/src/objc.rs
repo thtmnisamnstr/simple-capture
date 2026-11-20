@@ -59,3 +59,79 @@ pub fn cancel_status_item_menu(status_item: usize) {
         )
     };
 }
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFArrayGetCount(a: *const c_void) -> isize;
+    fn CFArrayGetValueAtIndex(a: *const c_void, i: isize) -> *const c_void;
+    fn CFDictionaryGetValue(d: *const c_void, key: *const c_void) -> *const c_void;
+    fn CFNumberGetValue(n: *const c_void, kind: isize, out: *mut c_void) -> bool;
+    fn CFRelease(cf: *const c_void);
+}
+
+#[repr(C)]
+#[derive(Default)]
+struct CgRect {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGWindowListCopyWindowInfo(option: u32, relative_to: u32) -> *const c_void;
+    fn CGRectMakeWithDictionaryRepresentation(d: *const c_void, rect: *mut CgRect) -> bool;
+    static kCGWindowNumber: *const c_void;
+    static kCGWindowOwnerPID: *const c_void;
+    static kCGWindowLayer: *const c_void;
+    static kCGWindowBounds: *const c_void;
+}
+
+/// An on-screen window of this process, from the window server's list (no permission needed
+/// for numbers, layers and bounds).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OwnWindow {
+    pub id: u32,
+    pub layer: i64,
+    /// Global top-left points.
+    pub rect_pt: [f64; 4],
+}
+
+pub fn own_windows_on_screen() -> Vec<OwnWindow> {
+    const ON_SCREEN_ONLY: u32 = 1;
+    const SINT64: isize = 4;
+    let me = i64::from(std::process::id());
+    let mut out = Vec::new();
+    unsafe {
+        let list = CGWindowListCopyWindowInfo(ON_SCREEN_ONLY, 0);
+        if list.is_null() {
+            return out;
+        }
+        let num = |d: *const c_void, key: *const c_void| -> Option<i64> {
+            let v = CFDictionaryGetValue(d, key);
+            let mut n: i64 = 0;
+            (!v.is_null() && CFNumberGetValue(v, SINT64, (&raw mut n).cast())).then_some(n)
+        };
+        for i in 0..CFArrayGetCount(list) {
+            let d = CFArrayGetValueAtIndex(list, i);
+            if d.is_null() || num(d, kCGWindowOwnerPID) != Some(me) {
+                continue;
+            }
+            let mut r = CgRect::default();
+            let b = CFDictionaryGetValue(d, kCGWindowBounds);
+            if b.is_null() || !CGRectMakeWithDictionaryRepresentation(b, &mut r) {
+                continue;
+            }
+            out.push(OwnWindow {
+                id: num(d, kCGWindowNumber)
+                    .and_then(|n| u32::try_from(n).ok())
+                    .unwrap_or(0),
+                layer: num(d, kCGWindowLayer).unwrap_or(0),
+                rect_pt: [r.x, r.y, r.w, r.h],
+            });
+        }
+        CFRelease(list);
+    }
+    out
+}

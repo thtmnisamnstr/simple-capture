@@ -1,0 +1,4 @@
+# Recording that the runner ends with SIGTERM (to run.sh) or SIGKILL (to the app's pid).
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv @TITLE@","settings":{}}}
+wait 120000
+quit

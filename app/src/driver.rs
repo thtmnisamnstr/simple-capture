@@ -26,6 +26,10 @@ pub enum Step {
     Show(String),
     LogWindowRects,
     Sim(String),
+    WaitPhase { phase: String, ms: u64 },
+    WaitLaunch(u64),
+    Eval { label: String, js: String },
+    UiLog,
     Quit,
 }
 
@@ -75,6 +79,28 @@ pub fn parse_line(line: &str) -> Result<Option<Step>, String> {
         }
         "show" if !rest.is_empty() => Step::Show(rest.to_string()),
         "log-window-rects" => Step::LogWindowRects,
+        "wait-phase" => {
+            let mut it = rest.split_whitespace();
+            match (it.next(), it.next().map(str::parse::<u64>)) {
+                (Some(p), Some(Ok(ms))) => Step::WaitPhase {
+                    phase: p.to_string(),
+                    ms,
+                },
+                _ => return Err(format!("wait-phase: expected PHASE MS in {line:?}")),
+            }
+        }
+        "wait-launch" => Step::WaitLaunch(
+            rest.parse()
+                .map_err(|_| format!("wait-launch: bad ms {rest:?}"))?,
+        ),
+        "eval" => match rest.split_once(' ') {
+            Some((label, js)) if !js.trim().is_empty() => Step::Eval {
+                label: label.to_string(),
+                js: js.trim().to_string(),
+            },
+            _ => return Err(format!("eval: expected WINDOW JS in {line:?}")),
+        },
+        "ui-log" if rest.is_empty() => Step::UiLog,
         "sim" if rest == "sleep" || rest == "wake" => Step::Sim(rest.to_string()),
         "quit" => Step::Quit,
         _ => return Err(format!("unknown step {line:?}")),
@@ -94,12 +120,27 @@ pub fn parse_rect(s: &str) -> Result<RectPt, String> {
     }
 }
 
-fn report(n: usize, line: &str, r: &Reply) {
+fn report(n: usize, line: &str, rec_ns: Option<i64>, r: &Reply) {
     let v = match r {
-        Ok(detail) => json!({"step": n, "line": line, "ok": true, "result": detail}),
-        Err(e) => json!({"step": n, "line": line, "ok": false, "error": e}),
+        Ok(detail) => {
+            json!({"step": n, "line": line, "ok": true, "rec_ns": rec_ns, "result": detail})
+        }
+        Err(e) => json!({"step": n, "line": line, "ok": false, "rec_ns": rec_ns, "error": e}),
     };
     eprintln!("{v}");
+}
+
+/// `$PROJECT` (last finalized project folder) and `$JOB` (last export job) inside `cmd` JSON.
+pub fn substitute(json: &str, project: Option<&str>, job: Option<&str>) -> Result<String, String> {
+    let mut out = json.to_string();
+    for (var, val) in [("$PROJECT", project), ("$JOB", job)] {
+        if out.contains(var) {
+            let v = val.ok_or_else(|| format!("{var} is not known yet"))?;
+            let quoted = serde_json::to_string(v).map_err(|e| e.to_string())?;
+            out = out.replace(var, quoted.trim_matches('"'));
+        }
+    }
+    Ok(out)
 }
 
 fn run_step(core: &Arc<Core>, step: Step) -> Reply {
@@ -109,14 +150,22 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
             Ok(Value::Null)
         }
         Step::Cmd { name, json } => {
+            let project = core
+                .last_project()
+                .map(|p| p.to_string_lossy().into_owned());
+            let json = substitute(&json, project.as_deref(), core.last_export().as_deref())?;
             let args: Value = serde_json::from_str(&json)
                 .map_err(|e| format!("cmd {name}: bad JSON {json:?}: {e}"))?;
             crate::commands::dispatch(core, &name, &args)
         }
         Step::TrayOpenMenu => {
             let t = core.tray.get().ok_or("no tray")?;
-            t.open_menu(Duration::from_millis(400))?;
-            Ok(Value::Null)
+            let known: Vec<u32> = core.window_ids().iter().map(|w| w.0).collect();
+            let opened = core.rec_ns_now();
+            let mut v = t.open_menu(Duration::from_millis(1200), &known)?;
+            v["opened_rec_ns"] = json!(opened);
+            v["closed_rec_ns"] = json!(core.rec_ns_now());
+            Ok(v)
         }
         Step::TrayItem(label) => {
             let id =
@@ -145,6 +194,42 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
             });
             Ok(Value::Null)
         }
+        Step::WaitPhase { phase, ms } => {
+            let until = std::time::Instant::now() + Duration::from_millis(ms);
+            loop {
+                let now = core.phase();
+                if now.name() == phase {
+                    return Ok(json!(now.name()));
+                }
+                if std::time::Instant::now() >= until {
+                    return Err(format!(
+                        "phase {} after {ms} ms, wanted {phase}",
+                        now.name()
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+        Step::WaitLaunch(ms) => {
+            let until = std::time::Instant::now() + Duration::from_millis(ms);
+            while !core.launch_done.load(std::sync::atomic::Ordering::SeqCst) {
+                if std::time::Instant::now() >= until {
+                    return Err(format!("launch tasks not done after {ms} ms"));
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Ok(Value::Null)
+        }
+        Step::Eval { label, js } => {
+            use tauri::Manager;
+            let w = core
+                .app
+                .get_webview_window(&label)
+                .ok_or_else(|| format!("no window {label:?}"))?;
+            w.eval(&js).map_err(|e| format!("eval in {label}: {e}"))?;
+            Ok(Value::Null)
+        }
+        Step::UiLog => Ok(json!(core.take_ui_log())),
         Step::Quit => Ok(Value::Null),
     }
 }
@@ -160,7 +245,7 @@ pub fn maybe_start(core: Arc<Core>) -> bool {
             let text = match std::fs::read_to_string(&path) {
                 Ok(t) => t,
                 Err(e) => {
-                    report(0, "", &Err(format!("read {path}: {e}")));
+                    report(0, "", None, &Err(format!("read {path}: {e}")));
                     core.shutdown(StopReason::Quit, 2);
                     return;
                 }
@@ -171,7 +256,7 @@ pub fn maybe_start(core: Arc<Core>) -> bool {
                 match parse_line(line) {
                     Ok(None) => {}
                     Ok(Some(Step::Quit)) => {
-                        report(n, line, &Ok(Value::Null));
+                        report(n, line, core.rec_ns_now(), &Ok(Value::Null));
                         break;
                     }
                     Ok(Some(step)) => {
@@ -179,10 +264,10 @@ pub fn maybe_start(core: Arc<Core>) -> bool {
                         if r.is_err() {
                             status = 1;
                         }
-                        report(n, line, &r);
+                        report(n, line, core.rec_ns_now(), &r);
                     }
                     Err(e) => {
-                        report(n, line, &Err(e));
+                        report(n, line, None, &Err(e));
                         status = 2;
                         break;
                     }
@@ -245,6 +330,56 @@ mod tests {
                 json: r#"{"purpose":"start","display_id":"1"}"#.into()
             }))
         );
+    }
+
+    #[test]
+    fn parses_extra_steps() {
+        assert_eq!(
+            parse_line("wait-phase saved 5000"),
+            Ok(Some(Step::WaitPhase {
+                phase: "saved".into(),
+                ms: 5000
+            }))
+        );
+        assert_eq!(
+            parse_line("eval panel window.__scLog('x y')"),
+            Ok(Some(Step::Eval {
+                label: "panel".into(),
+                js: "window.__scLog('x y')".into()
+            }))
+        );
+        assert_eq!(parse_line("ui-log"), Ok(Some(Step::UiLog)));
+        assert_eq!(
+            parse_line("wait-launch 9000"),
+            Ok(Some(Step::WaitLaunch(9000)))
+        );
+        for bad in [
+            "wait-phase saved",
+            "wait-phase saved x",
+            "eval panel",
+            "ui-log x",
+            "wait-launch",
+        ] {
+            assert!(parse_line(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn substitutes_variables() {
+        assert_eq!(
+            substitute(
+                r#"{"project_dir":"$PROJECT","size":"720"}"#,
+                Some("/a/b \"c\".sc"),
+                None
+            ),
+            Ok(r#"{"project_dir":"/a/b \"c\".sc","size":"720"}"#.to_string())
+        );
+        assert_eq!(
+            substitute(r#"{"id":"$JOB"}"#, None, Some("j1")),
+            Ok(r#"{"id":"j1"}"#.to_string())
+        );
+        assert!(substitute(r#"{"id":"$JOB"}"#, None, None).is_err());
+        assert_eq!(substitute("{}", None, None), Ok("{}".to_string()));
     }
 
     #[test]

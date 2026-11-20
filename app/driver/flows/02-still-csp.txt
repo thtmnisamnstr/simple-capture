@@ -1,0 +1,10 @@
+# Real sc://still through the panel's webview, then proof that the CSP is active.
+wait-launch 120000
+wait 1000
+ui-log
+eval panel (async () => { const I = window.__TAURI_INTERNALS__; const s = await I.invoke('get_settings'); const u = await I.invoke('preview_still', { source: { kind: 'display', display_id: '@DISPLAY@' }, canvas: { ...s.canvas, aspect: '16:9' } }); const img = new Image(); img.onload = () => __scLog('still ok ' + u + ' ' + img.naturalWidth + 'x' + img.naturalHeight); img.onerror = () => __scLog('still error ' + u); img.src = u; })().catch((e) => __scLog('still exception ' + e))
+wait 4000
+eval panel (() => { const s = document.createElement('script'); s.textContent = 'window.__inlineRan = 1'; document.head.appendChild(s); setTimeout(() => __scLog('inline ran=' + (window.__inlineRan === 1)), 300); })()
+wait 1500
+ui-log
+quit

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api, errorText } from '../lib/api.ts';
   import { onEvent } from '../lib/events.ts';
-  import { isPicked, isRecordingState, isRegionSelected } from '../lib/guards.ts';
+  import { isObject, isPicked, isRecordingState, isRegionSelected } from '../lib/guards.ts';
   import type {
     Aspect,
     CapabilitiesDto,
@@ -136,6 +136,14 @@
       onEvent('region-selected', isRegionSelected, (r) => {
         if (r.purpose !== 'start') return;
         choose({ kind: 'region', display_id: r.display_id, region_pt: r.region_pt }, 'own_chooser');
+      }),
+      onEvent('launch-tasks-done', isObject, () => {
+        Promise.all([api.getCapabilities(), api.recoveryReport()])
+          .then(([c, rec]) => {
+            caps = c;
+            recovery = rec.filter((r) => r.outcome === 'recovered' || r.outcome === 'damaged');
+          })
+          .catch((e) => (error = errorText(e)));
       }),
       onEvent('recording-state', isRecordingState, (s) => {
         recording = s.state === 'preparing' || s.state === 'recording' || s.state === 'switching' || s.state === 'stopping';

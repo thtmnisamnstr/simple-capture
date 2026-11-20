@@ -1,0 +1,27 @@
+# Every switch path: bar action (switcher popover + switch_source), tray "Switch Source…",
+# hotkey + pick, region overlay, and cmd switch_source.
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv switch","settings":{"system_audio":"all"}}}
+wait 3000
+show switcher
+cmd switch_source {"spec":{"kind":"window","window_id":@RED_WID@}}
+wait 3000
+tray item "Switch Source…"
+cmd switch_source {"spec":{"kind":"window","window_id":@GREEN_WID@}}
+wait 3000
+hotkey switch
+wait 500
+pick display @DISPLAY@
+wait 3000
+cmd begin_region_select {"purpose":"switch","display_id":"@DISPLAY@"}
+wait 500
+region set @DISPLAY@ 200,200,640,360
+wait 3000
+hotkey switch
+wait 500
+pick window @RED_WID@
+wait 3000
+cmd switch_source {"spec":{"kind":"display","display_id":"@DISPLAY@"}}
+wait 3000
+cmd stop_recording
+wait-phase saved 30000
+quit

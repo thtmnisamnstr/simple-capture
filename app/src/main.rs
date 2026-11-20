@@ -161,6 +161,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         driver_active(),
     ));
     app.manage(core.clone());
+    {
+        use tauri::Listener;
+        let c = core.clone();
+        app.listen_any("ui-log", move |e| {
+            let line = serde_json::from_str::<String>(e.payload())
+                .unwrap_or_else(|_| e.payload().to_string());
+            c.on_ui_log(line);
+        });
+    }
     core.configure_windows()?;
     let tray = tray::Tray::build(app.handle(), core.clone())?;
     let _ = core.tray.set(tray);

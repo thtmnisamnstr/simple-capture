@@ -1,0 +1,13 @@
+# Quick export with progress, then a second export cancelled part way.
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv export","settings":{"mic":"@MIC@"}}}
+wait 10000
+cmd stop_recording
+wait-phase saved 30000
+cmd quick_export {"project_dir":"$PROJECT","size":"720"}
+wait-phase saved 180000
+cmd quick_export {"project_dir":"$PROJECT","size":"reference"}
+wait 300
+cmd cancel_export {"id":"$JOB"}
+wait-phase saved 30000
+wait 500
+quit

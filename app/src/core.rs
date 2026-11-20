@@ -58,7 +58,12 @@ pub struct Core {
     probe: Mutex<Option<ProbeV1>>,
     overlay_purpose: Mutex<String>,
     watcher: Mutex<Option<Box<dyn DeviceStream>>>,
+    last_health: Mutex<Option<(Instant, i64)>>,
+    last_project: Mutex<Option<PathBuf>>,
+    last_export: Mutex<Option<String>>,
+    ui_log: Mutex<Vec<String>>,
     exiting: AtomicBool,
+    pub launch_done: AtomicBool,
     pub exit_done: AtomicBool,
     pub no_key_windows: bool,
     pub tray: OnceLock<crate::tray::Tray>,
@@ -89,7 +94,12 @@ impl Core {
             probe: Mutex::new(None),
             overlay_purpose: Mutex::new("start".into()),
             watcher: Mutex::new(None),
+            last_health: Mutex::new(None),
+            last_project: Mutex::new(None),
+            last_export: Mutex::new(None),
+            ui_log: Mutex::new(Vec::new()),
             exiting: AtomicBool::new(false),
+            launch_done: AtomicBool::new(false),
             exit_done: AtomicBool::new(false),
             no_key_windows,
             tray: OnceLock::new(),
@@ -108,9 +118,46 @@ impl Core {
     }
 
     pub fn emit(&self, event: &str, payload: Value) {
+        if self.no_key_windows {
+            eprintln!(
+                "{}",
+                json!({"event": event, "rec_ns": self.rec_ns_now(), "payload": payload})
+            );
+        }
         if let Err(e) = self.app.emit(event, payload) {
             tracing::warn!(event, "emit failed: {e}");
         }
+    }
+
+    /// Recording time now, extrapolated from the last 1 Hz health snapshot.
+    pub fn rec_ns_now(&self) -> Option<i64> {
+        if !self.phase().is_recording() {
+            return None;
+        }
+        lock(&self.last_health).map(|(at, rec)| {
+            rec.saturating_add(i64::try_from(at.elapsed().as_nanos()).unwrap_or(i64::MAX))
+        })
+    }
+
+    pub fn last_project(&self) -> Option<PathBuf> {
+        lock(&self.last_project).clone()
+    }
+
+    pub fn last_export(&self) -> Option<String> {
+        lock(&self.last_export).clone()
+    }
+
+    /// A console line the UI forwarded (`ui-log` event): CSP violations, errors, driver probes.
+    pub fn on_ui_log(&self, line: String) {
+        tracing::warn!(target: "ui", "{line}");
+        let mut log = lock(&self.ui_log);
+        if log.len() < 1000 {
+            log.push(line);
+        }
+    }
+
+    pub fn take_ui_log(&self) -> Vec<String> {
+        std::mem::take(&mut *lock(&self.ui_log))
     }
 
     pub fn elapsed_ns(&self) -> i64 {
@@ -478,12 +525,17 @@ impl Core {
         match r {
             Ok(Some(p)) => {
                 let id = self.store_pick(p);
+                let source = SourceSpecDto::Picked {
+                    pick_id: id,
+                    region_pt: None,
+                };
                 self.emit(
                     "source-picked",
-                    json!({"purpose": purpose,
-                           "source": {"kind": "picked", "pick_id": id, "region_pt": null},
-                           "via": "system_picker"}),
+                    json!({"purpose": purpose, "source": source, "via": "system_picker"}),
                 );
+                if let Err(e) = self.switch_if_switching(purpose, source) {
+                    tracing::warn!("system picker switch: {e}");
+                }
             }
             Ok(None) => self.emit("pick-cancelled", json!({"purpose": purpose})),
             Err(e) => {
@@ -518,7 +570,19 @@ impl Core {
         }
     }
 
-    /// What the region overlay emits when the user confirms a region.
+    /// A pick made for `purpose = "switch"` switches the running recording (the overlays do the
+    /// same from the UI through `switch_source`).
+    fn switch_if_switching(&self, purpose: &str, source: SourceSpecDto) -> Reply {
+        if purpose != "switch" {
+            return Ok(Value::Null);
+        }
+        if !self.phase().is_recording() {
+            return Err("switch pick while not recording".into());
+        }
+        self.switch_source(source)
+    }
+
+    /// What the region overlay does when the user confirms a region.
     pub fn region_selected(&self, display_id: &str, region: RectPt) -> Reply {
         let purpose = self.purpose();
         self.hide_window("region");
@@ -526,10 +590,16 @@ impl Core {
             "region-selected",
             json!({"purpose": purpose, "display_id": display_id, "region_pt": region}),
         );
-        Ok(Value::Null)
+        self.switch_if_switching(
+            &purpose,
+            SourceSpecDto::Region {
+                display_id: display_id.to_string(),
+                region_pt: region,
+            },
+        )
     }
 
-    /// What the pick overlay emits when the user clicks a window or display.
+    /// What the pick overlay does when the user clicks a window or display.
     pub fn source_picked(&self, source: SourceSpecDto) -> Reply {
         let purpose = self.purpose();
         self.hide_window("pick");
@@ -537,7 +607,7 @@ impl Core {
             "source-picked",
             json!({"purpose": purpose, "source": source, "via": "own_chooser"}),
         );
-        Ok(Value::Null)
+        self.switch_if_switching(&purpose, source)
     }
 
     pub fn hotkey_switch(self: &Arc<Self>) -> Reply {
@@ -613,6 +683,9 @@ impl Core {
         );
         match session.stop(reason) {
             Ok(summary) => {
+                if reason == StopReason::Sleep {
+                    self.emit("notice", dto::notice(&Notice::StoppedForSleep));
+                }
                 tracing::info!(
                     project = %summary.project_dir.display(),
                     duration_ns = summary.duration_ns,
@@ -700,6 +773,8 @@ impl Core {
             return;
         }
         *lock(&self.rec_started) = None;
+        *lock(&self.last_health) = None;
+        *lock(&self.last_project) = Some(project_dir.clone());
         self.emit(
             "recording-state",
             dto::recording_state(&SessionState::Finalized { project_dir }, 0),
@@ -773,6 +848,7 @@ impl Core {
         match ExportJob::start(self.platform.clone(), req, obs) {
             Ok(job) => {
                 lock(&self.exports).insert(job_id.clone(), job);
+                *lock(&self.last_export) = Some(job_id.clone());
                 Ok(json!(job_id))
             }
             Err(e) => {
@@ -854,6 +930,12 @@ impl Core {
             Ok(w) => *lock(&self.watcher) = Some(w),
             Err(e) => tracing::warn!("watch_system: {e}"),
         }
+        self.launch_done.store(true, Ordering::SeqCst);
+        self.emit(
+            "launch-tasks-done",
+            json!({"recovery": self.recovery_report().unwrap_or(Value::Null),
+                   "probe": lock(&self.probe).is_some()}),
+        );
         let core = Arc::downgrade(self);
         self.platform.picker().set_observer(Some(Box::new(move |p| {
             if let Some(c) = core.upgrade() {
@@ -872,10 +954,15 @@ impl Core {
                 );
             }
             SourceEvent::OwnWindowsChanged => {
-                if let Some(s) = lock(&self.session).as_ref()
-                    && let Err(e) = s.set_exclusions(self.window_ids())
-                {
-                    tracing::warn!("refresh exclusions: {e}");
+                if lock(&self.session).is_none() {
+                    return;
+                }
+                let core = Arc::downgrade(self);
+                let spawned = std::thread::Builder::new()
+                    .name("own-windows".into())
+                    .spawn(move || refresh_exclusions(core));
+                if let Err(e) = spawned {
+                    tracing::warn!("refresh exclusions thread: {e}");
                 }
             }
             SourceEvent::SystemWillSleep => {
@@ -883,8 +970,8 @@ impl Core {
                     tracing::info!("system will sleep: stopping the recording");
                     let core = self.clone();
                     std::thread::spawn(move || {
-                        if core.stop_with(StopReason::Sleep).is_ok() {
-                            core.emit("notice", dto::notice(&Notice::StoppedForSleep));
+                        if let Err(e) = core.stop_with(StopReason::Sleep) {
+                            tracing::warn!("stop for sleep: {e}");
                         }
                     });
                 }
@@ -970,6 +1057,25 @@ fn open_url(url: &str) -> Result<(), String> {
         .map_err(|e| format!("{program} {url}: {e}"))
 }
 
+/// A menu of ours began tracking: its window may appear a moment after the notification, so the
+/// exclusions are refreshed now and twice more while it opens.
+fn refresh_exclusions(core: Weak<Core>) {
+    for delay_ms in [0, 120, 400] {
+        std::thread::sleep(Duration::from_millis(delay_ms));
+        let Some(c) = core.upgrade() else { return };
+        let t0 = Instant::now();
+        let r = match lock(&c.session).as_ref() {
+            Some(s) => s.set_exclusions(c.window_ids()),
+            None => return,
+        };
+        let ms = t0.elapsed().as_millis() as u64;
+        match r {
+            Ok(()) => tracing::info!(delay_ms, ms, "own windows changed: exclusions refreshed"),
+            Err(e) => tracing::warn!(delay_ms, ms, "refresh exclusions: {e}"),
+        }
+    }
+}
+
 fn follow_cursor(core: Weak<Core>, mut display: String) {
     let until = Instant::now() + Duration::from_secs(600);
     while Instant::now() < until {
@@ -1010,6 +1116,7 @@ impl SessionObserver for Observer {
     }
     fn on_health(&self, h: &HealthSnapshot) {
         if let Some(c) = self.core.upgrade() {
+            *lock(&c.last_health) = Some((Instant::now(), h.rec_ns));
             c.emit("health", dto::health(h));
         }
     }

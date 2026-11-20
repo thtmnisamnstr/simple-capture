@@ -1,0 +1,7 @@
+# System sleep during a recording stops and finalizes it with reason sleep and a notice.
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv sleep","settings":{}}}
+wait 3000
+sim sleep
+wait-phase saved 30000
+sim wake
+quit
