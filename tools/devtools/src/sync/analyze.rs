@@ -7,8 +7,8 @@ use sc_decode::TrackAudio;
 use sc_platform::{Decoder, FrameBuffer};
 
 use super::detect::{
-    CAMERA_MIN_STEP, CAMERA_SIGMAS, FLASH_MIN_STEP, Found, GOERTZEL_HOP_S, GOERTZEL_WIN_S, TONE_HZ,
-    goertzel_series, step_onset, tone_onset,
+    CAMERA_MIN_STEP, CAMERA_SIGMAS, FLASH_MIN_STEP, Found, GOERTZEL_HOP_S, GOERTZEL_MIC_WIN_S,
+    GOERTZEL_WIN_S, TONE_HZ, goertzel_series, step_onset, tone_onset,
 };
 use super::report::{
     EventResult, Report, camera_verdict, mic_verdict, recommendation, render_text, summarize,
@@ -18,6 +18,9 @@ use super::{EventKind, FlashLog, Opts};
 pub const AUDIO_RATE: u32 = 48_000;
 const S: i64 = 1_000_000_000;
 const MS: i64 = 1_000_000;
+const SYSTEM_AUDIO_WINDOW: (i64, i64) = (-300 * MS, 800 * MS);
+/// The mic hears the speakers: output latency plus air, never before the issue.
+const MIC_WINDOW: (i64, i64) = (-50 * MS, 400 * MS);
 
 pub fn run(o: &Opts) -> Result<()> {
     let pos = o.positional();
@@ -220,25 +223,27 @@ fn camera_series(dir: &Path, track: &Track, dec: &Arc<dyn Decoder>) -> Result<Se
 
 struct Tone {
     series: Vec<f64>,
+    win_s: f64,
 }
 
 impl Tone {
-    fn new(x: &[f32]) -> Tone {
-        let win = (GOERTZEL_WIN_S * f64::from(AUDIO_RATE)) as usize;
+    fn new(x: &[f32], win_s: f64) -> Tone {
+        let win = (win_s * f64::from(AUDIO_RATE)) as usize;
         let hop = (GOERTZEL_HOP_S * f64::from(AUDIO_RATE)) as usize;
         Tone {
             series: goertzel_series(x, AUDIO_RATE, TONE_HZ, win, hop),
+            win_s,
         }
     }
 
-    fn onset(&self, e: i64) -> Found<super::detect::ToneOnset> {
+    fn onset(&self, e: i64, (from, to): (i64, i64)) -> Found<super::detect::ToneOnset> {
         tone_onset(
             &self.series,
             (GOERTZEL_HOP_S * 1e9) as i64,
-            (GOERTZEL_WIN_S * 1e9) as i64,
+            (self.win_s * 1e9) as i64,
             e - S,
-            e - 300 * MS,
-            e + 800 * MS,
+            e + from,
+            e + to,
         )
     }
 }
@@ -263,18 +268,18 @@ pub fn analyze(
         .ok_or_else(|| anyhow!("project has no duration (not finalized?)"))?;
     let mut notes = Vec::new();
     let (screen, segs) = screen_series(dir, project, log, &dec)?;
-    let audio = |kind: TrackKind, notes: &mut Vec<String>| -> Option<Tone> {
+    let audio = |kind: TrackKind, win_s: f64, notes: &mut Vec<String>| -> Option<Tone> {
         let t = project.recording.tracks.iter().find(|t| t.kind == kind)?;
         match read_audio(project, dir, t, dec.clone(), duration) {
-            Ok(x) => Some(Tone::new(&x)),
+            Ok(x) => Some(Tone::new(&x, win_s)),
             Err(e) => {
                 notes.push(format!("{kind:?} track {}: {e:#}", t.id));
                 None
             }
         }
     };
-    let sys = audio(TrackKind::SystemAudio, &mut notes);
-    let mic = audio(TrackKind::Mic, &mut notes);
+    let sys = audio(TrackKind::SystemAudio, GOERTZEL_WIN_S, &mut notes);
+    let mic = audio(TrackKind::Mic, GOERTZEL_MIC_WIN_S, &mut notes);
     let cam = match camera_track(project) {
         Some(t) => match camera_series(dir, t, &dec) {
             Ok(s) => Some(s),
@@ -320,17 +325,18 @@ pub fn analyze(
                 .push(format!("no flash in the screen video (step {peak:.1})")),
             Found::NoData => r.notes.push("no screen frames near the event".into()),
         }
-        for (name, tone, s_out, snr_out) in [
+        for (name, tone, window, s_out, snr_out) in [
             (
                 "system audio",
                 &sys,
+                SYSTEM_AUDIO_WINDOW,
                 &mut r.system_audio_s,
                 &mut r.system_audio_snr,
             ),
-            ("mic", &mic, &mut r.mic_s, &mut r.mic_snr),
+            ("mic", &mic, MIC_WINDOW, &mut r.mic_s, &mut r.mic_snr),
         ] {
             let Some(tone) = tone else { continue };
-            match tone.onset(e) {
+            match tone.onset(e, window) {
                 Found::Yes(o) => {
                     *s_out = Some(secs(o.t_ns));
                     *snr_out = Some(db(o.peak, o.noise));

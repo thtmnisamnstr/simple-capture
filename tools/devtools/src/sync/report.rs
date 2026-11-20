@@ -116,7 +116,8 @@ pub fn summarize(events: &[EventResult]) -> Vec<PairSummary> {
 }
 
 pub fn recommendation(summary: &[PairSummary]) -> String {
-    let Some(s) = summary.iter().find(|s| s.pair == "video→system_audio") else {
+    let get = |pair: &str| summary.iter().find(|s| s.pair == pair);
+    let Some(s) = get("video→system_audio") else {
         return "no video→system_audio pairs measured: no recommendation".into();
     };
     if s.n < 3 {
@@ -135,12 +136,21 @@ pub fn recommendation(summary: &[PairSummary]) -> String {
             s.n
         )
     };
-    if s.median_ms.abs() <= NO_COMP_MS {
-        format!(
-            "no fixed system-audio compensation: median video→system_audio {:+.1} ms is within \
-             ±{NO_COMP_MS} ms ({target}; spread {spread:.1} ms)",
-            s.median_ms
-        )
+    let mut why = format!(
+        "median video→system_audio {:+.1} ms, spread {spread:.1} ms ({target})",
+        s.median_ms
+    );
+    for (pair, what) in [
+        ("issue→video", "the stimulus's display latency"),
+        ("issue→system_audio", "system audio stamped at mix time"),
+        ("system_audio→mic", "speaker output latency + air"),
+    ] {
+        if let Some(p) = get(pair) {
+            let _ = write!(why, "; {pair} {:+.1} ms ({what}, n {})", p.median_ms, p.n);
+        }
+    }
+    if s.within_target == s.n || s.median_ms.abs() <= NO_COMP_MS {
+        format!("no fixed system-audio compensation: {why}")
     } else if spread <= MAX_SPREAD_MS {
         let dir = if s.median_ms > 0.0 {
             "earlier"
@@ -148,17 +158,11 @@ pub fn recommendation(summary: &[PairSummary]) -> String {
             "later"
         };
         format!(
-            "fixed system-audio compensation of {:.0} ms ({dir}): median video→system_audio \
-             {:+.1} ms, spread {spread:.1} ms ({target})",
-            s.median_ms.abs(),
-            s.median_ms
+            "fixed system-audio compensation of {:.0} ms (shift system audio {dir}): {why}",
+            s.median_ms.abs()
         )
     } else {
-        format!(
-            "no fixed compensation: video→system_audio varies too much (median {:+.1} ms, spread \
-             {spread:.1} ms > {MAX_SPREAD_MS} ms; {target})",
-            s.median_ms
-        )
+        format!("no fixed compensation, video→system_audio varies too much: {why}")
     }
 }
 
@@ -314,13 +318,20 @@ mod tests {
             .map(|d| ev(1.0, 1.0 + d, None))
             .collect();
         assert!(recommendation(&summarize(&small)).starts_with("no fixed system-audio"));
+        let inside: Vec<_> = [-0.011, -0.031, -0.02]
+            .iter()
+            .map(|d| ev(1.0, 1.0 + d, None))
+            .collect();
+        let r = recommendation(&summarize(&inside));
+        assert!(r.starts_with("no fixed system-audio"), "{r}");
+        assert!(r.contains("issue→video +30.0 ms"), "{r}");
         let fixed: Vec<_> = [0.045, 0.05, 0.04, 0.055]
             .iter()
             .map(|d| ev(1.0, 1.0 + d, None))
             .collect();
         let r = recommendation(&summarize(&fixed));
         assert!(
-            r.starts_with("fixed system-audio compensation of 48 ms (earlier)"),
+            r.starts_with("fixed system-audio compensation of 48 ms (shift system audio earlier)"),
             "{r}"
         );
         assert!(r.contains("4 of 4 outside"), "{r}");

@@ -1,11 +1,12 @@
 pub const TONE_HZ: f64 = 1000.0;
 pub const GOERTZEL_WIN_S: f64 = 0.010;
+pub const GOERTZEL_MIC_WIN_S: f64 = 0.030;
 pub const GOERTZEL_HOP_S: f64 = 0.002;
 pub const TONE_SNR: f64 = 4.0;
-pub const TONE_MIN_AMP: f64 = 2e-4;
+pub const TONE_MIN_AMP: f64 = 1e-3;
 pub const FLASH_MIN_STEP: f64 = 20.0;
 pub const CAMERA_SIGMAS: f64 = 5.0;
-pub const CAMERA_MIN_STEP: f64 = 1.5;
+pub const CAMERA_MIN_STEP: f64 = 0.3;
 
 pub fn goertzel_series(x: &[f32], rate: u32, freq: f64, win: usize, hop: usize) -> Vec<f64> {
     if win == 0 || hop == 0 || x.len() < win {
@@ -241,12 +242,16 @@ mod tests {
     }
 
     fn series(x: &[f32]) -> (Vec<f64>, i64, i64) {
-        let win = (GOERTZEL_WIN_S * f64::from(RATE)) as usize;
+        series_w(x, GOERTZEL_WIN_S)
+    }
+
+    fn series_w(x: &[f32], win_s: f64) -> (Vec<f64>, i64, i64) {
+        let win = (win_s * f64::from(RATE)) as usize;
         let hop = (GOERTZEL_HOP_S * f64::from(RATE)) as usize;
         (
             goertzel_series(x, RATE, TONE_HZ, win, hop),
             (GOERTZEL_HOP_S * 1e9) as i64,
-            (GOERTZEL_WIN_S * 1e9) as i64,
+            (win_s * 1e9) as i64,
         )
     }
 
@@ -261,9 +266,12 @@ mod tests {
 
     #[test]
     fn tone_onset_within_a_millisecond() {
-        for at in [1.0, 1.0003, 1.0011, 1.0057] {
+        for (at, win_s) in [1.0, 1.0003, 1.0011, 1.0057]
+            .into_iter()
+            .flat_map(|a| [(a, GOERTZEL_WIN_S), (a, GOERTZEL_MIC_WIN_S)])
+        {
             let x = tone_at(2.0, at, 0.1, 0.2, 0.01);
-            let (s, hop, win) = series(&x);
+            let (s, hop, win) = series_w(&x, win_s);
             let Found::Yes(o) = tone_onset(&s, hop, win, 500_000_000, 800_000_000, 1_600_000_000)
             else {
                 panic!("no onset for {at}");
