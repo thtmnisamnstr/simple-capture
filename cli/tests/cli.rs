@@ -111,10 +111,26 @@ fn project_state(dir: &Path) -> serde_json::Value {
     serde_json::from_slice(&bytes).expect("parse project.json")
 }
 
+fn helper_present(name: &str) -> bool {
+    let env = format!("SC_{}", name.to_uppercase());
+    if std::env::var_os(&env).is_some_and(|v| std::path::Path::new(&v).is_file()) {
+        return true;
+    }
+    let arch = match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        a => a,
+    };
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../third_party/out")
+        .join(format!("{}-{arch}", std::env::consts::OS))
+        .join(name)
+        .is_file()
+}
+
 #[test]
-#[ignore = "integration: un-ignored by wp-e2e-cli"]
 fn synthetic_record_with_switch() {
     let projects = temp_dir("record");
+    let projects_arg = projects.to_str().expect("utf-8 temp path");
     let out = cli(&[
         "--platform",
         "synthetic",
@@ -126,7 +142,7 @@ fn synthetic_record_with_switch() {
         "--duration",
         "3",
         "--projects-dir",
-        projects.to_str().expect("utf-8 temp path"),
+        projects_arg,
     ]);
     let stdout = text(&out.stdout);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
@@ -138,5 +154,57 @@ fn synthetic_record_with_switch() {
         .as_array()
         .expect("segments");
     assert_eq!(segs.len(), 2, "{p}");
+
+    let rec = cli(&[
+        "--platform",
+        "synthetic",
+        "--json",
+        "recover",
+        "--projects-dir",
+        projects_arg,
+    ]);
+    assert_eq!(rec.status.code(), Some(0), "{}", text(&rec.stderr));
+    let v: serde_json::Value = serde_json::from_slice(&rec.stdout).expect("recover json");
+    let reports = v["reports"].as_array().expect("reports");
+    assert!(
+        reports
+            .iter()
+            .all(|r| r["outcome"] == "already_final" || r["outcome"] == "not_a_project"),
+        "recover found work after a clean stop: {v}"
+    );
+    assert_eq!(project_state(&dir)["state"], "finalized");
+
+    if cfg!(feature = "export") && helper_present("ffmpeg") && helper_present("ffprobe") {
+        let mp4 = projects.join("out.mp4");
+        let mp4_arg = mp4.to_str().expect("utf-8 temp path");
+        let ex = cli(&[
+            "--platform",
+            "synthetic",
+            "export",
+            dir.to_str().expect("utf-8 project path"),
+            "--out",
+            mp4_arg,
+            "--size",
+            "480",
+        ]);
+        assert_eq!(ex.status.code(), Some(0), "{}", text(&ex.stderr));
+        assert!(mp4.is_file(), "no export at {}", mp4.display());
+        let val = cli(&[
+            "--json",
+            "validate",
+            mp4_arg,
+            "--size",
+            "854x480",
+            "--fps",
+            "30",
+            "--duration",
+            "3",
+        ]);
+        assert_eq!(val.status.code(), Some(0), "{}", text(&val.stderr));
+        let v: serde_json::Value = serde_json::from_slice(&val.stdout).expect("validate json");
+        assert_eq!(v["ok"], true, "{v}");
+    } else {
+        println!("SKIPPED: export (no ffmpeg/ffprobe helper)");
+    }
     let _ = std::fs::remove_dir_all(&projects);
 }

@@ -212,6 +212,9 @@ fn window_app(a: &Args) -> Result<()> {
     if let Some(w) = &win {
         ready["window_id"] = w.json()["window_id"].clone();
         ready["rect_pt"] = json!(rect);
+        if a.flag("minimized") {
+            ready["minimized"] = json!(minimize(w));
+        }
     }
     print_line(&ready);
     let mut tick = 0usize;
@@ -252,6 +255,25 @@ fn window_app(a: &Args) -> Result<()> {
         pump(Duration::from_millis(4));
     }
     Ok(())
+}
+
+/// `--minimized`: the window keeps its window number but is not on screen, so a capture of it gets
+/// no frames. A borderless panel has no minimize button, so it gets one for the call; an app that
+/// cannot minimize (no Dock) falls back to ordering the window out. Returns how it is hidden.
+fn minimize(w: &Win) -> &'static str {
+    let mask = w.panel.styleMask();
+    w.panel
+        .setStyleMask(mask | NSWindowStyleMask::Titled | NSWindowStyleMask::Miniaturizable);
+    w.panel.miniaturize(None);
+    for _ in 0..50 {
+        if w.panel.isMiniaturized() {
+            return "miniaturized";
+        }
+        pump(Duration::from_millis(20));
+    }
+    w.panel.orderOut(None);
+    pump(Duration::from_millis(50));
+    "ordered_out"
 }
 
 fn write_tone_wav(path: &Path, hz: f64, secs: f64) -> Result<()> {
@@ -455,6 +477,11 @@ fn spawn(args: &[&str]) -> Result<Spawned> {
 
 type FixtureSpec = (&'static str, Vec<&'static str>, Option<[f64; 4]>);
 
+// Every fixture window fits a 1440×900 pt main display (the smallest current Mac default), so
+// none sits off screen on a laptop: RED 40..680 × 100..580 (second window 40,620 below it),
+// GREEN 720..1360 × 100..580 (second 720,600), TONE-440 380..620 × 620..800, STATIC
+// 1080..1400 × 600..840.
+
 fn fixture_specs() -> Vec<FixtureSpec> {
     vec![
         (
@@ -468,7 +495,7 @@ fn fixture_specs() -> Vec<FixtureSpec> {
                 "--size",
                 "640x480",
                 "--pos",
-                "80,120",
+                "40,100",
                 "--floating",
                 "--animate",
                 "--close-on-signal",
@@ -489,15 +516,15 @@ fn fixture_specs() -> Vec<FixtureSpec> {
                 "--size",
                 "640x480",
                 "--pos",
-                "800,120",
+                "720,100",
                 "--floating",
                 "--animate",
                 "--second-window-on-signal",
                 "USR2",
                 "--second-pos",
-                "800,640",
+                "720,600",
             ],
-            Some([800.0, 640.0, 320.0, 240.0]),
+            Some([720.0, 600.0, 320.0, 240.0]),
         ),
         (
             "SC-TONE-440",
@@ -509,7 +536,7 @@ fn fixture_specs() -> Vec<FixtureSpec> {
                 "--title",
                 "SC-TONE-440",
                 "--pos",
-                "1520,120",
+                "380,620",
             ],
             None,
         ),
@@ -529,7 +556,7 @@ fn fixture_specs() -> Vec<FixtureSpec> {
                 "--size",
                 "320x240",
                 "--pos",
-                "1520,360",
+                "1080,600",
                 "--floating",
             ],
             None,

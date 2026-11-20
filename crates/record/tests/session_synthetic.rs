@@ -1163,3 +1163,107 @@ fn dropping_a_session_finalizes_it() {
     ));
     assert_eq!(p.active_screen_streams(), 0);
 }
+
+/// Regression (wp-e2e-cli): the session log had no record of the requested settings, so a run
+/// with `--no-cursor` could not be checked from its project folder.
+#[test]
+fn session_log_records_the_config() {
+    let dir = tmp("config_log");
+    let p = platform(Scenario::new().screen(
+        "main",
+        ScreenScript {
+            size: size(320, 180),
+            ..Default::default()
+        },
+    ));
+    let mut req = request(&dir, display_spec("main", None));
+    req.show_cursor = false;
+    req.resolution = Resolution::OneX;
+    let s = Session::start(as_dyn(&p), req, Arc::new(Obs::default())).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 300 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let log = std::fs::read_to_string(pdir.join("session.log")).expect("log");
+    let line = log
+        .lines()
+        .find(|l| l.contains(" INFO config {"))
+        .unwrap_or_else(|| panic!("no config line in {log}"));
+    assert!(line.contains(r#""cursor":false"#), "{line}");
+    assert!(line.contains(r#""resolution":"1x""#), "{line}");
+    assert!(line.contains(r#""system_audio":"off""#), "{line}");
+}
+
+/// Regression (wp-e2e-cli): continuous audio ended where its last buffer ended (system audio
+/// 40–60 ms before the stop on the M3 Pro); it now reaches the stop, padded with silence.
+#[test]
+fn audio_tracks_reach_the_stop() {
+    let dir = tmp("audio_tail");
+    let p = platform(
+        Scenario::new()
+            .screen(
+                "main",
+                ScreenScript {
+                    size: size(320, 180),
+                    ..Default::default()
+                },
+            )
+            .mic(Some(AudioScript {
+                buffer_frames: 4800,
+                ..mic()
+            })),
+    );
+    let mut req = request(&dir, display_spec("main", None));
+    req.mic = Some(sc_platform::synthetic::MIC_DEVICE_ID.into());
+    let s = Session::start(as_dyn(&p), req, Arc::new(Obs::default())).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 1250 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let proj = ProjectV1::load(&pdir).expect("load");
+    let dur = proj.duration_ns().expect("duration");
+    let mic = proj
+        .recording
+        .tracks
+        .iter()
+        .find(|t| t.id == "mic")
+        .expect("mic track");
+    let end = mic.first_sample_offset_ns + mic.duration_ns.expect("mic duration");
+    assert!(
+        (end - dur).abs() <= MS,
+        "mic ends at {end} ns, recording at {dur} ns"
+    );
+}
+
+/// Invariant behind two live bugs (wp-e2e-cli, `just e2e` steps 4 and 14): s0 started at the
+/// first frame's offset instead of 0, and frames arriving after the stop time pushed the last
+/// segment past the recording's end. The synthetic platform cannot produce either race, so this
+/// only guards the invariant; the e2e run is the reproducer.
+#[test]
+fn segments_span_exactly_zero_to_the_stop() {
+    for i in 0..5 {
+        let dir = tmp(&format!("span_{i}"));
+        let p = platform(Scenario::new().screen(
+            "main",
+            ScreenScript {
+                size: size(320, 180),
+                ..Default::default()
+            },
+        ));
+        let s = Session::start(
+            as_dyn(&p),
+            request(&dir, display_spec("main", None)),
+            Arc::new(Obs::default()),
+        )
+        .expect("start");
+        let pdir = s.project_dir().to_path_buf();
+        sleep_host(&*p, (400 + 37 * i) * MS);
+        s.stop(StopReason::User).expect("stop");
+        let proj = ProjectV1::load(&pdir).expect("load");
+        let segs = &proj.recording.screen.segments;
+        assert_eq!(segs[0].start_rec_ns, 0, "{segs:?}");
+        assert_eq!(
+            segs.last().and_then(|s| s.end_rec_ns),
+            proj.duration_ns(),
+            "{segs:?}"
+        );
+    }
+}

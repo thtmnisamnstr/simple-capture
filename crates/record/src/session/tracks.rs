@@ -12,7 +12,7 @@ use sc_core::sessionlog::Level;
 use sc_platform::{Append, AudioBuffer, AudioTrackKind, FinishedTrack, TrackWriter, VideoFrame};
 
 use super::Notice;
-use super::gapfill::GapFiller;
+use super::gapfill::{GapFiller, ns_to_frames};
 use super::shared::{Shared, TrackStats, bump};
 use super::sink::TrackIn;
 
@@ -61,10 +61,10 @@ pub(crate) fn spawn(
             match m {
                 TrackIn::Video(f) => w.video(&f),
                 TrackIn::Audio(a) => w.audio(&a),
-                TrackIn::Finish => break,
+                TrackIn::Finish { end_host } => return w.finish(end_host),
             }
         }
-        w.finish()
+        w.finish(None)
     })
 }
 
@@ -201,9 +201,51 @@ impl Worker {
         }
     }
 
-    fn finish(self) -> TrackResult {
+    fn end_file_ns(&self, end_host: Option<i64>) -> Option<i64> {
+        let written = self
+            .filler
+            .as_ref()
+            .and_then(|g| Some(g.expected_host()? - g.anchor()?));
+        file_end(end_host, self.first, written)
+    }
+
+    /// Audio still in flight when the source stops never arrives (system audio ended 40–60 ms
+    /// early on the M3 Pro); the tail up to the stop is filled with silence, like any other gap.
+    fn pad_tail(&mut self, end_host: Option<i64>) -> bool {
+        let Some(g) = self.filler.as_ref() else {
+            return false;
+        };
+        let (Some(end), Some(anchor), Some(at)) = (end_host, g.anchor(), g.expected_host()) else {
+            return false;
+        };
+        let frames = ns_to_frames(end - at, g.rate());
+        if end <= at || frames == 0 {
+            return false;
+        }
+        let frames = u32::try_from(frames).unwrap_or(u32::MAX);
+        let file_ns = at - anchor;
+        if !self.write("append tail silence", |w| w.append_silence(file_ns, frames)) {
+            return false;
+        }
+        self.c.sh.rec.log(
+            Level::Info,
+            &format!(
+                "{}: {:.1} ms of silence up to the stop",
+                self.c.track_id,
+                (end - at) as f64 / 1e6
+            ),
+        );
+        true
+    }
+
+    fn finish(mut self, end_host: Option<i64>) -> TrackResult {
+        let end_file_ns = if self.pad_tail(end_host) {
+            file_end(end_host, self.first, None)
+        } else {
+            self.end_file_ns(end_host)
+        };
         let Worker { c, first, gaps, .. } = self;
-        let r = c.writer.finish(None);
+        let r = c.writer.finish(end_file_ns);
         match &r {
             Ok(t) => {
                 c.sh.rec.journal(&JournalEvent::TrackFinished {
@@ -224,5 +266,40 @@ impl Worker {
             gaps,
             stats: c.stats,
         }
+    }
+}
+
+/// Devices keep delivering for a moment after the stop request (the mic ran 150 ms past it on
+/// the M3 Pro), so a file ends at the stop time, or at the last audio written if that is earlier.
+fn file_end(end_host: Option<i64>, first_host: Option<i64>, written: Option<i64>) -> Option<i64> {
+    let end = end_host? - first_host?;
+    if end <= 0 {
+        return None;
+    }
+    Some(written.map_or(end, |w| end.min(w)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::file_end;
+
+    /// Regression (wp-e2e-cli): a 4.019 s recording had a 4.171 s mic file because samples
+    /// delivered after the stop were kept.
+    #[test]
+    fn files_end_at_the_stop() {
+        let first = 1_000_000_000 + 8_000_000;
+        let stop = 1_000_000_000 + 4_018_630_500;
+        assert_eq!(
+            file_end(Some(stop), Some(first), Some(4_170_666_667)),
+            Some(stop - first)
+        );
+        assert_eq!(
+            file_end(Some(stop), Some(first), Some(3_980_000_000)),
+            Some(3_980_000_000)
+        );
+        assert_eq!(file_end(Some(stop), Some(first), None), Some(stop - first));
+        assert_eq!(file_end(None, Some(first), Some(5)), None);
+        assert_eq!(file_end(Some(stop), None, None), None);
+        assert_eq!(file_end(Some(first), Some(stop), None), None);
     }
 }

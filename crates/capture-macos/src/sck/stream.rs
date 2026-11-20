@@ -654,6 +654,26 @@ struct FrameInfo {
     content_scale: Option<f64>,
 }
 
+/// `VideoFrame::content_scale` is the factor from `content_rect_pt` to frame pixels. SCK's content
+/// rect already has `SCStreamFrameInfoContentScale` applied (at 1x a 1512 pt display reports 756 pt
+/// in a 1512 px frame), so that factor is `SCStreamFrameInfoScaleFactor` (measured on the M3 Pro:
+/// display native 1512 pt × 2 = 3024 px, display 1x 756 × 2 = 1512, window 1x 320 × 2 = 640).
+/// The content scale is only a fallback when the scale factor is missing.
+pub(crate) fn frame_px_per_pt(
+    content_scale: Option<f64>,
+    scale_factor: Option<f64>,
+) -> Option<f64> {
+    let ok = |v: f64| v.is_finite() && v > 0.0;
+    match (
+        scale_factor.filter(|v| ok(*v)),
+        content_scale.filter(|v| ok(*v)),
+    ) {
+        (Some(sf), _) => Some(sf),
+        (None, Some(cs)) => Some(cs),
+        (None, None) => None,
+    }
+}
+
 fn frame_info(sb: &CMSampleBuffer) -> FrameInfo {
     let mut out = FrameInfo {
         status: None,
@@ -674,8 +694,10 @@ fn frame_info(sb: &CMSampleBuffer) -> FrameInfo {
     };
     unsafe {
         out.status = num(SCStreamFrameInfoStatus).map(|n| n.integerValue());
-        out.content_scale = num(SCStreamFrameInfoContentScale).map(|n| n.doubleValue());
-        let _ = num(SCStreamFrameInfoScaleFactor);
+        out.content_scale = frame_px_per_pt(
+            num(SCStreamFrameInfoContentScale).map(|n| n.doubleValue()),
+            num(SCStreamFrameInfoScaleFactor).map(|n| n.doubleValue()),
+        );
         if let Some(o) = d.objectForKey(SCStreamFrameInfoContentRect) {
             let cf = &*(Retained::as_ptr(&o) as *const CFDictionary);
             let mut r = CGRect::default();
@@ -1001,6 +1023,20 @@ pub(crate) fn cgimage_to_rgba(img: &CGImage) -> Result<RgbaImage> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression (wp-e2e-cli): content_px of a Retina display recording came out in points
+    /// (1512×982 in a 3024×1964 frame) because the content scale was used as the pt→px factor.
+    #[test]
+    fn content_rect_maps_to_frame_px_with_the_scale_factor() {
+        let px = |rect_w: f64, cs, sf| frame_px_per_pt(cs, sf).map(|k| rect_w * k);
+        assert_eq!(px(1512.0, Some(1.0), Some(2.0)), Some(3024.0));
+        assert_eq!(px(756.0, Some(0.5), Some(2.0)), Some(1512.0));
+        assert_eq!(px(320.0, Some(0.5), Some(2.0)), Some(640.0));
+        assert_eq!(px(640.0, Some(1.0), Some(1.0)), Some(640.0));
+        assert_eq!(frame_px_per_pt(Some(1.0), None), Some(1.0));
+        assert_eq!(frame_px_per_pt(Some(1.0), Some(f64::NAN)), Some(1.0));
+        assert_eq!(frame_px_per_pt(None, Some(0.0)), None);
+    }
 
     #[test]
     fn fit_within_keeps_aspect() {

@@ -155,6 +155,8 @@ pub(crate) struct Shared {
     pub registry: Registry,
     pub state: Mutex<SessionState>,
     pub start_host: AtomicI64,
+    /// `i64::MAX` until the stop time is taken; screen frames from then on are not recorded.
+    pub stop_host: AtomicI64,
     pub tuning: Tuning,
     pub ctl: Sender<Ctl>,
     pub screen_stats: Mutex<Option<Arc<TrackStats>>>,
@@ -163,6 +165,10 @@ pub(crate) struct Shared {
 impl Shared {
     pub(crate) fn start_host(&self) -> i64 {
         self.start_host.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn stop_host(&self) -> i64 {
+        self.stop_host.load(Ordering::Acquire)
     }
 
     pub(crate) fn now(&self) -> i64 {

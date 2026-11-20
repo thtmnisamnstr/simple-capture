@@ -53,6 +53,7 @@ pub fn run_main<T: Send + 'static>(
 ) -> T {
     #[cfg(target_os = "macos")]
     if pump {
+        appkit::init_accessory_app();
         let worker = std::thread::Builder::new()
             .name("sc-cli-worker".to_string())
             .spawn(work)
@@ -68,6 +69,61 @@ pub fn run_main<T: Send + 'static>(
     }
     let _ = pump;
     work()
+}
+
+/// SCK content filters for windows and applications query the window server, which aborts the
+/// process (`CGS_REQUIRE_INIT`) unless this process has an AppKit connection. Accessory policy:
+/// no Dock icon and never focus.
+#[cfg(target_os = "macos")]
+mod appkit {
+    use std::ffi::{CStr, c_char, c_void};
+
+    type Id = *mut c_void;
+    type Sel = *mut c_void;
+
+    #[link(name = "objc")]
+    unsafe extern "C" {
+        fn objc_getClass(name: *const c_char) -> Id;
+        fn sel_registerName(name: *const c_char) -> Sel;
+        fn objc_msgSend();
+    }
+
+    #[link(name = "AppKit", kind = "framework")]
+    unsafe extern "C" {}
+
+    const NS_APP_ACTIVATION_ACCESSORY: isize = 1;
+
+    fn sel(name: &CStr) -> Sel {
+        // SAFETY: registering a selector name is always valid.
+        unsafe { sel_registerName(name.as_ptr()) }
+    }
+
+    /// Main thread only.
+    pub fn init_accessory_app() {
+        // SAFETY: `+[NSApplication sharedApplication]` and `-setActivationPolicy:` with their
+        // documented signatures, on the main thread; nil is checked before use.
+        unsafe {
+            let cls = objc_getClass(c"NSApplication".as_ptr());
+            if cls.is_null() {
+                tracing::warn!("NSApplication class not found");
+                return;
+            }
+            let shared: unsafe extern "C" fn(Id, Sel) -> Id =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            let app = shared(cls, sel(c"sharedApplication"));
+            if app.is_null() {
+                tracing::warn!("NSApplication sharedApplication returned nil");
+                return;
+            }
+            let set_policy: unsafe extern "C" fn(Id, Sel, isize) -> bool =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            set_policy(
+                app,
+                sel(c"setActivationPolicy:"),
+                NS_APP_ACTIVATION_ACCESSORY,
+            );
+        }
+    }
 }
 
 /// The app data folder, shared with the app (Tauri keys it by bundle identifier).

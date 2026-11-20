@@ -252,6 +252,7 @@ pub(crate) fn start(
         registry: Registry::default(),
         state: Mutex::new(SessionState::Preparing),
         start_host: NOT_STARTED.into(),
+        stop_host: i64::MAX.into(),
         tuning: req.tuning.clone(),
         ctl: ctl_tx,
         screen_stats: Mutex::new(None),
@@ -270,6 +271,7 @@ pub(crate) fn start(
     let sink = SessionSink::new(sh.clone(), router_tx.clone());
     sh.rec
         .log(Level::Info, &format!("recording to {}", dir.display()));
+    sh.rec.log(Level::Info, &config_line(&req));
     let mut c = Control {
         sh: sh.clone(),
         req,
@@ -1251,12 +1253,12 @@ impl Control {
         if let Some(s) = c.stream.take() {
             let _ = s.stop();
         }
-        self.finish_cont(c);
+        self.finish_cont(c, None);
         self.sh.notice(Notice::DeviceLost { kind, name });
     }
 
-    fn finish_cont(&mut self, c: Cont) {
-        let _ = c.tx.send(TrackIn::Finish);
+    fn finish_cont(&mut self, c: Cont, end_host: Option<i64>) {
+        let _ = c.tx.send(TrackIn::Finish { end_host });
         match c.join.join() {
             Ok(r) => self.results.push(r),
             Err(_) => self.log(
@@ -1298,7 +1300,7 @@ impl Control {
             let _ = j.join();
         }
         for c in std::mem::take(&mut self.cont) {
-            self.finish_cont(c);
+            self.finish_cont(c, Some(stop_host));
         }
         if let Some((tx, j)) = self.health.take() {
             drop(tx);
@@ -1313,6 +1315,9 @@ impl Control {
         }
         self.sh.set_state(SessionState::Stopping);
         let stop_host = self.sh.now();
+        self.sh
+            .stop_host
+            .store(stop_host, std::sync::atomic::Ordering::Release);
         let start = self.sh.start_host();
         let done = self.shutdown(stop_host);
         if let Some(d) = &done {
@@ -1436,4 +1441,21 @@ fn audio_spec(rate: u32, channels: u16, req: &RecordRequest) -> AudioWriterSpec 
         bitrate: 96_000 * u32::from(channels.clamp(1, 2)),
         fragment_interval_s: req.tuning.fragment_interval_s,
     }
+}
+
+/// The settings a recording was asked for, once at start (the config log the M1 e2e checks).
+pub(crate) fn config_line(req: &RecordRequest) -> String {
+    let v = serde_json::json!({
+        "source": format!("{:?}", req.source),
+        "fps": req.fps,
+        "resolution": req.resolution,
+        "cursor": req.show_cursor,
+        "click_highlight": req.click_highlight,
+        "camera": req.camera,
+        "mic": req.mic,
+        "system_audio": req.system_audio,
+        "aspect": req.canvas.aspect,
+        "excluded_windows": req.exclude.len(),
+    });
+    format!("config {v}")
 }

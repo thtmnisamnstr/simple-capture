@@ -11,3 +11,5 @@ ui/dist/
 ui/node_modules/
 app/binaries/
 app/gen/
+__pycache__/
+*.pyc

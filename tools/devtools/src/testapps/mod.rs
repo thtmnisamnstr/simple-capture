@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! testapps window --color C --title T [--size WxH] [--pos X,Y] [--floating] [--animate]
-//!                 [--close-on-signal USR1] [--second-window-on-signal USR2]
+//!                 [--close-on-signal USR1] [--second-window-on-signal USR2] [--minimized]
 //! testapps tone --hz F [--window] [--title T] [--pos X,Y]
 //! testapps fixture [--out FILE]
 //! ```
