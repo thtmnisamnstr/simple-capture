@@ -207,6 +207,14 @@ if basic("03-sources", log):
         kinds = sorted(str(t.get("kind")) for t in pr["project"]["recording"]["tracks"])
         check("03-sources", "display run has camera, mic and system audio tracks",
               {"camera", "mic", "system_audio"} <= set(kinds), kinds)
+    pr = P.get("drv application")
+    if pr and segments(pr):
+        s = segments(pr)[0]
+        c = s["source"].get("crop_pt")
+        fw, fh = s["frame_px"]["w"], s["frame_px"]["h"]
+        check("03-sources", "application cropped to its windows (ADR-039): frame matches crop_pt aspect",
+              bool(c) and c["w"] > 0 and c["h"] > 0 and abs(fw / fh - c["w"] / c["h"]) < 0.01,
+              {"crop_pt": c, "frame_px": s["frame_px"]})
     pr = P.get("drv region")
     if pr and segments(pr):
         s = segments(pr)[0]

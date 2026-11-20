@@ -2,6 +2,7 @@
 # App-integration driver runs (M1 plan §8.2, §5.4) under the dev host and the live lock.
 #   app/driver/run.sh [FLOW_PREFIX...]   default: every flow
 #   env SC_KEEP_MEDIA=1                  keep recorded media (deleted after the checks otherwise)
+#   env SC_DRV_CAMERA=ID SC_DRV_MIC=ID   devices for the display run (default: the system defaults)
 # Output: target/app-driver/<stamp>/ (logs, project metadata, report.json); exit 0 when every
 # check in check.py passed.
 #
@@ -102,8 +103,8 @@ render 01-onboarding 01-onboarding
 drive 01-onboarding
 DEVS="$(grep -m1 '"line":"cmd list_devices"' "$RUN/01-onboarding.log")"
 pick_dev() { python3 -I -c "import json,sys; d=json.loads(sys.argv[1])['result'][sys.argv[2]]; d=[c for c in d if c.get('is_default')] or d; print(d[0]['id'] if d else '')" "$DEVS" "$1" 2>/dev/null; }
-CAMERA="$(pick_dev cameras)"
-MIC="$(pick_dev mics)"
+CAMERA="${SC_DRV_CAMERA:-$(pick_dev cameras)}"
+MIC="${SC_DRV_MIC:-$(pick_dev mics)}"
 echo "app-driver: camera=${CAMERA:-none} mic=${MIC:-none}" >&2
 
 for f in 02-still-csp 03-sources 04-switch 05-exclusion 06-export 07-sleep 08-quit-recording; do

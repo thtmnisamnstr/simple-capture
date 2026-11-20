@@ -22,6 +22,23 @@ by an agent was deleted after its numbers were taken; nothing recorded is commit
 All numbers come from an Apple M3 Pro (Mac15,6, 18 GB, macOS 26.7.2, one 3024×1964 display at 2×
 during the live M1 runs). **Nothing was measured on the base M1 8 GB target.**
 
+**Owner hands-on, 2026-11-20 (first pass), and fixes:**
+- **Crash on Record with an OBSBOT Tiny 2 camera.** The camera advertises 30 fps as exactly
+  1000000/30000030 s; AVFoundation raised NSInvalidArgumentException for our rounded 1/30 s, and an
+  Objective-C exception reaching Rust aborts the app. Fixed in 9ed2fe5: frame durations come from
+  the device's own ranges, and `objc_try` turns Objective-C exceptions into errors across camera/mic
+  setup and the AVAssetWriter create/start/finish calls. A review found one more raise of the same
+  kind (a mic with 3–8 channels makes AVAssetWriterInput raise); such mics are now downmixed to
+  stereo at capture. Live: all four cameras on the build Mac (OBSBOT, FaceTime HD, EOS Webcam
+  Utility, iPhone) record at ~30 fps; a window recording with the OBSBOT camera and mic plus system
+  audio writes all four tracks.
+- **9:16 fit used the whole display for app sources.** An application source was captured as the
+  whole display with only the app's windows drawn, so every aspect fitted the display width. Now
+  cropped to the union of the app's windows at segment start (ADR-039, merge 324eabd). Live: a
+  Finder app source recorded at 1840×872 instead of 7680×2160, and the 9:16 export fills the
+  canvas width. Window sources were already window-sized. Preview sizes at 1x now match the
+  recorded size for every source kind (e5b93af).
+
 ---
 
 ## 1. M1 exit checklist (M1_PLAN §1), state on 2026-11-20
