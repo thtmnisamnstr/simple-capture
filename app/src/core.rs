@@ -683,9 +683,6 @@ impl Core {
         );
         match session.stop(reason) {
             Ok(summary) => {
-                if reason == StopReason::Sleep {
-                    self.emit("notice", dto::notice(&Notice::StoppedForSleep));
-                }
                 tracing::info!(
                     project = %summary.project_dir.display(),
                     duration_ns = summary.duration_ns,
