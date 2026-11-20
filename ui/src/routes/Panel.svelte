@@ -424,6 +424,9 @@
           <option value={null}>None</option>
           {#each devices.cameras as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
         </select>
+        {#if caps?.mic_modes}
+          <button onclick={() => run(() => api.showVideoEffects())} disabled={!settings.camera}>Video Effects…</button>
+        {/if}
       </div>
       {#if settings.camera}
         {@const k = settings.camera_key}

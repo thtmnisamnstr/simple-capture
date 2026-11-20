@@ -330,6 +330,7 @@ const handlers: Record<string, Handler> = {
   bubble_state: () => ({ geom: null, key: settings.camera_key, shown: false }),
   bubble_drag: () => null,
   camera_key_live: () => null,
+  show_video_effects: () => null,
 };
 
 export const MOCK_COMMANDS = Object.keys(handlers);

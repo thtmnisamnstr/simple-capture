@@ -395,6 +395,17 @@ impl Core {
         Ok(Value::Null)
     }
 
+    pub fn show_video_effects(&self) -> Reply {
+        if !self.platform.capabilities().mic_modes {
+            return Err("video effects are not available on this system".into());
+        }
+        self.platform
+            .camera()
+            .show_video_effects()
+            .map_err(|e| e.to_string())?;
+        Ok(Value::Null)
+    }
+
     pub fn get_settings(&self) -> Reply {
         serde_json::to_value(self.settings.load()).map_err(|e| e.to_string())
     }

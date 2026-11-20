@@ -58,6 +58,7 @@ export const api = {
   bubbleDrag: (phase: 'begin' | 'move' | 'end', x: number, y: number, corner: [number, number] | null = null) =>
     call<BubbleGeom | null>('bubble_drag', { phase, x, y, corner }),
   cameraKeyLive: (key: CameraKey) => call<void>('camera_key_live', { key }),
+  showVideoEffects: () => call<void>('show_video_effects'),
 };
 
 export const COMMANDS = [
@@ -88,6 +89,7 @@ export const COMMANDS = [
   'bubble_state',
   'bubble_drag',
   'camera_key_live',
+  'show_video_effects',
 ] as const;
 
 export function errorText(err: unknown): string {

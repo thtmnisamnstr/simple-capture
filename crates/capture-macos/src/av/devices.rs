@@ -614,11 +614,13 @@ pub(crate) fn start(
 }
 
 pub(crate) fn show_mic_modes() -> Result<()> {
-    let show = || {
+    show_system_ui(AVCaptureSystemUserInterface::MicrophoneModes)
+}
+
+pub(crate) fn show_system_ui(ui: AVCaptureSystemUserInterface) -> Result<()> {
+    let show = move || {
         // SAFETY: AppKit-side system UI request; on the main thread here.
-        unsafe {
-            AVCaptureDevice::showSystemUserInterface(AVCaptureSystemUserInterface::MicrophoneModes)
-        }
+        unsafe { AVCaptureDevice::showSystemUserInterface(ui) }
     };
     if MainThreadMarker::new().is_some() {
         show();

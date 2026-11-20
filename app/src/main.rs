@@ -270,6 +270,7 @@ fn main() {
             commands::bubble_state,
             commands::bubble_drag,
             commands::camera_key_live,
+            commands::show_video_effects,
         ])
         .setup(setup)
         .build(tauri::generate_context!());

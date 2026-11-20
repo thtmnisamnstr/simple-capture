@@ -174,6 +174,10 @@ impl CameraSource for SharedCamera {
         self.platform.camera().devices()
     }
 
+    fn show_video_effects(&self) -> Result<()> {
+        self.platform.camera().show_video_effects()
+    }
+
     fn start(
         &self,
         device_id: &str,

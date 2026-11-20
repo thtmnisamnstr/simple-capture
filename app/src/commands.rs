@@ -10,7 +10,7 @@ use tauri::State;
 use crate::core::{Core, Reply};
 
 #[cfg(test)]
-const COMMANDS: [&str; 27] = [
+const COMMANDS: [&str; 28] = [
     "get_permissions",
     "request_permission",
     "open_permission_settings",
@@ -38,6 +38,7 @@ const COMMANDS: [&str; 27] = [
     "bubble_state",
     "bubble_drag",
     "camera_key_live",
+    "show_video_effects",
 ];
 
 fn snake_to_camel(s: &str) -> String {
@@ -108,6 +109,7 @@ pub fn dispatch(core: &Arc<Core>, name: &str, args: &Value) -> Reply {
         "camera_preview" => core.camera_preview(arg(args, "active")?),
         "bubble_state" => core.bubble_state(),
         "camera_key_live" => core.camera_key_live(arg(args, "key")?),
+        "show_video_effects" => core.show_video_effects(),
         "bubble_drag" => core.bubble_drag(
             &arg::<String>(args, "phase")?,
             arg(args, "x")?,
@@ -281,6 +283,11 @@ pub async fn bubble_drag(
         json!({ "phase": phase, "x": x, "y": y, "corner": corner }),
     )
     .await
+}
+
+#[tauri::command]
+pub async fn show_video_effects(core: State<'_, Arc<Core>>) -> Reply {
+    run(core, "show_video_effects", Value::Null).await
 }
 
 #[tauri::command]

@@ -12,6 +12,7 @@ mod writer;
 use std::path::Path;
 use std::sync::Arc;
 
+use objc2_av_foundation::AVCaptureSystemUserInterface;
 use sc_geometry::SizePx;
 use sc_platform::{
     AudioReader, AudioSource, AudioWriterSpec, CameraLimit, CameraSource, CaptureDevice, Decoder,
@@ -70,6 +71,9 @@ impl CameraSource for MacCamera {
         sink: Arc<dyn FrameSink>,
     ) -> Result<Box<dyn DeviceStream>> {
         devices::start(DeviceKind::Camera, device_id, Some(limit), sink)
+    }
+    fn show_video_effects(&self) -> Result<()> {
+        devices::show_system_ui(AVCaptureSystemUserInterface::VideoEffects)
     }
 }
 

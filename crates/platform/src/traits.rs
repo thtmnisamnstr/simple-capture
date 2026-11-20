@@ -100,6 +100,10 @@ pub trait CameraSource: Send + Sync {
         limit: CameraLimit,
         sink: Arc<dyn FrameSink>,
     ) -> Result<Box<dyn DeviceStream>>;
+    /// The system's camera effects panel (macOS Video Effects); main-queue hop.
+    fn show_video_effects(&self) -> Result<()> {
+        Err(crate::Error::Unsupported("camera video effects"))
+    }
 }
 
 pub trait SourcePicker: Send + Sync {
