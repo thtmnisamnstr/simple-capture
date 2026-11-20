@@ -106,10 +106,11 @@ jobs:
         uses: ./.github/actions/skia-cache
         with:
           mode: restore
-      - name: LLVM >= 22 for a cold Skia build (Windows)
+      - name: LLVM >= 22 for the Skia build (Windows)
         # windows-2025's MSVC STL (VS 18, 14.5x) rejects clang-cl older than 22 (STL1000) and the
-        # image ships LLVM 20. Only a Skia cache miss compiles C++, so only then upgrade.
-        if: runner.os == 'Windows' && steps.skia.outputs.cache-hit != 'true'
+        # image ships LLVM 20. Cargo can rebuild skia-bindings even on a Skia cache hit (run
+        # 44725678951 did), so upgrade on every Windows run.
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           choco upgrade llvm --version=22.1.8 --no-progress -y
