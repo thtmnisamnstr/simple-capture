@@ -6,7 +6,8 @@ pub const TONE_SNR: f64 = 4.0;
 pub const TONE_MIN_AMP: f64 = 1e-3;
 pub const FLASH_MIN_STEP: f64 = 20.0;
 pub const CAMERA_SIGMAS: f64 = 5.0;
-pub const CAMERA_MIN_STEP: f64 = 0.3;
+pub const CAMERA_ONSET_FRAC: f64 = 0.1;
+pub const CAMERA_MIN_STEP: f64 = 0.1;
 
 pub fn goertzel_series(x: &[f32], rate: u32, freq: f64, win: usize, hop: usize) -> Vec<f64> {
     if win == 0 || hop == 0 || x.len() < win {
@@ -109,7 +110,8 @@ impl StepOnset {
 }
 
 /// Screen capture sends frames only on change, so an empty baseline range falls back to the
-/// last frame before `from_ns`.
+/// last frame before `from_ns`. The onset is the first sample `frac` of the way up the step: the
+/// camera's luma ramps over a few hundred ms, so it uses a small `frac` to catch the first rise.
 pub fn step_onset(
     series: &[(i64, f64)],
     base_from_ns: i64,
@@ -117,6 +119,7 @@ pub fn step_onset(
     to_ns: i64,
     min_step: f64,
     sigmas: f64,
+    frac: f64,
 ) -> Found<StepOnset> {
     let a = series.partition_point(|s| s.0 < from_ns);
     let b = series.partition_point(|s| s.0 < to_ns);
@@ -144,7 +147,7 @@ pub fn step_onset(
             noise: sd,
         };
     }
-    let thr = baseline + 0.5 * step;
+    let thr = baseline + (frac * step).max(3.0 * sd);
     let t_ns = series[a..b]
         .iter()
         .find(|s| s.1 >= thr)
@@ -305,8 +308,15 @@ mod tests {
             (2_043_000_000, 235.0),
             (2_110_000_000, 16.0),
         ];
-        let Found::Yes(o) = step_onset(&s, 1_500_000_000, 1_700_000_000, 2_800_000_000, 20.0, 0.0)
-        else {
+        let Found::Yes(o) = step_onset(
+            &s,
+            1_500_000_000,
+            1_700_000_000,
+            2_800_000_000,
+            20.0,
+            0.0,
+            0.5,
+        ) else {
             panic!("no step");
         };
         assert_eq!(o.t_ns, 2_010_000_000);
@@ -320,14 +330,35 @@ mod tests {
             .map(|i| (i * 33_000_000, if i % 2 == 0 { 50.0 } else { 54.0 }))
             .collect();
         s.push((2_000_000_000, 57.0));
-        let r = step_onset(&s, 0, 1_990_000_000, 2_500_000_000, 1.5, 5.0);
+        let r = step_onset(&s, 0, 1_990_000_000, 2_500_000_000, 1.5, 5.0, 0.5);
         assert!(matches!(r, Found::No { .. }), "{r:?}");
         s.push((2_033_000_000, 90.0));
-        let Found::Yes(o) = step_onset(&s, 0, 1_990_000_000, 2_500_000_000, 1.5, 5.0) else {
+        let Found::Yes(o) = step_onset(&s, 0, 1_990_000_000, 2_500_000_000, 1.5, 5.0, 0.5) else {
             panic!("no step");
         };
         assert_eq!(o.t_ns, 2_033_000_000);
         assert!(o.noise_sd > 1.0 && o.step() > 30.0, "{o:?}");
+    }
+
+    #[test]
+    fn step_onset_catches_the_first_rise_of_a_ramp() {
+        let mut s: Vec<(i64, f64)> = (0..30)
+            .map(|i| (i * 33_000_000, 18.70 + 0.01 * (i % 3) as f64))
+            .collect();
+        for (k, v) in [18.74, 18.78, 18.82, 18.85, 18.89, 18.92, 18.94]
+            .iter()
+            .enumerate()
+        {
+            s.push((1_000_000_000 + k as i64 * 33_000_000, *v));
+        }
+        let Found::Yes(o) = step_onset(&s, 0, 950_000_000, 2_000_000_000, 0.1, 5.0, 0.1) else {
+            panic!("no step");
+        };
+        assert_eq!(o.t_ns, 1_000_000_000);
+        let Found::Yes(half) = step_onset(&s, 0, 950_000_000, 2_000_000_000, 0.1, 5.0, 0.5) else {
+            panic!("no step");
+        };
+        assert_eq!(half.t_ns, 1_099_000_000);
     }
 
     #[test]

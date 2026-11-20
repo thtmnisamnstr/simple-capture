@@ -7,8 +7,8 @@ use sc_decode::TrackAudio;
 use sc_platform::{Decoder, FrameBuffer};
 
 use super::detect::{
-    CAMERA_MIN_STEP, CAMERA_SIGMAS, FLASH_MIN_STEP, Found, GOERTZEL_HOP_S, GOERTZEL_MIC_WIN_S,
-    GOERTZEL_WIN_S, TONE_HZ, goertzel_series, step_onset, tone_onset,
+    CAMERA_MIN_STEP, CAMERA_ONSET_FRAC, CAMERA_SIGMAS, FLASH_MIN_STEP, Found, GOERTZEL_HOP_S,
+    GOERTZEL_MIC_WIN_S, GOERTZEL_WIN_S, TONE_HZ, goertzel_series, step_onset, tone_onset,
 };
 use super::report::{
     EventResult, Report, camera_verdict, mic_verdict, recommendation, render_text, summarize,
@@ -35,7 +35,14 @@ pub fn run(o: &Opts) -> Result<()> {
         serde_json::from_str(&text).with_context(|| format!("parsing {log_path}"))?;
     let dir = PathBuf::from(dir);
     let project = load(&dir)?;
-    let mut r = analyze(&dir, &project, &log, sc_capture_macos::decoder())?;
+    let dump = o.get("dump").map(PathBuf::from);
+    let mut r = analyze(
+        &dir,
+        &project,
+        &log,
+        sc_capture_macos::decoder(),
+        dump.as_deref(),
+    )?;
     r.log = log_path.to_string();
     print!("{}", render_text(&r));
     if let Some(out) = o.get("json") {
@@ -248,6 +255,14 @@ impl Tone {
     }
 }
 
+fn write_csv(path: &Path, series: &[(i64, f64)]) -> Result<()> {
+    let mut text = String::from("rec_s,luma\n");
+    for (t, v) in series {
+        text.push_str(&format!("{:.6},{v:.3}\n", *t as f64 / 1e9));
+    }
+    std::fs::write(path, text).with_context(|| format!("writing {}", path.display()))
+}
+
 fn db(peak: f64, noise: f64) -> f64 {
     (20.0 * (peak / noise.max(1e-7)).log10() * 10.0).round() / 10.0
 }
@@ -261,6 +276,7 @@ pub fn analyze(
     project: &ProjectV1,
     log: &FlashLog,
     dec: Arc<dyn Decoder>,
+    dump: Option<&Path>,
 ) -> Result<Report> {
     let start = project.recording.start_host_ns;
     let duration = project
@@ -290,6 +306,10 @@ pub fn analyze(
         },
         None => None,
     };
+    if let Some(d) = dump {
+        write_csv(&d.join("screen.csv"), &screen)?;
+        write_csv(&d.join("camera.csv"), cam.as_deref().unwrap_or_default())?;
+    }
 
     let mut events = Vec::new();
     for ie in &log.events {
@@ -315,6 +335,7 @@ pub fn analyze(
             e + 800 * MS,
             FLASH_MIN_STEP,
             0.0,
+            0.5,
         ) {
             Found::Yes(o) => {
                 r.video_s = Some(secs(o.t_ns));
@@ -358,6 +379,7 @@ pub fn analyze(
                 e + S,
                 CAMERA_MIN_STEP,
                 CAMERA_SIGMAS,
+                CAMERA_ONSET_FRAC,
             ) {
                 Found::Yes(o) => {
                     r.camera_s = Some(secs(o.t_ns));

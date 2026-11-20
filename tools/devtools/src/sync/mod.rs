@@ -3,7 +3,7 @@
 //! ```text
 //! sync flashbeep --schedule T[:LABEL],... [--fullscreen-at T[:LABEL],...] --out LOG.json
 //!                [--start-on-signal] [--pos X,Y] [--size WxH] [--linger S]
-//! sync analyze PROJECT --log LOG.json [--json OUT.json]
+//! sync analyze PROJECT --log LOG.json [--json OUT.json] [--dump DIR (screen.csv, camera.csv)]
 //! sync summarize REPORT.json...
 //! sync clap PROJECT [--from S] [--to S] [--json OUT.json]
 //! ```
