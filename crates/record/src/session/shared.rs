@@ -155,7 +155,8 @@ pub(crate) struct Shared {
     pub registry: Registry,
     pub state: Mutex<SessionState>,
     pub start_host: AtomicI64,
-    /// `i64::MAX` until the stop time is taken; screen frames from then on are not recorded.
+    /// `i64::MAX` until the stop time is known: at the start for a request with a duration, else
+    /// at the stop. Screen frames from then on are not recorded.
     pub stop_host: AtomicI64,
     pub tuning: Tuning,
     pub ctl: Sender<Ctl>,

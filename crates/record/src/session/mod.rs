@@ -41,6 +41,9 @@ pub struct RecordRequest {
     pub canvas: Canvas,
     pub background_image: Option<PathBuf>,
     pub exclude: Vec<WindowId>,
+    /// Length of the recording on its own clock. Screen frames from then on are not recorded,
+    /// and a `stop` that comes later still ends the recording there. The caller still stops it.
+    pub duration_ns: Option<i64>,
     pub tuning: Tuning,
 }
 

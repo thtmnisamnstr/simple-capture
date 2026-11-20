@@ -108,6 +108,7 @@ fn request(dir: &Path, source: SourceSpec) -> RecordRequest {
         canvas,
         background_image: None,
         exclude: Vec::new(),
+        duration_ns: None,
         tuning: Tuning::default(),
     }
 }
@@ -1363,6 +1364,106 @@ fn segments_span_exactly_zero_to_the_stop() {
             "{segs:?}"
         );
     }
+}
+
+/// Regression (CI cli `synthetic_record_with_switch`): `record --duration 3` exported 3.066 s,
+/// because the stop was taken when the late caller got to it, not at the requested length. With
+/// `duration_ns` the length is exact however late the stop comes, and the segments still tile it.
+#[test]
+fn duration_is_exact_when_the_stop_comes_late() {
+    let runs: Vec<_> = (0..4i64)
+        .map(|i| {
+            std::thread::spawn(move || {
+                let dir = tmp(&format!("late_stop_{i}"));
+                let p = platform(
+                    Scenario::new()
+                        .screen(
+                            "a",
+                            ScreenScript {
+                                size: size(320, 180),
+                                ..Default::default()
+                            },
+                        )
+                        .screen(
+                            "b",
+                            ScreenScript {
+                                size: size(256, 144),
+                                ..Default::default()
+                            },
+                        )
+                        .mic(Some(mic())),
+                );
+                let want = (900 + 37 * i) * MS;
+                let mut req = request(&dir, display_spec("a", None));
+                req.mic = Some(sc_platform::synthetic::MIC_DEVICE_ID.into());
+                req.duration_ns = Some(want);
+                let s = Session::start(as_dyn(&p), req, Arc::new(Obs::default())).expect("start");
+                let pdir = s.project_dir().to_path_buf();
+                sleep_host(&*p, 400 * MS);
+                s.switch_source(display_spec("b", None), Via::OwnChooser)
+                    .expect("switch");
+                sleep_host(&*p, want - 400 * MS + (100 + 150 * i) * MS);
+                let sum = s.stop(StopReason::Duration).expect("stop");
+                assert_eq!(sum.duration_ns, want);
+                let proj = ProjectV1::load(&pdir).expect("load");
+                assert_eq!(proj.duration_ns(), Some(want));
+                assert_eq!(
+                    proj.recording.stop_host_ns,
+                    Some(proj.recording.start_host_ns + want)
+                );
+                let segs = &proj.recording.screen.segments;
+                assert_eq!(segs[0].start_rec_ns, 0, "{segs:?}");
+                for w in segs.windows(2) {
+                    assert_eq!(w[0].end_rec_ns, Some(w[1].start_rec_ns), "{segs:?}");
+                }
+                assert_eq!(
+                    segs.last().and_then(|s| s.end_rec_ns),
+                    Some(want),
+                    "{segs:?}"
+                );
+                check_segments(&proj, &pdir, &*p.decoder());
+                let mic = proj
+                    .recording
+                    .tracks
+                    .iter()
+                    .find(|t| t.id == "mic")
+                    .expect("mic track");
+                let end = mic.first_sample_offset_ns + mic.duration_ns.expect("mic duration");
+                assert!((end - want).abs() <= MS, "mic ends at {end}, want {want}");
+            })
+        })
+        .collect();
+    for r in runs {
+        r.join().expect("run");
+    }
+}
+
+/// A stop before the requested length ends the recording at the stop.
+#[test]
+fn stop_before_the_duration_ends_there() {
+    let dir = tmp("early_stop");
+    let p = platform(Scenario::new().screen(
+        "main",
+        ScreenScript {
+            size: size(320, 180),
+            ..Default::default()
+        },
+    ));
+    let mut req = request(&dir, display_spec("main", None));
+    req.duration_ns = Some(10_000 * MS);
+    let s = Session::start(as_dyn(&p), req, Arc::new(Obs::default())).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 500 * MS);
+    let sum = s.stop(StopReason::User).expect("stop");
+    assert!(
+        sum.duration_ns >= 500 * MS && sum.duration_ns < 5_000 * MS,
+        "{}",
+        sum.duration_ns
+    );
+    let proj = ProjectV1::load(&pdir).expect("load");
+    let segs = &proj.recording.screen.segments;
+    assert_eq!(segs.last().and_then(|s| s.end_rec_ns), proj.duration_ns());
+    check_segments(&proj, &pdir, &*p.decoder());
 }
 
 /// Hosted CI runners are slow and shared: real-time limits get 100 ms more there.

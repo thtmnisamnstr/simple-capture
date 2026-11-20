@@ -210,6 +210,7 @@ fn build_request(platform: &dyn Platform, plan: &Plan) -> Result<RecordRequest, 
         canvas,
         background_image,
         exclude: Vec::new(),
+        duration_ns: a.duration_s.map(|d| (d * 1e9).round() as i64),
         tuning: Tuning::default(),
     })
 }
