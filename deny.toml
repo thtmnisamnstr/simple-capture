@@ -23,7 +23,18 @@ confidence-threshold = 0.9
 exceptions = [
     { allow = ["WTFPL"], crate = "ffmpeg-next" },
     { allow = ["WTFPL"], crate = "ffmpeg-sys-next" },
+    # MPL-2.0, unavoidable with Tauri 2 (ADR-004), used unmodified (file-level copyleft only):
+    # tauri-utils -> dom_query -> cssparser, cssparser-macros, selectors, dtoa-short (HTML/CSP
+    # processing of the bundled UI), and tauri -> dirs -> dirs-sys -> option-ext.
+    { allow = ["MPL-2.0"], crate = "cssparser" },
+    { allow = ["MPL-2.0"], crate = "cssparser-macros" },
+    { allow = ["MPL-2.0"], crate = "selectors" },
+    { allow = ["MPL-2.0"], crate = "dtoa-short" },
+    { allow = ["MPL-2.0"], crate = "option-ext" },
 ]
+
+[licenses.private]
+ignore = true
 
 [bans]
 deny = [
@@ -38,7 +49,25 @@ deny = [
     { crate = "cap-mediafoundation-utils" },
     { crate = "cap-cursor-info" },
     { crate = "cap-cpal-ffmpeg" },
+    # No HTTP clients or servers in the app (M1 plan, wp-ci). Tauri lists reqwest/hyper only for
+    # Android and iOS, which are outside [graph] targets; scripts/ci/deny.sh proves with
+    # `cargo tree --target <each desktop target> -i <crate>` that nothing builds them.
+    { crate = "reqwest" },
+    { crate = "hyper" },
+    { crate = "ureq" },
+    { crate = "isahc" },
+    { crate = "curl" },
+    { crate = "curl-sys" },
+    { crate = "attohttpc" },
+    { crate = "surf" },
 ]
+multiple-versions = "allow"
+wildcards = "allow"
+
+[advisories]
+unmaintained = "workspace"
+yanked = "deny"
+ignore = []
 
 [sources]
 unknown-registry = "deny"

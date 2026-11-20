@@ -1,0 +1,38 @@
+name: macos-helpers
+description: >-
+  Restore (or build once) the static FFmpeg helper in third_party/out/macos-arm64, keyed by the
+  pinned sources and the build scripts, then set SC_REQUIRE_HELPERS=1 so helper tests cannot skip.
+runs:
+  using: composite
+  steps:
+    - name: Helper cache
+      id: cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: third_party/out/macos-arm64
+        key: helpers-macos-arm64-${{ hashFiles('third_party/versions.toml', 'third_party/lib.sh', 'third_party/fetch.sh', 'third_party/ffmpeg/build-macos.sh') }}
+
+    - name: Build helper (cache miss)
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+      run: |
+        brew install nasm pkgconf cmake
+        third_party/fetch.sh
+        third_party/ffmpeg/build-macos.sh arm64
+
+    - name: Save helper
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: third_party/out/macos-arm64
+        key: ${{ steps.cache.outputs.cache-primary-key }}
+
+    - name: Require helper
+      shell: bash
+      run: |
+        test -x third_party/out/macos-arm64/ffmpeg
+        test -x third_party/out/macos-arm64/ffprobe
+        third_party/out/macos-arm64/ffmpeg -hide_banner -version | head -n 1
+        echo "SC_REQUIRE_HELPERS=1" >> "$GITHUB_ENV"

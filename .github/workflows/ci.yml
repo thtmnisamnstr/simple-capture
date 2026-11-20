@@ -1,15 +1,35 @@
 name: ci
 
+# M1 plan §6.4. Local equivalent: `just ci-local` (scripts/ci/ci-local.sh).
+#   fast      per OS: fmt, clippy and tests for every crate that links neither Skia nor Tauri,
+#             plus `cli --no-default-features`
+#   full      per OS: Skia FreeType source build (cached apart from target/), Tauri app, UI build,
+#             clippy and tests for the whole workspace
+#   licenses  cargo-deny (+ per-target HTTP-client and ffmpeg-next checks), npm licenses,
+#             network check, cargo-about notices
+#   ui        svelte-check, build, node tests
+# Runner switches: macOS sets SC_ALLOW_NO_HW_ENCODER=1 (visible warning) and SC_REQUIRE_HELPERS=1
+# with the cached FFmpeg helper; Ubuntu sets SC_REQUIRE_GPU=1 (lavapipe). Windows and macOS
+# runners have no wgpu adapter we rely on, so GPU tests may print SKIPPED: there.
+
 on:
   push:
     branches: [main, m1]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  NODE_VERSION: "26"
+  PNPM_VERSION: "12.21.0"
   FAST_PACKAGES: >-
     -p simple-capture-geometry -p simple-capture-core -p simple-capture-platform
     -p simple-capture-capture-macos -p simple-capture-capture-windows -p simple-capture-capture-linux
@@ -24,23 +44,107 @@ jobs:
       matrix:
         os: [macos-15, windows-2025, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Toolchain (rust-toolchain.toml)
-        run: rustup show active-toolchain
+      - uses: ./.github/actions/setup
+      - if: runner.os == 'macOS'
+        uses: ./.github/actions/macos-helpers
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
         shell: bash
         run: |
+          # shellcheck disable=SC2086 # FAST_PACKAGES is a list of -p flags
           cargo clippy --locked $FAST_PACKAGES --all-targets -- -D warnings
           cargo clippy --locked -p simple-capture-cli --no-default-features --all-targets -- -D warnings
       - name: test
         shell: bash
         run: |
+          # shellcheck disable=SC2086
           cargo test --locked $FAST_PACKAGES
           cargo test --locked -p simple-capture-cli --no-default-features
+
+  full:
+    name: full (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    # A cold Skia FreeType build takes 20-40 min on a hosted runner; cached runs are far shorter.
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+        with:
+          full: "true"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: UI build (Tauri embeds ui/dist)
+        shell: bash
+        run: |
+          npm install -g "pnpm@$PNPM_VERSION"
+          pnpm --dir ui install --frozen-lockfile
+          pnpm --dir ui build
+      - name: Skia prebuilt fallback (Q10, Windows only, opt-in)
+        # Owner answer Q10: if the FreeType source build fails on the Windows runner, Windows CI
+        # may use skia-safe's prebuilt binaries until it is fixed (logged in STATUS as open).
+        # Enable with the repository variable SC_WINDOWS_SKIA_PREBUILT=1.
+        if: runner.os == 'Windows' && vars.SC_WINDOWS_SKIA_PREBUILT == '1'
+        shell: bash
+        run: |
+          sed -i '/^FORCE_SKIA_BUILD/d; /^SKIA_GN_ARGS/d' .cargo/config.toml
+          echo "::warning title=Skia::Windows CI uses skia-safe prebuilt binaries (Q10 fallback), not the FreeType source build"
+      - id: skia
+        uses: ./.github/actions/skia-cache
+        with:
+          mode: restore
+      - if: runner.os == 'macOS'
+        uses: ./.github/actions/macos-helpers
+      - name: clippy (builds Skia)
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Save Skia build
+        if: always() && steps.skia.outputs.cache-hit != 'true'
+        uses: ./.github/actions/skia-cache
+        with:
+          mode: save
+      - name: test
+        run: cargo test --locked --workspace
+
+  licenses:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - name: cargo-deny and cargo-about cache
+        id: tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/bin/cargo-about
+          key: cargo-tools-${{ runner.os }}-deny-0.22.0-about-0.9.3
+      - name: Install cargo-deny 0.22.0 and cargo-about 0.9.3
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install --locked cargo-deny@0.22.0
+          cargo install --locked cargo-about@0.9.3 --features cli
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install -g "pnpm@$PNPM_VERSION"
+      - run: pnpm --dir ui install --frozen-lockfile
+      - name: cargo-deny, ffmpeg-next and HTTP-client checks
+        run: scripts/ci/deny.sh
+      - name: npm licenses
+        run: scripts/ci/licenses.sh
+      - name: network check
+        run: scripts/ci/netcheck.sh
+      - name: third-party notices (cargo-about)
+        run: scripts/ci/notices.sh
 
   ui:
     runs-on: ubuntu-24.04
@@ -49,8 +153,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 26
-      - run: npm install -g pnpm@12.21.0
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install -g "pnpm@$PNPM_VERSION"
       - run: pnpm --dir ui install --frozen-lockfile
       - run: pnpm --dir ui check
       - run: pnpm --dir ui build
