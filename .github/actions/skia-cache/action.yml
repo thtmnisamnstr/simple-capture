@@ -1,0 +1,46 @@
+name: skia-cache
+description: >-
+  Cache the Skia FreeType source build (ADR-018) separately from target/: the skia-bindings crate
+  source (Skia plus the third-party sources its build syncs) and its build-script output, keyed by
+  skia-bindings version + .cargo/config.toml (FORCE_SKIA_BUILD, SKIA_GN_ARGS) + OS. Both halves
+  are restored together so ninja's timestamps stay consistent and the rebuild is a no-op.
+  mode=restore before the first cargo build; mode=save right after it (runs even if later steps
+  fail, so a red test run still keeps the 20-40 min Skia build).
+inputs:
+  mode:
+    description: restore | save
+    required: true
+outputs:
+  cache-hit:
+    description: "'true' when restore found an exact match"
+    value: ${{ steps.restore.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - name: Cache key
+      id: key
+      shell: bash
+      run: |
+        v=$(grep -A1 '^name = "skia-bindings"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+        test -n "$v"
+        echo "version=$v" >> "$GITHUB_OUTPUT"
+        echo "key=skia-$RUNNER_OS-$RUNNER_ARCH-$v-${{ hashFiles('.cargo/config.toml') }}" >> "$GITHUB_OUTPUT"
+
+    - name: Restore Skia build
+      id: restore
+      if: inputs.mode == 'restore'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cargo/registry/src/*/skia-bindings-${{ steps.key.outputs.version }}
+          ${{ env.CARGO_TARGET_DIR }}/debug/build/skia-bindings-*/out
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Save Skia build
+      if: inputs.mode == 'save'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.cargo/registry/src/*/skia-bindings-${{ steps.key.outputs.version }}
+          ${{ env.CARGO_TARGET_DIR }}/debug/build/skia-bindings-*/out
+        key: ${{ steps.key.outputs.key }}
