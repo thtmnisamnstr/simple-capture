@@ -1,6 +1,4 @@
 //! Hand-written argument parser (ported in spirit from spike 3's `Args`; no clap).
-// Fields are consumed by the command bodies wp-cli writes.
-#![allow(dead_code)]
 
 use std::path::PathBuf;
 
@@ -25,6 +23,8 @@ usage: simple-capture <command> [options]   (all commands accept --json and --pl
 SPEC := display[:ID|main|N] | window:ID | window-title:SUBSTRING
         | app:BUNDLE_ID[@DISPLAY] | app-pid:PID[@DISPLAY]
         | region:DISPLAY:X,Y,W,H | synthetic:NAME[:WxH]
+        DISPLAY is main, a display ID, or else a 1-based index; region X,Y,W,H are display-local
+        points from the top-left. --own-test-window T=SECONDS shows a panel at T for SECONDS.
 BG   := solid:#RRGGBB | linear:DEG:#RRGGBB@0,#RRGGBB@1[,...] | radial:CX,CY,R:#RRGGBB@0,... | image:PATH";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,8 +74,8 @@ pub struct RecordArgs {
     pub title: Option<String>,
     pub projects_dir: Option<PathBuf>,
     pub events: bool,
-    /// (title, seconds); debug builds only.
-    pub own_test_windows: Vec<(String, f64)>,
+    /// (seconds after start, seconds shown); macOS debug builds only.
+    pub own_test_windows: Vec<(f64, f64)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -312,7 +312,7 @@ fn parse_record(c: &mut Cursor) -> Result<RecordArgs, String> {
             "--events" => r.events = true,
             "--own-test-window" => {
                 let (t, secs) = split_eq(a, c.value(a)?)?;
-                r.own_test_windows.push((t.to_string(), num(a, secs)?));
+                r.own_test_windows.push((num(a, t)?, num(a, secs)?));
             }
             other => return Err(format!("record: unknown argument {other:?}")),
         }
