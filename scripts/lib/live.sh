@@ -4,6 +4,7 @@
 #   scripts/lib/live.sh CMD [ARGS...]     lock, banner, caffeinate, envcheck, run CMD, unlock
 #   scripts/lib/live.sh fixture start     start the fixture test apps (prints SC_FIXTURE=path)
 #   scripts/lib/live.sh fixture stop
+#   scripts/lib/live.sh fixture run CMD [ARGS...]   start the fixture, run CMD, stop the fixture
 #   source scripts/lib/live.sh            defines live_lock, live_unlock, live_envcheck,
 #                                         fixture_start (exports SC_FIXTURE), fixture_stop
 #
@@ -14,7 +15,11 @@
 # titles and window IDs to FILE once its windows are up and runs until SIGTERM.
 
 LIVE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-LIVE_LOCK="$LIVE_ROOT/target/live.lock"
+# The lock lives in the main checkout's target dir so that every worktree (.wt/<id>) shares it.
+LIVE_MAIN_ROOT="$(git -C "$LIVE_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+LIVE_MAIN_ROOT="${LIVE_MAIN_ROOT%/.git}"
+[ -d "$LIVE_MAIN_ROOT" ] || LIVE_MAIN_ROOT="$LIVE_ROOT"
+LIVE_LOCK="$LIVE_MAIN_ROOT/target/live.lock"
 LIVE_DIR="$LIVE_ROOT/target/live"
 
 live_banner() {
@@ -39,7 +44,7 @@ live_lock() {
     return 0
   fi
   LIVE_LOCK_NESTED=0
-  mkdir -p "$LIVE_ROOT/target"
+  mkdir -p "$LIVE_MAIN_ROOT/target"
   local waited=0 limit="${SC_LIVE_LOCK_WAIT_S:-1800}" owner
   while ! mkdir "$LIVE_LOCK" 2>/dev/null; do
     owner=$(cat "$LIVE_LOCK/pid" 2>/dev/null)
@@ -118,7 +123,23 @@ live_main() {
     case "${2:-}" in
       start) fixture_start && echo "SC_FIXTURE=$SC_FIXTURE" ;;
       stop) fixture_stop ;;
-      *) echo "usage: scripts/lib/live.sh fixture start|stop" >&2; return 2 ;;
+      run)
+        shift 2
+        fixture_start || return 1
+        "$@" &
+        LIVE_CHILD=$!
+        trap 'kill -TERM "$LIVE_CHILD" 2>/dev/null' INT TERM HUP
+        local rc
+        while :; do
+          wait "$LIVE_CHILD"
+          rc=$?
+          kill -0 "$LIVE_CHILD" 2>/dev/null || break
+        done
+        trap - INT TERM HUP
+        fixture_stop
+        return "$rc"
+        ;;
+      *) echo "usage: scripts/lib/live.sh fixture start|stop|run CMD..." >&2; return 2 ;;
     esac
     return
   fi

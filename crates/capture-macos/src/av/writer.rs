@@ -19,12 +19,12 @@ use objc2_av_foundation::{
     AVVideoYCbCrMatrix_ITU_R_709_2, AVVideoYCbCrMatrixKey,
 };
 use objc2_core_foundation::CFRetained;
-use objc2_core_media::CMTime;
+use objc2_core_media::{CMSampleBuffer, CMTime};
 use objc2_core_video::{
     CVPixelBuffer, CVPixelBufferGetBaseAddressOfPlane, CVPixelBufferGetBytesPerRowOfPlane,
-    CVPixelBufferGetHeightOfPlane, CVPixelBufferGetWidthOfPlane, CVPixelBufferLockBaseAddress,
-    CVPixelBufferLockFlags, CVPixelBufferPool, CVPixelBufferUnlockBaseAddress,
-    kCVPixelBufferHeightKey, kCVPixelBufferIOSurfacePropertiesKey,
+    CVPixelBufferGetHeightOfPlane, CVPixelBufferGetPixelFormatType, CVPixelBufferGetWidthOfPlane,
+    CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags, CVPixelBufferPool,
+    CVPixelBufferUnlockBaseAddress, kCVPixelBufferHeightKey, kCVPixelBufferIOSurfacePropertiesKey,
     kCVPixelBufferPixelFormatTypeKey, kCVPixelBufferWidthKey,
 };
 use objc2_foundation::{NSDictionary, NSString, NSURL};
@@ -490,8 +490,16 @@ impl TrackWriter for VideoWriter {
             return Ok(Append::NotReady);
         }
         let frame = &*f.buffer.0;
+        let sck_pb = frame
+            .as_any()
+            .downcast_ref::<CFRetained<CMSampleBuffer>>()
+            // SAFETY: valid sample buffer; the getter returns a +1 reference or None.
+            .and_then(|sb| unsafe { sb.image_buffer() })
+            .filter(|pb| CVPixelBufferGetPixelFormatType(pb) == PIX_420V);
         if let Some(m) = frame.as_any().downcast_ref::<MacPixelFrame>() {
             self.append_pixel_buffer(m.pixel_buffer(), file_ns)?;
+        } else if let Some(pb) = sck_pb {
+            self.append_pixel_buffer(&pb, file_ns)?;
         } else {
             let pb = self.copy_frame(frame)?;
             self.append_pixel_buffer(&pb, file_ns)?;
@@ -633,13 +641,16 @@ impl TrackWriter for AudioWriter {
         }
         match &a.data {
             AudioData::Native(n) => {
-                let s = n
-                    .as_any()
-                    .downcast_ref::<MacAudioSample>()
-                    .ok_or(Error::Unsupported(
-                        "MacWriterFactory: native audio must be a MacAudioSample",
-                    ))?;
-                let sb = s.sample_buffer();
+                let any = n.as_any();
+                let sb: &CMSampleBuffer = if let Some(s) = any.downcast_ref::<MacAudioSample>() {
+                    s.sample_buffer()
+                } else if let Some(sb) = any.downcast_ref::<CFRetained<CMSampleBuffer>>() {
+                    sb
+                } else {
+                    return Err(Error::Unsupported(
+                        "MacWriterFactory: native audio must be a MacAudioSample or SCK buffer",
+                    ));
+                };
                 // SAFETY: valid sample buffer.
                 let (desc, n) = unsafe { (sb.format_description(), sb.num_samples()) };
                 let desc = desc.ok_or_else(|| Error::Other("audio buffer has no format".into()))?;

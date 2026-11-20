@@ -1,8 +1,9 @@
 #!/bin/bash
 # just test-live PKG PREFIX [FILTER...]
 # Builds PKG's test binaries, picks those whose target name starts with PREFIX and runs each under
-# scripts/lib/live.sh + the dev host with SC_LIVE=1. libtest targets get
-# `--ignored --test-threads=1 FILTER...`; harness = false targets get the filters only.
+# scripts/lib/live.sh + the dev host with SC_LIVE=1, with the fixture apps running (SC_LIVE_FIXTURE=0
+# skips them). libtest targets get `--ignored --test-threads=1 FILTER...`; harness = false targets
+# get the filters only.
 # Fails when 0 tests ran or any failed (M1 plan §2 rule 3).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -49,7 +50,13 @@ while IFS=$'\t' read -r MANIFEST NAME BIN; do
     ARGS=(${FILTERS[@]+"${FILTERS[@]}"})
   fi
   echo "test-live: $PKG/$NAME ${ARGS[*]-}" >&2
-  (cd "$DIR" && SC_LIVE=1 "$ROOT/scripts/lib/live.sh" "$ROOT/tools/macos-dev-host/run.sh" "$BIN" ${ARGS[@]+"${ARGS[@]}"}) 2>&1 | tee "$LOG"
+  # The fixture apps start inside the live lock but outside the dev host, unless the caller
+  # already provides SC_FIXTURE or opts out with SC_LIVE_FIXTURE=0.
+  FIXTURE=()
+  if [ -z "${SC_FIXTURE:-}" ] && [ "${SC_LIVE_FIXTURE:-1}" != 0 ]; then
+    FIXTURE=("$ROOT/scripts/lib/live.sh" fixture run)
+  fi
+  (cd "$DIR" && SC_LIVE=1 "$ROOT/scripts/lib/live.sh" ${FIXTURE[@]+"${FIXTURE[@]}"} "$ROOT/tools/macos-dev-host/run.sh" "$BIN" ${ARGS[@]+"${ARGS[@]}"}) 2>&1 | tee "$LOG"
   RC=${PIPESTATUS[0]}
   [ "$RC" -eq 0 ] || STATUS=1
   P=$(sed -nE 's/^test result: [A-Za-z]+\. ([0-9]+) passed; ([0-9]+) failed.*/\1/p' "$LOG" | awk '{s+=$1} END {print s+0}')

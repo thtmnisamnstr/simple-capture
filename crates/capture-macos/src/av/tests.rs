@@ -279,3 +279,148 @@ impl sc_platform::FrameSink for NullSink {
     fn on_audio(&self, _t: sc_platform::AudioTrackKind, _a: AudioBuffer) {}
     fn on_event(&self, _e: sc_platform::SourceEvent) {}
 }
+
+/// Frames and audio from wp-mac-sck carry a bare `CFRetained<CMSampleBuffer>`; the writers take
+/// them without a copy (video) and without re-wrapping (audio).
+#[test]
+fn sck_sample_buffers_append() {
+    use std::ptr::NonNull;
+
+    use objc2_core_media::{
+        CMSampleBuffer, CMSampleTimingInfo, CMVideoFormatDescription,
+        CMVideoFormatDescriptionCreateForImageBuffer,
+    };
+
+    let dir = tmp("sck");
+    let size = SizePx { w: 320, h: 240 };
+    let spec = VideoWriterSpec {
+        size,
+        fps: 30,
+        codec: VideoCodec::H264,
+        keyframe_interval_s: 1.0,
+        fragment_interval_s: 1.0,
+        bits_per_pixel: super::DEFAULT_BITS_PER_PIXEL,
+    };
+    let path = dir.join("screen.mov");
+    let Some(mut w) = hw_ok(VideoWriter::create(&path, &spec)) else {
+        return;
+    };
+    for i in 0..10u32 {
+        let code = FrameCode {
+            source_hash: 3,
+            index: i,
+            pts_ms: i,
+        };
+        let pb = w.new_pixel_buffer().expect("pool buffer");
+        let mut r = Ok(());
+        coded_frame(size, code, false)
+            .with_nv12(&mut |v| r = write_nv12(&pb, &v))
+            .expect("view");
+        r.expect("write_nv12");
+        let mut desc: *const CMVideoFormatDescription = std::ptr::null();
+        // SAFETY: valid pixel buffer and out pointer.
+        let rc = unsafe {
+            CMVideoFormatDescriptionCreateForImageBuffer(None, &pb, NonNull::from(&mut desc))
+        };
+        assert_eq!(rc, 0, "format description");
+        // SAFETY: created above with +1.
+        let desc = unsafe {
+            objc2_core_foundation::CFRetained::from_raw(NonNull::new(desc.cast_mut()).unwrap())
+        };
+        let mut timing = CMSampleTimingInfo {
+            duration: ns_to_cmtime(33_333_333),
+            presentationTimeStamp: ns_to_cmtime(i64::from(i) * 33_333_333),
+            decodeTimeStamp: ns_to_cmtime(i64::from(i) * 33_333_333),
+        };
+        let mut sb: *mut CMSampleBuffer = std::ptr::null_mut();
+        // SAFETY: valid buffers and out pointers.
+        let rc = unsafe {
+            CMSampleBuffer::create_ready_with_image_buffer(
+                None,
+                &pb,
+                &desc,
+                NonNull::from(&mut timing),
+                NonNull::from(&mut sb),
+            )
+        };
+        assert_eq!(rc, 0, "sample buffer");
+        // SAFETY: created above with +1.
+        let sb = unsafe { objc2_core_foundation::CFRetained::from_raw(NonNull::new(sb).unwrap()) };
+        let f = VideoFrame {
+            stream: StreamTag(1),
+            pts: HostTime(0),
+            size,
+            content_rect_pt: None,
+            content_scale: None,
+            buffer: FrameBuffer(Arc::new(crate::sck::ScFrame::retain(&sb, size))),
+        };
+        assert!(crate::sck::sample_buffer_of(&*f.buffer.0).is_some());
+        while w
+            .append_video(&f, i64::from(i) * 33_333_333)
+            .expect("append")
+            == Append::NotReady
+        {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+    let fin = Box::new(w).finish(None).expect("finish video");
+    assert_eq!(fin.samples, 10);
+    let mut r = MacDecoder::new().open_video(&path).expect("open");
+    let mut n = 0;
+    while let Some(d) = r.next_frame().expect("decode") {
+        let mut c = None;
+        d.frame
+            .0
+            .with_nv12(&mut |v| c = read_code(&v))
+            .expect("nv12");
+        assert_eq!(c.map(|c| c.index), Some(n));
+        n += 1;
+    }
+    assert_eq!(n, 10);
+
+    let planar = PcmFormat::from_asbd(AudioStreamBasicDescription {
+        mSampleRate: 48_000.0,
+        mFormatID: LPCM,
+        mFormatFlags: FLAG_FLOAT | FLAG_PACKED | FLAG_NON_INTERLEAVED,
+        mBytesPerPacket: 4,
+        mFramesPerPacket: 1,
+        mBytesPerFrame: 4,
+        mChannelsPerFrame: 2,
+        mBitsPerChannel: 32,
+        mReserved: 0,
+    })
+    .expect("planar format");
+    let aspec = AudioWriterSpec {
+        sample_rate: 48_000,
+        channels: 2,
+        bitrate: 160_000,
+        fragment_interval_s: 1.0,
+    };
+    let apath = dir.join("system.mov");
+    let mut w = AudioWriter::create(&apath, &aspec).expect("audio writer");
+    for k in 0..20i64 {
+        let plane = vec![0.1f32; 960];
+        let sb = make_sample(
+            &planar,
+            vec![f32_bytes(&plane), f32_bytes(&plane)],
+            960,
+            ns_to_cmtime(0),
+        )
+        .expect("make_sample");
+        let a = AudioBuffer {
+            pts: HostTime(0),
+            sample_rate: 48_000,
+            channels: 2,
+            frames: 960,
+            data: AudioData::Native(Arc::new(crate::sck::ScAudio::retain(&sb))),
+        };
+        assert_eq!(
+            w.append_audio(&a, k * 20_000_000, 0)
+                .expect("append sck audio"),
+            Append::Written
+        );
+    }
+    let fin = Box::new(w).finish(None).expect("finish audio");
+    assert_eq!(fin.samples, 20 * 960);
+    let _ = std::fs::remove_dir_all(dir);
+}
