@@ -3,10 +3,10 @@
 # wp-kill-recovery-test). SC_KILLTEST_RUNS=N (default 3); SC_KILLTEST_KEEP=1 keeps the recordings.
 #
 # Builds sc-devtools and a `simple-capture` with test-hooks and without export in a private target
-# dir (other worktrees sharing the Skia target replace same-named binaries there; neither needs
-# Skia), and the normal `simple-capture` in $CARGO_TARGET_DIR for recover/export. Then, inside
-# scripts/lib/live.sh, `sc-devtools killtest live` SIGKILLs recordings at each kill point and
-# recovers, probes and exports them.
+# dir, and the normal `simple-capture` in $CARGO_TARGET_DIR for export only. Recover runs with the
+# hooks build: in a target shared by worktrees, cargo can reuse a workspace crate built from
+# another worktree's sources. Then, inside scripts/lib/live.sh, `sc-devtools killtest live`
+# SIGKILLs recordings at each kill point and recovers, probes and exports them.
 # The CI version is `cargo test --locked -p simple-capture-record --features test-hooks --test kill_synth`.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

@@ -12,8 +12,8 @@
 //! `after_segment_open` of a display → region switch. The router journals the first segment
 //! with the same hold points, so for those the first `SC_HOLD` (which blocks for 30 s) is let
 //! through and the switch comes at 34 s. Then: the journal must show the kill landed between
-//! the intended events, `<cli> recover` must report `recovered`, every track loses at most
-//! 1 s, every file decodes (`$SC_FFPROBE`), and `<cli> export` gives a valid file.
+//! the intended events, `<hook-cli> recover` must report `recovered`, every track loses at
+//! most 1 s, every file decodes (`$SC_FFPROBE`), and `<cli> export` gives a valid file.
 
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -403,7 +403,13 @@ fn one(o: &Opts, run: u32, case: &Case, st: &mut Step) -> Result<()> {
         format!("journal has a stop line: {s:?}")
     });
 
-    let r = cmd_json(&o.cli, &["--json", "recover", "--projects-dir"], &projects)?;
+    // The hook CLI comes from a private target dir, so it always carries this tree's recovery
+    // code; a shared Skia target can hand back a `simple-capture` built from another worktree.
+    let r = cmd_json(
+        &o.hook_cli,
+        &["--json", "recover", "--projects-dir"],
+        &projects,
+    )?;
     let reports = r["reports"].as_array().cloned().unwrap_or_default();
     st.check(reports.len() == 1, || {
         format!("recover reports {reports:?}")
