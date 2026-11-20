@@ -728,7 +728,6 @@ impl Control {
                         &format!("stopping: {free} bytes of disk left"),
                     );
                     let _ = self.finalize(StopReason::Disk);
-                    self.sh.notice(Notice::StoppedForDisk);
                 }
             }
         }
@@ -1195,7 +1194,6 @@ impl Control {
             }
             SourceEvent::SystemWillSleep => {
                 let _ = self.finalize(StopReason::Sleep);
-                self.sh.notice(Notice::StoppedForSleep);
             }
             SourceEvent::SystemDidWake => self.log(Level::Info, "system did wake"),
         }
@@ -1311,6 +1309,12 @@ impl Control {
             return f.clone().map_err(Error::State);
         }
         self.sh.set_state(SessionState::Stopping);
+        // Observers treat Finalized/Failed as the last word, so the reason goes out first.
+        match reason {
+            StopReason::Sleep => self.sh.notice(Notice::StoppedForSleep),
+            StopReason::Disk => self.sh.notice(Notice::StoppedForDisk),
+            _ => {}
+        }
         let stop_host = self.sh.now();
         self.sh
             .stop_host

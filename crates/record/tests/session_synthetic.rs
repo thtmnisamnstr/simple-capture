@@ -27,10 +27,20 @@ struct Obs {
     states: Mutex<Vec<SessionState>>,
     notices: Mutex<Vec<Notice>>,
     health: Mutex<Vec<HealthSnapshot>>,
+    notices_at_end: Mutex<Option<Vec<Notice>>>,
 }
 
 impl SessionObserver for Obs {
     fn on_state(&self, s: &SessionState) {
+        if matches!(
+            s,
+            SessionState::Finalized { .. } | SessionState::Failed { .. }
+        ) {
+            self.notices_at_end
+                .lock()
+                .expect("lock")
+                .get_or_insert_with(|| self.notices());
+        }
         self.states.lock().expect("lock").push(s.clone());
     }
     fn on_health(&self, h: &HealthSnapshot) {
@@ -44,6 +54,12 @@ impl SessionObserver for Obs {
 impl Obs {
     fn notices(&self) -> Vec<Notice> {
         self.notices.lock().expect("lock").clone()
+    }
+
+    fn notices_at_end(&self) -> Vec<Notice> {
+        let get = || self.notices_at_end.lock().expect("lock").clone();
+        assert!(wait_for(Duration::from_secs(3), || get().is_some()));
+        get().expect("terminal state")
     }
 }
 
@@ -936,7 +952,7 @@ fn sleep_stops_and_finalizes() {
         s.state(),
         SessionState::Finalized { .. }
     )));
-    assert!(obs.notices().contains(&Notice::StoppedForSleep));
+    assert!(obs.notices_at_end().contains(&Notice::StoppedForSleep));
     assert!(
         s.switch_source(display_spec("b", None), Via::OwnChooser)
             .is_err()
@@ -977,7 +993,7 @@ fn low_disk_warns_then_stops() {
         s.state(),
         SessionState::Finalized { .. }
     )));
-    let n = obs.notices();
+    let n = obs.notices_at_end();
     let low = n
         .iter()
         .position(|x| matches!(x, Notice::DiskLow { .. }))
