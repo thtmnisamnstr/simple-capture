@@ -22,6 +22,8 @@ pub const LATENCY_PAIRS: [&str; 4] = [
 ];
 pub const NO_COMP_MS: f64 = 10.0;
 pub const MAX_SPREAD_MS: f64 = 25.0;
+pub const PAUSES: &str =
+    "sync across pauses is M7: this test records no pause, so it is not measured";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EventResult {
@@ -240,9 +242,49 @@ pub fn render_text(r: &Report) -> String {
         let _ = writeln!(s, "note: {n}");
     }
     s.push_str(&render_summary(&r.summary));
+    s.push_str(&render_phases(&r.events));
     let _ = writeln!(s, "mic: {}", r.mic);
     let _ = writeln!(s, "camera: {}", r.camera);
     let _ = writeln!(s, "recommendation: {}", r.recommendation);
+    let _ = writeln!(s, "pauses: {PAUSES}");
+    s
+}
+
+pub fn render_phases(events: &[EventResult]) -> String {
+    let mut order: Vec<&str> = Vec::new();
+    let mut by: BTreeMap<&str, Vec<&EventResult>> = BTreeMap::new();
+    for e in events {
+        if !by.contains_key(e.label.as_str()) {
+            order.push(&e.label);
+        }
+        by.entry(&e.label).or_default().push(e);
+    }
+    let mut s = String::new();
+    let _ = writeln!(
+        s,
+        "{:<16} {:>22} {:>22} {:>22}",
+        "phase (median ms)", "video→system_audio", "video→mic", "camera→system_audio"
+    );
+    for label in order {
+        let cell = |pair: &str| {
+            let v: Vec<f64> = by[label]
+                .iter()
+                .filter_map(|e| e.offsets_ms.get(pair).copied())
+                .collect();
+            stats(&v).map_or("-".into(), |(med, _, _)| {
+                let ok = v.iter().filter(|x| x.abs() <= TARGET_MS).count();
+                format!("{med:+.1} ({ok}/{} ok)", v.len())
+            })
+        };
+        let _ = writeln!(
+            s,
+            "{:<16} {:>22} {:>22} {:>22}",
+            label,
+            cell("video→system_audio"),
+            cell("video→mic"),
+            cell("camera→system_audio")
+        );
+    }
     s
 }
 
@@ -278,9 +320,11 @@ pub fn summarize_files(paths: &[&str]) -> Result<()> {
     let summary = summarize(&all);
     println!("all {} runs ({} events):", paths.len(), all.len());
     print!("{}", render_summary(&summary));
+    print!("{}", render_phases(&all));
     println!("mic: {}", mic_verdict(&all));
     println!("camera: {}", camera_verdict(&all));
     println!("recommendation: {}", recommendation(&summary));
+    println!("pauses: {PAUSES}");
     Ok(())
 }
 
@@ -309,6 +353,23 @@ mod tests {
         assert_eq!(e.offsets_ms["system_audio→mic"], 15.0);
         assert_eq!(e.offsets_ms["issue→video"], 30.0);
         assert!(!e.offsets_ms.contains_key("camera→mic"));
+    }
+
+    #[test]
+    fn phases_keep_event_order_and_count_target() {
+        let mut a = ev(2.0, 2.01, None);
+        a.offsets_ms.insert("video→system_audio".into(), -10.0);
+        let mut b = ev(38.0, 38.0, None);
+        b.label = "after-switch-1".into();
+        b.offsets_ms.insert("video→system_audio".into(), -50.0);
+        let t = render_phases(&[a, b]);
+        let start = t.find("start").unwrap();
+        let sw = t.find("after-switch-1").unwrap();
+        assert!(start < sw, "{t}");
+        assert!(
+            t.contains("-10.0 (1/1 ok)") && t.contains("-50.0 (0/1 ok)"),
+            "{t}"
+        );
     }
 
     #[test]
