@@ -90,6 +90,7 @@ export interface RecorderSettings {
   click_highlight: boolean;
   camera_key: CameraKey;
   bubble_shown: boolean;
+  bar_at?: PointF | null;
 }
 
 export type CameraShape = 'circle' | 'square' | 'rect_4_3' | 'rect_16_9' | 'rect_3_4' | 'rect_9_16' | 'rounded';
@@ -122,7 +123,7 @@ export type RecordingState =
   | { state: 'recording'; elapsed_ns: number }
   | { state: 'switching'; elapsed_ns: number }
   | { state: 'stopping' }
-  | { state: 'finalized'; project_dir: string }
+  | { state: 'finalized'; project_dir: string; duration_ns?: number | null; tracks?: string[] }
   | { state: 'failed'; error: string };
 
 export interface TrackHealthDto {

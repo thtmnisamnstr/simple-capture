@@ -9,6 +9,9 @@
 
   let projectDir = $state<string | null>(null);
   let duration = $state(0);
+  let tracks = $state<string[]>([]);
+  const TRACK_NAMES: Record<string, string> = { screen: 'screen', camera: 'camera', mic: 'microphone', system_audio: 'system audio' };
+  const contents = $derived(tracks.map((t) => TRACK_NAMES[t] ?? t).join(', '));
   let size = $state<Size | null>(null);
   let stoppedFor = $state<'sleep' | 'disk' | null>(null);
   let failed = $state<string | null>(null);
@@ -58,7 +61,8 @@
         }
         if (s.state === 'finalized') {
           projectDir = s.project_dir;
-          duration = lastElapsed;
+          duration = s.duration_ns ?? lastElapsed;
+          tracks = s.tracks ?? [];
           job = null;
           progress = null;
           exportState = null;
@@ -127,9 +131,14 @@
         <dt>Size</dt>
         <dd>{size.w}×{size.h}</dd>
       {/if}
+      {#if contents}
+        <dt>Recorded</dt>
+        <dd>{contents}</dd>
+      {/if}
       <dt>Project</dt>
       <dd class="path" title={projectDir}>{basename(projectDir)}</dd>
     </dl>
+    {#if contents}<p class="muted small">Export makes one video with all of it: the screen in its frame, the camera where you placed it, and the audio mixed.</p>{/if}
 
     <div class="export" role="group" aria-label="Export">
       {#if exporting}
@@ -145,7 +154,7 @@
             {#each SIZES as s (s.value)}<option value={s.value}>{s.label}</option>{/each}
           </select>
         </label>
-        <button class="primary" onclick={startExport}>Export MP4</button>
+        <button class="primary" onclick={startExport}>Export video</button>
       {/if}
     </div>
 

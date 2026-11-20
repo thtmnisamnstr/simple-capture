@@ -1,13 +1,42 @@
 <script lang="ts">
   import { api, errorText } from '../lib/api.ts';
   import { onEvent } from '../lib/events.ts';
-  import { isNotice, isRecordingState } from '../lib/guards.ts';
+  import { isHealth, isNotice, isRecordingState } from '../lib/guards.ts';
   import type { NoticeDto, RecordingState } from '../lib/types.ts';
   import { formatBytes, formatElapsed } from '../lib/format.ts';
   import { beginPick, showWindow } from '../lib/windows.ts';
 
   let rec = $state<RecordingState>({ state: 'idle' });
   let elapsed = $state(0);
+  let base = { ns: 0, at: 0, running: false };
+  let dragging = false;
+  let pendingMove: { x: number; y: number } | null = null;
+
+  function gripDown(e: PointerEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    dragging = true;
+    api.barDrag('begin', e.screenX, e.screenY).catch((err) => (error = errorText(err)));
+  }
+
+  function gripMove(e: PointerEvent) {
+    if (!dragging) return;
+    const first = pendingMove === null;
+    pendingMove = { x: e.screenX, y: e.screenY };
+    if (first)
+      requestAnimationFrame(() => {
+        const p = pendingMove;
+        pendingMove = null;
+        if (p) api.barDrag('move', p.x, p.y).catch((err) => (error = errorText(err)));
+      });
+  }
+
+  function gripUp() {
+    if (!dragging) return;
+    dragging = false;
+    api.barDrag('end', 0, 0).catch((err) => (error = errorText(err)));
+  }
   let notice = $state<NoticeDto | null>(null);
   let sourceLost = $state(false);
   let confirming = $state(false);
@@ -45,7 +74,11 @@
     const offs = [
       onEvent('recording-state', isRecordingState, (s) => {
         rec = s;
-        if (s.state === 'recording' || s.state === 'switching') elapsed = s.elapsed_ns;
+        if (s.state === 'recording' || s.state === 'switching') {
+          if (!base.running || s.elapsed_ns > elapsed) base = { ns: s.elapsed_ns, at: performance.now(), running: true };
+        } else {
+          base.running = false;
+        }
         if (s.state === 'preparing') {
           elapsed = 0;
           sourceLost = false;
@@ -53,6 +86,9 @@
           confirming = false;
         }
         if (s.state === 'switching') sourceLost = false;
+      }),
+      onEvent('health', isHealth, (h) => {
+        if (base.running) base = { ns: h.rec_ns, at: performance.now(), running: true };
       }),
       onEvent('notice', isNotice, (n) => {
         if (n.kind === 'source_lost') {
@@ -64,9 +100,13 @@
         dismissTimer = setTimeout(() => (notice = null), 8000);
       }),
     ];
+    const tick = setInterval(() => {
+      if (base.running) elapsed = base.ns + (performance.now() - base.at) * 1e6;
+    }, 250);
     return () => {
       offs.forEach((off) => off());
       clearTimeout(dismissTimer);
+      clearInterval(tick);
     };
   });
 
@@ -88,9 +128,10 @@
   }
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window {onkeydown} onpointermove={gripMove} onpointerup={gripUp} />
 
 <div class="bar" role="toolbar" aria-label="Recording controls">
+  <span class="grip" role="presentation" title="Drag to move" onpointerdown={gripDown}>⋮⋮</span>
   <span class="rec" class:live aria-hidden="true"></span>
   <span class="timer" role="timer" aria-label="Elapsed">{formatElapsed(elapsed)}</span>
 
@@ -139,6 +180,13 @@
     background: var(--surface);
     border-radius: 10px;
     border: 1px solid var(--border);
+  }
+  .grip {
+    cursor: grab;
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: -2px;
+    padding: 0 2px;
   }
   .rec {
     width: 10px;

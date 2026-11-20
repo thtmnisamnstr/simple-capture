@@ -331,6 +331,7 @@ const handlers: Record<string, Handler> = {
   bubble_drag: () => null,
   camera_key_live: () => null,
   show_video_effects: () => null,
+  bar_drag: () => null,
 };
 
 export const MOCK_COMMANDS = Object.keys(handlers);

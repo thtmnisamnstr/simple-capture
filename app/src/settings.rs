@@ -61,6 +61,8 @@ pub struct RecorderSettings {
     pub click_highlight: bool,
     pub camera_key: CameraKey,
     pub bubble_shown: bool,
+    /// Where the recording control bar was last moved to (global points, top-left).
+    pub bar_at: Option<sc_geometry::PointF>,
 }
 
 pub fn default_camera_key() -> CameraKey {
@@ -81,6 +83,7 @@ impl Default for RecorderSettings {
             click_highlight: false,
             camera_key: default_camera_key(),
             bubble_shown: true,
+            bar_at: None,
         }
     }
 }
@@ -210,6 +213,7 @@ mod tests {
                 ..default_camera_key()
             },
             bubble_shown: false,
+            bar_at: Some(sc_geometry::PointF { x: 10.0, y: 20.0 }),
         };
         store.save(&s).expect("save");
         assert_eq!(store.load(), s);

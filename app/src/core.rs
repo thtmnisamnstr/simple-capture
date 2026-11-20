@@ -40,6 +40,9 @@ pub const WINDOWS: [(&str, OverlayRole); 9] = [
 
 pub type Reply = Result<Value, String>;
 
+/// Pointer and window positions (global points) when a bar drag began.
+type BarDrag = ((f64, f64), (f64, f64));
+
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
 }
@@ -50,6 +53,7 @@ pub struct Core {
     pub camera: Arc<SharedCamera>,
     pub live: crate::live::LiveHub,
     pub bubble: Mutex<crate::bubble::BubbleState>,
+    bar_drag: Mutex<Option<BarDrag>>,
     pub data_dir: PathBuf,
     projects_dir: PathBuf,
     settings: SettingsStore,
@@ -91,6 +95,7 @@ impl Core {
             camera,
             live: crate::live::LiveHub::default(),
             bubble: Mutex::new(crate::bubble::BubbleState::default()),
+            bar_drag: Mutex::new(None),
             data_dir,
             projects_dir,
             phase: Mutex::new(Phase::Idle),
@@ -714,6 +719,7 @@ impl Core {
             "recording-state",
             dto::recording_state(&SessionState::Preparing, 0),
         );
+        self.place_bar();
         if let Err(e) = self.show_window("bar", false) {
             tracing::warn!("{e}");
         }
@@ -840,10 +846,24 @@ impl Core {
         *lock(&self.rec_started) = None;
         *lock(&self.last_health) = None;
         *lock(&self.last_project) = Some(project_dir.clone());
-        self.emit(
-            "recording-state",
-            dto::recording_state(&SessionState::Finalized { project_dir }, 0),
-        );
+        let project = sc_core::project::ProjectV1::load(&project_dir).ok();
+        let duration = project.as_ref().and_then(|p| p.duration_ns());
+        let mut kinds: Vec<&str> = Vec::new();
+        for t in project.iter().flat_map(|p| &p.recording.tracks) {
+            let k = match t.kind {
+                sc_core::project::TrackKind::Screen => "screen",
+                sc_core::project::TrackKind::Camera => "camera",
+                sc_core::project::TrackKind::Mic => "mic",
+                sc_core::project::TrackKind::SystemAudio => "system_audio",
+            };
+            if !kinds.contains(&k) {
+                kinds.push(k);
+            }
+        }
+        let mut state = dto::recording_state(&SessionState::Finalized { project_dir }, 0);
+        state["duration_ns"] = json!(duration);
+        state["tracks"] = json!(kinds);
+        self.emit("recording-state", state);
         self.hide_window("bar");
         if let Err(e) = self.show_window("saved", false) {
             tracing::warn!("{e}");
@@ -1183,6 +1203,7 @@ impl SessionObserver for Observer {
         if let Some(c) = self.core.upgrade() {
             *lock(&c.last_health) = Some((Instant::now(), h.rec_ns));
             c.emit("health", dto::health(h));
+            c.refresh_tray();
         }
     }
     fn on_notice(&self, n: &Notice) {
@@ -1376,6 +1397,72 @@ impl Core {
         {
             tracing::warn!("camera key: {e}");
         }
+    }
+
+    /// The control bar where it was last moved to, if that is still on a display; otherwise at
+    /// the bottom centre of the recorded display, clear of the Dock.
+    fn place_bar(&self) {
+        let Some(w) = self.app.get_webview_window("bar") else {
+            return;
+        };
+        let s = self.settings.load();
+        let displays = self.platform.screen().displays().unwrap_or_default();
+        let size = w
+            .outer_size()
+            .ok()
+            .map(|p| p.to_logical::<f64>(w.scale_factor().unwrap_or(1.0)))
+            .map_or((420.0, 56.0), |l| (l.width, l.height));
+        let on_screen = |p: &sc_geometry::PointF| {
+            displays.iter().any(|d| {
+                let f = d.frame_pt;
+                p.x >= f.x && p.y >= f.y && p.x + size.0 <= f.x + f.w && p.y + size.1 <= f.y + f.h
+            })
+        };
+        let at = s.bar_at.filter(on_screen).or_else(|| {
+            crate::bubble::display_for(&s, &displays).map(|d| {
+                let f = d.frame_pt;
+                sc_geometry::PointF {
+                    x: f.x + (f.w - size.0) / 2.0,
+                    y: f.y + f.h - size.1 - 96.0,
+                }
+            })
+        });
+        if let Some(at) = at
+            && let Err(e) = w.set_position(LogicalPosition::new(at.x, at.y))
+        {
+            tracing::warn!("place bar: {e}");
+        }
+    }
+
+    /// Dragging the control bar by its grip: `phase` is `begin`, `move` or `end`; `x`, `y` are
+    /// global points. The end position is remembered.
+    pub fn bar_drag(&self, phase: &str, x: f64, y: f64) -> Reply {
+        let w = self.app.get_webview_window("bar").ok_or("no bar window")?;
+        let scale = w.scale_factor().unwrap_or(1.0);
+        let pos = w
+            .outer_position()
+            .map_err(|e| e.to_string())?
+            .to_logical::<f64>(scale);
+        match phase {
+            "begin" => {
+                *lock(&self.bar_drag) = Some(((x, y), (pos.x, pos.y)));
+            }
+            "move" => {
+                if let Some(((px, py), (wx, wy))) = *lock(&self.bar_drag) {
+                    w.set_position(LogicalPosition::new(wx + x - px, wy + y - py))
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+            "end" => {
+                if lock(&self.bar_drag).take().is_some() {
+                    let mut s = self.settings.load();
+                    s.bar_at = Some(sc_geometry::PointF { x: pos.x, y: pos.y });
+                    self.settings.save(&s)?;
+                }
+            }
+            other => return Err(format!("bar_drag: unknown phase {other:?}")),
+        }
+        Ok(Value::Null)
     }
 
     pub fn bubble_state(&self) -> Reply {
