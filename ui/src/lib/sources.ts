@@ -95,12 +95,17 @@ export function sourceSizePx(s: SourceSpecDto, list: Partial<SourceList>, resolu
   }
 }
 
-/** An application source is captured as the snapped union of its on-screen, layer-0 windows on the
+/** Normal windows and floating panels; not the menu bar level (24) and above. Mirrors sc-capture-macos app_content_layer. */
+export function appContentLayer(layer: number): boolean {
+  return layer >= 0 && layer < 24;
+}
+
+/** An application source is captured as the snapped union of its on-screen windows (appContentLayer) on the
  *  display, or the whole display when it has none there or they cover it (ADR-039). At 1x the snap
  *  and the whole-display size use 1 px per point, as sc-capture-macos's app_crop does. */
 export function appSizePx(pid: number, d: DisplayInfo, windows: WindowInfo[], resolution: Resolution = 'native'): Size {
   const frames = windows
-    .filter((w) => w.app.pid === pid && w.on_screen && w.layer === 0 && w.frame_pt.w >= 2 && w.frame_pt.h >= 2)
+    .filter((w) => w.app.pid === pid && w.on_screen && appContentLayer(w.layer) && w.frame_pt.w >= 2 && w.frame_pt.h >= 2)
     .map((w) => w.frame_pt);
   const b = appBoundsPt(frames, d.frame_pt);
   const oneX = resolution === '1x';

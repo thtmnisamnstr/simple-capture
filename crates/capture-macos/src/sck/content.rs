@@ -190,8 +190,16 @@ pub(crate) fn exclusion_windows(
     out
 }
 
-/// Frames (global points) of `pid`'s on-screen, layer-0 windows that are at least 2 pt on a side,
-/// not in `exclude`, and intersect `display_frame_pt`: the input of `app_bounds_pt` (ADR-039).
+/// Whether a window at `layer` is part of an app's content for the app crop: normal windows and
+/// floating panels count; the menu bar level (24) and above (status items, pop-up menus, overlays)
+/// do not.
+pub(crate) fn app_content_layer(layer: isize) -> bool {
+    (0..24).contains(&layer)
+}
+
+/// Frames (global points) of `pid`'s on-screen windows on an `app_content_layer` that are at least
+/// 2 pt on a side, not in `exclude`, and intersect `display_frame_pt`: the input of
+/// `app_bounds_pt` (ADR-039).
 pub(crate) fn app_window_frames(
     content: &SCShareableContent,
     pid: i32,
@@ -202,7 +210,7 @@ pub(crate) fn app_window_frames(
     unsafe { content.windows() }
         .iter()
         .filter(|w| window_pid(w) == Some(pid))
-        .filter(|w| unsafe { w.isOnScreen() && w.windowLayer() == 0 })
+        .filter(|w| unsafe { w.isOnScreen() && app_content_layer(w.windowLayer()) })
         .filter(|w| !exclude.iter().any(|e| e.0 == unsafe { w.windowID() }))
         .map(|w| cgrect_pt(unsafe { w.frame() }))
         .filter(|f| {
@@ -475,4 +483,19 @@ pub(crate) fn list(hide: &[WindowId]) -> Result<SourceList> {
 
 pub(crate) fn responds(obj: &AnyObject, sel: Sel) -> bool {
     unsafe { msg_send![obj, respondsToSelector: sel] }
+}
+
+#[cfg(test)]
+mod app_layer_tests {
+    use super::app_content_layer;
+
+    #[test]
+    fn floating_panels_count_menu_bar_and_above_do_not() {
+        for layer in [0, 3, 8, 19, 23] {
+            assert!(app_content_layer(layer), "{layer}");
+        }
+        for layer in [-1, 24, 25, 101, 1000, isize::MAX] {
+            assert!(!app_content_layer(layer), "{layer}");
+        }
+    }
 }

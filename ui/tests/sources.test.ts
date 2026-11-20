@@ -100,6 +100,7 @@ test('application sources are sized to the union of their windows on the display
     'other apps, off-screen, non-zero layer and tiny windows are ignored',
   );
   assert.deepEqual(size([]), { w: 3024, h: 1964 }, 'no windows: whole display');
+  assert.deepEqual(size([aw(1, 42, 100, 50, 400, 300, { layer: 3 })]), { w: 800, h: 600 }, 'a floating panel counts');
   assert.deepEqual(size([aw(1, 42, 2000, 0, 500, 400)]), { w: 3024, h: 1964 }, 'only on another display: whole display');
   assert.deepEqual(size([aw(1, 42, -100, 900, 400, 300)]), { w: 600, h: 164 }, 'clipped to the display');
   assert.deepEqual(size([aw(1, 42, 2000, 100, 500, 400)], app(42, '2')), { w: 500, h: 400 }, 'secondary display at 1x');

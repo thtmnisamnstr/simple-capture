@@ -1202,8 +1202,9 @@ they are not a substitute for an M1 run.
   at the display's full size with no `sourceRect`, so the frame, `content_px`, the Original ratio,
   the preview and the export all followed the display, not the app.
 - **Decision:**
-  - At segment start the capture crop is the union of the app's on-screen, layer-0 windows (at
-    least 2 pt on a side, minus excluded windows), each clipped to the segment's display
+  - At segment start the capture crop is the union of the app's on-screen windows below the menu
+    bar level (window layer 0–23, so floating panels count; status items, pop-up menus and
+    overlays do not; at least 2 pt on a side, minus excluded windows), each clipped to the segment's display
     (`sc_geometry::app_bounds_pt`). It is snapped like a region (`snap_region_even_px`, Native =
     display scale, 1x = 1) and captured with `sourceRect`, so the frame is crop-sized and every
     later step (router `content_px`, Original ratio, export) follows it unchanged.
