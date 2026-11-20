@@ -1272,3 +1272,31 @@ they are not a substitute for an M1 run.
   - M2 is built by one agent, package by package (docs/M2_PLAN.md §4), not a multi-agent workflow.
 - **Consequences:** an app-level camera hub feeds the bubble, the stage preview and the recording
   from one device session (M2_PLAN §3.1).
+
+## ADR-042: M2 camera implementation: geometry, shared camera, live frames, keyframes
+
+- **Status:** Accepted (M2 build, 2026-11-20).
+- **Context:** M2 needs the camera in the bubble, the stage preview, the panel still and the export,
+  all pixel-consistent (SPEC "what you see is what you get"), plus keyframes while recording.
+- **Decision:**
+  - **Geometry** (`sc_geometry::camera`, mirrored in ui/src/lib/geometry.ts with one shared case
+    table): `size_norm` is the shape's short side over the canvas short side; S/M/L = 0.18 / 0.26 /
+    0.36; margin 0.03 of the short side for snapping and corner presets; zoom 1–4 from
+    fill-the-shape; pan −1..1 inside the camera frame; corner radius as a fraction of half the
+    short side (a circle is 1). The shape is always kept inside the canvas, so a position chosen
+    for one frame shape is pulled in on another. Rounded = a rounded square.
+  - **Compositor:** one camera layer (`sc_render::CameraLayer`, built by `camera_layer` for every
+    consumer): rounded-rect signed distance in f32 quantized to 1/256 coverage, integer blending,
+    an inner border and a soft shadow; the GPU blends by reading a copy of the canvas, so the CPU
+    reference stays the golden (max difference 0 measured on the build Mac).
+  - **Shared camera** (`sc_platform::SharedCamera`): one device session feeds the live preview and
+    a recording, which attaches through the ordinary `CameraSource` trait (the record crate is
+    unchanged). The app opens it while the panel is shown or a recording is on.
+  - **Live frames:** the bubble and stage get compositor frames over `sc://live/<name>?after=<id>`
+    (long poll, latest wins, raw premultiplied RGBA) drawn with WebGL2 — spike 2 mode B, ADR-007.
+    The stage refreshes the source by snapshot twice a second; the camera is live.
+  - **Keyframes:** `Session::camera_key` stamps the current recording time; the journal gets them
+    in `camera_keys` batches at least every 200 ms (each append fsyncs); finalize and recovery
+    write `camera_layout`. The app sends drags at most 30 times a second plus the final position.
+- **Consequences:** a crash loses at most 0.2 s of camera motion. Keyframes are not editable until
+  the M3 editor.

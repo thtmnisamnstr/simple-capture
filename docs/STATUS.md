@@ -1,8 +1,45 @@
 # Status
 
+**M2 ★ (camera bubble on macOS): built on branch `m2`, waiting for the owner's ★ review.**
 **M1 ★ (macOS recording): accepted by the owner on 2026-11-20** after two hands-on passes (fixes
-below). Current milestone: **M2 ★ camera bubble on macOS**, being planned (docs/M2_PLAN.md).
-Updated 2026-11-20. M1 is merged to `main`. The M1 ★ review list is the last section of this file.
+below). Updated 2026-11-20. The M1 ★ review list is the last section of this file.
+
+## M2 ★ review (2026-11-20)
+
+Plan: docs/M2_PLAN.md; owner answers: ADR-041; implementation decisions: ADR-042.
+
+**What M2 does.** A live camera bubble (any shape, size, position, zoom/pan, mirror, border,
+shadow) appears while the recorder panel is open or a recording runs; for a whole-display
+Original frame it sits exactly where the camera lands in the video; for window, app and region
+sources and letterboxed frames a stage preview window shows the real output for placing the
+camera. Moves, resizes, shape changes and hiding during a recording become keyframes. The quick
+export and the panel still draw the camera with the same compositor code as the bubble. macOS
+Video Effects button. One camera session serves preview and recording.
+
+**Measured on the build Mac** (M3 Pro, macOS 26.7.2, LG 3840×1080 pt display at 2×, OBSBOT Tiny 2
+at 1920×1080 30 fps):
+
+| Check | Result | Source |
+|---|---|---|
+| Camera layer GPU vs CPU reference, every shape/option, RGBA and I420 | max difference 0 | `crates/render/tests/camera.rs` |
+| Geometry Rust vs TS, shared case table | all cases equal | `crates/geometry/tests/camera_cases.json` |
+| Bubble frames, placement, drag (live, driver flow 12) | 27–28 fps; window within 1 pt of its geometry; drag moves key and window | `app/driver/flows/12-bubble.txt` |
+| Stage preview for a 9:16 frame (live, flow 12) | shown, bubble floats, 22–24 fps | same |
+| Bubble absent from a display recording (live, flow 14) | 0 of 58 frames show it | `app/driver/flows/14-bubble-capture.txt` |
+| Keyframes while recording (live, flow 14; synthetic + recovery test) | start key at 0 plus the drag; journaled; rebuilt by recovery | flow 14, `camera_keys_are_recorded_journaled_and_recovered` |
+| Export with the camera (unit + real CLI recording, 9:16) | camera drawn where the keys put it, hidden after a hide key; real export checked by eye | `export_camera.rs` |
+| CPU, bubble + panel shown, **debug build** | app 24% + WebKit 14% = **38% of one core** (plan budget: 15%) | `ps` sampling during a driver run |
+| Local CI (`ci-local-fast`, helpers and GPU required) | 394 Rust + 40 UI tests, 0 failures | |
+
+**Not verified / open:**
+- The CPU budget is missed in the debug build (`just run` uses debug). Release-build cost is not
+  measured yet; if it is still over budget, the native CAMetalLayer preview slot (ADR-007) is the
+  fallback.
+- Real mouse interaction (drag, resize, toolbar, stage handles) was driven through commands, not
+  real clicks; MANUAL_TEST §10b M1–M7 covers it.
+- No 30-minute soak with the bubble shown; no A/V sync measurement of the camera (M1 gap remains).
+- Keyframes are not editable until the M3 editor.
+- The stage refreshes the screen twice a second (the camera is live).
 
 M1 delivers (SPEC M1 line plus the 2026-11-19 additions): display, window, application, region and
 system-picker sources; permission onboarding that never prompts by itself; separate crash-safe

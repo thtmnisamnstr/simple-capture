@@ -903,7 +903,14 @@ Draw order per output frame: background → screen (src = `content_px`, dst = fi
   a short idle. Channels between the engine and the UI are latest-wins [cap-render-decode].
 - The recorder panel's mini stage preview (M1) is a still: a screenshot of the selected source
   composited with the canvas and background by the real compositor, served through the same URI
-  protocol. The live stage preview with the camera is M2.
+  protocol; since M2 it also includes the camera at the current placement.
+- **Camera bubble and stage preview (M2, ADR-041/042).** `bubble.rs` and `stage.rs` in the app
+  each run a renderer thread that composites with the same `camera_layer` as the export and
+  publishes frames to `LiveHub`; the windows pull them from `sc://live/bubble` and
+  `sc://live/stage` (long poll, latest wins, 16-byte header + premultiplied RGBA) and draw them
+  with WebGL2. Camera frames come from `SharedCamera` (one AVCaptureSession for preview and
+  recording). Measured on the build Mac with the OBSBOT at 1080p30: bubble 27–28 fps, stage
+  22–24 fps (driver flow 12).
 - **Native slots, off until hardware proof.** `PreviewSink` keeps one native implementation slot
   per OS. They are switched on only after hardware runs show Windows and at least Wayland working:
   - macOS: CAMetalLayer under a transparent WKWebView (**verified [S2]**: 60.1 fps, about 20% CPU,

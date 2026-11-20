@@ -632,6 +632,59 @@ bar.
 
 ---
 
+## 10b. Camera bubble (M2)
+
+Choose a camera in the recorder panel first. The OBSBOT, FaceTime HD, EOS Webcam Utility and
+iPhone cameras all work on the build Mac.
+
+**M1. Bubble appears with the panel**
+- Do: open the recorder panel (tray → Open Recorder), pick a camera, source = the whole display,
+  frame = Original.
+- Expect: within about a second a round camera bubble appears near the bottom-right; it shows you,
+  not mirrored; the camera light is on. Closing the panel (red button) hides the bubble and turns
+  the camera off.
+- Look: bubble, camera light.
+
+**M2. Move, snap, resize, nudge**
+- Do: drag the bubble around; drag it close to an edge, a corner and the centre lines; drag a
+  corner handle out and in; click it and press the arrow keys (⇧ for 10 pt).
+- Expect: it follows the pointer, snaps to the margins and centre lines, grows and shrinks around
+  its centre, and never leaves the screen.
+- Look: bubble.
+
+**M3. Shape, framing, mirror, border, shadow**
+- Do: in the panel's Camera section try every shape, the Corners slider, S/M/L, the four corner
+  buttons, Mirror, Border, Shadow; on the bubble scroll to zoom and ⌥-drag to pan, then Reset
+  framing; also try the hover toolbar on the bubble.
+- Expect: the bubble changes at once and the panel's little preview matches it.
+- Look: bubble, panel preview.
+
+**M4. Video Effects**
+- Do: press Video Effects… next to the camera.
+- Expect: macOS's Video Effects panel opens for the camera (Portrait, Studio Light, …) and the
+  bubble shows the effect.
+
+**M5. Stage preview for windows, apps, regions and 9:16**
+- Do: switch the source to a window, then an app, then a region; then back to the display with
+  frame 9:16.
+- Expect: a "Camera Placement" window appears showing the real output (source fitted, letterbox
+  background, camera); dragging the camera there, resizing it with its handles and scrolling on
+  it moves, sizes and zooms the camera. The floating bubble stays on screen so you see yourself.
+- Look: stage window, panel preview.
+
+**M6. Record, move the camera, export**
+- Do: record the display (Original) for about 15 s; at 5 s drag the bubble to another corner, at
+  10 s untick "In the video", stop; Export from the Saved window.
+- Expect: the export shows the camera where the bubble was, moving to the new corner at about 5 s
+  and gone from about 10 s; the bubble never appears twice (it is not in the screen recording).
+- Look: the export in QuickTime.
+
+**M7. The camera survives a crash**
+- Do: start a recording with the camera, drag the bubble, then `kill -9` the app (Activity
+  Monitor → Force Quit works too) and relaunch.
+- Expect: the recovered recording exports with the camera, including the drag (up to 0.2 s of the
+  last motion may be lost).
+
 ## 11. Results log
 
 Copy this table into the M1 review notes (or STATUS) with one line per step run.
@@ -642,7 +695,7 @@ Copy this table into the M1 review notes (or STATUS) with one line per step run.
 | … | | | | |
 
 Steps: L1–L4, S1–S13, W1–W6, P1–P7, E1–E4, H1–H8, K1–K2, C1 (three clap offsets in ms), O1 (paste
-the soak summary), B0–B6.
+the soak summary), B0–B6, M1–M7.
 
 ## 12. Prompt log
 
