@@ -514,14 +514,24 @@ fn probe_tracks(
     let mut dropped_ids = Vec::new();
     let mut kept = Vec::new();
     for mut t in std::mem::take(&mut p.recording.tracks) {
-        let probe = match decoder.probe(&dir.join(&t.file)) {
-            Ok(pr) if pr.readable => Ok(pr),
-            Ok(pr) => Err(pr.error.unwrap_or_else(|| "unreadable".to_string())),
-            Err(e) => Err(e.to_string()),
-        };
+        let path = dir.join(&t.file);
         let what = match &t.segment_id {
             Some(seg) => format!("segment {seg} ({})", t.file),
             None => format!("track {} ({})", t.id, t.file),
+        };
+        if std::fs::metadata(&path).is_ok_and(|m| m.len() == 0) {
+            n.add(
+                Level::Warn,
+                format!("{what} is empty (nothing written before the crash), dropped (file kept)"),
+            );
+            dropped.push(drop_entry(&t, "empty file"));
+            dropped_ids.push(t.id);
+            continue;
+        }
+        let probe = match decoder.probe(&path) {
+            Ok(pr) if pr.readable => Ok(pr),
+            Ok(pr) => Err(pr.error.unwrap_or_else(|| "unreadable".to_string())),
+            Err(e) => Err(e.to_string()),
         };
         match probe {
             Err(e) => {

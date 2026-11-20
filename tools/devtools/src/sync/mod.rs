@@ -9,6 +9,9 @@
 //! ```
 //! Offsets read "A→B" = onset of B − onset of A, in ms: positive means B comes later.
 
+// The analysis code is macOS-only in M1; elsewhere only the CLI stubs and unit tests use it.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+
 mod detect;
 mod report;
 

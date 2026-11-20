@@ -51,6 +51,7 @@ pub struct RunLog {
 
 static STOP: AtomicBool = AtomicBool::new(false);
 
+#[cfg(unix)]
 extern "C" fn on_signal(_sig: libc::c_int) {
     STOP.store(true, Ordering::SeqCst);
 }
@@ -156,17 +157,27 @@ fn read_pid(path: &Path) -> Option<i32> {
     std::fs::read_to_string(path).ok()?.trim().parse().ok()
 }
 
-fn send_signal(pid: i32, sig: libc::c_int) {
+#[cfg(unix)]
+const SIGKILL: i32 = libc::SIGKILL;
+#[cfg(not(unix))]
+const SIGKILL: i32 = 9;
+
+#[cfg(unix)]
+fn send_signal(pid: i32, sig: i32) {
     if pid > 0 {
         // SAFETY: plain kill(2).
         unsafe { libc::kill(pid, sig) };
     }
 }
 
+#[cfg(not(unix))]
+fn send_signal(_pid: i32, _sig: i32) {}
+
 pub fn run(a: &RunArgs) -> Result<bool> {
-    let h = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
+    #[cfg(unix)]
     // SAFETY: the handler only stores an atomic.
     unsafe {
+        let h = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
         libc::signal(libc::SIGTERM, h);
         libc::signal(libc::SIGINT, h);
         libc::signal(libc::SIGHUP, h);
@@ -342,7 +353,7 @@ pub fn run(a: &RunArgs) -> Result<bool> {
         }
         if term_sent.is_some_and(|t| t.elapsed() > Duration::from_secs(60)) {
             if let Some(p) = child_pid.or_else(|| read_pid(&pid_file)) {
-                send_signal(p, libc::SIGKILL);
+                send_signal(p, SIGKILL);
             }
             let _ = rec.kill();
         }
