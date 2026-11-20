@@ -2,6 +2,9 @@ use sc_core::image::RgbaImage;
 use sc_geometry::{RectPx, SizePx};
 use sc_platform::{Error, FrameBuffer, Result};
 
+use crate::cpu;
+use crate::gpu::{self, Gpu};
+
 /// `SC_WGPU_BACKEND` overrides `Auto`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
@@ -22,21 +25,65 @@ pub struct AdapterSummary {
 }
 
 pub struct Compositor {
-    _backend: Backend,
+    gpu: Option<Gpu>,
+}
+
+impl Backend {
+    /// Reads `SC_WGPU_BACKEND` (`auto`, `metal`, `dx12`, `vulkan`, `gl`, `cpu`); `None` when unset.
+    pub fn from_env() -> Result<Option<Backend>> {
+        match std::env::var("SC_WGPU_BACKEND") {
+            Ok(v) if v.trim().is_empty() => Ok(None),
+            Ok(v) => Backend::parse(&v).map(Some).ok_or_else(|| {
+                Error::Other(format!(
+                    "SC_WGPU_BACKEND={v}: expected auto, metal, dx12, vulkan, gl or cpu"
+                ))
+            }),
+            Err(_) => Ok(None),
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Backend> {
+        Some(match s.trim().to_ascii_lowercase().as_str() {
+            "auto" => Backend::Auto,
+            "metal" => Backend::Metal,
+            "dx12" => Backend::Dx12,
+            "vulkan" => Backend::Vulkan,
+            "gl" | "gles" => Backend::Gl,
+            "cpu" | "cpu-only" | "cpuonly" | "none" => Backend::CpuOnly,
+            _ => return None,
+        })
+    }
 }
 
 impl Compositor {
-    pub fn new(_backend: Backend) -> Result<Compositor> {
-        Err(Error::Unsupported("sc_render: not implemented yet"))
+    /// `Auto` tries a hardware adapter, then a software adapter, then falls back to the CPU
+    /// renderer; an explicit backend fails when it has no adapter.
+    pub fn new(backend: Backend) -> Result<Compositor> {
+        let backend = match backend {
+            Backend::Auto => Backend::from_env()?.unwrap_or(Backend::Auto),
+            b => b,
+        };
+        let gpu = match backend {
+            Backend::CpuOnly => None,
+            Backend::Auto => gpu::open(wgpu::Backends::all(), true)?,
+            Backend::Metal => gpu::open(wgpu::Backends::METAL, false)?,
+            Backend::Dx12 => gpu::open(wgpu::Backends::DX12, false)?,
+            Backend::Vulkan => gpu::open(wgpu::Backends::VULKAN, false)?,
+            Backend::Gl => gpu::open(wgpu::Backends::GL, false)?,
+        };
+        Ok(Compositor { gpu })
     }
 
     /// `None` = CPU only.
     pub fn adapter(&self) -> Option<AdapterSummary> {
-        None
+        self.gpu.as_ref().map(|g| g.summary().clone())
     }
 
-    pub fn render(&mut self, _job: &FrameJob, _out: OutputFormat) -> Result<RenderedFrame> {
-        Err(Error::Unsupported("sc_render: not implemented yet"))
+    pub fn render(&mut self, job: &FrameJob, out: OutputFormat) -> Result<RenderedFrame> {
+        match &mut self.gpu {
+            Some(gpu) => gpu.render(job, out),
+            None => cpu::render_cpu(job, out),
+        }
     }
 }
 
