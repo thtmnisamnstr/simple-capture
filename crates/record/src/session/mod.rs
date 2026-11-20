@@ -1,15 +1,28 @@
-//! Recording session (plan §4.5, ARCHITECTURE §4). Stub until wp-record-session.
+//! Recording session (plan §4.5, ARCHITECTURE §4–§6, §12).
+//!
+//! Threads: control (commands, events, switch controller, `project.json`), screen writer/router,
+//! finisher, one writer per continuous track, health (1 Hz). Capture callbacks only `try_send`
+//! into bounded queues.
+
+mod control;
+pub mod gapfill;
+mod health;
+mod router;
+mod shared;
+mod sink;
+mod tracks;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::mpsc::{self, Sender};
+use std::thread::JoinHandle;
 
 use sc_core::journal::StopReason;
 use sc_core::project::{Canvas, SystemAudioMode, Via};
 use sc_platform::{AudioTrackKind, DeviceKind, Platform, Resolution, SourceSpec, WindowId};
 
 use crate::{Error, Result};
-
-const STUB: &str = "sc_record::session: not implemented yet";
+use shared::{Ctl, Shared, lock};
 
 #[derive(Debug, Clone)]
 pub struct RecordRequest {
@@ -46,13 +59,13 @@ pub struct Tuning {
 }
 
 impl Default for Tuning {
-    /// Provisional values; wp-record-session chooses and reports the final ones.
+    /// Reasons are in the wp-record-session report (DECISIONS.md).
     fn default() -> Self {
         Tuning {
-            screen_queue: 8,
+            screen_queue: 3,
             camera_queue: 8,
-            audio_queue: 64,
-            gap_threshold_ns: 20_000_000,
+            audio_queue: 256,
+            gap_threshold_ns: 2_000_000,
             start_timeout_ms: 5_000,
             switch_first_frame_timeout_ms: 1_500,
             frames_dropping_pct: 2.0,
@@ -138,6 +151,9 @@ pub struct StopSummary {
 
 pub struct Session {
     project_dir: PathBuf,
+    sh: Arc<Shared>,
+    ctl: Sender<Ctl>,
+    thread: Option<JoinHandle<()>>,
 }
 
 impl std::fmt::Debug for Session {
@@ -148,18 +164,38 @@ impl std::fmt::Debug for Session {
     }
 }
 
+const ENDED: &str = "the recording has ended";
+
 impl Session {
+    /// Returns once every requested source delivered a sample and s0 is about to open; fails
+    /// before any project folder exists when a permission is missing.
     pub fn start(
-        _platform: Arc<dyn Platform>,
-        _req: RecordRequest,
-        _obs: Arc<dyn SessionObserver>,
+        platform: Arc<dyn Platform>,
+        req: RecordRequest,
+        obs: Arc<dyn SessionObserver>,
     ) -> Result<Session> {
-        Err(Error::Unsupported(STUB))
+        let started = control::start(platform, req, obs)?;
+        Ok(Session {
+            project_dir: started.sh.dir.clone(),
+            ctl: started.sh.ctl.clone(),
+            sh: started.sh,
+            thread: Some(started.thread),
+        })
+    }
+
+    fn check_live(&self) -> Result<()> {
+        match self.state() {
+            SessionState::Preparing | SessionState::Recording | SessionState::Switching => Ok(()),
+            s => Err(Error::State(format!("{ENDED} ({s:?})"))),
+        }
     }
 
     /// Async; the result arrives through state and notices.
-    pub fn switch_source(&self, _spec: SourceSpec, _via: Via) -> Result<()> {
-        Err(Error::Unsupported(STUB))
+    pub fn switch_source(&self, spec: SourceSpec, via: Via) -> Result<()> {
+        self.check_live()?;
+        self.ctl
+            .send(Ctl::Switch(spec, via))
+            .map_err(|_| Error::State(ENDED.into()))
     }
 
     /// M1: pause/resume is M7.
@@ -172,8 +208,13 @@ impl Session {
         Err(Error::Unsupported("pause/resume is M7"))
     }
 
-    pub fn set_exclusions(&self, _exclude: Vec<WindowId>) -> Result<()> {
-        Err(Error::Unsupported(STUB))
+    pub fn set_exclusions(&self, exclude: Vec<WindowId>) -> Result<()> {
+        self.check_live()?;
+        let (tx, rx) = mpsc::channel();
+        self.ctl
+            .send(Ctl::SetExclusions(exclude, tx))
+            .map_err(|_| Error::State(ENDED.into()))?;
+        rx.recv().map_err(|_| Error::State(ENDED.into()))?
     }
 
     pub fn project_dir(&self) -> &Path {
@@ -181,16 +222,47 @@ impl Session {
     }
 
     pub fn state(&self) -> SessionState {
-        SessionState::Failed {
-            error: STUB.to_string(),
+        lock(&self.sh.state).clone()
+    }
+
+    /// After the session stopped itself (sleep, disk), returns that recording's summary.
+    pub fn stop(mut self, reason: StopReason) -> Result<StopSummary> {
+        self.stop_inner(reason)
+    }
+
+    pub fn discard(mut self) -> Result<()> {
+        let (tx, rx) = mpsc::channel();
+        let sent = self.ctl.send(Ctl::Discard(tx)).is_ok();
+        let r = if sent {
+            rx.recv().map_err(|_| Error::State(ENDED.into()))?
+        } else {
+            Err(Error::State(ENDED.into()))
+        };
+        self.join();
+        r
+    }
+
+    fn stop_inner(&mut self, reason: StopReason) -> Result<StopSummary> {
+        let (tx, rx) = mpsc::channel();
+        let r = match self.ctl.send(Ctl::Stop(reason, tx)) {
+            Ok(()) => rx.recv().map_err(|_| Error::State(ENDED.into()))?,
+            Err(_) => Err(Error::State(ENDED.into())),
+        };
+        self.join();
+        r
+    }
+
+    fn join(&mut self) {
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
         }
     }
+}
 
-    pub fn stop(self, _reason: StopReason) -> Result<StopSummary> {
-        Err(Error::Unsupported(STUB))
-    }
-
-    pub fn discard(self) -> Result<()> {
-        Err(Error::Unsupported(STUB))
+impl Drop for Session {
+    fn drop(&mut self) {
+        if self.thread.is_some() {
+            let _ = self.stop_inner(StopReason::Quit);
+        }
     }
 }

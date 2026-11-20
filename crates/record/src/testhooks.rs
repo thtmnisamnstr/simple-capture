@@ -21,12 +21,18 @@ impl HoldPoint {
 }
 
 /// Called AT the journaling site, on the thread that journals: when `SC_TEST_HOLD_AT` names
-/// `p`, prints `SC_HOLD <point>` to stderr and blocks that thread for 30 s. Stub until
-/// wp-record-session.
+/// `p`, prints `SC_HOLD <point>` to stderr and blocks that thread for 30 s.
 pub fn hold(p: HoldPoint) {
     #[cfg(feature = "test-hooks")]
     {
-        let _ = p;
+        use std::io::Write;
+        if std::env::var("SC_TEST_HOLD_AT").ok().as_deref() == Some(p.as_str()) {
+            let mut err = std::io::stderr().lock();
+            let _ = writeln!(err, "SC_HOLD {}", p.as_str());
+            let _ = err.flush();
+            drop(err);
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
     }
     #[cfg(not(feature = "test-hooks"))]
     {
