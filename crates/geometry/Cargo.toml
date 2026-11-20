@@ -1,0 +1,21 @@
+[package]
+name = "simple-capture-geometry"
+description = "Pure geometry: sizes, rects, aspect ratios, contain fit, canvas sizes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "sc_geometry"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[lints]
+workspace = true

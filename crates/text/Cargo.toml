@@ -1,0 +1,20 @@
+[package]
+name = "simple-capture-text"
+description = "Skia (FreeType build): background raster, image decode; text layout from M4"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "sc_text"
+
+[dependencies]
+simple-capture-core.workspace = true
+simple-capture-geometry.workspace = true
+skia-safe.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

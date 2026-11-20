@@ -1,0 +1,15 @@
+{"ev":"start","start_host_ns":912345678901234,"clock":"mach_host","fps_requested":30,"resolution":"native","system_audio":"all"}
+{"ev":"segment_prepare","seg":"s1","file":"tracks/screen-001.mov","host_ns":912367000000000}
+{"ev":"segment_open","seg":"s0","track_id":"screen-0","start_rec_ns":0,"file":"tracks/screen-000.mov","via":"own_chooser","reason":"record_start","source":{"kind":"display","display_id":"1","scale":2.0},"frame_px":{"w":7680,"h":2160},"content_px":{"x":0,"y":0,"w":7680,"h":2160}}
+{"ev":"switch_begin","host_ns":912367000000000,"to":{"kind":"window","window_id":4512,"scale":2.0},"via":"system_picker"}
+{"ev":"segment_close","seg":"s0","end_rec_ns":21480000000,"reason":"user_switch","trailing_dropped":2}
+{"ev":"switch_failed","host_ns":912367400000000,"error":"window closed","next":"retry_stop_then_start"}
+{"ev":"source_lost","host_ns":912368000000000,"seg":"s1","reason":"window closed"}
+{"ev":"source_resized","host_ns":912369000000000,"seg":"s1","content_rect_pt":{"x":0,"y":0,"w":800,"h":600},"content_scale":2.0}
+{"ev":"audio_gap","track":"system_audio","kind":"gap","at_rec_ns":33120000000,"dur_ns":60000000}
+{"ev":"pause","host_ns":912370000000000}
+{"ev":"resume","host_ns":912371000000000}
+{"ev":"device","host_ns":912372000000000,"track_id":"camera","kind":"camera","change":"lost","name":"FaceTime HD Camera","unique_id":"0x1420000005ac8600"}
+{"ev":"track_finished","track_id":"mic","duration_ns":60098000000,"samples":2884704}
+{"ev":"health","host_ns":912373000000000,"rec_ns":27000000000,"tracks":[{"track_id":"screen-1","frames":160,"dropped":0,"writer_not_ready":0,"gaps":0}]}
+{"ev":"stop","stop_host_ns":912405778901234,"reason":"user"}

@@ -7,3 +7,7 @@ spikes/**/target/
 third_party/build/
 third_party/out/
 .wt/
+ui/dist/
+ui/node_modules/
+app/binaries/
+app/gen/

@@ -1,0 +1,14 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"],
+    "macOS": {
+      "signingIdentity": "-",
+      "hardenedRuntime": true,
+      "entitlements": "macos/entitlements.plist",
+      "infoPlist": "macos/Info.bundle.plist",
+      "minimumSystemVersion": "14.0"
+    }
+  }
+}

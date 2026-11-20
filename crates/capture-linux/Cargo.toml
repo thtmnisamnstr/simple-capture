@@ -1,0 +1,19 @@
+[package]
+name = "simple-capture-capture-linux"
+description = "linux capture backend (placeholder until M6)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "sc_capture_linux"
+
+[dependencies]
+simple-capture-core.workspace = true
+simple-capture-geometry.workspace = true
+simple-capture-platform.workspace = true
+
+[lints]
+workspace = true

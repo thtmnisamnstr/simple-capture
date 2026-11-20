@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Core IPC (events, window state) for our own windows. App commands need no entry.",
+  "windows": ["panel", "onboarding", "bar", "switcher", "region", "pick", "saved"],
+  "permissions": ["core:default"]
+}

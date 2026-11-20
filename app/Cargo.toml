@@ -1,0 +1,51 @@
+[package]
+name = "simple-capture-app"
+description = "Simple Capture desktop app (Tauri 2 shell)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+default-run = "simple-capture-app"
+
+[[bin]]
+name = "simple-capture-app"
+path = "src/main.rs"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+simple-capture-core.workspace = true
+simple-capture-geometry.workspace = true
+simple-capture-platform.workspace = true
+simple-capture-record.workspace = true
+simple-capture-decode.workspace = true
+simple-capture-render.workspace = true
+simple-capture-text.workspace = true
+simple-capture-helpers.workspace = true
+simple-capture-export.workspace = true
+tauri.workspace = true
+tauri-plugin-global-shortcut.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+libc.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+simple-capture-capture-macos.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+simple-capture-capture-windows.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+simple-capture-capture-linux.workspace = true
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "warn"

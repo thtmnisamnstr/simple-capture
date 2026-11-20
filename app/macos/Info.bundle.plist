@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSCameraUsageDescription</key>
+    <string>Simple Capture records your camera when you turn the camera on for a recording.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Simple Capture records your microphone when you choose a microphone for a recording.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Simple Capture records system audio when you turn system audio on for a recording.</string>
+</dict>
+</plist>

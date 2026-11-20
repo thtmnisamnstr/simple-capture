@@ -1,0 +1,26 @@
+[package]
+name = "simple-capture-export"
+description = "Quick export (x264 MP4 through the FFmpeg helper), validation, capability probe"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "sc_export"
+
+[dependencies]
+simple-capture-core.workspace = true
+simple-capture-geometry.workspace = true
+simple-capture-platform.workspace = true
+simple-capture-decode.workspace = true
+simple-capture-render.workspace = true
+simple-capture-text.workspace = true
+simple-capture-helpers.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

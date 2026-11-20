@@ -1,0 +1,116 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/geometry",
+    "crates/core",
+    "crates/platform",
+    "crates/capture-macos",
+    "crates/capture-windows",
+    "crates/capture-linux",
+    "crates/record",
+    "crates/decode",
+    "crates/render",
+    "crates/text",
+    "crates/helpers",
+    "crates/export",
+    "app",
+    "cli",
+    "tools/devtools",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+publish = false
+repository = "https://github.com/thtmnisamnstr/simple-capture"
+
+[workspace.dependencies]
+# Our crates
+simple-capture-geometry = { path = "crates/geometry" }
+simple-capture-core = { path = "crates/core" }
+simple-capture-platform = { path = "crates/platform" }
+simple-capture-capture-macos = { path = "crates/capture-macos" }
+simple-capture-capture-windows = { path = "crates/capture-windows" }
+simple-capture-capture-linux = { path = "crates/capture-linux" }
+simple-capture-record = { path = "crates/record" }
+simple-capture-decode = { path = "crates/decode" }
+simple-capture-render = { path = "crates/render" }
+simple-capture-text = { path = "crates/text" }
+simple-capture-helpers = { path = "crates/helpers" }
+simple-capture-export = { path = "crates/export" }
+
+# App shell
+tauri = { version = "2.12.7", features = ["tray-icon"] }
+tauri-build = { version = "2.7.6", features = [] }
+tauri-plugin-global-shortcut = "2.4.1"
+
+# macOS bindings (ADR-006), cross-framework features as in spikes/03-macos-pipeline
+objc2 = "0.6.5"
+block2 = "0.6.2"
+dispatch2 = "0.3.1"
+objc2-foundation = "0.3.2"
+objc2-core-foundation = "0.3.2"
+objc2-core-graphics = { version = "0.3.2", features = ["objc2-io-surface", "libc"] }
+objc2-core-media = { version = "0.3.2", features = ["objc2-core-video", "objc2-core-audio-types", "block2", "dispatch2"] }
+objc2-core-video = { version = "0.3.2", features = ["objc2-io-surface", "objc2-core-graphics"] }
+objc2-core-audio-types = "0.3.2"
+objc2-io-surface = "0.3.2"
+objc2-screen-capture-kit = { version = "0.3.2", features = ["objc2-core-media", "objc2-core-graphics", "objc2-core-foundation", "block2", "dispatch2", "libc"] }
+objc2-av-foundation = { version = "0.3.2", features = ["objc2-core-media", "objc2-core-video", "objc2-core-audio-types", "objc2-core-foundation", "objc2-core-graphics", "block2", "dispatch2"] }
+objc2-avf-audio = { version = "0.3.2", default-features = false, features = ["std", "AVAudioPlayer"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+    "block2",
+    "NSApplication",
+    "NSWindow",
+    "NSPanel",
+    "NSView",
+    "NSResponder",
+    "NSScreen",
+    "NSWorkspace",
+    "NSRunningApplication",
+    "NSOpenPanel",
+    "NSSavePanel",
+    "NSColor",
+    "NSGraphics",
+    "NSEvent",
+    "NSImage",
+    "NSMenu",
+    "NSMenuItem",
+    "NSStatusItem",
+    "NSStatusBar",
+    "NSStatusBarButton",
+    "NSButton",
+    "NSControl",
+] }
+
+# Rendering and text
+wgpu = "30.0.2"
+skia-safe = { version = "=0.157.0", features = ["textlayout"] }
+pollster = "1.0.3"
+bytemuck = { version = "1.25.2", features = ["derive"] }
+
+# General
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["std", "fmt", "env-filter", "ansi"] }
+sha2 = "0.10.9"
+libc = "0.2.191"
+anyhow = "1.0.104"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+debug = 1

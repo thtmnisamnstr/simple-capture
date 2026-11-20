@@ -1,0 +1,34 @@
+{
+  "productName": "Simple Capture",
+  "version": "0.1.0",
+  "identifier": "com.simplecapture.desktop",
+  "build": {
+    "frontendDist": "../ui/dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      { "label": "panel", "url": "index.html#/panel", "title": "Simple Capture", "width": 380, "height": 620, "resizable": false, "visible": false, "focus": false },
+      { "label": "onboarding", "url": "index.html#/onboarding", "title": "Simple Capture Permissions", "width": 520, "height": 560, "resizable": false, "visible": false, "focus": false },
+      { "label": "bar", "url": "index.html#/bar", "title": "Simple Capture Recording", "width": 420, "height": 56, "resizable": false, "decorations": false, "transparent": false, "alwaysOnTop": true, "skipTaskbar": true, "visible": false, "focus": false },
+      { "label": "switcher", "url": "index.html#/switcher", "title": "Switch Source", "width": 360, "height": 440, "resizable": false, "decorations": false, "skipTaskbar": true, "visible": false, "focus": false },
+      { "label": "region", "url": "index.html#/region", "title": "Select Region", "width": 800, "height": 600, "resizable": false, "decorations": false, "skipTaskbar": true, "visible": false, "focus": false },
+      { "label": "pick", "url": "index.html#/pick", "title": "Pick Source", "width": 800, "height": 600, "resizable": false, "decorations": false, "skipTaskbar": true, "visible": false, "focus": false },
+      { "label": "saved", "url": "index.html#/saved", "title": "Recording Saved", "width": 420, "height": 300, "resizable": false, "visible": false, "focus": false }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' sc: http://sc.localhost data: blob:; media-src 'self' sc: http://sc.localhost blob:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "freezePrototype": true
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

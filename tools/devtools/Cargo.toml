@@ -1,0 +1,38 @@
+[package]
+name = "sc-devtools"
+description = "Developer tools: envcheck, fixture test apps, sync, soak and kill tests. Never shipped."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "sc-devtools"
+path = "src/main.rs"
+
+[dependencies]
+simple-capture-core.workspace = true
+simple-capture-geometry.workspace = true
+simple-capture-platform.workspace = true
+simple-capture-record.workspace = true
+simple-capture-decode.workspace = true
+simple-capture-helpers.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+libc.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+simple-capture-capture-macos.workspace = true
+objc2.workspace = true
+block2.workspace = true
+dispatch2.workspace = true
+objc2-foundation.workspace = true
+objc2-core-foundation.workspace = true
+objc2-core-graphics.workspace = true
+objc2-app-kit.workspace = true
+objc2-avf-audio.workspace = true
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "warn"

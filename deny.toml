@@ -1,0 +1,45 @@
+[graph]
+all-features = true
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CC0-1.0",
+]
+confidence-threshold = 0.9
+exceptions = [
+    { allow = ["WTFPL"], crate = "ffmpeg-next" },
+    { allow = ["WTFPL"], crate = "ffmpeg-sys-next" },
+]
+
+[bans]
+deny = [
+    { crate = "gifski" },
+    { crate = "imagequant" },
+    { crate = "x264" },
+    { crate = "x264-sys" },
+    { crate = "x265" },
+    { crate = "x265-sys" },
+    { crate = "workspace-hack" },
+    { crate = "cap-d3d-adapter" },
+    { crate = "cap-mediafoundation-utils" },
+    { crate = "cap-cursor-info" },
+    { crate = "cap-cpal-ffmpeg" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

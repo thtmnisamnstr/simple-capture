@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+    branches: [main, m1]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  FAST_PACKAGES: >-
+    -p simple-capture-geometry -p simple-capture-core -p simple-capture-platform
+    -p simple-capture-capture-macos -p simple-capture-capture-windows -p simple-capture-capture-linux
+    -p simple-capture-record -p simple-capture-decode -p simple-capture-render
+    -p simple-capture-helpers -p sc-devtools
+
+jobs:
+  fast:
+    name: fast (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Toolchain (rust-toolchain.toml)
+        run: rustup show active-toolchain
+      - name: fmt
+        run: cargo fmt --all --check
+      - name: clippy
+        shell: bash
+        run: |
+          cargo clippy --locked $FAST_PACKAGES --all-targets -- -D warnings
+          cargo clippy --locked -p simple-capture-cli --no-default-features --all-targets -- -D warnings
+      - name: test
+        shell: bash
+        run: |
+          cargo test --locked $FAST_PACKAGES
+          cargo test --locked -p simple-capture-cli --no-default-features
+
+  ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - run: npm install -g pnpm@12.21.0
+      - run: pnpm --dir ui install --frozen-lockfile
+      - run: pnpm --dir ui check
+      - run: pnpm --dir ui build
+      - run: pnpm --dir ui test
