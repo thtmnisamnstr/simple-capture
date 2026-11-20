@@ -1339,6 +1339,13 @@ impl Control {
                 );
             }
         }
+        // A frame stamped just after `now()` can reach the router before the stop time is
+        // published; the last segment then ends a fraction of a frame later. Move the stop
+        // to that end so the segments still tile [0, duration).
+        let stop_host = done
+            .as_ref()
+            .and_then(|d| d.closed.iter().map(|c| c.end_rec_ns).max())
+            .map_or(stop_host, |end| stop_host.max(start + end));
         self.journal(JournalEvent::Stop {
             stop_host_ns: stop_host,
             reason,
