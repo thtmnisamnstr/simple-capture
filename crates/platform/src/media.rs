@@ -6,7 +6,7 @@ use std::sync::Arc;
 use sc_core::time::HostTime;
 use sc_geometry::{RectPt, SizePx};
 
-use crate::{Result, StreamTag};
+use crate::{Error, Result, StreamTag};
 
 /// An OS frame (CVPixelBuffer on macOS) or a CPU frame, readable as NV12.
 pub trait NativeFrame: Send + Sync + 'static {
@@ -25,13 +25,54 @@ pub struct Nv12View<'a> {
     pub full_range: bool,
 }
 
-/// Tightly packed NV12 in memory.
+/// Tightly packed NV12 in memory: `y` is `w × h` bytes; `uv` is `ceil(h/2)` rows of
+/// [`CpuNv12Frame::uv_stride`] bytes (interleaved U, V at half resolution).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CpuNv12Frame {
     pub size: SizePx,
     pub y: Vec<u8>,
     pub uv: Vec<u8>,
     pub full_range: bool,
+}
+
+impl CpuNv12Frame {
+    /// A frame filled with one colour (`y`, `u`, `v` code values).
+    pub fn filled(size: SizePx, y: u8, u: u8, v: u8, full_range: bool) -> CpuNv12Frame {
+        let uv_len = Self::uv_stride_for(size) * Self::uv_rows_for(size);
+        let mut uv = vec![u; uv_len];
+        for pair in uv.chunks_exact_mut(2) {
+            pair[1] = v;
+        }
+        CpuNv12Frame {
+            size,
+            y: vec![y; size.w as usize * size.h as usize],
+            uv,
+            full_range,
+        }
+    }
+
+    /// Black in the given range.
+    pub fn black(size: SizePx, full_range: bool) -> CpuNv12Frame {
+        Self::filled(size, if full_range { 0 } else { 16 }, 128, 128, full_range)
+    }
+
+    /// Bytes per UV row: the width rounded up to even.
+    pub fn uv_stride(&self) -> usize {
+        Self::uv_stride_for(self.size)
+    }
+
+    /// UV rows: the height rounded up, halved.
+    pub fn uv_rows(&self) -> usize {
+        Self::uv_rows_for(self.size)
+    }
+
+    pub fn uv_stride_for(size: SizePx) -> usize {
+        (size.w as usize).div_ceil(2) * 2
+    }
+
+    pub fn uv_rows_for(size: SizePx) -> usize {
+        (size.h as usize).div_ceil(2)
+    }
 }
 
 impl NativeFrame for CpuNv12Frame {
@@ -44,12 +85,23 @@ impl NativeFrame for CpuNv12Frame {
     }
 
     fn with_nv12(&self, f: &mut dyn FnMut(Nv12View<'_>)) -> Result<()> {
+        let y_len = self.size.w as usize * self.size.h as usize;
+        let uv_len = self.uv_stride() * self.uv_rows();
+        if self.y.len() < y_len || self.uv.len() < uv_len {
+            return Err(Error::Other(format!(
+                "CpuNv12Frame {}x{}: planes too short (y {} < {y_len} or uv {} < {uv_len})",
+                self.size.w,
+                self.size.h,
+                self.y.len(),
+                self.uv.len()
+            )));
+        }
         f(Nv12View {
             size: self.size,
             y: &self.y,
             y_stride: self.size.w as usize,
             uv: &self.uv,
-            uv_stride: self.size.w as usize,
+            uv_stride: self.uv_stride(),
             full_range: self.full_range,
         });
         Ok(())
