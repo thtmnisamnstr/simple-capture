@@ -6,5 +6,6 @@ cd "$(dirname "$0")/../.."
 [ -f ui/dist/index.html ] || pnpm --dir ui build
 scripts/ci/lint.sh
 cargo test --locked --workspace
+cargo test --locked -p simple-capture-record --features test-hooks --test kill_synth
 pnpm --dir ui check
 pnpm --dir ui test

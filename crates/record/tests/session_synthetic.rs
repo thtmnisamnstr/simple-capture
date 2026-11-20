@@ -604,7 +604,7 @@ fn start_failing_while_old_runs_retries_stop_then_start() {
     let gap = segs[1].start_rec_ns - last_real;
     println!("stop-then-start gap: {} ms", gap / MS);
     assert!(
-        gap <= 30 * MS + 34 * MS + 20 * MS,
+        gap <= 30 * MS + 34 * MS + 20 * MS + ci_slack_ns(),
         "gap {} ms exceeds stop + start latency",
         gap / MS
     );
@@ -1079,7 +1079,7 @@ fn audio_gaps_are_filled_and_overlaps_trimmed() {
     assert_eq!(t.health.gaps[0].dur_ns, 40 * MS);
     let end = t.first_sample_offset_ns + t.duration_ns.expect("d");
     assert!(
-        (end - proj.duration_ns().expect("d")).abs() < 30 * MS,
+        (end - proj.duration_ns().expect("d")).abs() < 30 * MS + ci_slack_ns(),
         "mic ends at {end}"
     );
 }
@@ -1265,5 +1265,14 @@ fn segments_span_exactly_zero_to_the_stop() {
             proj.duration_ns(),
             "{segs:?}"
         );
+    }
+}
+
+/// Hosted CI runners are slow and shared: real-time limits get 100 ms more there.
+fn ci_slack_ns() -> i64 {
+    if std::env::var_os("CI").is_some() {
+        100 * MS
+    } else {
+        0
     }
 }

@@ -2,6 +2,7 @@
 
 use std::sync::{Arc, OnceLock};
 
+#[cfg(unix)]
 use sc_core::journal::StopReason;
 
 use crate::core::Core;

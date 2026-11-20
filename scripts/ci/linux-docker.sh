@@ -28,5 +28,6 @@ uname -m
 rustc --version
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
+cargo test --locked -p simple-capture-record --features test-hooks --test kill_synth
 IN
 echo "linux-docker: ok"

@@ -68,6 +68,7 @@ jobs:
           # shellcheck disable=SC2086
           cargo test --locked $FAST_PACKAGES -- --test-threads="$TEST_THREADS"
           cargo test --locked -p simple-capture-cli --no-default-features
+          cargo test --locked -p simple-capture-record --features test-hooks --test kill_synth
 
   full:
     name: full (${{ matrix.os }})

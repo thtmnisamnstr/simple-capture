@@ -229,7 +229,7 @@ fn locate_error_names_every_path_tried() {
             let exe_dir = exe_dir.parent().expect("parent");
             assert!(msg.contains(&exe_dir.display().to_string()), "{msg}");
             assert!(
-                msg.contains(&format!(
+                msg.replace('\\', "/").contains(&format!(
                     "third_party/out/{}",
                     sc_helpers::platform_dir_name()
                 )),

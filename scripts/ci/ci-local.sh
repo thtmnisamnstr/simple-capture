@@ -43,6 +43,7 @@ step ci-files ci_files
 step ui ui
 step lint scripts/ci/lint.sh
 step test cargo test --locked --workspace
+step kill-synth cargo test --locked -p simple-capture-record --features test-hooks --test kill_synth
 step deny scripts/ci/deny.sh
 step licenses scripts/ci/licenses.sh
 step notices scripts/ci/notices.sh
