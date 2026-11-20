@@ -44,6 +44,16 @@ impl CameraKey {
         }
     }
 
+    /// A medium circle in the bottom-right corner of a 16:9 frame: the bubble's first placement.
+    pub fn default_placement() -> CameraKey {
+        CameraKey::new(
+            0,
+            CameraShape::Circle,
+            PointF { x: 0.91, y: 0.84 },
+            sc_geometry::CAMERA_SIZE_PRESETS[1],
+        )
+    }
+
     pub fn new(t_rec_ns: i64, shape: CameraShape, center: PointF, size: f64) -> CameraKey {
         CameraKey {
             t_rec_ns,

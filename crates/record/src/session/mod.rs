@@ -44,6 +44,8 @@ pub struct RecordRequest {
     /// Length of the recording on its own clock. Screen frames from then on are not recorded,
     /// and a `stop` that comes later still ends the recording there. The caller still stops it.
     pub duration_ns: Option<i64>,
+    /// The camera placement at the start; later changes come through `Session::camera_key`.
+    pub camera_key: Option<sc_core::project::CameraKey>,
     pub tuning: Tuning,
 }
 
@@ -193,6 +195,15 @@ impl Session {
         }
     }
 
+    /// A new camera placement from now on (stamped with the current recording time). Ignored
+    /// when the recording has no camera.
+    pub fn camera_key(&self, key: sc_core::project::CameraKey) -> Result<()> {
+        self.check_live()?;
+        self.ctl
+            .send(Ctl::CameraKey(key))
+            .map_err(|_| Error::State(ENDED.into()))
+    }
+
     /// Async; the result arrives through state and notices.
     pub fn switch_source(&self, spec: SourceSpec, via: Via) -> Result<()> {
         self.check_live()?;
@@ -268,4 +279,27 @@ impl Drop for Session {
             let _ = self.stop_inner(StopReason::Quit);
         }
     }
+}
+
+/// The camera overlay of `p`'s camera track, with `keys` sorted by time; no camera track, no
+/// overlay.
+pub(crate) fn set_camera_layout(
+    p: &mut sc_core::project::ProjectV1,
+    mut keys: Vec<sc_core::project::CameraKey>,
+) {
+    let Some(track) = p
+        .recording
+        .tracks
+        .iter()
+        .find(|t| t.kind == sc_core::project::TrackKind::Camera)
+    else {
+        return;
+    };
+    keys.sort_by_key(|k| k.t_rec_ns);
+    p.camera_layout.overlays = vec![sc_core::project::CameraOverlay {
+        id: "cam0".into(),
+        track_id: track.id.clone(),
+        keyframes: keys,
+        extra: Default::default(),
+    }];
 }

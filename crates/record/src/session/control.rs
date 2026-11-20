@@ -13,9 +13,9 @@ use sc_core::journal::{
     DeviceChange, DeviceKindJ, JournalEvent, JournalWriter, StopReason, SwitchNext,
 };
 use sc_core::project::{
-    AudioInfo, AudioMixEntry, Clip, ColorInfo, DeviceInfo, Edl, EndReason, Extra, ProjectState,
-    ProjectV1, ScreenSegment, Speed, StartReason, Track, TrackHealth, TrackKind, Via, VideoInfo,
-    copy_background_asset,
+    AudioInfo, AudioMixEntry, CameraKey, Clip, ColorInfo, DeviceInfo, Edl, EndReason, Extra,
+    ProjectState, ProjectV1, ScreenSegment, Speed, StartReason, Track, TrackHealth, TrackKind, Via,
+    VideoInfo, copy_background_asset,
 };
 use sc_core::sessionlog::{Level, SessionLog};
 use sc_geometry::{Aspect, Ratio, SizePx};
@@ -109,7 +109,14 @@ struct Control {
     health: Option<(Sender<()>, JoinHandle<()>)>,
     results: Vec<TrackResult>,
     finished: Option<std::result::Result<StopSummary, String>>,
+    camera_keys: Vec<CameraKey>,
+    pending_keys: Vec<CameraKey>,
+    pending_since: Option<Instant>,
 }
+
+/// Camera keys reach the journal in batches: every append fsyncs, and a drag sends up to 30 keys
+/// a second. A crash loses at most this much camera motion.
+const KEY_FLUSH: Duration = Duration::from_millis(200);
 
 fn check_permission(p: &dyn Platform, k: PermissionKind) -> Result<()> {
     match p.permissions().status(k) {
@@ -294,6 +301,9 @@ pub(crate) fn start(
         health: None,
         results: Vec::new(),
         finished: None,
+        camera_keys: Vec::new(),
+        pending_keys: Vec::new(),
+        pending_since: None,
     };
     if let Err(e) = c.begin() {
         sh.rec.log(Level::Error, &format!("start failed: {e}"));
@@ -514,6 +524,15 @@ impl Control {
                 extra: Extra::new(),
             });
             self.project.recording.tracks.push(track);
+            if kind == TrackKind::Camera
+                && let Some(mut k) = self.req.camera_key.clone()
+            {
+                k.t_rec_ns = 0;
+                self.camera_keys.push(k.clone());
+                self.sh
+                    .rec
+                    .journal(&JournalEvent::CameraKeys { keys: vec![k] });
+            }
             let c = self.spawn_track(track_id, kind, writer)?;
             self.cont.push(Cont {
                 device: Some((dkind, id, name)),
@@ -664,7 +683,10 @@ impl Control {
                         return;
                     }
                 }
-                Err(RecvTimeoutError::Timeout) => self.check_deadline(),
+                Err(RecvTimeoutError::Timeout) => {
+                    self.flush_keys();
+                    self.check_deadline();
+                }
                 Err(RecvTimeoutError::Disconnected) => {
                     let _ = self.finalize(StopReason::Quit);
                     return;
@@ -726,6 +748,11 @@ impl Control {
                     let _ = self.finalize(StopReason::Error);
                 }
             }
+            Ctl::CameraKey(k) => {
+                if self.live() {
+                    self.on_camera_key(k);
+                }
+            }
             Ctl::DiskStop(free) => {
                 if self.live() {
                     self.log(
@@ -737,6 +764,33 @@ impl Control {
             }
         }
         false
+    }
+
+    fn on_camera_key(&mut self, mut k: CameraKey) {
+        if self.camera_keys.is_empty() {
+            return;
+        }
+        let last = self.camera_keys.last().map_or(0, |l| l.t_rec_ns);
+        k.t_rec_ns = (self.sh.now() - self.sh.start_host()).max(last);
+        self.camera_keys.push(k.clone());
+        self.pending_keys.push(k);
+        if self
+            .pending_since
+            .get_or_insert_with(Instant::now)
+            .elapsed()
+            >= KEY_FLUSH
+        {
+            self.flush_keys();
+        }
+    }
+
+    fn flush_keys(&mut self) {
+        self.pending_since = None;
+        if self.pending_keys.is_empty() {
+            return;
+        }
+        let keys = std::mem::take(&mut self.pending_keys);
+        self.sh.rec.journal(&JournalEvent::CameraKeys { keys });
     }
 
     fn update_exclusions(&self) -> Result<()> {
@@ -1358,7 +1412,12 @@ impl Control {
                 0.0
             }
         });
+        self.flush_keys();
+        let keys = std::mem::take(&mut self.camera_keys);
         let p = &mut self.project;
+        if !keys.is_empty() {
+            super::set_camera_layout(p, keys);
+        }
         p.state = ProjectState::Finalized;
         p.recording.stop_host_ns = Some(stop_host);
         p.edl = Edl {

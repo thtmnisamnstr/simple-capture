@@ -28,6 +28,7 @@ pub(crate) enum Ctl {
     Cut(Opened),
     OpenFailed { tag: StreamTag, error: String },
     DiskStop(u64),
+    CameraKey(sc_core::project::CameraKey),
 }
 
 pub(crate) struct Recorder {

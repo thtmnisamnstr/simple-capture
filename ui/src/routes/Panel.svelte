@@ -464,6 +464,7 @@
             /> Border</label
           >
           <label><input type="checkbox" checked={!!k.shadow} onchange={(e) => setKey({ shadow: e.currentTarget.checked ? { strength: 0.7 } : null })} /> Shadow</label>
+          <label><input type="checkbox" checked={k.visible} onchange={(e) => setKey({ visible: e.currentTarget.checked })} /> In the video</label>
           <label><input type="checkbox" bind:checked={settings.bubble_shown} /> Show bubble</label>
           {#if k.zoom > 1 || k.pan_norm.x !== 0 || k.pan_norm.y !== 0}
             <button class="link" onclick={() => setKey({ zoom: 1, pan_norm: { x: 0, y: 0 } })}>Reset framing</button>

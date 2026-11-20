@@ -148,6 +148,7 @@ pub fn record_request(
         background_image: s.canvas.background_image.as_ref().map(PathBuf::from),
         exclude: env.exclude,
         duration_ns: None,
+        camera_key: Some(s.camera_key.clone()),
         tuning: Tuning::default(),
     })
 }

@@ -56,6 +56,7 @@ pub struct BubbleState {
     pub floating_at: Option<PointF>,
     pub geom: Option<Geom>,
     pub version: u64,
+    pub last_key_sent: Option<Instant>,
     drag: Option<Drag>,
 }
 

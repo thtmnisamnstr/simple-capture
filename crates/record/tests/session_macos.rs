@@ -205,6 +205,7 @@ fn switch_every_500ms_with_real_writers() {
         background_image: None,
         exclude: Vec::new(),
         duration_ns: None,
+        camera_key: None,
         tuning: Tuning::default(),
     };
     let obs = Arc::new(Obs::default());

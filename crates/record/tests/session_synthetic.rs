@@ -109,6 +109,7 @@ fn request(dir: &Path, source: SourceSpec) -> RecordRequest {
         background_image: None,
         exclude: Vec::new(),
         duration_ns: None,
+        camera_key: None,
         tuning: Tuning::default(),
     }
 }
@@ -1486,4 +1487,71 @@ fn ci_slack_ns() -> i64 {
     } else {
         0
     }
+}
+
+#[test]
+fn camera_keys_are_recorded_journaled_and_recovered() {
+    let dir = tmp("camera_keys");
+    let p = platform(Scenario::new().time_scale(2.0).camera(Some(VideoScript {
+        size: size(320, 240),
+        fps: 30,
+    })));
+    let mut req = request(&dir, display_spec("main", None));
+    req.camera = Some(sc_platform::synthetic::CAMERA_DEVICE_ID.into());
+    let first = sc_core::project::CameraKey::default_placement();
+    req.camera_key = Some(first.clone());
+    let s = Session::start(as_dyn(&p), req, Arc::new(Obs::default())).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 300 * MS);
+    let mut moved = first.clone();
+    moved.center_norm.x = 0.2;
+    s.camera_key(moved.clone()).expect("key");
+    sleep_host(&*p, 300 * MS);
+    let mut hidden = moved.clone();
+    hidden.visible = false;
+    hidden.easing = sc_core::project::Easing::Step;
+    s.camera_key(hidden).expect("key");
+    sleep_host(&*p, 300 * MS);
+    s.stop(StopReason::User).expect("stop");
+
+    let proj = ProjectV1::load(&pdir).expect("load");
+    let o = &proj.camera_layout.overlays;
+    assert_eq!(o.len(), 1, "{o:?}");
+    assert_eq!(o[0].track_id, "camera");
+    let keys = &o[0].keyframes;
+    assert_eq!(keys.len(), 3);
+    assert_eq!(keys[0].t_rec_ns, 0);
+    assert!(
+        keys[1].t_rec_ns > 0 && keys[2].t_rec_ns > keys[1].t_rec_ns,
+        "{keys:?}"
+    );
+    assert_eq!(keys[1].center_norm.x, 0.2);
+    assert!(!keys[2].visible);
+    let at = |t| sc_core::camera::camera_at(keys, t);
+    assert!(at(keys[1].t_rec_ns).is_some());
+    assert!(
+        at(keys[2].t_rec_ns).is_none(),
+        "hidden from the third key on"
+    );
+
+    let journaled: usize = journal(&pdir)
+        .iter()
+        .map(|e| match e {
+            JournalEvent::CameraKeys { keys } => keys.len(),
+            _ => 0,
+        })
+        .sum();
+    assert_eq!(journaled, 3, "every key reaches the journal");
+
+    let mut crashed = proj.clone();
+    crashed.state = ProjectState::Recording;
+    crashed.camera_layout.overlays.clear();
+    crashed.save(&pdir).expect("save");
+    let r = recover_project(&pdir, &*p.decoder()).expect("recover");
+    assert_eq!(r.outcome, Outcome::Recovered, "{r:?}");
+    let back = ProjectV1::load(&pdir).expect("load");
+    assert_eq!(
+        back.camera_layout.overlays[0].keyframes, *keys,
+        "rebuilt from the journal"
+    );
 }

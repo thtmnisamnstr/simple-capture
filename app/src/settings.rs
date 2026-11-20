@@ -3,8 +3,8 @@
 
 use std::path::{Path, PathBuf};
 
-use sc_core::project::{Background, CameraKey, CameraShape, Rgba};
-use sc_geometry::{Aspect, CAMERA_SIZE_PRESETS, PointF};
+use sc_core::project::{Background, CameraKey, Rgba};
+use sc_geometry::Aspect;
 use serde::{Deserialize, Serialize};
 
 use crate::dto::SourceSpecDto;
@@ -63,14 +63,8 @@ pub struct RecorderSettings {
     pub bubble_shown: bool,
 }
 
-/// A medium circle in the bottom-right corner of a 16:9 frame.
 pub fn default_camera_key() -> CameraKey {
-    CameraKey::new(
-        0,
-        CameraShape::Circle,
-        PointF { x: 0.91, y: 0.84 },
-        CAMERA_SIZE_PRESETS[1],
-    )
+    CameraKey::default_placement()
 }
 
 impl Default for RecorderSettings {

@@ -399,7 +399,11 @@ impl Core {
     }
 
     pub fn set_settings(&self, s: RecorderSettings) -> Reply {
+        let before = self.settings.load().camera_key;
         self.settings.save(&s)?;
+        if s.camera_key != before {
+            self.send_camera_key(&s.camera_key, true);
+        }
         if let Err(e) = self.refresh_camera() {
             tracing::warn!("camera after settings: {e}");
         }
@@ -1267,6 +1271,31 @@ impl Core {
         }
     }
 
+    /// During a recording, `key` becomes a camera keyframe now. Drags send at most 30 a second
+    /// (`force` sends regardless, for the last position and discrete edits).
+    fn send_camera_key(&self, key: &sc_core::project::CameraKey, force: bool) {
+        if !is_recording(&self.phase()) {
+            return;
+        }
+        {
+            let mut b = lock(&self.bubble);
+            let now = Instant::now();
+            if !force
+                && b
+                    .last_key_sent
+                    .is_some_and(|t| now.duration_since(t) < Duration::from_millis(33))
+            {
+                return;
+            }
+            b.last_key_sent = Some(now);
+        }
+        if let Some(s) = lock(&self.session).as_ref()
+            && let Err(e) = s.camera_key(key.clone())
+        {
+            tracing::warn!("camera key: {e}");
+        }
+    }
+
     pub fn bubble_state(&self) -> Reply {
         let b = lock(&self.bubble);
         Ok(json!({
@@ -1298,16 +1327,19 @@ impl Core {
                     return Ok(Value::Null);
                 };
                 let maps = crate::bubble::maps_output(&s);
-                let g = {
+                let (g, moved) = {
                     let mut b = lock(&self.bubble);
-                    b.drag_to(at, d, maps);
+                    let moved = b.drag_to(at, d, maps);
                     let key = b.key.clone().ok_or("no camera key")?;
                     let g = crate::bubble::geometry(&key, d, maps, b.floating_at);
                     b.geom = Some(g);
                     b.version += 1;
-                    g
+                    (g, moved.then_some(key))
                 };
                 self.move_bubble(&g);
+                if let Some(key) = moved {
+                    self.send_camera_key(&key, false);
+                }
                 Ok(json!(g))
             }
             "end" => {
@@ -1317,6 +1349,7 @@ impl Core {
                     b.key.clone()
                 };
                 if let Some(key) = key {
+                    self.send_camera_key(&key, true);
                     let mut s = self.settings.load();
                     if s.camera_key != key {
                         s.camera_key = key;

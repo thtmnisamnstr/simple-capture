@@ -53,6 +53,7 @@ struct Folded {
     health: BTreeMap<String, HealthEntry>,
     finished: BTreeMap<String, (Option<i64>, u64)>,
     gaps: Vec<(String, i64, i64)>,
+    camera_keys: Vec<sc_core::project::CameraKey>,
 }
 
 /// `None` when there is neither a `project.json` nor a journal `start` to build from.
@@ -112,6 +113,9 @@ pub(super) fn rebuild(
     };
     let had_segments = !p.recording.screen.segments.is_empty();
     let f = fold_events(&mut p, journal, &mut n);
+    if !f.camera_keys.is_empty() {
+        crate::session::set_camera_layout(&mut p, f.camera_keys.clone());
+    }
 
     for (seg, file) in &f.prepared {
         if !f.opened.contains(seg) {
@@ -365,6 +369,7 @@ fn fold_events(p: &mut ProjectV1, journal: &JournalRead, n: &mut Notes) -> Folde
                 }
             }
             JournalEvent::Stop { stop_host_ns, .. } => f.stop_host_ns = Some(*stop_host_ns),
+            JournalEvent::CameraKeys { keys } => f.camera_keys.extend(keys.iter().cloned()),
             _ => {}
         }
     }

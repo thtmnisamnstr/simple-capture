@@ -211,6 +211,7 @@ fn build_request(platform: &dyn Platform, plan: &Plan) -> Result<RecordRequest, 
         background_image,
         exclude: Vec::new(),
         duration_ns: a.duration_s.map(|d| (d * 1e9).round() as i64),
+        camera_key: Some(sc_core::project::CameraKey::default_placement()),
         tuning: Tuning::default(),
     })
 }
