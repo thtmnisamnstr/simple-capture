@@ -3,7 +3,7 @@
   import { onEvent } from '../lib/events.ts';
   import { isExportProgress, isExportState, isNotice, isRecordingState } from '../lib/guards.ts';
   import type { DisplayInfo, ExportProgressDto, ExportSizeDto, ExportStateDto, RecorderSettings, SourceList } from '../lib/types.ts';
-  import { basename, formatElapsed } from '../lib/format.ts';
+  import { basename, formatElapsed, revealLabel } from '../lib/format.ts';
   import { aspectRatio, ratioOf, referenceCanvasSize, type Size } from '../lib/geometry.ts';
   import { sourceSizePx } from '../lib/sources.ts';
   import Icon from '../components/Icon.svelte';
@@ -149,7 +149,7 @@
         <span class="glabel muted">Project</span>
         <span class="gcontrol value">
           <span class="path" title={projectDir}>{basename(projectDir)}</span>
-          <button class="plain icon-btn" title="Show in Finder" aria-label="Show in Finder" onclick={() => run(() => api.reveal(projectDir!))}
+          <button class="plain icon-btn" title={revealLabel()} aria-label={revealLabel()} onclick={() => run(() => api.reveal(projectDir!))}
             ><Icon name="folder" size={14} /></button
           >
         </span>
@@ -169,7 +169,7 @@
       <p class="done" role="status">
         <Icon name="check" size={14} />
         <span class="path">Exported {basename(exportState.path)}</span>
-        <button class="link" onclick={() => exportState?.state === "done" && run(() => api.reveal((exportState as { path: string }).path))}>Show in Finder</button>
+        <button class="link" onclick={() => exportState?.state === "done" && run(() => api.reveal((exportState as { path: string }).path))}>{revealLabel()}</button>
       </p>
     {:else if exportState?.state === 'failed'}
       <p class="warn" role="alert"><Icon name="warning" size={14} /><span>Export failed: {exportState.error}</span></p>
@@ -188,7 +188,7 @@
         </div>
         <button onclick={() => job && run(() => api.cancelExport(job!))}>Cancel</button>
       {:else}
-        <button onclick={() => run(() => api.reveal(projectDir!))}>Show in Finder</button>
+        <button onclick={() => run(() => api.reveal(projectDir!))}>{revealLabel()}</button>
         <button onclick={() => run(() => editor.open(projectDir!).then(() => undefined))}>Edit…</button>
         <button class="primary" onclick={startExport}><Icon name="export" size={14} />Export Video</button>
       {/if}

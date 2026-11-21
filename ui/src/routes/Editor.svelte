@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { revealLabel } from '../lib/format.ts';
   import { api, errorText } from '../lib/api.ts';
   import { onEvent } from '../lib/events.ts';
   import { isExportProgress, isExportState, isObject } from '../lib/guards.ts';
@@ -848,7 +849,7 @@
         {#if toast && !error}
           {#if toast.startsWith('/') || /^[A-Z]:\\/.test(toast)}
             <span>Exported {toast.split('/').pop()}.</span>
-            <button class="link" onclick={() => api.reveal(toast!)}>Show in Finder</button>
+            <button class="link" onclick={() => api.reveal(toast!)}>{revealLabel()}</button>
             <button class="link" onclick={() => editor.copyFile(toast!)}>Copy</button>
             <button class="link" onclick={() => editor.openFile(toast!)}>Open</button>
           {:else}

@@ -20,3 +20,15 @@ export function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? path;
 }
+
+export type HostOs = 'macos' | 'windows' | 'linux';
+
+export function hostOs(ua: string = typeof navigator === 'undefined' ? '' : navigator.userAgent): HostOs {
+  if (/Windows/i.test(ua)) return 'windows';
+  if (/Mac OS X|Macintosh/i.test(ua)) return 'macos';
+  return 'linux';
+}
+
+export function revealLabel(os: HostOs = hostOs()): string {
+  return os === 'macos' ? 'Show in Finder' : os === 'windows' ? 'Show in Explorer' : 'Show in Files';
+}

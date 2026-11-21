@@ -137,7 +137,7 @@
   <div class="actions">
     <button onclick={() => run(() => beginRegion('switch', null))}><Icon name="region" size={14} />Region…</button>
     <button onclick={() => run(() => beginPick('switch'))}><Icon name="pointer" size={14} />Click a Window</button>
-    {#if caps?.system_picker}<button onclick={() => run(() => systemPicker('switch'))} title="Choose with the macOS picker"><Icon name="picker" size={14} />System…</button>{/if}
+    {#if caps?.system_picker}<button onclick={() => run(() => systemPicker('switch'))} title="Choose with the system picker"><Icon name="picker" size={14} />System…</button>{/if}
   </div>
 </div>
 

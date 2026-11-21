@@ -34,7 +34,7 @@ env:
     -p simple-capture-geometry -p simple-capture-core -p simple-capture-platform
     -p simple-capture-capture-macos -p simple-capture-capture-windows -p simple-capture-capture-linux
     -p simple-capture-record -p simple-capture-decode -p simple-capture-render
-    -p simple-capture-helpers -p sc-devtools
+    -p simple-capture-helpers -p simple-capture-tracks -p simple-capture-capture-common -p sc-devtools
   # Plan §6.2: the record Session tests run a few real seconds with one-frame tolerances, so CI
   # runs tests with --test-threads=2 (hosted runners have 3-4 vCPUs). One invocation for the
   # whole selection keeps Cargo's feature unification, and so the build, identical.

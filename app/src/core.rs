@@ -763,9 +763,15 @@ impl Core {
             "recording-state",
             dto::recording_state(&SessionState::Preparing, 0),
         );
-        self.place_bar();
-        if let Err(e) = self.show_window("bar", false) {
-            tracing::warn!("{e}");
+        if self.platform.capabilities().exclusion == sc_platform::ExclusionKind::AutoHide {
+            for (label, _) in WINDOWS {
+                self.hide_window(label);
+            }
+        } else {
+            self.place_bar();
+            if let Err(e) = self.show_window("bar", false) {
+                tracing::warn!("{e}");
+            }
         }
         let obs = Arc::new(Observer {
             core: Arc::downgrade(self),
@@ -1252,7 +1258,17 @@ fn configure_one(
     unsafe { platform.overlays().configure(raw, role) }.map_err(|e| e.to_string())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+fn configure_one(
+    platform: &dyn Platform,
+    w: &tauri::WebviewWindow,
+    role: OverlayRole,
+) -> Result<WindowId, String> {
+    let raw = w.hwnd().map_err(|e| e.to_string())?.0;
+    unsafe { platform.overlays().configure(raw, role) }.map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "linux")]
 fn configure_one(
     platform: &dyn Platform,
     _w: &tauri::WebviewWindow,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { revealLabel } from '../lib/format.ts';
   import { api, errorText } from '../lib/api.ts';
   import { onEvent } from '../lib/events.ts';
   import { isObject, isPicked, isRecordingState, isRegionSelected } from '../lib/guards.ts';
@@ -103,6 +104,8 @@
         ? 'Choose an app as the source to record only its audio'
         : null,
   );
+
+  const portalOnly = $derived(!!caps?.system_picker && loaded && displays.length === 0);
 
   async function load() {
     error = null;
@@ -306,7 +309,7 @@
         <Icon name="warning" size={14} />
         <span>
           {recovery.length === 1 ? 'A recording from a previous session was recovered.' : `${recovery.length} recordings from a previous session were recovered.`}
-          <button class="link" onclick={() => run(() => api.reveal(recovery[0].dir))}>Show in Finder</button>
+          <button class="link" onclick={() => run(() => api.reveal(recovery[0].dir))}>{revealLabel()}</button>
         </span>
       </p>
     {/if}
@@ -314,6 +317,7 @@
     <section aria-labelledby="src-h">
       <div class="head">
         <h2 id="src-h">Source</h2>
+        {#if !portalOnly}
         <div class="segmented" role="tablist" aria-label="Source type">
           <button role="tab" aria-selected={tab === 'displays'} onclick={() => (tab = 'displays')}>Displays</button>
           <button role="tab" aria-selected={tab === 'windows'} onclick={() => (tab = 'windows')}>Windows</button>
@@ -321,7 +325,19 @@
             <button role="tab" aria-selected={tab === 'apps'} onclick={() => (tab = 'apps')}>Apps</button>
           {/if}
         </div>
+        {/if}
       </div>
+
+      {#if portalOnly}
+        <div class="group list" role="group" aria-label="Source">
+          <div class="empty">
+            <p class="muted">{source ? 'The screen or window you chose will be recorded.' : 'Your system asks which screen or window to share.'}</p>
+            <div class="row">
+              <button class="primary" onclick={() => run(() => systemPicker('start'))}>{source ? 'Choose Again…' : 'Choose Screen or Window…'}</button>
+            </div>
+          </div>
+        </div>
+      {:else}
 
       <div class="group list" role="tabpanel" aria-label="Sources">
         {#if tab === 'displays'}
@@ -378,8 +394,9 @@
       <div class="tools">
         <button onclick={() => run(() => beginRegion('start', sourceDisplay?.id ?? null))}><Icon name="region" size={14} />Region…</button>
         <button onclick={() => run(() => beginPick('start'))}><Icon name="pointer" size={14} />Click a Window</button>
-        {#if caps?.system_picker}<button onclick={() => run(() => systemPicker('start'))} title="Choose with the macOS picker"><Icon name="picker" size={14} />System…</button>{/if}
+        {#if caps?.system_picker}<button onclick={() => run(() => systemPicker('start'))} title="Choose with the system picker"><Icon name="picker" size={14} />System…</button>{/if}
       </div>
+      {/if}
 
       {#if pickedDisplay}
         <div class="choice" role="group" aria-label="Picked display">
