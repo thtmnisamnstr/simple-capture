@@ -1,6 +1,7 @@
 mod camera;
 mod desktop;
 mod enumerate;
+mod mf;
 mod overlays;
 mod sys;
 mod wgc;
@@ -117,6 +118,18 @@ pub struct WindowsPlatform {
     decoder: Arc<dyn Decoder>,
 }
 
+/// Media Foundation records in process (beta); `SC_MEDIA=helper` or a system without it falls
+/// back to the FFmpeg helper.
+fn media_writers(ffmpeg: &Path) -> Arc<dyn WriterFactory> {
+    let forced = std::env::var("SC_MEDIA").is_ok_and(|v| v.eq_ignore_ascii_case("helper"));
+    if !forced && mf::MfWriters::usable() {
+        tracing::info!("tracks: Media Foundation (beta)");
+        return Arc::new(mf::MfWriters);
+    }
+    tracing::info!("tracks: FFmpeg helper");
+    Arc::new(HelperWriters::new(ffmpeg.to_path_buf()))
+}
+
 pub fn platform() -> Arc<dyn Platform> {
     unsafe {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -136,8 +149,8 @@ pub fn platform() -> Arc<dyn Platform> {
         perms: Perms,
         overlays: overlays::Overlays::default(),
         desktop: desktop::WinDesktop,
-        writers: Arc::new(HelperWriters::new(ffmpeg.clone())),
-        decoder: Arc::new(HelperDecoder::new(ffmpeg)),
+        writers: media_writers(&ffmpeg),
+        decoder: Arc::new(mf::MfDecoder::new(Arc::new(HelperDecoder::new(ffmpeg)))),
     })
 }
 
