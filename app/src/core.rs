@@ -57,6 +57,7 @@ pub struct Core {
     pub data_dir: PathBuf,
     projects_dir: PathBuf,
     settings: SettingsStore,
+    settings_write: Mutex<()>,
     phase: Mutex<Phase>,
     session: Mutex<Option<Session>>,
     rec_started: Mutex<Option<Instant>>,
@@ -90,6 +91,7 @@ impl Core {
         let (platform, camera) = WithSharedCamera::new(platform);
         Core {
             settings: SettingsStore::new(&data_dir),
+            settings_write: Mutex::new(()),
             app,
             platform,
             camera,
@@ -415,18 +417,38 @@ impl Core {
         serde_json::to_value(self.settings.load()).map_err(|e| e.to_string())
     }
 
-    pub fn set_settings(&self, s: RecorderSettings) -> Reply {
-        let before = self.settings.load().camera_key;
-        self.settings.save(&s)?;
+    /// The window positions in `s` are ignored: the app keeps those itself. The change is
+    /// announced in save order, before the camera catches up.
+    pub fn set_settings(&self, mut s: RecorderSettings) -> Reply {
+        let (before, v) = {
+            let _write = lock(&self.settings_write);
+            let current = self.settings.load();
+            s.bar_at = current.bar_at;
+            s.preview_at = current.preview_at;
+            self.settings.save(&s)?;
+            let v = serde_json::to_value(&s).map_err(|e| e.to_string())?;
+            self.emit("settings-changed", v.clone());
+            (current.camera_key, v)
+        };
         if s.camera_key != before {
             self.send_camera_key(&s.camera_key, true);
         }
         if let Err(e) = self.refresh_camera() {
             tracing::warn!("camera after settings: {e}");
         }
-        let v = serde_json::to_value(s).map_err(|e| e.to_string())?;
-        self.emit("settings-changed", v.clone());
         Ok(v)
+    }
+
+    /// Loads, changes and saves the settings under the write lock.
+    fn edit_settings(
+        &self,
+        f: impl FnOnce(&mut RecorderSettings),
+    ) -> Result<RecorderSettings, String> {
+        let _write = lock(&self.settings_write);
+        let mut s = self.settings.load();
+        f(&mut s);
+        self.settings.save(&s)?;
+        Ok(s)
     }
 
     pub fn get_capabilities(&self) -> Reply {
@@ -452,7 +474,13 @@ impl Core {
         Ok(dto::capabilities(&caps, &per))
     }
 
-    pub fn preview_still(&self, source: SourceSpecDto, canvas: CanvasDto) -> Reply {
+    /// `camera_key`: the placement to show, when the caller has one newer than the saved settings.
+    pub fn preview_still(
+        &self,
+        source: SourceSpecDto,
+        canvas: CanvasDto,
+        camera_key: Option<sc_core::project::CameraKey>,
+    ) -> Reply {
         let spec = source.to_spec(|id| self.picked(id))?;
         let snapshot = if self.platform.permissions().status(PermissionKind::Screen)
             == PermissionStatus::Granted
@@ -482,12 +510,13 @@ impl Core {
             None => canvas.background.clone(),
         };
         let settings = self.settings.load();
+        let key = camera_key.unwrap_or(settings.camera_key);
         let cam_frame = settings
             .camera
             .as_ref()
-            .filter(|_| settings.camera_key.visible)
+            .filter(|_| key.visible)
             .and_then(|_| self.camera.latest());
-        let placement = sc_core::camera::camera_at(std::slice::from_ref(&settings.camera_key), 0);
+        let placement = sc_core::camera::camera_at(std::slice::from_ref(&key), 0);
         let cam = cam_frame
             .as_ref()
             .zip(placement.as_ref())
@@ -1030,6 +1059,27 @@ impl Core {
         tracing::info!(ms = t0.elapsed().as_millis() as u64, "launch tasks done");
     }
 
+    /// Off the main thread, since opening a camera blocks: closes `lost` if it is the open camera,
+    /// then opens the preview's camera again if it is missing (unplugged, then plugged back in).
+    fn camera_in_background(self: &Arc<Self>, lost: Option<String>) {
+        let core = Arc::downgrade(self);
+        let spawned = std::thread::Builder::new()
+            .name("camera-devices".into())
+            .spawn(move || {
+                let Some(core) = core.upgrade() else { return };
+                if let Some(id) = lost {
+                    tracing::warn!(device = id, "camera unplugged");
+                    core.camera.device_lost(&id);
+                }
+                if let Err(e) = core.refresh_camera() {
+                    tracing::warn!("camera after a device change: {e}");
+                }
+            });
+        if let Err(e) = spawned {
+            tracing::warn!("camera device thread: {e}");
+        }
+    }
+
     pub fn on_system_event(self: &Arc<Self>, e: SourceEvent) {
         match e {
             SourceEvent::DevicesChanged { kind } => {
@@ -1037,7 +1087,14 @@ impl Core {
                     "devices-changed",
                     json!({"kind": format!("{kind:?}").to_lowercase()}),
                 );
+                if kind == sc_platform::DeviceKind::Camera {
+                    self.camera_in_background(None);
+                }
             }
+            SourceEvent::DeviceLost {
+                kind: sc_platform::DeviceKind::Camera,
+                device_id,
+            } => self.camera_in_background(Some(device_id)),
             SourceEvent::OwnWindowsChanged => {
                 if lock(&self.session).is_none() {
                     return;
@@ -1325,17 +1382,19 @@ impl Core {
                 }
             })
         });
-        if let Some(at) = at
-            && let Err(e) = w.set_position(LogicalPosition::new(at.x, at.y))
-        {
-            tracing::warn!("place preview: {e}");
+        if let Some(at) = at {
+            lock(&self.preview).placed_at = Some(at);
+            if let Err(e) = w.set_position(LogicalPosition::new(at.x, at.y)) {
+                tracing::warn!("place preview: {e}");
+            }
         }
     }
 
     /// The preview window's close button turns the preview off (the panel's "Show preview").
     pub fn preview_closed(&self) {
-        let mut s = self.settings.load();
-        if s.preview_shown {
+        if self.settings.load().preview_shown {
+            let _write = lock(&self.settings_write);
+            let mut s = self.settings.load();
             s.preview_shown = false;
             match self.settings.save(&s) {
                 Ok(()) => self.emit("settings-changed", json!(s)),
@@ -1348,14 +1407,34 @@ impl Core {
     }
 
     /// The preview window was moved: remembered for next time.
-    pub fn preview_moved(&self, x: f64, y: f64) {
-        let mut s = self.settings.load();
+    pub fn preview_moved(self: &Arc<Self>, x: f64, y: f64) {
         let at = sc_geometry::PointF { x, y };
-        if s.preview_at != Some(at) {
-            s.preview_at = Some(at);
-            if let Err(e) = self.settings.save(&s) {
-                tracing::warn!("remember preview position: {e}");
+        {
+            let mut p = lock(&self.preview);
+            if p.placed_at
+                .is_some_and(|q| (q.x - x).abs() < 1.0 && (q.y - y).abs() < 1.0)
+            {
+                return;
             }
+            if p.moved_to.replace(at).is_some() {
+                return;
+            }
+        }
+        let core = Arc::downgrade(self);
+        let spawned = std::thread::Builder::new()
+            .name("preview-moved".into())
+            .spawn(move || {
+                std::thread::sleep(Duration::from_millis(400));
+                let Some(core) = core.upgrade() else { return };
+                let Some(at) = lock(&core.preview).moved_to.take() else {
+                    return;
+                };
+                if let Err(e) = core.edit_settings(|s| s.preview_at = Some(at)) {
+                    tracing::warn!("remember preview position: {e}");
+                }
+            });
+        if let Err(e) = spawned {
+            tracing::warn!("preview position thread: {e}");
         }
     }
 
@@ -1469,9 +1548,10 @@ impl Core {
 
     /// A camera placement while it is being dragged in the preview: shown at once (and a keyframe
     /// while recording) but not saved; the preview saves the settings when the drag ends.
-    pub fn camera_key_live(&self, key: sc_core::project::CameraKey) -> Reply {
+    /// `last`: the end of a drag, always sent.
+    pub fn camera_key_live(&self, key: sc_core::project::CameraKey, last: bool) -> Reply {
         lock(&self.preview).key = Some(key.clone());
-        self.send_camera_key(&key, false);
+        self.send_camera_key(&key, last);
         Ok(Value::Null)
     }
 
@@ -1555,9 +1635,8 @@ impl Core {
             }
             "end" => {
                 if lock(&self.bar_drag).take().is_some() {
-                    let mut s = self.settings.load();
-                    s.bar_at = Some(sc_geometry::PointF { x: pos.x, y: pos.y });
-                    self.settings.save(&s)?;
+                    let at = sc_geometry::PointF { x: pos.x, y: pos.y };
+                    self.edit_settings(|s| s.bar_at = Some(at))?;
                 }
             }
             other => return Err(format!("bar_drag: unknown phase {other:?}")),

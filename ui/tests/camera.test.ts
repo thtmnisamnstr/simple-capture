@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { cameraRects, cornerCenter, ratio, snapCenter, type Corner } from '../src/lib/geometry.ts';
+import { ROUNDED_RADIUS, shapeChange } from '../src/lib/camera.ts';
+import type { CameraKey } from '../src/lib/types.ts';
 
 const cases = JSON.parse(readFileSync(new URL('../../crates/geometry/tests/camera_cases.json', import.meta.url), 'utf8'));
 const size = ([w, h]: number[]) => ({ w, h });
@@ -31,4 +33,12 @@ test('corner presets and snapping match the shared Rust cases', () => {
     const got = snapCenter(size(c.canvas), ratio(c.aspect[0], c.aspect[1]), c.size, pt(c.center), c.threshold_px);
     assert.ok(close(got.x, c.snapped[0]) && close(got.y, c.snapped[1]), `${c.name}: ${JSON.stringify(got)}`);
   }
+});
+
+test('picking Rounded gives it corners; Square drops them; others keep the radius', () => {
+  const base = { corner_radius: 0 } as CameraKey;
+  assert.deepEqual(shapeChange(base, 'rounded'), { shape: 'rounded', corner_radius: ROUNDED_RADIUS });
+  assert.deepEqual(shapeChange({ ...base, corner_radius: 0.6 }, 'rounded'), { shape: 'rounded' });
+  assert.deepEqual(shapeChange({ ...base, corner_radius: 0.6 }, 'square'), { shape: 'square', corner_radius: 0 });
+  assert.deepEqual(shapeChange(base, 'rect_16_9'), { shape: 'rect_16_9' });
 });

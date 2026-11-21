@@ -87,7 +87,11 @@ pub fn dispatch(core: &Arc<Core>, name: &str, args: &Value) -> Reply {
         "get_settings" => core.get_settings(),
         "set_settings" => core.set_settings(arg(args, "settings")?),
         "get_capabilities" => core.get_capabilities(),
-        "preview_still" => core.preview_still(arg(args, "source")?, arg(args, "canvas")?),
+        "preview_still" => core.preview_still(
+            arg(args, "source")?,
+            arg(args, "canvas")?,
+            opt_arg(args, "camera_key")?,
+        ),
         "choose_background_image" => core.choose_background_image(),
         "begin_region_select" => core.begin_region_select(
             &arg::<String>(args, "purpose")?,
@@ -108,7 +112,9 @@ pub fn dispatch(core: &Arc<Core>, name: &str, args: &Value) -> Reply {
         "recovery_report" => core.recovery_report(),
         "camera_preview" => core.camera_preview(arg(args, "active")?),
         "preview_state" => core.preview_state(),
-        "camera_key_live" => core.camera_key_live(arg(args, "key")?),
+        "camera_key_live" => {
+            core.camera_key_live(arg(args, "key")?, opt_arg(args, "last")?.unwrap_or(false))
+        }
         "show_video_effects" => core.show_video_effects(),
         "bar_drag" => core.bar_drag(
             &arg::<String>(args, "phase")?,
@@ -183,11 +189,16 @@ pub async fn get_capabilities(core: State<'_, Arc<Core>>) -> Reply {
 }
 
 #[tauri::command]
-pub async fn preview_still(core: State<'_, Arc<Core>>, source: Value, canvas: Value) -> Reply {
+pub async fn preview_still(
+    core: State<'_, Arc<Core>>,
+    source: Value,
+    canvas: Value,
+    camera_key: Option<Value>,
+) -> Reply {
     run(
         core,
         "preview_still",
-        json!({ "source": source, "canvas": canvas }),
+        json!({ "source": source, "canvas": canvas, "camera_key": camera_key }),
     )
     .await
 }
@@ -279,8 +290,8 @@ pub async fn show_video_effects(core: State<'_, Arc<Core>>) -> Reply {
 }
 
 #[tauri::command]
-pub async fn camera_key_live(core: State<'_, Arc<Core>>, key: Value) -> Reply {
-    run(core, "camera_key_live", json!({ "key": key })).await
+pub async fn camera_key_live(core: State<'_, Arc<Core>>, key: Value, last: Option<bool>) -> Reply {
+    run(core, "camera_key_live", json!({ "key": key, "last": last })).await
 }
 
 #[cfg(test)]

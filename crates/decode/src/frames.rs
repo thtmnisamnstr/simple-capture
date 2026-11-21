@@ -276,7 +276,10 @@ impl TrackFrameSource {
             }
             self.current = Some(next.frame);
         }
-        Ok(self.current.clone())
+        Ok(self
+            .current
+            .clone()
+            .or_else(|| self.pending.as_ref().map(|p| p.frame.clone())))
     }
 }
 

@@ -64,16 +64,16 @@
     };
   });
 
-  function push() {
+  function push(last = false) {
     queued = false;
-    if (key) api.cameraKeyLive($state.snapshot(key) as CameraKey).catch((e) => (error = errorText(e)));
+    if (key) api.cameraKeyLive($state.snapshot(key) as CameraKey, last).catch((e) => (error = errorText(e)));
   }
 
   function live(next: CameraKey) {
     key = next;
     if (!queued) {
       queued = true;
-      requestAnimationFrame(push);
+      requestAnimationFrame(() => push());
     }
   }
 
@@ -116,7 +116,7 @@
   function up() {
     if (!drag) return;
     drag = null;
-    push();
+    push(true);
     save();
   }
 

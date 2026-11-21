@@ -205,9 +205,13 @@ fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
             api.prevent_close();
             if label == "panel"
                 && let Some(core) = app.try_state::<Arc<Core>>()
-                && let Err(e) = core.camera_preview(false)
             {
-                tracing::warn!("camera preview: {e}");
+                let core = core.inner().clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = core.camera_preview(false) {
+                        tracing::warn!("camera preview: {e}");
+                    }
+                });
             }
             if label == "stage"
                 && let Some(core) = app.try_state::<Arc<Core>>()

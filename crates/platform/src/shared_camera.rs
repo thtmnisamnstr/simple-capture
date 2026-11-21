@@ -65,6 +65,8 @@ struct Open {
 #[derive(Default)]
 struct State {
     open: Option<Open>,
+    /// The open device was unplugged: its stream delivers nothing more.
+    lost: bool,
     preview: Option<String>,
     recording: bool,
 }
@@ -120,12 +122,27 @@ impl SharedCamera {
         lock(&self.state).open.as_ref().map(|o| o.device.clone())
     }
 
+    /// `device` went away. Its stream is closed now unless a recording holds it, in which case it
+    /// is closed when the recording lets go; the next `set_preview` opens it again.
+    pub fn device_lost(&self, device: &str) {
+        let mut st = lock(&self.state);
+        if st.open.as_ref().is_some_and(|o| o.device == device) {
+            st.lost = true;
+            if !st.recording {
+                self.close(&mut st);
+            }
+        }
+    }
+
     fn settle(&self, st: &mut State) -> Result<()> {
         let want = if st.recording {
             st.open.as_ref().map(|o| o.device.clone())
         } else {
             st.preview.clone()
         };
+        if st.lost && !st.recording {
+            self.close(st);
+        }
         if st.open.as_ref().map(|o| &o.device) == want.as_ref() {
             return Ok(());
         }
@@ -137,6 +154,7 @@ impl SharedCamera {
     }
 
     fn close(&self, st: &mut State) {
+        st.lost = false;
         if let Some(old) = st.open.take() {
             *lock(&self.fan.latest) = None;
             if let Err(e) = old.stream.stop() {
@@ -167,9 +185,16 @@ impl SharedCamera {
     }
 }
 
+/// Detaches when stopped or dropped, so a recording that fails to start never keeps the camera.
 struct Attachment {
     cam: Arc<SharedCamera>,
     format: String,
+}
+
+impl Drop for Attachment {
+    fn drop(&mut self) {
+        self.cam.detach();
+    }
 }
 
 impl DeviceStream for Attachment {
@@ -178,7 +203,7 @@ impl DeviceStream for Attachment {
     }
 
     fn stop(self: Box<Self>) -> Result<()> {
-        self.cam.detach();
+        drop(self);
         Ok(())
     }
 }
@@ -206,9 +231,17 @@ impl CameraSource for SharedCamera {
         if st.recording {
             return Err(Error::Busy("the camera is already recording".into()));
         }
-        if st.open.as_ref().map(|o| o.device.as_str()) != Some(device_id) {
+        if st.lost || st.open.as_ref().map(|o| o.device.as_str()) != Some(device_id) {
             self.close(&mut st);
-            st.open = Some(self.open(device_id, limit)?);
+            match self.open(device_id, limit) {
+                Ok(open) => st.open = Some(open),
+                Err(e) => {
+                    if let Err(again) = self.settle(&mut st) {
+                        tracing::warn!("camera preview after a failed start: {again}");
+                    }
+                    return Err(e);
+                }
+            }
         }
         *lock(&self.fan.recorder) = Some(sink);
         st.recording = true;

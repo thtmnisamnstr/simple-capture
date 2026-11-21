@@ -13,9 +13,9 @@ use sc_core::journal::{
     DeviceChange, DeviceKindJ, JournalEvent, JournalWriter, StopReason, SwitchNext,
 };
 use sc_core::project::{
-    AudioInfo, AudioMixEntry, CameraKey, Clip, ColorInfo, DeviceInfo, Edl, EndReason, Extra,
-    ProjectState, ProjectV1, ScreenSegment, Speed, StartReason, Track, TrackHealth, TrackKind, Via,
-    VideoInfo, copy_background_asset,
+    AudioInfo, AudioMixEntry, CameraKey, Clip, ColorInfo, DeviceInfo, Easing, Edl, EndReason,
+    Extra, ProjectState, ProjectV1, ScreenSegment, Speed, StartReason, Track, TrackHealth,
+    TrackKind, Via, VideoInfo, copy_background_asset,
 };
 use sc_core::sessionlog::{Level, SessionLog};
 use sc_geometry::{Aspect, Ratio, SizePx};
@@ -117,6 +117,18 @@ struct Control {
 /// Camera keys reach the journal in batches: every append fsyncs, and a drag sends up to 30 keys
 /// a second. A crash loses at most this much camera motion.
 const KEY_FLUSH: Duration = Duration::from_millis(200);
+/// Drags send keys about every 33 ms; a key after a longer pause is a jump, not motion.
+const KEY_MOTION_GAP_NS: i64 = 100_000_000;
+
+/// A key that follows the previous one within a drag keeps its easing (the motion is replayed);
+/// one after a pause holds the old placement until it, then jumps.
+fn key_easing(sent: Easing, gap_ns: i64) -> Easing {
+    if sent == Easing::Linear && gap_ns > KEY_MOTION_GAP_NS {
+        Easing::Step
+    } else {
+        sent
+    }
+}
 
 fn check_permission(p: &dyn Platform, k: PermissionKind) -> Result<()> {
     match p.permissions().status(k) {
@@ -748,9 +760,9 @@ impl Control {
                     let _ = self.finalize(StopReason::Error);
                 }
             }
-            Ctl::CameraKey(k) => {
+            Ctl::CameraKey(k, sent) => {
                 if self.live() {
-                    self.on_camera_key(k);
+                    self.on_camera_key(k, sent);
                 }
             }
             Ctl::DiskStop(free) => {
@@ -766,12 +778,13 @@ impl Control {
         false
     }
 
-    fn on_camera_key(&mut self, mut k: CameraKey) {
+    fn on_camera_key(&mut self, mut k: CameraKey, sent_host: i64) {
         if self.camera_keys.is_empty() {
             return;
         }
         let last = self.camera_keys.last().map_or(0, |l| l.t_rec_ns);
-        k.t_rec_ns = (self.sh.now() - self.sh.start_host()).max(last);
+        k.t_rec_ns = (sent_host - self.sh.start_host()).max(last);
+        k.easing = key_easing(k.easing, k.t_rec_ns - last);
         self.camera_keys.push(k.clone());
         self.pending_keys.push(k);
         if self

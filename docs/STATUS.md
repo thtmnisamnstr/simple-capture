@@ -26,6 +26,20 @@ after the first hands-on: ADR-043.
   silent in that recording; the mic peaks about −20 dBFS). The Saved window now lists what was
   recorded, says the export makes one video of it, and the button reads "Export video".
 
+**Found and fixed before the second hands-on (2026-11-20)**, by the live driver flows and an
+independent review of the branch (ADR-042 update, "review fixes"):
+- The Preview page had no event permission, so panel edits never moved its dashed outline and
+  handles (the picture did move). Flow 12 now checks the outline against the drawn camera.
+- Moves made while recording slid across the whole idle time before them in the export; keys
+  after a pause are now jumps, drags stay motion; the last drag position is always kept.
+- After recording from the panel, the camera stayed on and the Preview stayed up.
+- A recording that failed to start left the camera unusable until relaunch; an unplugged camera
+  froze the Preview and was not reopened when plugged back in.
+- Bar and Preview positions could be overwritten by the panel; panel edits could be reverted by
+  out-of-order updates; the panel's little preview showed the previous camera edit; Rounded
+  looked like Square; the export's first frame had no camera.
+- The driver's summary ignored failures in flows 12 and 14.
+
 **What M2 does.** A Preview window shows the composed output with the live camera (any shape,
 size, position, zoom/pan, mirror, border, shadow) while the recorder panel is open or a recording
 runs, and is where the camera is placed (ADR-043). Moves, resizes, shape changes and hiding during a recording become keyframes. The quick
@@ -42,12 +56,14 @@ at 1920×1080 30 fps):
 | Geometry Rust vs TS, shared case table | all cases equal | `crates/geometry/tests/camera_cases.json` |
 | Preview window: live frames, placement, camera edits, 9:16 (live, driver flow 12) | 25 fps (FaceTime HD), drawn by the native Metal layer; on screen in the bottom-right; edits arrive at once; a window screenshot shows the camera outline and handles on the drawn camera | `app/driver/flows/12-preview.txt` |
 | Same, webview-frames fallback (`SC_PREVIEW=webview`) | 13/13 checks, 25 fps | flow 12 |
+| Preview resize and outline (live, flow 12): resize to 720×480 pt, then compare the page with the renderer | drawable 1440×896 px = page viewport × 2; the page's camera outline is within 0.03 px of the drawn camera after a panel edit | flow 12 |
 | Preview window absent from a display recording (live, flow 14) | 0 of 57 frames show it | `app/driver/flows/14-preview-capture.txt` |
 | Keyframes while recording (live, flow 14; synthetic + recovery test) | start key at 0 plus the drag; journaled; rebuilt by recovery | flow 14, `camera_keys_are_recorded_journaled_and_recovered` |
 | Export with the camera (unit + real CLI recording, 9:16) | camera drawn where the keys put it, hidden after a hide key; real export checked by eye | `export_camera.rs` |
 | CPU, Preview window + panel shown, camera on (FaceTime HD, about 25 fps), **release**, native Metal layer (ADR-007) | app 17.5–17.9% + its WebKit processes 0.5–0.8% = **18.1–18.4% of one core** in three runs (plan budget: 15%) | CPU time over 15 s of a driver run, MacBook display |
 | Same through webview frames (before the native layer) | app 20.5% + WebKit 9.0% = 29.5% (34.6% before the first 2026-11-20 cuts; 31.7% debug) | same |
 | Same, camera off, release, native layer | **4.3%** (frames only when something changes) | same |
+| Memory, Preview with the live camera for 2 min (release, 3,079 frames presented) | phys_footprint flat at 382–399 MB, RSS settles at about 135 MB: no per-frame growth | `footprint`/`ps` every 10 s |
 | Local CI (`ci-local-fast`, helpers and GPU required) | 394 Rust + 40 UI tests, 0 failures | |
 
 **Not verified / open:**
@@ -55,9 +71,9 @@ at 1920×1080 30 fps):
   15%). WebKit is out of the per-frame path; what is left is macOS's camera pipeline (CoreMediaIO
   threads, about 5%), Metal's own command-queue threads, and wgpu's per-frame work on the stage
   thread (about 3.6%). A Preview capped below the camera's rate would close it.
-- Native Preview layer: window resizes are picked up every 250 ms (the last frame is stretched
-  until then); dragging to a display with another scale was not tested; photon latency was not
-  measured. Windows and Linux still use webview frames (ADR-007).
+- Native Preview layer: a live resize by hand and dragging to a display with another scale were
+  not tried (a programmatic resize is checked in flow 12); photon latency was not measured.
+  Windows and Linux still use webview frames (ADR-007).
 - Real mouse interaction (camera drag and resize in the Preview, the bar's grip) was driven
   through commands, not real clicks; MANUAL_TEST §10b M1–M7 covers it.
 - No 30-minute soak with the Preview window shown; no A/V sync measurement of the camera (M1 gap remains).

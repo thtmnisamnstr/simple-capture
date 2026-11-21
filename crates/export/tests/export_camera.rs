@@ -44,6 +44,11 @@ fn camera_follows_its_keyframes_in_the_export() {
         2_000,
         vec![shown, hidden],
     );
+    for t in &mut proj.project.recording.tracks {
+        if t.id == "camera" {
+            t.first_sample_offset_ns = 30 * MS;
+        }
+    }
     let dir = proj.save();
     let mut plain = proj.project.clone();
     plain.camera_layout.overlays.clear();
@@ -62,6 +67,11 @@ fn camera_follows_its_keyframes_in_the_export() {
         .expect("render")
         .0
     };
+    let first = px(&render(&proj.project, 0), 960, 360);
+    assert!(
+        first[0] > 240 && first[1] < 20 && first[2] < 20,
+        "frame 0, before the camera's first sample: its first frame is held, {first:?}"
+    );
     let with = render(&proj.project, 500 * MS);
     let without = render(&plain, 500 * MS);
     let centre = px(&with, 960, 360);

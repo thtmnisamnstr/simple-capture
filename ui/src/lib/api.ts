@@ -38,7 +38,8 @@ export const api = {
   getSettings: () => call<RecorderSettings>('get_settings'),
   setSettings: (settings: RecorderSettings) => call<RecorderSettings>('set_settings', { settings }),
   getCapabilities: () => call<CapabilitiesDto>('get_capabilities'),
-  previewStill: (source: SourceSpecDto, canvas: CanvasDto) => call<string>('preview_still', { source, canvas }),
+  previewStill: (source: SourceSpecDto, canvas: CanvasDto, cameraKey?: CameraKey) =>
+    call<string>('preview_still', { source, canvas, cameraKey }),
   chooseBackgroundImage: () => call<string | null>('choose_background_image'),
   beginRegionSelect: (purpose: Purpose, displayId?: string) =>
     call<void>('begin_region_select', { purpose, displayId: displayId ?? null }),
@@ -54,7 +55,7 @@ export const api = {
   recoveryReport: () => call<RecoveryReportDto[]>('recovery_report'),
   cameraPreview: (active: boolean) => call<{ shown: boolean }>('camera_preview', { active }),
   previewState: () => call<PreviewStateDto>('preview_state'),
-  cameraKeyLive: (key: CameraKey) => call<void>('camera_key_live', { key }),
+  cameraKeyLive: (key: CameraKey, last = false) => call<void>('camera_key_live', { key, last }),
   showVideoEffects: () => call<void>('show_video_effects'),
   barDrag: (phase: 'begin' | 'move' | 'end', x: number, y: number) => call<void>('bar_drag', { phase, x, y }),
 };

@@ -908,14 +908,17 @@ Draw order per output frame: background → screen (src = `content_px`, dst = fi
   protocol; since M2 it also includes the camera at the current placement.
 - **Preview window (M2, ADR-042/043).** `stage.rs` in the app runs a renderer thread that
   composites the output (source snapshot once a second, letterbox background, live camera) with
-  the same `camera_layer` as the export, only when one of those or the window size changed. Camera
-  frames come from `SharedCamera` (one AVCaptureSession for preview and recording). Where the
+  the same `camera_layer` as the export, only when one of those or the window size changed; between
+  frames it waits on `SharedCamera::wait_newer` (one AVCaptureSession for preview and recording).
+  On macOS the snapshot reuses its resolved capture filter for 3 s. Where the
   frame goes is the renderer's `Sink`:
   - **macOS, native layer (ADR-007, on since 2026-11-20):** `sc_capture_macos::preview` puts a
-    `CAMetalLayer` view under the WKWebView, covering the page's viewport; `Compositor::present`
-    draws the canvas at the display's pixel size, centred on the `#111` letterbox, straight into
-    it. The page gets a pixel-less frame (format 2) with the canvas size, turns transparent and
-    keeps only its HTML (camera outline and handles) on top.
+    `CAMetalLayer` view under the WKWebView, covering the page's viewport (the window's content
+    layout rectangle); `Compositor::present` draws the canvas at the display's pixel size, centred
+    on the `#111` letterbox, straight into it. The page gets a pixel-less frame (format 2) with the
+    canvas size, turns transparent and keeps only its HTML (camera outline and handles) on top.
+    The window's resize and scale events re-fit the view and update the page size the renderer
+    reads (`Core::stage_window_changed`).
   - **Webview frames (other OSes, `SC_PREVIEW=webview`, or if the layer can't attach):** I420
     frames at the window's point size go to `LiveHub`; the window pulls them from
     `sc://live/stage` (long poll, latest wins, 16-byte header with a format code, then I420

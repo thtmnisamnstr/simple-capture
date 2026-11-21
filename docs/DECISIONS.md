@@ -238,8 +238,15 @@ they are not a substitute for an M1 run.
     one core** for the app and its WebKit processes (18.1–18.4% in three runs), down from 29.5%;
     WebKit's share fell from 9.0% to 0.5%. Camera off: 4.3%. The rest is macOS's camera pipeline,
     Metal's own threads and wgpu's per-frame work; the plan's 15% is still missed by about 3 points.
-  - Not measured: photon latency. Window resize is synced every 250 ms (CoreAnimation stretches
-    the last frame until then).
+  - Resizing: the window's `Resized`/`ScaleFactorChanged` events re-fit the view to the content
+    layout rectangle (so full screen, with no title bar, is covered too) and update the layer's
+    scale; the renderer redraws at the new size on its next wake (at most 30 ms later, or the next
+    camera frame). Flow 12 resizes the window and checks that the drawable equals the page's
+    viewport in pixels and that the page's camera outline is where the camera was drawn.
+  - Later the same day: the renderer waits for the next camera frame instead of polling every
+    8 ms, and snapshots reuse their capture filter for 3 s instead of enumerating every window and
+    app each second; measured 16.5–17.8% (within the run-to-run noise of the figure above).
+  - Not measured: photon latency.
   - Windows and Linux: unchanged, webview frames.
 
 ## ADR-008: Raw tracks are fragmented QuickTime files from AVAssetWriter
@@ -1332,6 +1339,25 @@ they are not a substitute for an M1 run.
     processes, against the 15% budget; 4.5% without a camera. About 5 points of that is macOS's own
     camera pipeline inside the app's process.
   - Superseded on macOS the same day by the native layer (ADR-007 update 2026-11-20): about 18%.
+- **Update 2026-11-20 (review fixes before the owner's second hands-on):**
+  - **Keyframe easing is decided when a key is recorded** (M2_PLAN §3.6): a key that arrives more
+    than 100 ms after the previous one is a `Step` (the camera holds its place until then and
+    jumps), a key within a drag (sent about every 33 ms) stays `Linear` (the motion is replayed).
+    Keys are timed when the app sends them, not when the session's control thread gets to them.
+    Before this, every key was `Linear`, so the export slid the camera across each idle stretch.
+  - The end of a drag is always sent as a key (it was sometimes dropped by the 30 Hz throttle).
+  - A camera attachment detaches when dropped, so a recording that fails to start no longer
+    leaves the shared camera "recording"; a recording camera that fails to open gives the preview
+    its camera back; an unplugged camera is closed (`DeviceLost`) and reopened when the devices
+    change.
+  - The export holds the camera's first frame until its first sample (frame 0 had no camera).
+  - Settings are written under one lock; the app keeps `bar_at`/`preview_at` itself (the panel's
+    copy no longer overwrites them) and announces changes in save order. The Preview's position
+    is saved off the main thread once the window comes to rest, and the automatic first
+    placement is not saved as the user's.
+  - The panel tells the app it is closing when it hides itself to record, so the camera and the
+    Preview turn off after that recording; the panel's still uses the camera key it shows.
+  - Picking Rounded gives the camera rounded corners (it kept the circle's radius 0).
 
 ## ADR-043: The Preview window replaces the floating camera bubble
 

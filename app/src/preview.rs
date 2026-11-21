@@ -16,6 +16,10 @@ pub struct PreviewState {
     pub stage: Option<(SourceSpecDto, CanvasDto)>,
     pub last_key_sent: Option<Instant>,
     pub placed: bool,
+    /// Where `place_preview` put the window: the move event that follows is not the user's.
+    pub placed_at: Option<sc_geometry::PointF>,
+    /// A position waiting to be saved (moves are saved after the window comes to rest).
+    pub moved_to: Option<sc_geometry::PointF>,
     pub frames: u64,
     pub last: Option<StageFrame>,
     pub page: Option<StagePage>,

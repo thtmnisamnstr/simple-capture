@@ -1512,8 +1512,11 @@ fn camera_keys_are_recorded_journaled_and_recovered() {
     let mut moved = first.clone();
     moved.center_norm.x = 0.2;
     s.camera_key(moved.clone()).expect("key");
+    let mut dragged = moved.clone();
+    dragged.center_norm.x = 0.25;
+    s.camera_key(dragged.clone()).expect("key");
     sleep_host(&*p, 300 * MS);
-    let mut hidden = moved.clone();
+    let mut hidden = dragged.clone();
     hidden.visible = false;
     hidden.easing = sc_core::project::Easing::Step;
     s.camera_key(hidden).expect("key");
@@ -1525,19 +1528,37 @@ fn camera_keys_are_recorded_journaled_and_recovered() {
     assert_eq!(o.len(), 1, "{o:?}");
     assert_eq!(o[0].track_id, "camera");
     let keys = &o[0].keyframes;
-    assert_eq!(keys.len(), 3);
+    assert_eq!(keys.len(), 4);
     assert_eq!(keys[0].t_rec_ns, 0);
     assert!(
-        keys[1].t_rec_ns > 0 && keys[2].t_rec_ns > keys[1].t_rec_ns,
+        keys[1].t_rec_ns > 0
+            && keys[2].t_rec_ns >= keys[1].t_rec_ns
+            && keys[3].t_rec_ns > keys[2].t_rec_ns,
         "{keys:?}"
     );
     assert_eq!(keys[1].center_norm.x, 0.2);
-    assert!(!keys[2].visible);
+    assert_eq!(
+        keys[1].easing,
+        sc_core::project::Easing::Step,
+        "a key after a pause is a jump"
+    );
+    assert_eq!(keys[2].center_norm.x, 0.25);
+    assert_eq!(
+        keys[2].easing,
+        sc_core::project::Easing::Linear,
+        "a key right after another is motion"
+    );
+    assert!(!keys[3].visible);
     let at = |t| sc_core::camera::camera_at(keys, t);
+    let before_move = at(keys[1].t_rec_ns / 2).expect("shown");
+    assert_eq!(
+        before_move.pose.center.x, first.center_norm.x,
+        "the camera holds still until the move"
+    );
     assert!(at(keys[1].t_rec_ns).is_some());
     assert!(
-        at(keys[2].t_rec_ns).is_none(),
-        "hidden from the third key on"
+        at(keys[3].t_rec_ns).is_none(),
+        "hidden from the last key on"
     );
 
     let journaled: usize = journal(&pdir)
@@ -1547,7 +1568,7 @@ fn camera_keys_are_recorded_journaled_and_recovered() {
             _ => 0,
         })
         .sum();
-    assert_eq!(journaled, 3, "every key reaches the journal");
+    assert_eq!(journaled, 4, "every key reaches the journal");
 
     let mut crashed = proj.clone();
     crashed.state = ProjectState::Recording;

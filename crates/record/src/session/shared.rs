@@ -26,9 +26,13 @@ pub(crate) enum Ctl {
     Discard(Sender<Result<()>>),
     Event(SourceEvent),
     Cut(Opened),
-    OpenFailed { tag: StreamTag, error: String },
+    OpenFailed {
+        tag: StreamTag,
+        error: String,
+    },
     DiskStop(u64),
-    CameraKey(sc_core::project::CameraKey),
+    /// The key and the host time it was sent at.
+    CameraKey(sc_core::project::CameraKey, i64),
 }
 
 pub(crate) struct Recorder {

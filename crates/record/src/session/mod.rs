@@ -200,7 +200,7 @@ impl Session {
     pub fn camera_key(&self, key: sc_core::project::CameraKey) -> Result<()> {
         self.check_live()?;
         self.ctl
-            .send(Ctl::CameraKey(key))
+            .send(Ctl::CameraKey(key, self.sh.now()))
             .map_err(|_| Error::State(ENDED.into()))
     }
 

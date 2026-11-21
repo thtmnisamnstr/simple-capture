@@ -908,12 +908,15 @@ impl Gpu {
             } else {
                 let mut result = Ok(None);
                 let mut full_range = false;
+                self.last_screen = None;
                 layer.frame.0.with_nv12(&mut |view| {
                     full_range = view.full_range;
                     result = self.upload_frame(canvas, layer.src, layer.dst, &view);
                 })?;
                 plan = result?;
-                self.last_screen = Some((layer.frame.clone(), full_range));
+                if plan.is_some() {
+                    self.last_screen = Some((layer.frame.clone(), full_range));
+                }
             }
         }
 

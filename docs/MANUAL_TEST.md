@@ -650,14 +650,16 @@ iPhone cameras all work on the build Mac.
 - Expect: the camera follows, snaps to the margins and centre lines, grows and shrinks, zooms, and
   never leaves the frame; the Preview reopens where you left it.
 - Also: resize the Preview by its edges and corners, and drag it to the other display if there is
-  one. The picture stays sharp and centred, the dashed outline and handles stay on the camera
-  (during a fast resize the picture may lag for a moment, then catch up).
+  one, and try full screen (green button). The picture stays centred and the camera sharp (the
+  screen part is a once-a-second snapshot at the window's point size, so it is softer), and the
+  dashed outline and handles stay on the camera (a fast resize may lag a frame, then catch up).
 - Look: Preview window.
 
 **M3. Shape, framing, mirror, border, shadow**
 - Do: in the panel's Camera section try every shape, the Corners slider, S/M/L, the four corner
   buttons, Mirror, Border, Shadow, "In the video", and Reset framing.
-- Expect: the Preview and the panel's little preview change at once and match.
+- Expect: the Preview and the panel's little preview change at once and match; the Preview's
+  dashed outline and handles move with the camera.
 
 **M4. Video Effects**
 - Do: press Video Effects… next to the camera.
@@ -671,9 +673,11 @@ iPhone cameras all work on the build Mac.
 - Do: record for about 15 s; at 5 s drag the camera in the Preview to another corner, at 10 s
   untick "In the video", stop. Check the control bar's timer counts up, drag the bar by its grip,
   and check the Saved window's duration and "Recorded" list; press Export video.
-- Expect: the export is one MP4 with the screen, the camera moving at about 5 s and gone from
-  about 10 s, and the mic and system audio mixed; the Preview never appears in it.
-- Look: the export in QuickTime.
+- Expect: the export is one MP4 with the screen, the camera staying put until about 5 s, then
+  following your drag, and gone from about 10 s, and the mic and system audio mixed; the Preview
+  never appears in it. After Stop (the panel is hidden) the camera light goes off and the Preview
+  closes.
+- Look: the export in QuickTime, the camera light.
 
 **M7. The camera survives a crash**
 - Do: start a recording with the camera, move it in the Preview, then `kill -9` the app (or Force

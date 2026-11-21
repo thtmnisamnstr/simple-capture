@@ -35,7 +35,7 @@
     smallContent,
     type Corner,
   } from '../lib/geometry.ts';
-  import { CAMERA_SHAPES, shapeAspect } from '../lib/camera.ts';
+  import { CAMERA_SHAPES, shapeAspect, shapeChange } from '../lib/camera.ts';
   const PREVIEW_MAX = 112;
   import { backgroundCss, backgroundSummary } from '../lib/backgrounds.ts';
   import { rememberSource } from '../lib/recent.ts';
@@ -209,12 +209,13 @@
     if (!settings?.source) return;
     const src = $state.snapshot(settings.source) as SourceSpecDto;
     const canvas = $state.snapshot(settings.canvas) as RecorderSettings['canvas'];
-    void [settings.camera, JSON.stringify(settings.camera_key)];
+    const key = $state.snapshot(settings.camera_key) as CameraKey;
+    void settings.camera;
     clearTimeout(stillTimer);
     const seq = ++stillSeq;
     stillTimer = setTimeout(() => {
       api
-        .previewStill(src, canvas)
+        .previewStill(src, canvas, key)
         .then((url) => {
           if (seq === stillSeq) still = url;
         })
@@ -257,6 +258,7 @@
       await api.setSettings(snap);
       await api.startRecording({ source: src, via, title: null, settings: snap });
       rememberSource(src, sourceLabel(src, all));
+      await api.cameraPreview(false).catch(() => undefined);
       await hideSelf();
     } catch (e) {
       error = errorText(e);
@@ -435,7 +437,7 @@
           <span class="label" id="shape-l">Shape</span>
           <div class="segmented wrap" role="radiogroup" aria-labelledby="shape-l">
             {#each CAMERA_SHAPES as sh (sh.value)}
-              <button role="radio" aria-checked={k.shape === sh.value} title={sh.title} onclick={() => setKey({ shape: sh.value })}>{sh.label}</button>
+              <button role="radio" aria-checked={k.shape === sh.value} title={sh.title} onclick={() => setKey(shapeChange(k, sh.value))}>{sh.label}</button>
             {/each}
           </div>
         </div>

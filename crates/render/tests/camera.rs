@@ -303,25 +303,29 @@ fn reused_background_and_screen_uploads_match_fresh_renders() {
     let (bg1, bg2) = (background(canvas, 255), background(canvas, 128));
     let (a, b) = (noise(sz(800, 450), 1), noise(sz(800, 450), 2));
     let cam = noise(sz(640, 480), 3);
-    let screen = |f| sc_render::ScreenLayer {
+    let (shown, off_canvas) = (rect(0, 0, 640, 360), rect(700, 0, 640, 360));
+    let screen = |f, dst| sc_render::ScreenLayer {
         frame: f,
         src: rect(0, 0, 800, 450),
-        dst: rect(0, 0, 640, 360),
+        dst,
     };
-    let steps: [(&RgbaImage, Option<u64>, &FrameBuffer); 6] = [
-        (&bg1, Some(1), &a),
-        (&bg1, Some(1), &a),
-        (&bg2, Some(2), &a),
-        (&bg2, Some(2), &b),
-        (&bg1, None, &b),
-        (&bg2, Some(2), &a),
+    let steps: [(&RgbaImage, Option<u64>, &FrameBuffer, RectPx); 9] = [
+        (&bg1, Some(1), &a, shown),
+        (&bg1, Some(1), &a, shown),
+        (&bg2, Some(2), &a, shown),
+        (&bg2, Some(2), &b, shown),
+        (&bg1, None, &b, shown),
+        (&bg2, Some(2), &a, shown),
+        (&bg2, Some(2), &b, off_canvas),
+        (&bg2, Some(2), &b, shown),
+        (&bg2, Some(2), &b, shown),
     ];
-    for (i, (bg, key, frame)) in steps.into_iter().enumerate() {
+    for (i, (bg, key, frame, dst)) in steps.into_iter().enumerate() {
         let job = FrameJob {
             canvas,
             background: bg,
             background_key: key,
-            screen: Some(screen(frame)),
+            screen: Some(screen(frame, dst)),
             camera: Some(layer(&cam, rect(400, 150, 180, 180), 90)),
         };
         let s = diff(

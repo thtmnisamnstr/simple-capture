@@ -24,16 +24,20 @@ pub struct LiveFrame {
     pub body: Arc<Vec<u8>>,
 }
 
+/// Ids keep counting up across `clear`, so a page still waiting after the last id it saw gets
+/// the next frame even when the stream was cleared in between.
 #[derive(Default)]
 pub struct LiveHub {
-    frames: Mutex<HashMap<String, LiveFrame>>,
+    frames: Mutex<(HashMap<String, LiveFrame>, u32)>,
     cv: Condvar,
 }
 
 impl LiveHub {
     pub fn publish(&self, name: &str, w: u32, h: u32, format: u32, pixels: &[u8]) {
-        let mut frames = lock(&self.frames);
-        let id = frames.get(name).map_or(1, |f| f.id.wrapping_add(1).max(1));
+        let mut guard = lock(&self.frames);
+        let (frames, last_id) = &mut *guard;
+        *last_id = last_id.wrapping_add(1).max(1);
+        let id = *last_id;
         let mut body = Vec::with_capacity(HEADER + pixels.len());
         for v in [id, w, h, format] {
             body.extend_from_slice(&v.to_le_bytes());
@@ -50,22 +54,22 @@ impl LiveHub {
     }
 
     pub fn clear(&self, name: &str) {
-        lock(&self.frames).remove(name);
+        lock(&self.frames).0.remove(name);
     }
 
     pub fn next(&self, name: &str, after: u32, timeout: Duration) -> Option<LiveFrame> {
         let end = Instant::now() + timeout;
-        let mut frames = lock(&self.frames);
+        let mut guard = lock(&self.frames);
         loop {
-            if let Some(f) = frames.get(name)
+            if let Some(f) = guard.0.get(name)
                 && f.id != after
             {
                 return Some(f.clone());
             }
             let left = end.checked_duration_since(Instant::now())?;
-            frames = self
+            guard = self
                 .cv
-                .wait_timeout(frames, left)
+                .wait_timeout(guard, left)
                 .unwrap_or_else(|p| p.into_inner())
                 .0;
         }
@@ -116,6 +120,22 @@ mod tests {
         std::thread::sleep(Duration::from_millis(20));
         hub.publish("stage", 2, 2, I420, &[0; 6]);
         assert_eq!(t.join().expect("join").expect("woken").id, 2);
+    }
+
+    #[test]
+    fn a_page_waiting_across_a_clear_gets_the_next_frame() {
+        let hub = LiveHub::default();
+        hub.publish("stage", 2, 2, RGBA, &[]);
+        let seen = hub
+            .next("stage", 0, Duration::from_millis(5))
+            .expect("first")
+            .id;
+        hub.clear("stage");
+        hub.publish("stage", 4, 2, RGBA, &[]);
+        let f = hub
+            .next("stage", seen, Duration::from_millis(5))
+            .expect("not mistaken for the frame already seen");
+        assert_eq!(&f.body[4..8], &4u32.to_le_bytes());
     }
 
     #[test]

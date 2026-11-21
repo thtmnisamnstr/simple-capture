@@ -88,3 +88,68 @@ fn recording_without_a_preview_opens_and_closes_the_device() {
     cam.set_preview(None).expect("release");
     assert_eq!(cam.open_device(), None);
 }
+
+#[test]
+fn a_dropped_attachment_releases_the_camera() {
+    let (p, cam) = platform();
+    let rec = Collector::new();
+    let att = p
+        .camera()
+        .start(CAMERA_DEVICE_ID, CameraLimit::default(), rec.clone())
+        .expect("start");
+    drop(att);
+    let again = p
+        .camera()
+        .start(CAMERA_DEVICE_ID, CameraLimit::default(), rec.clone())
+        .expect("not still recording");
+    again.stop().expect("stop");
+    cam.set_preview(None).expect("release");
+    assert_eq!(cam.open_device(), None, "nothing holds the device");
+}
+
+#[test]
+fn a_recording_camera_that_fails_to_open_gives_the_preview_back() {
+    let (p, cam) = platform();
+    cam.set_preview(Some(CAMERA_DEVICE_ID.into()))
+        .expect("preview");
+    assert!(
+        p.camera()
+            .start("no-such-camera", CameraLimit::default(), Collector::new())
+            .is_err()
+    );
+    assert_eq!(cam.open_device().as_deref(), Some(CAMERA_DEVICE_ID));
+    let seen = cam.frames_seen();
+    wait("preview frames again", || cam.frames_seen() > seen + 3);
+}
+
+#[test]
+fn a_lost_camera_is_closed_and_reopened_on_request() {
+    let (p, cam) = platform();
+    cam.set_preview(Some(CAMERA_DEVICE_ID.into()))
+        .expect("preview");
+    wait("preview frames", || cam.frames_seen() > 3);
+    cam.device_lost(CAMERA_DEVICE_ID);
+    assert_eq!(cam.open_device(), None);
+    assert!(cam.latest().is_none(), "no frozen frame");
+    cam.set_preview(Some(CAMERA_DEVICE_ID.into()))
+        .expect("reopen");
+    let seen = cam.frames_seen();
+    wait("frames after reopening", || cam.frames_seen() > seen + 3);
+
+    let rec = Collector::new();
+    let att = p
+        .camera()
+        .start(CAMERA_DEVICE_ID, CameraLimit::default(), rec.clone())
+        .expect("record");
+    cam.device_lost(CAMERA_DEVICE_ID);
+    assert_eq!(
+        cam.open_device().as_deref(),
+        Some(CAMERA_DEVICE_ID),
+        "the recording decides when to let go"
+    );
+    att.stop().expect("stop");
+    let seen = cam.frames_seen();
+    wait("preview reopened after the recording", || {
+        cam.frames_seen() > seen + 3
+    });
+}

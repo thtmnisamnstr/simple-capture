@@ -1,5 +1,5 @@
 import { ratio, type Ratio } from './geometry.ts';
-import type { CameraShape } from './types.ts';
+import type { CameraKey, CameraShape } from './types.ts';
 
 export const CAMERA_SHAPES: { value: CameraShape; label: string; title: string }[] = [
   { value: 'circle', label: '●', title: 'Circle' },
@@ -24,4 +24,14 @@ export function shapeAspect(shape: CameraShape): Ratio {
     default:
       return ratio(1, 1);
   }
+}
+
+/** Rounded square's corners when first picked; the same as the app's default placement. */
+export const ROUNDED_RADIUS = 0.35;
+
+/** The key change for picking `shape`: Rounded gets rounded corners if it had none, Square none. */
+export function shapeChange(k: CameraKey, shape: CameraShape): Partial<CameraKey> {
+  if (shape === 'rounded' && k.corner_radius === 0) return { shape, corner_radius: ROUNDED_RADIUS };
+  if (shape === 'square') return { shape, corner_radius: 0 };
+  return { shape };
 }
