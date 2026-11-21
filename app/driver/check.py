@@ -364,9 +364,6 @@ if basic("11-quit-export", log):
     left = open(after).read().strip() if os.path.exists(after) else ""
     check("11-quit-export", "no ffmpeg process left", not left, left)
 
-json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
-          open(os.path.join(RUN, "report.json"), "w"), indent=2)
-failed = [r for r in results if not r["ok"]]
 log = lines("12-preview")
 if basic("12-preview", log):
     st = [x["result"] for x in steps(log, "cmd preview_state")]
@@ -390,6 +387,28 @@ if basic("12-preview", log):
         check("12-preview", "a live camera edit reaches the preview", k == {"x": 0.3, "y": 0.3}, k)
         win2 = rects[1].get("stage")
         check("12-preview", "9:16 frame: preview still shown", bool(d.get("shown")) and bool(win2 and win2["visible"]), d)
+        if len(st) >= 5:
+            e = st[4]
+            uis = steps(log, "ui-log")
+            page = next((json.loads(l.split("stage page ", 1)[1]) for l in (ui_lines(uis[0]) if uis else [])
+                         if "stage page " in l), None)
+            check("12-preview", "after a resize: new frames, page 720 pt wide", e.get("frame", 0) > d.get("frame", 0)
+                  and abs(((e.get("page") or {}).get("w") or 0) - 720) <= 1, {"before": d.get("frame"), "after": e})
+            if not page:
+                check("12-preview", "the Preview page reports its layout", False, uis[:1])
+            else:
+                if e.get("native"):
+                    want = {"w": round(page["vw"] * page["dpr"]), "h": round(page["vh"] * page["dpr"])}
+                    check("12-preview", "after a resize: the native drawable is the page viewport in pixels",
+                          e.get("drawable") == want, {"drawable": e.get("drawable"), "viewport_px": want})
+                cv, cam, fr, pc = e.get("canvas") or {}, e.get("camera_px"), page.get("frame"), page.get("cam")
+                if cam and fr and pc and cv.get("w"):
+                    k = cv["w"] / fr[2]
+                    got = [(pc[0] - fr[0]) * k, (pc[1] - fr[1]) * k, pc[2] * k, pc[3] * k]
+                    check("12-preview", "the page's camera outline is where the camera was drawn (2 px), after a panel edit",
+                          all(abs(a - b) <= 2 for a, b in zip(got, cam)), {"drawn_px": cam, "outline_px": got})
+                else:
+                    check("12-preview", "camera drawn and outlined", False, {"canvas": cv, "camera_px": cam, "page": page})
     else:
         check("12-preview", "preview steps logged", False, {"states": len(st), "rects": len(rects)})
 
@@ -430,5 +449,8 @@ if basic("14-preview-capture", log):
             else:
                 check("14-preview-capture", "preview rect inside the frame", False, rp)
 
+json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
+          open(os.path.join(RUN, "report.json"), "w"), indent=2)
+failed = [r for r in results if not r["ok"]]
 print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")
 sys.exit(1 if failed else 0)

@@ -64,6 +64,41 @@ impl fmt::Debug for PickedSource {
     }
 }
 
+/// Picked sources are equal when they hold the same OS filter object.
+impl PartialEq for SourceSpec {
+    fn eq(&self, other: &SourceSpec) -> bool {
+        use SourceSpec::*;
+        match (self, other) {
+            (Display { display: a }, Display { display: b }) => a == b,
+            (Window { window: a }, Window { window: b }) => a == b,
+            (
+                Application {
+                    display: d1,
+                    app: a1,
+                },
+                Application {
+                    display: d2,
+                    app: a2,
+                },
+            ) => d1 == d2 && a1 == a2,
+            (
+                Region {
+                    display: d1,
+                    region_pt: r1,
+                },
+                Region {
+                    display: d2,
+                    region_pt: r2,
+                },
+            ) => d1 == d2 && r1 == r2,
+            (Picked(a), Picked(b)) => {
+                Arc::ptr_eq(&a.handle, &b.handle) && a.region_pt == b.region_pt
+            }
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DisplayInfo {
     pub id: DisplayId,

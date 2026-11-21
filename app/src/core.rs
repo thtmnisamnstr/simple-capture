@@ -22,6 +22,7 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager};
 
 use crate::dto::{self, RecordRequestDto, RequestEnv, SourceSpecDto};
+use crate::preview::StagePage;
 use crate::settings::{CanvasDto, RecorderSettings, SettingsStore};
 use crate::state::{Input, Phase};
 use crate::still::{self, StillCache};
@@ -1382,52 +1383,88 @@ impl Core {
         })
     }
 
-    /// The preview window's content size in points, and its backing scale.
-    pub fn stage_window(&self) -> Option<(sc_geometry::SizePx, f64)> {
+    /// Kept current by [`Core::stage_window_changed`]; measured once when unknown.
+    pub fn stage_page(&self) -> Option<StagePage> {
+        if let Some(page) = lock(&self.preview).page {
+            return Some(page);
+        }
+        let page = self.measure_stage_page()?;
+        lock(&self.preview).page = Some(page);
+        Some(page)
+    }
+
+    fn measure_stage_page(&self) -> Option<StagePage> {
         let w = self.app.get_webview_window("stage")?;
         let scale = w.scale_factor().unwrap_or(1.0);
         let l = w.inner_size().ok()?.to_logical::<f64>(scale);
-        let pt = sc_geometry::SizePx {
-            w: (l.width.round() as u32).max(2),
-            h: (l.height.round() as u32).max(2),
-        };
-        Some((pt, scale))
+        Some(StagePage {
+            w: l.width,
+            h: l.height,
+            scale,
+        })
     }
 
-    pub fn stage_presented(&self, native: bool) {
+    /// Main thread: the preview window was resized or moved to a display with another scale.
+    pub fn stage_window_changed(&self) {
+        let page = self.measure_stage_page();
+        #[cfg(target_os = "macos")]
+        let page = self.fit_stage_view().or(page);
+        lock(&self.preview).page = page;
+    }
+
+    /// Main thread: refits the native preview view, if there is one, and returns the page.
+    #[cfg(target_os = "macos")]
+    fn fit_stage_view(&self) -> Option<StagePage> {
+        let view = lock(&self.preview).view?;
+        let view = std::ptr::NonNull::new(view as *mut std::ffi::c_void)?;
+        // SAFETY: the view lives as long as the preview window, and this is the main thread.
+        let p = unsafe { sc_capture_macos::preview::fit_to_page(view) }?;
+        Some(StagePage {
+            w: p.w,
+            h: p.h,
+            scale: p.scale,
+        })
+    }
+
+    pub fn stage_presented(&self, frame: crate::preview::StageFrame) {
         let mut p = lock(&self.preview);
         p.frames += 1;
-        p.native = native;
+        p.last = Some(frame);
     }
 
-    /// A `CAMetalLayer` under the preview window's page (ADR-007), valid while that window lives,
-    /// and the points at the top of the window the page leaves out.
+    /// A `CAMetalLayer` under the preview window's page (ADR-007), valid while that window lives.
     #[cfg(target_os = "macos")]
-    pub fn stage_layer(
-        &self,
-        scale: f64,
-    ) -> Result<(std::ptr::NonNull<std::ffi::c_void>, f64), String> {
+    pub fn stage_layer(&self) -> Result<std::ptr::NonNull<std::ffi::c_void>, String> {
         let w = self
             .app
             .get_webview_window("stage")
             .ok_or("no preview window")?;
         let (tx, rx) = std::sync::mpsc::channel();
         w.with_webview(move |pw| {
-            let layer = std::ptr::NonNull::new(pw.inner())
+            let made = std::ptr::NonNull::new(pw.inner())
                 .ok_or_else(|| "no webview".to_string())
                 .and_then(|wk| {
                     // SAFETY: Tauri runs this on the main thread with the live WKWebView.
-                    unsafe { sc_capture_macos::preview::metal_layer_under(wk, scale) }
+                    unsafe { sc_capture_macos::preview::metal_layer_under(wk) }
                         .map_err(|e| e.to_string())
                 });
-            let _ = tx.send(layer.map(|l| (l.layer.as_ptr() as usize, l.top_inset)));
+            let _ = tx
+                .send(made.map(|m| (m.layer.as_ptr() as usize, m.view.as_ptr() as usize, m.page)));
         })
         .map_err(|e| e.to_string())?;
-        let (ptr, top_inset) = rx
+        let (layer, view, page) = rx
             .recv_timeout(Duration::from_secs(5))
             .map_err(|e| format!("main thread: {e}"))??;
-        let layer = std::ptr::NonNull::new(ptr as *mut std::ffi::c_void).ok_or("null layer")?;
-        Ok((layer, top_inset))
+        {
+            let mut p = lock(&self.preview);
+            p.view = Some(view);
+            p.page = Some(StagePage {
+                w: page.w,
+                h: page.h,
+                scale: page.scale,
+            });
+        }
+        std::ptr::NonNull::new(layer as *mut std::ffi::c_void).ok_or_else(|| "null layer".into())
     }
 
     /// A camera placement while it is being dragged in the preview: shown at once (and a keyframe
@@ -1534,7 +1571,11 @@ impl Core {
             "shown": p.stage.is_some(),
             "key": p.key,
             "frame": p.frames,
-            "native": p.native,
+            "native": p.last.is_some_and(|f| f.native),
+            "page": p.page.map(|g| json!({"w": g.w, "h": g.h, "scale": g.scale})),
+            "drawable": p.last.map(|f| f.drawable),
+            "canvas": p.last.map(|f| f.canvas),
+            "camera_px": p.last.and_then(|f| f.camera).map(|r| json!([r.x, r.y, r.w, r.h])),
             "camera_open": self.camera.open_device(),
         }))
     }

@@ -232,6 +232,15 @@ fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
                 core.preview_moved(p.x, p.y);
             }
         }
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. },
+            ..
+        } if label == "stage" => {
+            if let Some(core) = app.try_state::<Arc<Core>>() {
+                core.stage_window_changed();
+            }
+        }
         RunEvent::ExitRequested { api, code, .. } => {
             let Some(core) = app.try_state::<Arc<Core>>().map(|c| c.inner().clone()) else {
                 return;

@@ -29,6 +29,7 @@ pub enum Step {
     WaitPhase { phase: String, ms: u64 },
     WaitLaunch(u64),
     Eval { label: String, js: String },
+    Resize { label: String, w: f64, h: f64 },
     UiLog,
     Quit,
 }
@@ -100,6 +101,21 @@ pub fn parse_line(line: &str) -> Result<Option<Step>, String> {
             },
             _ => return Err(format!("eval: expected WINDOW JS in {line:?}")),
         },
+        "resize" => {
+            let mut it = rest.split_whitespace();
+            match (
+                it.next(),
+                it.next().map(str::parse::<f64>),
+                it.next().map(str::parse::<f64>),
+            ) {
+                (Some(label), Some(Ok(w)), Some(Ok(h))) if w > 0.0 && h > 0.0 => Step::Resize {
+                    label: label.to_string(),
+                    w,
+                    h,
+                },
+                _ => return Err(format!("resize: expected WINDOW W H in {line:?}")),
+            }
+        }
         "ui-log" if rest.is_empty() => Step::UiLog,
         "sim" if rest == "sleep" || rest == "wake" => Step::Sim(rest.to_string()),
         "quit" => Step::Quit,
@@ -229,6 +245,16 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
             w.eval(&js).map_err(|e| format!("eval in {label}: {e}"))?;
             Ok(Value::Null)
         }
+        Step::Resize { label, w, h } => {
+            use tauri::Manager;
+            let win = core
+                .app
+                .get_webview_window(&label)
+                .ok_or_else(|| format!("no window {label:?}"))?;
+            win.set_size(tauri::LogicalSize::new(w, h))
+                .map_err(|e| format!("resize {label}: {e}"))?;
+            Ok(Value::Null)
+        }
         Step::UiLog => Ok(json!(core.take_ui_log())),
         Step::Quit => Ok(Value::Null),
     }
@@ -349,6 +375,16 @@ mod tests {
             }))
         );
         assert_eq!(parse_line("ui-log"), Ok(Some(Step::UiLog)));
+        assert_eq!(
+            parse_line("resize stage 720 480"),
+            Ok(Some(Step::Resize {
+                label: "stage".into(),
+                w: 720.0,
+                h: 480.0
+            }))
+        );
+        assert!(parse_line("resize stage 720").is_err());
+        assert!(parse_line("resize stage 0 480").is_err());
         assert_eq!(
             parse_line("wait-launch 9000"),
             Ok(Some(Step::WaitLaunch(9000)))

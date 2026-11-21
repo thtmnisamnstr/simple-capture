@@ -17,7 +17,28 @@ pub struct PreviewState {
     pub last_key_sent: Option<Instant>,
     pub placed: bool,
     pub frames: u64,
+    pub last: Option<StageFrame>,
+    pub page: Option<StagePage>,
+    pub view: Option<usize>,
+}
+
+/// The last frame the stage renderer showed.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StageFrame {
     pub native: bool,
+    pub drawable: sc_geometry::SizePx,
+    pub canvas: sc_geometry::SizePx,
+    /// The camera's shape rectangle in canvas pixels, when it was drawn.
+    pub camera: Option<sc_geometry::RectF>,
+}
+
+/// The preview page's size in points (the window's content area; on macOS below the title bar)
+/// and the window's backing scale.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StagePage {
+    pub w: f64,
+    pub h: f64,
+    pub scale: f64,
 }
 
 pub fn display_for<'a>(

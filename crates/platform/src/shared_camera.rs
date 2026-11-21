@@ -4,7 +4,8 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
+use std::time::Duration;
 
 use sc_core::ClockKind;
 use sc_core::folder::LocalDateTime;
@@ -24,6 +25,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 #[derive(Default)]
 struct Fanout {
     latest: Mutex<Option<VideoFrame>>,
+    fresh: Condvar,
     recorder: Mutex<Option<Arc<dyn FrameSink>>>,
     frames: AtomicU64,
 }
@@ -36,8 +38,12 @@ impl FrameSink for Fanout {
         if let Some(r) = recorder {
             r.on_camera(f.clone());
         }
-        *lock(&self.latest) = Some(f);
-        self.frames.fetch_add(1, Ordering::Relaxed);
+        {
+            let mut latest = lock(&self.latest);
+            *latest = Some(f);
+            self.frames.fetch_add(1, Ordering::Relaxed);
+        }
+        self.fresh.notify_all();
     }
 
     fn on_audio(&self, _t: AudioTrackKind, _a: AudioBuffer) {}
@@ -100,6 +106,14 @@ impl SharedCamera {
 
     pub fn frames_seen(&self) -> u64 {
         self.fan.frames.load(Ordering::Relaxed)
+    }
+
+    /// Returns once more than `seen` frames have arrived, or after `timeout`.
+    pub fn wait_newer(&self, seen: u64, timeout: Duration) {
+        let latest = lock(&self.fan.latest);
+        if self.fan.frames.load(Ordering::Relaxed) == seen {
+            let _ = self.fan.fresh.wait_timeout(latest, timeout);
+        }
     }
 
     pub fn open_device(&self) -> Option<String> {
@@ -285,5 +299,54 @@ impl Platform for WithSharedCamera {
     }
     fn permission_host(&self) -> Option<String> {
         self.inner.permission_host()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{CpuNv12Frame, FrameBuffer, StreamTag};
+    use sc_geometry::SizePx;
+    use std::time::Instant;
+
+    fn frame() -> VideoFrame {
+        let size = SizePx { w: 4, h: 4 };
+        VideoFrame {
+            stream: StreamTag(1),
+            pts: HostTime(1),
+            size,
+            content_rect_pt: None,
+            content_scale: None,
+            buffer: FrameBuffer(Arc::new(CpuNv12Frame::black(size, false))),
+        }
+    }
+
+    #[test]
+    fn wait_newer_wakes_on_a_frame_and_times_out_without_one() {
+        let fan = Arc::new(Fanout::default());
+        let cam = SharedCamera {
+            platform: crate::synthetic::SyntheticPlatform::new(crate::synthetic::Scenario::new()),
+            me: Weak::new(),
+            state: Mutex::new(State::default()),
+            fan: fan.clone(),
+        };
+        let t = Instant::now();
+        cam.wait_newer(0, Duration::from_millis(50));
+        assert!(t.elapsed() >= Duration::from_millis(45));
+
+        let seen = cam.frames_seen();
+        let producer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            fan.on_camera(frame());
+        });
+        let t = Instant::now();
+        cam.wait_newer(seen, Duration::from_secs(5));
+        assert!(t.elapsed() < Duration::from_secs(2));
+        assert_eq!(cam.frames_seen(), seen + 1);
+        producer.join().unwrap();
+
+        let t = Instant::now();
+        cam.wait_newer(0, Duration::from_secs(5));
+        assert!(t.elapsed() < Duration::from_millis(100));
     }
 }
