@@ -767,6 +767,9 @@ In the editor with any recording, press ⌘E:
 | R9 | Panel open, a microphone chosen; speak | The level bar under the microphone moves; it turns orange near the top |
 | R10 | When Recording Stops → Export; record | The summary shows the export running with the format you exported last |
 | R11 | Turn on "Move the recording to the Trash after a quick export"; export from the summary | The project folder is in the Trash after the export finishes; the exported file is kept |
+| R12 | Panel → Camera Only; record 10 s talking | The Preview window and the panel picture show the camera filling the frame; the recording is the camera with your voice, no screen |
+| R13 | Screen + Camera, then Screen | The camera section appears and goes away; Screen returns to the display or window you had |
+| R14 | While recording the screen, switch source → Camera | The camera fills the frame from then on and the corner camera hides; switching back to a display brings the corner camera back |
 
 ## 10g. Library, About and Diagnostics (M6, M7)
 

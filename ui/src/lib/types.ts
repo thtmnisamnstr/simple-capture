@@ -65,7 +65,8 @@ export type SourceSpecDto =
   | { kind: 'window'; window_id: number }
   | { kind: 'application'; display_id: string; pid: number; bundle_id: string | null }
   | { kind: 'region'; display_id: string; region_pt: RectPt }
-  | { kind: 'picked'; pick_id: string; region_pt: RectPt | null };
+  | { kind: 'picked'; pick_id: string; region_pt: RectPt | null }
+  | { kind: 'camera'; device_id: string };
 
 export type Rgba = [number, number, number, number];
 export interface GradientStop { at: number; color: Rgba }

@@ -591,7 +591,10 @@ impl Core {
         camera_key: Option<sc_core::project::CameraKey>,
     ) -> Reply {
         let spec = source.to_spec(|id| self.picked(id))?;
-        let snapshot = if self.platform.permissions().status(PermissionKind::Screen)
+        let camera_only = matches!(spec, sc_platform::SourceSpec::Camera { .. });
+        let snapshot = if camera_only {
+            None
+        } else if self.platform.permissions().status(PermissionKind::Screen)
             == PermissionStatus::Granted
         {
             match self
@@ -608,7 +611,22 @@ impl Core {
         } else {
             None
         };
-        let size = still::still_canvas(canvas.aspect, snapshot.as_ref().map(|s| s.size));
+        let settings = self.settings.load();
+        let key = camera_key.unwrap_or(settings.camera_key);
+        let cam_frame = settings
+            .camera
+            .as_ref()
+            .filter(|_| key.visible || camera_only)
+            .and_then(|_| self.camera.latest());
+        let screen_frame = snapshot
+            .as_ref()
+            .map(|s| sc_platform::FrameBuffer(Arc::new(still::rgba_to_nv12(s))));
+        let main = if camera_only {
+            cam_frame.as_ref().map(|f| &f.buffer)
+        } else {
+            screen_frame.as_ref()
+        };
+        let size = still::still_canvas(canvas.aspect, main.map(|f| f.0.size()));
         let bg = match &canvas.background_image {
             Some(p) => Background::Image {
                 asset: p.clone(),
@@ -618,29 +636,16 @@ impl Core {
             },
             None => canvas.background.clone(),
         };
-        let settings = self.settings.load();
-        let key = camera_key.unwrap_or(settings.camera_key);
-        let cam_frame = settings
-            .camera
-            .as_ref()
-            .filter(|_| key.visible)
-            .and_then(|_| self.camera.latest());
         let placement = sc_core::camera::camera_at(std::slice::from_ref(&key), 0);
         let cam = cam_frame
             .as_ref()
+            .filter(|_| !camera_only)
             .zip(placement.as_ref())
             .map(|(f, p)| (p, &f.buffer));
-        let png =
-            still::compose_png(&bg, size, Path::new("/"), snapshot.as_ref(), cam).or_else(|e| {
-                tracing::warn!("still: {e}; retrying with the canvas background");
-                still::compose_png(
-                    &canvas.background,
-                    size,
-                    Path::new("/"),
-                    snapshot.as_ref(),
-                    cam,
-                )
-            })?;
+        let png = still::compose_png(&bg, size, Path::new("/"), main, cam).or_else(|e| {
+            tracing::warn!("still: {e}; retrying with the canvas background");
+            still::compose_png(&canvas.background, size, Path::new("/"), main, cam)
+        })?;
         let id = sc_core::ids::new_id();
         lock(&self.stills).insert(id.clone(), png);
         Ok(json!(still::still_url(&id)))
@@ -978,9 +983,22 @@ impl Core {
             Via::OwnChooser
         };
         let spec = source.to_spec(|id| self.picked(id))?;
+        let to_camera = matches!(spec, sc_platform::SourceSpec::Camera { .. });
         let guard = lock(&self.session);
         let s = guard.as_ref().ok_or("not recording")?;
         s.switch_source(spec, via).map_err(|e| e.to_string())?;
+        let key = self.settings.load().camera_key;
+        if key.visible
+            && let Err(e) = s.camera_key(sc_core::project::CameraKey {
+                visible: !to_camera,
+                ..key
+            })
+        {
+            tracing::warn!("camera key after a switch: {e}");
+        }
+        if let Some((src, _)) = lock(&self.preview).stage.as_mut() {
+            *src = source;
+        }
         Ok(Value::Null)
     }
 

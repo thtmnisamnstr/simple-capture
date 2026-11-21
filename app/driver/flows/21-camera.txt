@@ -1,0 +1,9 @@
+# Camera only (M7): the camera fills the frame, a switch to the display and back keeps one recording.
+cmd start_recording {"request":{"source":{"kind":"camera","device_id":"@CAMERA@"},"via":"own_chooser","title":"drv camera","settings":{"mic":"@MIC@","camera":"@CAMERA@"}}}
+wait 3000
+cmd switch_source {"spec":{"kind":"display","display_id":"@DISPLAY@"}}
+wait 2500
+cmd switch_source {"spec":{"kind":"camera","device_id":"@CAMERA@"}}
+wait 2500
+cmd stop_recording
+wait-phase saved 30000

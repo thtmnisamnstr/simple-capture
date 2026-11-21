@@ -416,7 +416,7 @@ impl Control {
         }
         let cfg = self.cfg();
         let spec = self.req.source.clone();
-        let (desc, size) = platform.screen().describe(&spec, &cfg)?;
+        let (desc, size) = super::sources::describe(&*platform, &spec, &cfg)?;
         let tag = self.tag();
         let (seg, track_id, file) = self.seg_names();
         self.router(RouterCmd::Prepare(Box::new(Prepared {
@@ -431,7 +431,7 @@ impl Control {
             source: desc,
             closes_old_with: EndReason::RecordStop,
         })));
-        let stream = platform.screen().start(tag, &spec, &cfg, sink.clone())?;
+        let stream = super::sources::start(&*platform, tag, &spec, &cfg, sink.clone())?;
         self.screen = Some(Live { tag, stream });
         self.cur = Some(Cur {
             spec,
@@ -999,7 +999,7 @@ impl Control {
             return;
         }
         let host = self.sh.now();
-        let (desc, size) = match self.platform().screen().describe(&spec, &self.cfg()) {
+        let (desc, size) = match super::sources::describe(self.platform(), &spec, &self.cfg()) {
             Ok(x) => x,
             Err(e) => {
                 let error = format!("describe the new source: {e}");
@@ -1097,12 +1097,7 @@ impl Control {
         let Some(sw) = self.switch.as_mut() else {
             return;
         };
-        match self
-            .sh
-            .platform
-            .screen()
-            .start(sw.tag, &sw.spec, &cfg, sink)
-        {
+        match super::sources::start(&*self.sh.platform, sw.tag, &sw.spec, &cfg, sink) {
             Ok(s) => {
                 sw.stream = Some(s);
                 sw.deadline = Instant::now() + timeout;
@@ -1198,7 +1193,7 @@ impl Control {
         let Some(cur) = self.cur.clone() else {
             return self.lose(sw, error);
         };
-        let (desc, size) = match self.platform().screen().describe(&cur.spec, &self.cfg()) {
+        let (desc, size) = match super::sources::describe(self.platform(), &cur.spec, &self.cfg()) {
             Ok(x) => x,
             Err(e) => return self.lose(sw, format!("{error}; describe the old source: {e}")),
         };

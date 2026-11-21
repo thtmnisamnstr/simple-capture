@@ -106,6 +106,7 @@ pub fn render_loop(core: Weak<Core>) {
             continue;
         };
         let drawable = sink.drawable(page);
+        let camera_only = matches!(inputs.source, Some(sc_platform::SourceSpec::Camera { .. }));
         let window = SizePx {
             w: page.w.round() as u32,
             h: page.h.round() as u32,
@@ -114,26 +115,36 @@ pub fn render_loop(core: Weak<Core>) {
             .as_ref()
             .is_none_or(|s| s.at.elapsed() >= SNAPSHOT_EVERY)
         {
-            let img = inputs.source.as_ref().and_then(|spec| {
-                core.platform
-                    .screen()
-                    .snapshot(
-                        spec,
-                        SizePx {
-                            w: window.w.min(1280),
-                            h: window.h.min(1280),
-                        },
-                    )
-                    .map_err(|e| tracing::debug!("stage snapshot: {e}"))
-                    .ok()
-            });
+            let img = inputs
+                .source
+                .as_ref()
+                .filter(|_| !camera_only)
+                .and_then(|spec| {
+                    core.platform
+                        .screen()
+                        .snapshot(
+                            spec,
+                            SizePx {
+                                w: window.w.min(1280),
+                                h: window.h.min(1280),
+                            },
+                        )
+                        .map_err(|e| tracing::debug!("stage snapshot: {e}"))
+                        .ok()
+                });
             snap = Some(Snap {
                 at: Instant::now(),
                 size: img.as_ref().map(|i| i.size),
                 frame: img.map(|i| FrameBuffer(Arc::new(rgba_to_nv12(&i)))),
             });
         }
-        let content = snap.as_ref().and_then(|s| s.size);
+        let cam_seen = core.camera.frames_seen();
+        let cam_frame = core.camera.latest();
+        let content = if camera_only {
+            cam_frame.as_ref().map(|f| f.buffer.0.size())
+        } else {
+            snap.as_ref().and_then(|s| s.size)
+        };
         let ratio = inputs
             .aspect
             .ratio()
@@ -152,8 +163,6 @@ pub fn render_loop(core: Weak<Core>) {
                 Err(e) => tracing::warn!("stage background: {e}"),
             }
         }
-        let cam_seen = core.camera.frames_seen();
-        let cam_frame = core.camera.latest();
         let now_showing = Shown {
             camera: cam_frame.as_ref().map(|f| f.pts),
             key: inputs.key.clone(),
@@ -169,7 +178,12 @@ pub fn render_loop(core: Weak<Core>) {
             continue;
         }
         if let Some((_, _, background)) = &bg {
-            let screen = snap.as_ref().and_then(|s| s.frame.as_ref()).map(|f| {
+            let main = if camera_only {
+                cam_frame.as_ref().map(|f| &f.buffer)
+            } else {
+                snap.as_ref().and_then(|s| s.frame.as_ref())
+            };
+            let screen = main.map(|f| {
                 let size = f.0.size();
                 ScreenLayer {
                     frame: f,
@@ -185,6 +199,7 @@ pub fn render_loop(core: Weak<Core>) {
             let placement = inputs
                 .key
                 .as_ref()
+                .filter(|_| !camera_only)
                 .and_then(|k| camera_at(std::slice::from_ref(k), 0));
             let mut camera_dst = None;
             let camera = cam_frame.as_ref().zip(placement.as_ref()).map(|(f, p)| {

@@ -433,6 +433,9 @@ pub(crate) fn build(
                 },
             })
         }
+        SourceSpec::Camera { .. } => Err(Error::Unsupported(
+            "camera sources go through the camera, not the screen",
+        )),
         SourceSpec::Picked(p) => {
             let pf = p
                 .handle

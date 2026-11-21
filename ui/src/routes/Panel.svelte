@@ -62,6 +62,17 @@
   let starting = $state(false);
   let pickedDisplay = $state<PickedDto | null>(null);
   let loaded = $state(false);
+  let lastScreen = $state<SourceSpecDto | null>(null);
+
+  type Mode = 'screen' | 'both' | 'camera';
+  const mode = $derived<Mode>(settings?.source?.kind === 'camera' ? 'camera' : settings?.camera ? 'both' : 'screen');
+  const noCamera = $derived(
+    perms && perms.camera !== 'granted'
+      ? 'Allow the camera first'
+      : loaded && !devices.cameras.length
+        ? 'No camera is connected'
+        : null,
+  );
 
   const ASPECTS: { value: Aspect; label: string }[] = [
     { value: 'original', label: 'Original' },
@@ -213,6 +224,37 @@
     setKey({ center_norm: cornerCenter(frame, shapeAspect(k.shape), k.size_norm, corner) });
   }
 
+  function defaultCamera(): string | null {
+    return settings?.camera ?? devices.cameras.find((c) => c.is_default)?.id ?? devices.cameras[0]?.id ?? null;
+  }
+
+  function screenSource(): SourceSpecDto | null {
+    const main = mainDisplay(displays);
+    return lastScreen ?? (main ? { kind: 'display', display_id: main.id } : null);
+  }
+
+  function setMode(next: Mode) {
+    if (!settings) return;
+    const cur = settings.source;
+    if (next === 'camera') {
+      const cam = defaultCamera();
+      if (!cam) return;
+      if (cur && cur.kind !== 'camera') lastScreen = cur;
+      settings.camera = cam;
+      settings.source = { kind: 'camera', device_id: cam };
+      via = 'own_chooser';
+      return;
+    }
+    if (!cur || cur.kind === 'camera') settings.source = screenSource();
+    settings.camera = next === 'both' ? defaultCamera() : null;
+  }
+
+  $effect(() => {
+    if (!settings || settings.source?.kind !== 'camera') return;
+    if (!settings.camera) settings.source = screenSource();
+    else if (settings.source.device_id !== settings.camera) settings.source = { kind: 'camera', device_id: settings.camera };
+  });
+
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     if (!loaded || !settings) return;
@@ -231,7 +273,7 @@
     void settings.camera;
     clearTimeout(stillTimer);
     const seq = ++stillSeq;
-    stillTimer = setTimeout(() => {
+    const fetchStill = () =>
       api
         .previewStill(src, canvas, key)
         .then((url) => {
@@ -240,6 +282,9 @@
         .catch(() => {
           if (seq === stillSeq) still = null;
         });
+    stillTimer = setTimeout(() => {
+      fetchStill();
+      if (src.kind === 'camera') stillTimer = setTimeout(fetchStill, 1500);
     }, 250);
   });
 
@@ -275,7 +320,7 @@
     try {
       await api.setSettings(snap);
       await api.startRecording({ source: src, via, title: null, settings: snap });
-      rememberSource(src, sourceLabel(src, all));
+      rememberSource(src, sourceLabel(src, all, devices.cameras));
       await api.cameraPreview(false).catch(() => undefined);
       await hideSelf();
     } catch (e) {
@@ -326,6 +371,15 @@
       </p>
     {/if}
 
+    {#if settings}
+      <div class="segmented modes" role="radiogroup" aria-label="What to record">
+        <button role="radio" aria-checked={mode === 'screen'} onclick={() => setMode('screen')}>Screen</button>
+        <button role="radio" aria-checked={mode === 'both'} disabled={!!noCamera} title={noCamera ?? 'The screen, with the camera in a corner'} onclick={() => setMode('both')}>Screen + Camera</button>
+        <button role="radio" aria-checked={mode === 'camera'} disabled={!!noCamera} title={noCamera ?? 'The camera fills the frame'} onclick={() => setMode('camera')}>Camera Only</button>
+      </div>
+    {/if}
+
+    {#if mode !== 'camera'}
     <section aria-labelledby="src-h">
       <div class="head">
         <h2 id="src-h">Source</h2>
@@ -420,6 +474,7 @@
         </div>
       {/if}
     </section>
+    {/if}
 
     {#if settings}
       <section aria-labelledby="frame-h">
@@ -436,7 +491,7 @@
                 {#if still}<img src={still} alt="Preview of the frame" />{/if}
               </div>
             </div>
-            {#if canvasPx}<p class="caption center tnum">{canvasPx.w} × {canvasPx.h} video</p>{/if}
+            {#if canvasPx && mode !== 'camera'}<p class="caption center tnum">{canvasPx.w} × {canvasPx.h} video</p>{/if}
           </div>
           <div class="grow">
             <span class="glabel">Shape</span>
@@ -478,6 +533,7 @@
         {/if}
       </section>
 
+      {#if mode !== 'screen'}
       <section aria-labelledby="cam-h">
         <h2 id="cam-h">Camera</h2>
         <div class="group">
@@ -485,12 +541,17 @@
             <span class="glabel with-icon"><Icon name="camera" />Camera</span>
             <div class="gcontrol">
               <select id="camera" aria-label="Camera" bind:value={settings.camera}>
-                <option value={null}>None</option>
                 {#each devices.cameras as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
               </select>
             </div>
           </div>
-          {#if settings.camera}
+          {#if mode === 'camera' && caps?.mic_modes}
+            <div class="grow">
+              <span class="glabel caption">The camera fills the frame.</span>
+              <div class="gcontrol"><button onclick={() => run(() => api.showVideoEffects())}>Effects…</button></div>
+            </div>
+          {/if}
+          {#if settings.camera && mode === 'both'}
             {@const k = settings.camera_key}
             <div class="grow stack">
               <span class="glabel">Shape</span>
@@ -550,6 +611,7 @@
           {/if}
         </div>
       </section>
+      {/if}
 
       <section aria-labelledby="audio-h">
         <h2 id="audio-h">Audio</h2>
@@ -590,6 +652,7 @@
         </div>
       </section>
 
+      {#if mode !== 'camera'}
       <section aria-labelledby="vid-h">
         <h2 id="vid-h">Video</h2>
         <div class="group">
@@ -631,18 +694,17 @@
         {#if why60}<p class="caption note">60 fps: {why60}.</p>{/if}
         {#if why60x1 && why60x1 !== why60}<p class="caption note">60 fps at 1×: {why60x1}.</p>{/if}
       </section>
+      {/if}
 
       <section aria-labelledby="after-h">
         <h2 id="after-h">When Recording Stops</h2>
         <div class="group">
-          <div class="grow">
+          <div class="grow stack">
             <span class="glabel">Then</span>
-            <div class="gcontrol">
-              <div class="segmented" role="radiogroup" aria-label="When recording stops">
+            <div class="segmented shapes" role="radiogroup" aria-label="When recording stops">
                 <button role="radio" aria-checked={(settings.after_recording ?? 'editor') === 'editor'} onclick={() => (settings!.after_recording = 'editor')}>Open Editor</button>
                 <button role="radio" aria-checked={settings.after_recording === 'saved'} onclick={() => (settings!.after_recording = 'saved')}>Show Summary</button>
                 <button role="radio" aria-checked={settings.after_recording === 'quick_export'} onclick={() => (settings!.after_recording = 'quick_export')} title="Export with the settings you used last">Export</button>
-              </div>
             </div>
           </div>
           <div class="grow">
@@ -690,9 +752,9 @@
   <footer>
     <div class="summary">
       {#if source}
-        <span class="summary-name">{sourceLabel(source, all)}{via === 'system_picker' ? ' (System Picker)' : ''}</span>
+        <span class="summary-name">{sourceLabel(source, all, devices.cameras)}{via === 'system_picker' ? ' (System Picker)' : ''}</span>
         <span class="caption tnum">
-          {canvasPx ? `${canvasPx.w} × ${canvasPx.h}` : ''}{settings ? ` · ${settings.fps} fps` : ''}{settings?.camera ? ' · Camera' : ''}{settings?.mic ? ' · Mic' : ''}
+          {mode === 'camera' ? 'Camera only' : canvasPx ? `${canvasPx.w} × ${canvasPx.h}` : ''}{settings && mode !== 'camera' ? ` · ${settings.fps} fps` : ''}{mode === 'both' ? ' · Camera' : ''}{settings?.mic ? ' · Mic' : ''}{settings && settings.system_audio !== 'off' ? ' · System audio' : ''}
         </span>
       {:else}
         <span class="caption">Choose what to record.</span>
@@ -729,6 +791,13 @@
   }
   section h2 {
     margin: 0 0 0 10px;
+  }
+  .modes {
+    display: flex;
+    width: 100%;
+  }
+  .modes button {
+    min-height: 24px;
   }
   .head {
     display: flex;

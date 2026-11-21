@@ -79,13 +79,12 @@ pub fn compose_png(
     background: &Background,
     canvas: SizePx,
     project_dir: &Path,
-    snapshot: Option<&RgbaImage>,
+    main: Option<&FrameBuffer>,
     camera: Option<(&sc_core::camera::CameraPlacement, &FrameBuffer)>,
 ) -> Result<Vec<u8>, String> {
     let bg = sc_text::rasterize_background(background, canvas, project_dir)
         .map_err(|e| format!("still background: {e}"))?;
-    let frame = snapshot.map(|s| FrameBuffer(Arc::new(rgba_to_nv12(s))));
-    let screen = frame.as_ref().map(|f| {
+    let screen = main.map(|f| {
         let size = f.0.size();
         ScreenLayer {
             frame: f,
@@ -217,8 +216,9 @@ mod tests {
             data: vec![255; 64 * 64 * 4],
         };
         let canvas = still_canvas(Aspect::R16x9, None);
+        let frame = FrameBuffer(Arc::new(rgba_to_nv12(&snap)));
         let png =
-            compose_png(&bg, canvas, Path::new("/nonexistent"), Some(&snap), None).expect("png");
+            compose_png(&bg, canvas, Path::new("/nonexistent"), Some(&frame), None).expect("png");
         let img = sc_text::decode_image(&png).expect("decode");
         assert_eq!(img.size, canvas);
         let at = |x: usize, y: usize| &img.data[y * img.stride + x * 4..y * img.stride + x * 4 + 4];

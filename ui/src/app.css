@@ -487,6 +487,12 @@ input[type='range']::-webkit-slider-thumb {
   max-width: 62%;
 }
 
+.grow > .gcontrol > select {
+  flex: 0 1 auto;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
 .grow.stack {
   flex-direction: column;
   align-items: stretch;

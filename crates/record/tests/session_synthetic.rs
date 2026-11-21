@@ -151,6 +151,7 @@ fn source_key(d: &SourceDescriptor) -> String {
             let name = display_id.trim_start_matches("synthetic:");
             format!("{}/region", name.split(':').next().unwrap_or(name))
         }
+        SourceDescriptor::Camera { device_id, .. } => format!("camera {device_id}"),
     }
 }
 
@@ -1656,4 +1657,110 @@ fn pause_cuts_the_paused_time_out_of_the_timeline() {
     );
     let screen = check_segments(&proj, &pdir, &*p.decoder());
     assert!(screen > 0);
+}
+
+#[test]
+fn camera_only_recording_uses_the_camera_as_the_main_picture() {
+    let dir = tmp("camera_only");
+    let p = platform(
+        Scenario::new()
+            .camera(Some(VideoScript {
+                size: size(320, 240),
+                fps: 30,
+            }))
+            .mic(Some(mic())),
+    );
+    let mut req = request(
+        &dir,
+        SourceSpec::Camera {
+            device: sc_platform::synthetic::CAMERA_DEVICE_ID.into(),
+        },
+    );
+    req.mic = Some(sc_platform::synthetic::MIC_DEVICE_ID.into());
+    let obs = Arc::new(Obs::default());
+    let s = Session::start(as_dyn(&p), req, obs.clone()).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 1200 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let proj = ProjectV1::load(&pdir).expect("load");
+    assert_eq!(proj.state, ProjectState::Finalized);
+    let segs = &proj.recording.screen.segments;
+    assert_eq!(segs.len(), 1);
+    assert!(
+        matches!(&segs[0].source, SourceDescriptor::Camera { device_id, .. } if device_id == sc_platform::synthetic::CAMERA_DEVICE_ID),
+        "{:?}",
+        segs[0].source
+    );
+    assert_eq!(segs[0].frame_px, size(320, 240), "the camera's own size");
+    assert!(
+        !proj
+            .recording
+            .tracks
+            .iter()
+            .any(|t| t.kind == TrackKind::Camera),
+        "no separate camera track"
+    );
+    assert!(
+        proj.recording
+            .tracks
+            .iter()
+            .any(|t| t.kind == TrackKind::Mic)
+    );
+    let t = proj
+        .recording
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::Screen)
+        .expect("main picture track");
+    let probe = p.decoder().probe(&pdir.join(&t.file)).expect("probe");
+    assert!(probe.samples >= 20, "{} frames", probe.samples);
+}
+
+#[test]
+fn switching_between_the_screen_and_the_camera_keeps_one_recording() {
+    let dir = tmp("screen_camera_switch");
+    let p = platform(
+        Scenario::new()
+            .screen(
+                "main",
+                ScreenScript {
+                    size: size(320, 180),
+                    ..Default::default()
+                },
+            )
+            .camera(Some(VideoScript {
+                size: size(160, 120),
+                fps: 30,
+            })),
+    );
+    let req = request(&dir, display_spec("main", None));
+    let obs = Arc::new(Obs::default());
+    let s = Session::start(as_dyn(&p), req, obs.clone()).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 700 * MS);
+    s.switch_source(
+        SourceSpec::Camera {
+            device: sc_platform::synthetic::CAMERA_DEVICE_ID.into(),
+        },
+        Via::OwnChooser,
+    )
+    .expect("to camera");
+    sleep_host(&*p, 900 * MS);
+    s.switch_source(display_spec("main", None), Via::OwnChooser)
+        .expect("back to the screen");
+    sleep_host(&*p, 700 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let proj = ProjectV1::load(&pdir).expect("load");
+    let kinds: Vec<&str> = proj
+        .recording
+        .screen
+        .segments
+        .iter()
+        .map(|g| match g.source {
+            SourceDescriptor::Camera { .. } => "camera",
+            _ => "screen",
+        })
+        .collect();
+    assert_eq!(kinds, ["screen", "camera", "screen"]);
+    assert_eq!(proj.recording.screen.segments[1].frame_px, size(160, 120));
 }

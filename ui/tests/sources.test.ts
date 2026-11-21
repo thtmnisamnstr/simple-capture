@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { liveRecent, parseRecent, pushRecent, RECENT_MAX, type RecentEntry } from '../src/lib/recent.ts';
-import { sourceKey, sourceSizePx, topmostWindowAt } from '../src/lib/sources.ts';
+import { CAMERA_GUESS_PX, displayOfSource, sourceKey, sourceLabel, sourceSizePx, topmostWindowAt } from '../src/lib/sources.ts';
+import { isSourceSpec } from '../src/lib/guards.ts';
 import type { SourceSpecDto, WindowInfo } from '../src/lib/types.ts';
 
 const entry = (spec: SourceSpecDto, at = 0): RecentEntry => ({ spec, label: sourceKey(spec), at });
@@ -124,4 +125,17 @@ test('application sources at 1x match the 1x capture size', () => {
   const odd = [{ ...displays[0], frame_pt: { x: 0, y: 0, w: 1511, h: 981 }, size_px: { w: 3021, h: 1961 } }];
   assert.deepEqual(sourceSizePx(spec, { displays: odd, windows: [], apps: [] }, '1x'), { w: 1512, h: 982 }, 'whole display at 1x is even');
   assert.deepEqual(sourceSizePx(spec, { displays: odd, windows: [], apps: [] }), { w: 3022, h: 1962 }, 'whole display at native is even');
+});
+
+test('a camera source has its own key, label and planned size, and survives in the recent list', () => {
+  const cam: SourceSpecDto = { kind: 'camera', device_id: 'cam-1' };
+  const cameras = [{ id: 'cam-1', name: 'FaceTime HD Camera', model_id: null, is_default: true, kind_hint: null }];
+  assert.equal(sourceKey(cam), 'camera:cam-1');
+  assert.equal(sourceLabel(cam, {}, cameras), 'FaceTime HD Camera');
+  assert.equal(sourceLabel({ kind: 'camera', device_id: 'gone' }, {}, cameras), 'Camera');
+  assert.equal(displayOfSource(cam, {}), null);
+  assert.deepEqual(sourceSizePx(cam, {}), CAMERA_GUESS_PX);
+  assert.ok(isSourceSpec(cam));
+  assert.ok(!isSourceSpec({ kind: 'camera' }));
+  assert.equal(liveRecent([entry(cam)], null, new Set()).length, 1);
 });

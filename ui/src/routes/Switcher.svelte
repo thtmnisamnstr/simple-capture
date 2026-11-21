@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, errorText } from '../lib/api.ts';
-  import type { CapabilitiesDto, DisplayInfo, PermissionsDto, SourceList, SourceSpecDto } from '../lib/types.ts';
+  import type { CapabilitiesDto, CaptureDevice, DisplayInfo, PermissionsDto, SourceList, SourceSpecDto } from '../lib/types.ts';
   import { liveRecent, loadRecent, rememberSource, type RecentEntry } from '../lib/recent.ts';
   import { sourceKey, sourceLabel, windowTitle } from '../lib/sources.ts';
   import { beginPick, beginRegion, hideSelf, systemPicker } from '../lib/windows.ts';
@@ -10,6 +10,7 @@
   let caps = $state<CapabilitiesDto | null>(null);
   let displays = $state<DisplayInfo[]>([]);
   let list = $state<SourceList | null>(null);
+  let cameras = $state<CaptureDevice[]>([]);
   let recent = $state<RecentEntry[]>([]);
   let query = $state('');
   let error = $state<string | null>(null);
@@ -26,10 +27,16 @@
   async function load() {
     error = null;
     try {
-      const [p, c, d] = await Promise.all([api.getPermissions(), api.getCapabilities(), api.listDisplays()]);
+      const [p, c, d, dev] = await Promise.all([
+        api.getPermissions(),
+        api.getCapabilities(),
+        api.listDisplays(),
+        api.listDevices().catch(() => ({ cameras: [], mics: [] })),
+      ]);
       perms = p;
       caps = c;
       displays = d;
+      cameras = p.camera === 'granted' ? dev.cameras : [];
       list = p.screen === 'granted' ? await api.listSources() : null;
     } catch (e) {
       error = errorText(e);
@@ -56,7 +63,7 @@
     error = null;
     try {
       await api.switchSource(spec);
-      recent = rememberSource(spec, sourceLabel(spec, all));
+      recent = rememberSource(spec, sourceLabel(spec, all, cameras));
       query = '';
       await hideSelf();
     } catch (e) {
@@ -93,8 +100,8 @@
         {#each shownRecent as r (sourceKey(r.spec))}
           <li>
             <button class="item" onclick={() => pick(r.spec)}>
-              <Icon name={r.spec.kind === 'display' ? 'display' : r.spec.kind === 'application' ? 'app' : r.spec.kind === 'region' ? 'region' : 'window'} />
-              <span class="name">{sourceLabel(r.spec, all) || r.label}</span>
+              <Icon name={r.spec.kind === 'display' ? 'display' : r.spec.kind === 'application' ? 'app' : r.spec.kind === 'region' ? 'region' : r.spec.kind === 'camera' ? 'camera' : 'window'} />
+              <span class="name">{sourceLabel(r.spec, all, cameras) || r.label}</span>
             </button>
           </li>
         {/each}
@@ -112,6 +119,18 @@
           </li>
         {/each}
       </ul>
+      {#if cameras.length}
+        <h2>Camera</h2>
+        <ul>
+          {#each cameras as c (c.id)}
+            <li>
+              <button class="item" onclick={() => pick({ kind: 'camera', device_id: c.id })} title="The camera fills the frame">
+                <Icon name="camera" /><span class="name">{c.name}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     {/if}
 
     <h2>Windows</h2>

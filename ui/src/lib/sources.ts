@@ -2,6 +2,7 @@
 
 import type {
   CapabilitiesDto,
+  CaptureDevice,
   DisplayInfo,
   DisplayProbeDto,
   PointF,
@@ -15,6 +16,9 @@ import { appBoundsPt, evenRound, rectContains, snappedRegionSizePx, type Size } 
 
 export type Resolution = RecorderSettings['resolution'];
 
+/** The recorder plans a camera as 1080p until its first frame says otherwise. */
+export const CAMERA_GUESS_PX: Size = { w: 1920, h: 1080 };
+
 export function sourceKey(s: SourceSpecDto): string {
   switch (s.kind) {
     case 'display': return `display:${s.display_id}`;
@@ -25,6 +29,7 @@ export function sourceKey(s: SourceSpecDto): string {
       return `region:${s.display_id}:${r.x},${r.y},${r.w},${r.h}`;
     }
     case 'picked': return `picked:${s.pick_id}`;
+    case 'camera': return `camera:${s.device_id}`;
   }
 }
 
@@ -35,7 +40,7 @@ export function displayName(displays: DisplayInfo[], id: string): string {
   return displays.find((d) => d.id === id)?.name ?? `Display ${id}`;
 }
 
-export function sourceLabel(s: SourceSpecDto, list: Partial<SourceList>): string {
+export function sourceLabel(s: SourceSpecDto, list: Partial<SourceList>, cameras: CaptureDevice[] = []): string {
   const displays = list.displays ?? [];
   switch (s.kind) {
     case 'display': return displayName(displays, s.display_id);
@@ -50,6 +55,7 @@ export function sourceLabel(s: SourceSpecDto, list: Partial<SourceList>): string
     case 'region':
       return `Region ${Math.round(s.region_pt.w)}×${Math.round(s.region_pt.h)} on ${displayName(displays, s.display_id)}`;
     case 'picked': return s.region_pt ? 'Picked region' : 'Picked with the system picker';
+    case 'camera': return cameras.find((c) => c.id === s.device_id)?.name ?? 'Camera';
   }
 }
 
@@ -68,7 +74,9 @@ export function displayOfSource(s: SourceSpecDto, list: Partial<SourceList>): Di
       const w = list.windows?.find((x) => x.id === s.window_id);
       return displays.find((d) => d.id === w?.display) ?? null;
     }
-    case 'picked': return null;
+    case 'picked':
+    case 'camera':
+      return null;
   }
 }
 
@@ -91,6 +99,7 @@ export function sourceSizePx(s: SourceSpecDto, list: Partial<SourceList>, resolu
       const scale = oneX ? 1 : (d?.scale ?? 2);
       return { w: evenRound(w.frame_pt.w * scale), h: evenRound(w.frame_pt.h * scale) };
     }
+    case 'camera': return CAMERA_GUESS_PX;
     case 'picked': return null;
   }
 }

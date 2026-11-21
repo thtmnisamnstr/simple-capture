@@ -602,6 +602,9 @@ impl Hub {
             SourceSpec::Picked(_) => Err(Error::Unsupported(
                 "synthetic: picked sources (the synthetic platform has no picker)",
             )),
+            SourceSpec::Camera { .. } => Err(Error::Unsupported(
+                "camera sources go through the camera, not the screen",
+            )),
         }
     }
 

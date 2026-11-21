@@ -180,6 +180,12 @@ pub enum SourceDescriptor {
         region_pt: RectPt,
         method: RegionMethod,
     },
+    /// A camera recorded as the main picture (camera-only recordings and spans).
+    Camera {
+        device_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        device_name: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

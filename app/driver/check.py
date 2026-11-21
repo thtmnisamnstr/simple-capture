@@ -626,6 +626,23 @@ if basic("20-pause", log):
     lv = [l for l in log if l.get("event") == "mic-level"]
     check("20-pause", "mic level reaches the bar while recording (about 15/s)", len(lv) >= 40, len(lv))
 
+log = lines("21-camera")
+if basic("21-camera", log):
+    pr = P.get("drv camera")
+    finalized("21-camera", pr, "drv camera", reason="user")
+    if pr:
+        segs = segments(pr)
+        kinds = [s["source"].get("kind") for s in segs]
+        check("21-camera", "camera, display, camera: one recording", kinds == ["camera", "display", "camera"], kinds)
+        cams = [s for s in segs if s["source"].get("kind") == "camera"]
+        check("21-camera", "camera segments carry the camera's own frame size",
+              all(s["frame_px"]["w"] >= 320 and s["frame_px"]["h"] >= 240 for s in cams), [s["frame_px"] for s in cams])
+        tracks = {t["kind"] for t in pr["project"]["recording"]["tracks"]}
+        check("21-camera", "no overlay camera track; the mic is recorded", "camera" not in tracks and "mic" in tracks,
+              sorted(tracks))
+        failed = [e for e in pr["journal"] if e.get("ev") == "switch_failed"]
+        check("21-camera", "both switches worked", not failed, failed)
+
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)
 failed = [r for r in results if not r["ok"]]

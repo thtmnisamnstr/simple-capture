@@ -10,6 +10,7 @@ mod health;
 mod router;
 mod shared;
 mod sink;
+mod sources;
 mod tracks;
 
 use std::path::{Path, PathBuf};

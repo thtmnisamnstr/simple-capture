@@ -44,6 +44,10 @@ pub enum SourceSpec {
         region_pt: RectPt,
     },
     Picked(PickedSource),
+    /// A camera as the main picture; the recorder runs it through the camera source.
+    Camera {
+        device: String,
+    },
 }
 
 /// A source chosen in the system picker. `handle` holds the OS filter object.
@@ -94,6 +98,7 @@ impl PartialEq for SourceSpec {
             (Picked(a), Picked(b)) => {
                 Arc::ptr_eq(&a.handle, &b.handle) && a.region_pt == b.region_pt
             }
+            (Camera { device: a }, Camera { device: b }) => a == b,
             _ => false,
         }
     }

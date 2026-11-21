@@ -41,6 +41,7 @@ export function isSourceSpec(v: unknown): v is SourceSpecDto {
     case 'application': return isStr(v.display_id) && isNum(v.pid) && (v.bundle_id === null || isStr(v.bundle_id));
     case 'region': return isStr(v.display_id) && isRectPt(v.region_pt);
     case 'picked': return isStr(v.pick_id) && (v.region_pt === null || isRectPt(v.region_pt));
+    case 'camera': return isStr(v.device_id);
     default: return false;
   }
 }
