@@ -3,18 +3,32 @@
   import { formatBytes } from '../../lib/format.ts';
   import {
     AUDIO_LABELS,
+    DESTINATIONS,
     FORMAT_ALLOWED,
     GIF_FPS,
     VIDEO_FPS,
     VIDEO_LABELS,
+    destinationOf,
     forFormat,
+    type Destination,
+    type FrameShape,
     type ExportEstimate,
     type ExportOptions,
     type ExportSettings,
     type Format,
   } from '../../lib/exporting.ts';
 
-  let { onclose, onstarted }: { onclose: () => void; onstarted: (job: string) => void } = $props();
+  let {
+    onclose,
+    onstarted,
+    frame = 'original',
+    onframe,
+  }: {
+    onclose: () => void;
+    onstarted: (job: string) => void;
+    frame?: FrameShape;
+    onframe?: (shape: FrameShape) => Promise<void>;
+  } = $props();
 
   let opts = $state<ExportOptions | null>(null);
   let st = $state<ExportSettings>(forFormat('mp4'));
@@ -26,6 +40,27 @@
   let customH = $state(0);
 
   const ratio = $derived(opts ? opts.ratio[0] / opts.ratio[1] : 16 / 9);
+  const dest = $derived(destinationOf(st));
+  const wantsFrame = $derived(DESTINATIONS.find((d) => d.id === dest)?.frame);
+  let reshaping = $state(false);
+
+  function useDestination(d: Destination) {
+    st = { ...d.settings(), out_dir: st.out_dir, name: st.name };
+  }
+
+  async function switchFrame(shape: FrameShape) {
+    if (!onframe) return;
+    reshaping = true;
+    try {
+      await onframe(shape);
+      opts = (await editor.exportOptions()) as ExportOptions;
+      st = { ...st };
+    } catch (e) {
+      error = String(e);
+    } finally {
+      reshaping = false;
+    }
+  }
   const isGif = $derived(st.format === 'gif');
   const allowed = $derived(FORMAT_ALLOWED[st.format]);
   const fpsList = $derived(isGif ? GIF_FPS : VIDEO_FPS);
@@ -161,6 +196,21 @@
   </header>
 
   <div class="body">
+    <div class="dests" role="radiogroup" aria-label="Made for">
+      {#each DESTINATIONS as d (d.id)}
+        <button role="radio" class="chip" aria-checked={dest === d.id} title={d.hint} onclick={() => useDestination(d)}>{d.label}</button>
+      {/each}
+    </div>
+    {#if dest}
+      <p class="caption hint">{DESTINATIONS.find((d) => d.id === dest)?.hint}</p>
+    {/if}
+    {#if wantsFrame && wantsFrame !== frame}
+      <p class="frame-note" role="status">
+        <span>This is made for a {wantsFrame} frame; yours is {frame === 'original' ? 'the original shape' : frame}.</span>
+        {#if onframe}<button class="plain" disabled={reshaping} onclick={() => switchFrame(wantsFrame)}>Switch Frame to {wantsFrame}</button>{/if}
+      </p>
+    {/if}
+
     <div class="segmented formats" role="radiogroup" aria-label="Format">
       {#each [['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF'], ['mov', 'MOV']] as [f, label] (f)}
         <button role="radio" aria-checked={st.format === f} onclick={() => setFormat(f as Format)}>{label}</button>
@@ -198,12 +248,36 @@
           <span class="glabel">Quality</span>
           <span class="gcontrol">
             <span class="segmented" role="radiogroup" aria-label="Quality">
-              {#each [['small', 'Small'], ['balanced', 'Balanced'], ['high', 'High'], ['custom', 'Custom']] as [q, label] (q)}
-                <button role="radio" aria-checked={st.quality.tier === q} onclick={() => (st.quality = q === 'custom' ? { tier: 'custom', crf: 23, kbps: null } : { tier: q as 'small' })}>{label}</button>
+              {#each [['small', 'Small'], ['balanced', 'Balanced'], ['high', 'High'], ['target_size', 'Size Limit'], ['custom', 'Custom']] as [q, label] (q)}
+                <button
+                  role="radio"
+                  aria-checked={st.quality.tier === q}
+                  onclick={() =>
+                    (st.quality =
+                      q === 'custom' ? { tier: 'custom', crf: 23, kbps: null } : q === 'target_size' ? { tier: 'target_size', mb: 25 } : { tier: q as 'small' })}
+                  >{label}</button
+                >
               {/each}
             </span>
           </span>
         </div>
+        {#if st.quality.tier === 'target_size'}
+          <div class="grow">
+            <span class="glabel">Largest file</span>
+            <span class="gcontrol">
+              <input
+                type="number"
+                min="1"
+                max="100000"
+                step="1"
+                value={st.quality.mb}
+                oninput={(e) => (st.quality = { tier: 'target_size', mb: Math.max(0.5, Number(e.currentTarget.value) || 25) })}
+                aria-label="Largest file in megabytes"
+              /> MB
+              <span class="caption">smaller sizes lower the picture size</span>
+            </span>
+          </div>
+        {/if}
         {#if st.quality.tier === 'custom'}
           {@const q = st.quality}
           <div class="grow">
@@ -435,6 +509,37 @@
     width: 110px;
   }
   .spacer {
+    flex: 1;
+  }
+  .dests {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chip {
+    border-radius: 999px;
+    padding: 3px 11px;
+    font-size: 12px;
+  }
+  .chip[aria-checked='true'] {
+    background: var(--accent, #0a84ff);
+    border-color: transparent;
+    color: #fff;
+  }
+  .hint {
+    margin: -4px 2px 0;
+  }
+  .frame-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    background: color-mix(in srgb, var(--orange, #ff9f0a) 16%, transparent);
+  }
+  .frame-note span {
     flex: 1;
   }
 </style>

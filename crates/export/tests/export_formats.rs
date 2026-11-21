@@ -319,3 +319,24 @@ fn gifs_from_gifski_and_the_palette_play_at_the_chosen_rate() {
         );
     }
 }
+
+#[test]
+fn a_size_limit_keeps_the_file_under_it() {
+    if !helpers_available() {
+        return;
+    }
+    let t = TempDir::new("target-size");
+    let dir = project(&t);
+    for mb in [0.05f64, 0.4] {
+        let st = ExportSettings {
+            quality: sc_export::settings::Quality::TargetSize { mb },
+            ..ExportSettings::for_format(Format::Mp4)
+        };
+        let path = export(&dir, st);
+        let bytes = std::fs::metadata(&path).expect("file").len();
+        assert!(bytes as f64 <= mb * 1e6, "{mb} MB limit: {bytes} bytes");
+        let v = probe(&path);
+        assert_eq!(stream(&v, "video").expect("video")["codec_name"], "h264");
+        assert!(stream(&v, "audio").is_some(), "{mb} MB keeps the sound");
+    }
+}

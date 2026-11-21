@@ -626,6 +626,8 @@
 
 {#if exportSheet}
   <ExportSheet
+    frame={doc?.output.canvas.aspect ?? 'original'}
+    onframe={(shape) => edit({ op: 'set_canvas', canvas: { ...doc!.output.canvas, aspect: shape } })}
     onclose={() => (exportSheet = false)}
     onstarted={(job) => {
       exportProgress = null;

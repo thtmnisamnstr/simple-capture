@@ -25,6 +25,8 @@ pub struct ExportRequest {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
+    /// Set when the settings asked for a size limit (they then carry its bitrate).
+    pub target: Option<TargetBitrate>,
     pub settings: ExportSettings,
     pub canvas: SizePx,
     pub fps: u32,
@@ -179,6 +181,75 @@ fn project_stem(project_dir: &Path) -> String {
         .to_string()
 }
 
+/// What a size limit becomes for one edit.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TargetBitrate {
+    pub bytes: u64,
+    pub video_kbps: u32,
+    pub audio_kbps: u32,
+}
+
+/// 6% is left for the container and the encoder's rate control, which overshoots a little.
+pub fn target_bitrate(mb: f64, duration_ns: i64, audio: bool) -> TargetBitrate {
+    let bytes = (mb.max(0.1) * 1e6) as u64;
+    let secs = (duration_ns as f64 / 1e9).max(0.1);
+    let total_kbps = bytes as f64 * 8.0 * 0.94 / secs / 1000.0;
+    let audio_kbps: u32 = if !audio {
+        0
+    } else if total_kbps < 600.0 {
+        48
+    } else if total_kbps < 2000.0 {
+        96
+    } else {
+        128
+    };
+    let video_kbps = (total_kbps - f64::from(audio_kbps)).max(60.0) as u32;
+    TargetBitrate {
+        bytes,
+        video_kbps,
+        audio_kbps,
+    }
+}
+
+/// Bits per pixel below which screen text turns to mush (H.264; HEVC and AV1 need less).
+const MIN_BPP: f64 = 0.025;
+
+/// Steps the frame down through 1080, 720, 480 and 360 lines until the bitrate gives each pixel
+/// enough bits, keeping the aspect; never grows it.
+fn fit_to_bitrate(
+    project: &ProjectV1,
+    st: &ExportSettings,
+    canvas: SizePx,
+    video_kbps: u32,
+    fps: u32,
+) -> SizePx {
+    let codec_gain = match st.video {
+        VideoCodec::Hevc | VideoCodec::Vp9 => 0.7,
+        VideoCodec::Av1 => 0.55,
+        _ => 1.0,
+    };
+    let bpp = |c: SizePx| {
+        f64::from(video_kbps) * 1000.0 / (f64::from(c.w) * f64::from(c.h) * f64::from(fps.max(1)))
+    };
+    let mut best = canvas;
+    for class in [1080u32, 720, 480, 360] {
+        if bpp(best) >= MIN_BPP * codec_gain {
+            break;
+        }
+        let smaller = output_size(
+            project,
+            &ExportSettings {
+                size: SizeChoice::Class(class),
+                ..st.clone()
+            },
+        );
+        if smaller.w * smaller.h < best.w * best.h {
+            best = smaller;
+        }
+    }
+    best
+}
+
 pub fn plan(project: &ProjectV1, req: &ExportRequest, now: LocalDateTime) -> Result<Plan> {
     let st = req.settings.clone().normalized();
     let duration_ns = Some(sc_player::timeline_doc(project).duration())
@@ -196,7 +267,26 @@ pub fn plan(project: &ProjectV1, req: &ExportRequest, now: LocalDateTime) -> Res
             "sc_export: the edit is too short to export".into(),
         ));
     }
-    let canvas = req.canvas.unwrap_or_else(|| output_size(project, &st));
+    let mut st = st;
+    let mut canvas = req.canvas.unwrap_or_else(|| output_size(project, &st));
+    let has_audio = st.audio != AudioCodec::None
+        && st.format != Format::Gif
+        && !crate::recipe::audio_track_ids(project).is_empty();
+    let target = match st.quality {
+        Quality::TargetSize { mb } if st.format != Format::Gif => {
+            let t = target_bitrate(mb, duration_ns, has_audio);
+            st.audio_kbps = has_audio.then_some(t.audio_kbps);
+            st.quality = Quality::Custom {
+                crf: None,
+                kbps: Some(t.video_kbps),
+            };
+            if req.canvas.is_none() {
+                canvas = fit_to_bitrate(project, &st, canvas, t.video_kbps, fps);
+            }
+            Some(t)
+        }
+        _ => None,
+    };
     let out_path = match &req.out_path {
         Some(p) => p.clone(),
         None => {
@@ -213,10 +303,9 @@ pub fn plan(project: &ProjectV1, req: &ExportRequest, now: LocalDateTime) -> Res
             free_path(&dir, &stem, st.extension())?
         }
     };
-    let audio = st.audio != AudioCodec::None
-        && st.format != Format::Gif
-        && !crate::recipe::audio_track_ids(project).is_empty();
+    let audio = has_audio;
     Ok(Plan {
+        target,
         settings: st,
         canvas,
         fps,
@@ -242,7 +331,7 @@ pub fn estimate(p: &Plan) -> Estimate {
     let frames = p.frames as f64;
     let t = match st.quality {
         Quality::Small => 0.6,
-        Quality::Balanced | Quality::Custom { .. } => 1.0,
+        Quality::Balanced | Quality::Custom { .. } | Quality::TargetSize { .. } => 1.0,
         Quality::High => 1.8,
     };
     let fast = st.encoder == Encoder::Fast;
@@ -289,9 +378,17 @@ pub fn estimate(p: &Plan) -> Estimate {
         },
     };
     let speed = fps_1080 * 2_073_600.0 / px.max(1.0);
+    let (low, high) = match (st.quality, &p.target) {
+        (_, Some(t)) => (t.bytes as f64 * 0.8, t.bytes as f64),
+        (Quality::Custom { kbps: Some(k), .. }, None) => {
+            let b = (f64::from(k) + audio_kbps) * 1000.0 / 8.0 * secs;
+            (b * 0.9, b * 1.05)
+        }
+        _ => (bytes * 0.5, bytes * 1.8),
+    };
     Estimate {
-        bytes_low: (bytes * 0.5) as u64,
-        bytes_high: (bytes * 1.8) as u64,
+        bytes_low: low as u64,
+        bytes_high: high as u64,
         seconds: frames / speed.max(0.1),
     }
 }
@@ -338,6 +435,39 @@ mod tests {
             size,
             ..ExportSettings::for_format(format)
         }
+    }
+
+    #[test]
+    fn size_limits_become_bitrates_with_room_for_the_container() {
+        let t = target_bitrate(18.0, 60_000_000_000, true);
+        assert_eq!(t.bytes, 18_000_000);
+        assert_eq!(t.audio_kbps, 128);
+        let total = f64::from(t.video_kbps + t.audio_kbps) * 1000.0 / 8.0 * 60.0;
+        assert!(total <= 18e6 * 0.95 && total >= 18e6 * 0.9, "{total}");
+        let tiny = target_bitrate(1.0, 300_000_000_000, true);
+        assert_eq!(tiny.audio_kbps, 48);
+        assert_eq!(tiny.video_kbps, 60, "floor");
+        assert_eq!(target_bitrate(5.0, 10_000_000_000, false).audio_kbps, 0);
+    }
+
+    #[test]
+    fn a_tight_size_limit_steps_the_frame_down() {
+        let p = project(3024, 1964, Aspect::R16x9);
+        let st = ExportSettings {
+            size: SizeChoice::Original,
+            ..ExportSettings::for_format(Format::Mp4)
+        };
+        let full = output_size(&p, &st);
+        assert_eq!(
+            fit_to_bitrate(&p, &st, full, 20_000, 30),
+            full,
+            "plenty of bits"
+        );
+        assert_eq!(fit_to_bitrate(&p, &st, full, 900, 30).h, 720);
+        let small = fit_to_bitrate(&p, &st, full, 500, 30);
+        assert_eq!(small, SizePx { w: 854, h: 480 });
+        let tiny = fit_to_bitrate(&p, &st, full, 100, 30);
+        assert_eq!(tiny.h, 360, "never below 360 lines");
     }
 
     #[test]

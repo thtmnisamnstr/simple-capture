@@ -3,7 +3,8 @@ export type VideoCodec = 'h264' | 'hevc' | 'av1' | 'vp9' | 'vp8' | 'prores' | 'g
 export type AudioCodec = 'aac' | 'opus' | 'flac' | 'alac' | 'vorbis' | 'pcm' | 'none';
 export type Quality =
   | { tier: 'small' | 'balanced' | 'high' }
-  | { tier: 'custom'; crf: number | null; kbps: number | null };
+  | { tier: 'custom'; crf: number | null; kbps: number | null }
+  | { tier: 'target_size'; mb: number };
 export type SizeChoice =
   | { kind: 'original' }
   | { kind: 'class' | 'width' | 'height' | 'long'; value: number };
@@ -21,6 +22,7 @@ export interface ExportSettings {
   gif: { mode: 'gifski' | 'palette'; quality: number; motion_quality: number; lossy: number; colors: number; dither: boolean; repeat: Loop };
   out_dir: string | null;
   name: string;
+  audio_kbps?: number | null;
 }
 
 export interface ExportOptions {
@@ -88,6 +90,7 @@ export function forFormat(format: Format): ExportSettings {
     gif: { mode: 'gifski' as const, quality: 80, motion_quality: 80, lossy: 100, colors: 256, dither: true, repeat: { kind: 'forever' as const } },
     out_dir: null,
     name: '{title}',
+    audio_kbps: null,
   };
   switch (format) {
     case 'mp4':
@@ -99,4 +102,59 @@ export function forFormat(format: Format): ExportSettings {
     case 'mov':
       return { ...base, format, video: 'prores', audio: 'pcm', fps: 30, size: { kind: 'original' } };
   }
+}
+
+export type FrameShape = 'original' | '16:9' | '4:3' | '1:1' | '9:16';
+
+export interface Destination {
+  id: string;
+  label: string;
+  hint: string;
+  /** The frame the destination wants; the sheet offers to switch to it. */
+  frame?: FrameShape;
+  settings: () => ExportSettings;
+}
+
+export const DESTINATIONS: Destination[] = [
+  {
+    id: 'email',
+    label: 'Email',
+    hint: 'MP4 under 18 MB, so it attaches in Gmail and Outlook (their 25 MB limit counts encoding overhead)',
+    settings: () => ({ ...forFormat('mp4'), quality: { tier: 'target_size', mb: 18 }, size: { kind: 'class', value: 1080 }, fps: 30 }),
+  },
+  {
+    id: 'slack',
+    label: 'Slack & Teams',
+    hint: 'MP4 at 1080p, compact, plays inline in chat',
+    settings: () => ({ ...forFormat('mp4'), quality: { tier: 'small' }, size: { kind: 'class', value: 1080 }, fps: 30 }),
+  },
+  {
+    id: 'youtube',
+    label: 'YouTube',
+    hint: 'MP4 at full size (up to 4K), high quality, your recording\'s frame rate',
+    settings: () => ({ ...forFormat('mp4'), quality: { tier: 'high' }, size: { kind: 'original' }, fps: 60, audio_kbps: 256 }),
+  },
+  {
+    id: 'vertical',
+    label: 'TikTok, Reels & Shorts',
+    hint: 'Vertical 1080 × 1920 MP4, high quality',
+    frame: '9:16',
+    settings: () => ({ ...forFormat('mp4'), quality: { tier: 'high' }, size: { kind: 'long', value: 1920 }, fps: 30, audio_kbps: 192 }),
+  },
+  {
+    id: 'gif',
+    label: 'GIF',
+    hint: 'For docs and chat: 15 fps, 960 wide, loops forever',
+    settings: () => forFormat('gif'),
+  },
+];
+
+/** The destination these settings match, if any (format, quality and size alike). */
+export function destinationOf(st: ExportSettings): string | null {
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const d = DESTINATIONS.find((x) => {
+    const t = x.settings();
+    return t.format === st.format && same(t.quality, st.quality) && same(t.size, st.size) && t.video === st.video;
+  });
+  return d?.id ?? null;
 }

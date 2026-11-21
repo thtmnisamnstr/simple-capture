@@ -55,6 +55,11 @@ pub enum Quality {
         crf: Option<u32>,
         kbps: Option<u32>,
     },
+    /// The whole file under `mb` megabytes (10^6 bytes): the plan turns it into a bitrate for
+    /// the edit's length, stepping the size down when the picture would get too coarse.
+    TargetSize {
+        mb: f64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,6 +131,8 @@ pub struct ExportSettings {
     pub out_dir: Option<std::path::PathBuf>,
     /// `{title}`, `{date}`, `{time}`, `{size}`, `{fps}`, `{format}`.
     pub name: String,
+    /// Overrides the quality tier's audio bitrate (lossy codecs).
+    pub audio_kbps: Option<u32>,
 }
 
 impl Default for ExportSettings {
@@ -162,6 +169,7 @@ impl ExportSettings {
             gif: GifSettings::default(),
             out_dir: None,
             name: "{title}".into(),
+            audio_kbps: None,
         }
     }
 

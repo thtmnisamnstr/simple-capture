@@ -24,7 +24,7 @@ fn s(v: &[&str]) -> Vec<String> {
 fn tier(q: Quality) -> usize {
     match q {
         Quality::Small => 0,
-        Quality::Balanced | Quality::Custom { .. } => 1,
+        Quality::Balanced | Quality::Custom { .. } | Quality::TargetSize { .. } => 1,
         Quality::High => 2,
     }
 }
@@ -149,6 +149,11 @@ fn video_quality(st: &ExportSettings, enc: &str) -> Vec<String> {
 }
 
 fn audio_quality(st: &ExportSettings, enc: &str) -> Vec<String> {
+    if let Some(k) = st.audio_kbps
+        && matches!(enc, "aac_at" | "aac" | "libopus" | "libvorbis")
+    {
+        return s(&["-b:a", &format!("{k}k")]);
+    }
     let t = tier(st.quality);
     match enc {
         "aac_at" | "aac" => s(&["-b:a", ["128k", "160k", "256k"][t]]),
