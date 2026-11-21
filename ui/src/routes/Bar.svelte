@@ -46,6 +46,8 @@
   let restarting = $state(false);
   let debug = $state(false);
   let lastHealth = $state<HealthDto | null>(null);
+  let micDb = $state<number | null>(null);
+  let micTimer: ReturnType<typeof setTimeout> | undefined;
   let notice = $state<NoticeDto | null>(null);
   let sourceLost = $state(false);
   let confirming = $state(false);
@@ -112,6 +114,12 @@
         const ns = typeof p.elapsed_ns === 'number' ? p.elapsed_ns : elapsed;
         elapsed = ns;
         base = { ns, at: performance.now(), running: true };
+      }),
+      onEvent('mic-level', isObject, (m) => {
+        if (typeof m.peak_db !== 'number') return;
+        micDb = micDb === null ? m.peak_db : Math.max(m.peak_db, micDb - 3);
+        clearTimeout(micTimer);
+        micTimer = setTimeout(() => (micDb = null), 1200);
       }),
       onEvent('countdown', isObject, (c) => {
         countdown = typeof c.left === 'number' ? c.left : 0;
@@ -183,6 +191,11 @@
   </span>
   <span class="rec" class:live={live && !paused} aria-hidden="true"></span>
   <span class="timer" role="timer" aria-label="Elapsed">{formatElapsed(elapsed)}</span>
+  {#if micDb !== null && live && !paused}
+    <span class="mic" role="meter" aria-label="Microphone level" aria-valuemin={-60} aria-valuemax={0} aria-valuenow={Math.round(micDb)}>
+      {#each [-48, -36, -24, -12, -4] as step (step)}<i class:on={micDb >= step} class:hot={step === -4 && micDb >= step}></i>{/each}
+    </span>
+  {/if}
 
   {#if countdown > 0}
     <div class="msg count" role="timer" aria-live="assertive">
@@ -295,6 +308,38 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.01em;
     min-width: 52px;
+  }
+  .mic {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 16px;
+  }
+  .mic i {
+    width: 3px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .mic i:nth-child(1) {
+    height: 5px;
+  }
+  .mic i:nth-child(2) {
+    height: 8px;
+  }
+  .mic i:nth-child(3) {
+    height: 11px;
+  }
+  .mic i:nth-child(4) {
+    height: 14px;
+  }
+  .mic i:nth-child(5) {
+    height: 16px;
+  }
+  .mic i.on {
+    background: #30d158;
+  }
+  .mic i.hot {
+    background: #ff9f0a;
   }
   .msg {
     flex: 1;

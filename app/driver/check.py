@@ -623,6 +623,8 @@ if basic("20-pause", log):
           bool(st) and st[0].get("paused") is True and 1.8e9 <= st[0].get("elapsed_ns", 0) <= 3.5e9, st)
     ev = events(log, "recording-paused")
     check("20-pause", "paused and resumed events", [e.get("paused") for e in ev] == [True, False], ev)
+    lv = [l for l in log if l.get("event") == "mic-level"]
+    check("20-pause", "mic level reaches the bar while recording (about 15/s)", len(lv) >= 40, len(lv))
 
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)

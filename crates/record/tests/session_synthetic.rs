@@ -28,6 +28,7 @@ struct Obs {
     notices: Mutex<Vec<Notice>>,
     health: Mutex<Vec<HealthSnapshot>>,
     notices_at_end: Mutex<Option<Vec<Notice>>>,
+    levels: Mutex<Vec<(AudioTrackKind, f32)>>,
 }
 
 impl SessionObserver for Obs {
@@ -48,6 +49,9 @@ impl SessionObserver for Obs {
     }
     fn on_notice(&self, n: &Notice) {
         self.notices.lock().expect("lock").push(n.clone());
+    }
+    fn on_level(&self, track: AudioTrackKind, peak: f32) {
+        self.levels.lock().expect("lock").push((track, peak));
     }
 }
 

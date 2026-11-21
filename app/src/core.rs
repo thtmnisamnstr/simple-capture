@@ -1577,6 +1577,19 @@ impl SessionObserver for Observer {
             c.refresh_tray();
         }
     }
+    fn on_level(&self, track: sc_platform::AudioTrackKind, peak: f32) {
+        if track != sc_platform::AudioTrackKind::Mic {
+            return;
+        }
+        if let Some(c) = self.core.upgrade() {
+            let db = if peak <= 1e-6 {
+                -120.0
+            } else {
+                20.0 * peak.log10()
+            };
+            c.emit("mic-level", json!({ "peak_db": db }));
+        }
+    }
     fn on_notice(&self, n: &Notice) {
         if let Some(c) = self.core.upgrade() {
             c.emit("notice", dto::notice(n));

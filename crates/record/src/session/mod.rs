@@ -147,6 +147,11 @@ pub trait SessionObserver: Send + Sync {
     fn on_state(&self, s: &SessionState);
     fn on_health(&self, h: &HealthSnapshot);
     fn on_notice(&self, n: &Notice);
+    /// The loudest sample (0–1) of an audio track since the last call, about 15 times a second
+    /// while recording (silence while paused).
+    fn on_level(&self, track: AudioTrackKind, peak: f32) {
+        let _ = (track, peak);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

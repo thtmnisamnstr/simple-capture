@@ -41,9 +41,32 @@ pub(crate) struct SessionSink {
     seen: [AtomicBool; 4],
     firsts: Mutex<Firsts>,
     cv: Condvar,
+    levels: Mutex<[(std::time::Instant, f32); 2]>,
 }
 
 impl SessionSink {
+    fn level(&self, track: AudioTrackKind, a: &AudioBuffer) {
+        let Some(samples) = a.data.samples() else {
+            return;
+        };
+        let peak = samples.iter().fold(0f32, |m, v| m.max(v.abs()));
+        let i = usize::from(track == AudioTrackKind::SystemAudio);
+        let report = {
+            let mut l = lock(&self.levels);
+            l[i].1 = l[i].1.max(peak);
+            if l[i].0.elapsed() < std::time::Duration::from_millis(66) {
+                None
+            } else {
+                let p = l[i].1;
+                l[i] = (std::time::Instant::now(), 0.0);
+                Some(p)
+            }
+        };
+        if let Some(p) = report {
+            self.sh.obs.on_level(track, p);
+        }
+    }
+
     fn paused(&self) -> bool {
         self.sh.paused.load(std::sync::atomic::Ordering::SeqCst)
     }
@@ -58,6 +81,7 @@ impl SessionSink {
             seen: Default::default(),
             firsts: Mutex::new(Firsts::default()),
             cv: Condvar::new(),
+            levels: Mutex::new([(std::time::Instant::now(), 0.0); 2]),
         })
     }
 
@@ -132,6 +156,7 @@ impl FrameSink for SessionSink {
         if self.paused() {
             return;
         }
+        self.level(track, &a);
         match track {
             AudioTrackKind::Mic => {
                 self.first(2, |x| x.mic = Some(fmt));
