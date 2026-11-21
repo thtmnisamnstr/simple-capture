@@ -68,8 +68,10 @@
   let capturing = $state<string | null>(null);
   const mac = hostOs() === 'macos';
 
-  async function startCapture(id: string) {
+  async function startCapture(e: MouseEvent, id: string) {
+    (e.currentTarget as HTMLElement).focus();
     if (capturing === id) return;
+    if (capturing) await endCapture(capturing, null);
     capturing = id;
     await shortcutsApi.pause(true).catch(() => undefined);
   }
@@ -379,6 +381,11 @@
     run(() => beginRegion('start', d));
   }
 </script>
+
+<svelte:window
+  onkeydown={(e) => capturing && captureKey(e, capturing)}
+  onblur={() => capturing && endCapture(capturing, null)}
+/>
 
 <div class="window panel">
   <div class="scroll">
@@ -783,7 +790,7 @@
                     class:bad={!!sc.error}
                     aria-label="{sc.label} shortcut"
                     title={sc.error ?? (capturing === sc.id ? 'Type the new shortcut. Delete clears it, Escape keeps it.' : 'Click to change')}
-                    onclick={() => startCapture(sc.id)}
+                    onclick={(e) => startCapture(e, sc.id)}
                     onkeydown={(e) => captureKey(e, sc.id)}
                     onblur={() => endCapture(sc.id, null)}
                   >{capturing === sc.id ? 'Type shortcut…' : keysLabel(sc.keys, mac)}</button>

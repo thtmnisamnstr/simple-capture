@@ -27,7 +27,7 @@ struct Fanout {
     latest: Mutex<Option<VideoFrame>>,
     open: AtomicBool,
     fresh: Condvar,
-    recorder: Mutex<Option<Arc<dyn FrameSink>>>,
+    recorders: Mutex<Vec<(u64, Arc<dyn FrameSink>)>>,
     frames: AtomicU64,
 }
 
@@ -35,8 +35,8 @@ impl FrameSink for Fanout {
     fn on_screen(&self, _f: VideoFrame) {}
 
     fn on_camera(&self, f: VideoFrame) {
-        let recorder = lock(&self.recorder).clone();
-        if let Some(r) = recorder {
+        let recorders = lock(&self.recorders).clone();
+        for (_, r) in &recorders {
             r.on_camera(f.clone());
         }
         {
@@ -53,9 +53,9 @@ impl FrameSink for Fanout {
     fn on_audio(&self, _t: AudioTrackKind, _a: AudioBuffer) {}
 
     fn on_event(&self, e: SourceEvent) {
-        let recorder = lock(&self.recorder).clone();
-        if let Some(r) = recorder {
-            r.on_event(e);
+        let recorders = lock(&self.recorders).clone();
+        for (_, r) in &recorders {
+            r.on_event(e.clone());
         }
     }
 }
@@ -72,7 +72,9 @@ struct State {
     /// The open device was unplugged: its stream delivers nothing more.
     lost: bool,
     preview: Option<String>,
-    recording: bool,
+    /// Recorder sinks attached (the corner camera and a camera as the main picture can share).
+    recording: usize,
+    next_sink: u64,
 }
 
 pub struct SharedCamera {
@@ -96,7 +98,7 @@ impl SharedCamera {
     /// camera, the device cannot change.
     pub fn set_preview(&self, device: Option<String>) -> Result<()> {
         let mut st = lock(&self.state);
-        if st.recording
+        if st.recording > 0
             && device.is_some()
             && st.open.as_ref().map(|o| &o.device) != device.as_ref()
         {
@@ -132,19 +134,19 @@ impl SharedCamera {
         let mut st = lock(&self.state);
         if st.open.as_ref().is_some_and(|o| o.device == device) {
             st.lost = true;
-            if !st.recording {
+            if st.recording == 0 {
                 self.close(&mut st);
             }
         }
     }
 
     fn settle(&self, st: &mut State) -> Result<()> {
-        let want = if st.recording {
+        let want = if st.recording > 0 {
             st.open.as_ref().map(|o| o.device.clone())
         } else {
             st.preview.clone()
         };
-        if st.lost && !st.recording {
+        if st.lost && st.recording == 0 {
             self.close(st);
         }
         if st.open.as_ref().map(|o| &o.device) == want.as_ref() {
@@ -184,10 +186,13 @@ impl SharedCamera {
         })
     }
 
-    fn detach(&self) {
+    fn detach(&self, sink: u64) {
         let mut st = lock(&self.state);
-        *lock(&self.fan.recorder) = None;
-        st.recording = false;
+        lock(&self.fan.recorders).retain(|(id, _)| *id != sink);
+        st.recording = st.recording.saturating_sub(1);
+        if st.recording > 0 {
+            return;
+        }
         if let Err(e) = self.settle(&mut st) {
             tracing::warn!("camera after recording: {e}");
         }
@@ -197,12 +202,13 @@ impl SharedCamera {
 /// Detaches when stopped or dropped, so a recording that fails to start never keeps the camera.
 struct Attachment {
     cam: Arc<SharedCamera>,
+    sink: u64,
     format: String,
 }
 
 impl Drop for Attachment {
     fn drop(&mut self) {
-        self.cam.detach();
+        self.cam.detach(self.sink);
     }
 }
 
@@ -237,10 +243,14 @@ impl CameraSource for SharedCamera {
             .upgrade()
             .ok_or_else(|| Error::Other("shared camera dropped".into()))?;
         let mut st = lock(&self.state);
-        if st.recording {
-            return Err(Error::Busy("the camera is already recording".into()));
+        let same = st.open.as_ref().map(|o| o.device.as_str()) == Some(device_id);
+        if st.recording > 0 && !same {
+            return Err(Error::Busy("the recording is using another camera".into()));
         }
-        if st.lost || st.open.as_ref().map(|o| o.device.as_str()) != Some(device_id) {
+        if st.recording > 0 && st.lost {
+            return Err(Error::NotFound(format!("camera {device_id}")));
+        }
+        if st.lost || !same {
             self.close(&mut st);
             match self.open(device_id, limit) {
                 Ok(open) => st.open = Some(open),
@@ -252,14 +262,20 @@ impl CameraSource for SharedCamera {
                 }
             }
         }
-        *lock(&self.fan.recorder) = Some(sink);
-        st.recording = true;
+        st.next_sink += 1;
+        let id = st.next_sink;
+        lock(&self.fan.recorders).push((id, sink));
+        st.recording += 1;
         let format = st
             .open
             .as_ref()
             .map(|o| o.format.clone())
             .unwrap_or_default();
-        Ok(Box::new(Attachment { cam, format }))
+        Ok(Box::new(Attachment {
+            cam,
+            sink: id,
+            format,
+        }))
     }
 }
 

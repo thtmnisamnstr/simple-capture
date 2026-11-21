@@ -11,6 +11,8 @@
     keyAt,
     locate,
     newRedaction,
+    onTimeline,
+    recSpan,
     starts,
     type Redaction,
     type Doc,
@@ -29,6 +31,7 @@
   import Inspector from '../components/editor/Inspector.svelte';
   import ExportSheet from '../components/editor/ExportSheet.svelte';
   import SilencePanel from '../components/editor/SilencePanel.svelte';
+  import { appApi, folderName } from '../lib/appinfo.ts';
   import {
     fontFaceCss,
     newTextItem,
@@ -81,11 +84,15 @@
     titleDraft = null;
     if (!st || !t || t === st.title) return;
     const prev = st.title;
+    const dir = st.project_dir;
     st.title = t;
-    editor.rename(t).catch((e) => {
-      if (st) st.title = prev;
-      error = errorText(e);
-    });
+    editor
+      .rename(t)
+      .catch(() => appApi.rename(folderName(dir), t))
+      .catch((e) => {
+        if (st) st.title = prev;
+        error = errorText(e);
+      });
   }
   let toast = $state<string | null>(null);
   let exportJob = $state<string | null>(null);
@@ -468,7 +475,7 @@
 
   function typing(e: KeyboardEvent): boolean {
     const t = e.target as HTMLElement | null;
-    return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
   }
 
   function onkeydown(e: KeyboardEvent) {
@@ -644,7 +651,7 @@
   const camRect = $derived(frame?.camera && previewEl ? frame.camera : null);
 
   const blurs = $derived(doc?.redactions ?? []);
-  const shownBlurs = $derived(blurs.filter((b) => b.start_tl_ns <= playhead && playhead < b.end_tl_ns));
+  const shownBlurs = $derived(blurs.filter((b) => b.start_rec_ns <= recNs && recNs < b.end_rec_ns));
   const blurSel = $derived(blurs.find((b) => b.id === selectedBlur) ?? null);
 
   function selectBlur(id: string) {
@@ -653,13 +660,16 @@
     editingText = null;
     selected = [];
     const b = blurs.find((x) => x.id === id);
-    if (b && (playhead < b.start_tl_ns || playhead >= b.end_tl_ns)) seek(b.start_tl_ns + Math.min(500_000_000, (b.end_tl_ns - b.start_tl_ns) / 2), true);
+    const first = b ? onTimeline(clips, b)[0] : undefined;
+    if (b && first && (recNs < b.start_rec_ns || recNs >= b.end_rec_ns)) seek(first[0] + Math.min(500_000_000, (first[1] - first[0]) / 2), true);
   }
 
   function addBlur() {
     if (!doc) return;
     if (playing) void editor.pause();
-    const b = newRedaction(crypto.randomUUID(), playhead, duration);
+    const at = locate(clips, st0, Math.min(Math.max(0, playhead), duration - 1));
+    if (!at) return;
+    const b = newRedaction(crypto.randomUUID(), at.rec_ns, clips[at.index].src_out_rec_ns);
     void edit({ op: 'upsert_redaction', item: b });
     selectBlur(b.id);
   }
@@ -675,6 +685,8 @@
 
   function blurDown(e: PointerEvent, b: Redaction, corner: [number, number] | null) {
     if (e.button !== 0 || playing) return;
+    const p = previewPoint(e);
+    if (!corner && p && frame?.text?.some((t) => inBox(boxOf(t.quad), p.x, p.y))) return;
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
@@ -951,6 +963,7 @@
   <section class="bottom">
     {#if silencePanel}
       <SilencePanel
+        {revision}
         onpreview={(r) => (silenceMarks = r)}
         onremove={async (ranges) => {
           const u = await editor.edit({ op: 'delete_ranges', ranges });
@@ -998,8 +1011,9 @@
           {selectedBlur}
           onselectblur={selectBlur}
           onblurmove={(id, s, e) => {
-            const b = blurs.find((x) => x.id === id);
-            if (b) void edit({ op: 'upsert_redaction', item: { ...b, start_tl_ns: s, end_tl_ns: e } });
+            const b = blurs.find((x) => x.id === id.split('#')[0]);
+            const span = recSpan(clips, s, e);
+            if (b && span) void edit({ op: 'upsert_redaction', item: { ...b, start_rec_ns: span[0], end_rec_ns: span[1] } });
           }}
           {thumbs}
           {peaks}

@@ -16,6 +16,7 @@ use sc_platform::{
     Decoder, Error, FinishedTrack, FrameBuffer, Result, TrackProbe, TrackWriter, VideoCodec,
     VideoFrame, VideoReader, VideoWriterSpec, WriterFactory,
 };
+use sc_tracks::HelperWriters;
 use sc_tracks::nv12::{even, pack_nv12};
 use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::StructuredStorage::{
@@ -23,7 +24,7 @@ use windows::Win32::System::Com::StructuredStorage::{
 };
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx};
 use windows::Win32::System::Variant::VT_I8;
-use windows::core::{GUID, HSTRING};
+use windows::core::{GUID, HSTRING, Interface};
 
 use super::wgc::os;
 
@@ -31,6 +32,8 @@ const NS: f64 = 1e9;
 const HNS_PER_S: i64 = 10_000_000;
 const VIDEO_QUEUE: usize = 4;
 const AUDIO_QUEUE: usize = 256;
+/// The widest picture H.264 encoders take; bigger tracks go to the helper (HEVC or x264).
+const MAX_SIDE: u32 = 4096;
 
 fn startup() {
     static ONCE: Once = Once::new();
@@ -90,10 +93,15 @@ struct Sink {
 }
 
 impl Sink {
-    fn open(path: &Path, output: &IMFMediaType, input: &IMFMediaType) -> Result<Sink> {
+    fn open(
+        path: &Path,
+        output: &IMFMediaType,
+        input: &IMFMediaType,
+        params: Option<&IMFAttributes>,
+    ) -> Result<Sink> {
         startup();
         unsafe {
-            let attrs = attributes(3)?;
+            let attrs = attributes(2)?;
             attrs
                 .SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1)
                 .map_err(os)?;
@@ -103,13 +111,12 @@ impl Sink {
                     &MFTranscodeContainerType_FMPEG4,
                 )
                 .map_err(os)?;
-            attrs
-                .SetUINT32(&MF_SINK_WRITER_DISABLE_THROTTLING, 1)
-                .map_err(os)?;
             let url = HSTRING::from(path.as_os_str());
             let writer = MFCreateSinkWriterFromURL(&url, None, &attrs).map_err(os)?;
             let stream = writer.AddStream(output).map_err(os)?;
-            writer.SetInputMediaType(stream, input, None).map_err(os)?;
+            writer
+                .SetInputMediaType(stream, input, params)
+                .map_err(os)?;
             writer.BeginWriting().map_err(os)?;
             Ok(Sink { writer, stream })
         }
@@ -158,6 +165,18 @@ fn video_types(
     }
 }
 
+/// The documented encoder settings: a keyframe every `gop` frames and no B-frames, so seeks
+/// decode little and stored times need no reordering.
+fn video_params(gop: u32) -> Result<IMFAttributes> {
+    let p = attributes(2)?;
+    unsafe {
+        p.SetUINT32(&CODECAPI_AVEncMPVGOPSize, gop).map_err(os)?;
+        p.SetUINT32(&CODECAPI_AVEncMPVDefaultBPictureCount, 0)
+            .map_err(os)?;
+    }
+    Ok(p)
+}
+
 fn audio_types(rate: u32, channels: u16, bitrate: u32) -> Result<(IMFMediaType, IMFMediaType)> {
     let ch = u32::from(channels);
     let bytes_per_s = match bitrate {
@@ -192,15 +211,18 @@ fn audio_types(rate: u32, channels: u16, bitrate: u32) -> Result<(IMFMediaType, 
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct MfWriters;
+/// H.264 and AAC whatever codec is asked for; pictures over [`MAX_SIDE`] and audio at rates the
+/// AAC encoder refuses go to the helper, whose Matroska the decoder reads through its fallback.
+#[derive(Debug, Clone)]
+pub struct MfWriters {
+    pub helper: HelperWriters,
+}
 
 impl MfWriters {
     /// Whether this system can write an H.264 track (Windows "N" editions without the Media
     /// Feature Pack cannot).
-    pub fn usable() -> bool {
-        MfWriters
-            .encode_benchmark(SizePx { w: 64, h: 64 }, 30, 3, VideoCodec::H264)
+    pub fn usable(&self) -> bool {
+        self.encode_benchmark(SizePx { w: 64, h: 64 }, 30, 3, VideoCodec::Hevc)
             .map_err(|e| tracing::warn!("Media Foundation writer unavailable: {e}"))
             .is_ok()
     }
@@ -212,10 +234,16 @@ impl WriterFactory for MfWriters {
     }
 
     fn video(&self, path: &Path, spec: &VideoWriterSpec) -> Result<Box<dyn TrackWriter>> {
+        if spec.size.w > MAX_SIDE || spec.size.h > MAX_SIDE {
+            return self.helper.video(path, spec);
+        }
         Ok(Box::new(MfVideoWriter::start(path, spec)?))
     }
 
     fn audio(&self, path: &Path, spec: &AudioWriterSpec) -> Result<Box<dyn TrackWriter>> {
+        if !matches!(spec.sample_rate, 44_100 | 48_000) {
+            return self.helper.audio(path, spec);
+        }
         Ok(Box::new(MfAudioWriter::start(path, spec)?))
     }
 
@@ -258,6 +286,7 @@ impl WriterFactory for MfWriters {
         Box::new(w).finish(None)?;
         let secs = t0.elapsed().as_secs_f64();
         let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
         Ok(f64::from(frames) / secs.max(1e-6))
     }
 }
@@ -286,9 +315,6 @@ pub struct MfVideoWriter {
 
 impl MfVideoWriter {
     pub fn start(path: &Path, spec: &VideoWriterSpec) -> Result<MfVideoWriter> {
-        if spec.codec != VideoCodec::H264 {
-            return Err(Error::Unsupported("Media Foundation tracks are H.264"));
-        }
         let size = even(spec.size);
         let fps = spec.fps.max(1);
         let gop = (f64::from(fps) * spec.keyframe_interval_s).round().max(1.0) as u32;
@@ -303,7 +329,7 @@ impl MfVideoWriter {
             .name("track-video-mf".into())
             .spawn(move || {
                 let sink = video_types(size, fps, gop, bitrate)
-                    .and_then(|(out, inp)| Sink::open(&p, &out, &inp));
+                    .and_then(|(out, inp)| Sink::open(&p, &out, &inp, Some(&video_params(gop)?)));
                 match sink {
                     Ok(sink) => {
                         let _ = opened_tx.send(Ok(()));
@@ -519,7 +545,7 @@ impl MfAudioWriter {
             .name("track-audio-mf".into())
             .spawn(move || {
                 let sink = match audio_types(rate, channels, bitrate)
-                    .and_then(|(out, inp)| Sink::open(&p, &out, &inp))
+                    .and_then(|(out, inp)| Sink::open(&p, &out, &inp, None))
                 {
                     Ok(s) => {
                         let _ = opened_tx.send(Ok(()));
@@ -795,6 +821,7 @@ struct Read {
     sample: Option<IMFSample>,
     time_hns: i64,
     end: bool,
+    changed: bool,
 }
 
 fn read(reader: &IMFSourceReader, stream: u32) -> Result<Read> {
@@ -818,6 +845,7 @@ fn read(reader: &IMFSourceReader, stream: u32) -> Result<Read> {
     }
     Ok(Read {
         end: flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0,
+        changed: flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED.0 as u32 != 0,
         sample,
         time_hns: time,
     })
@@ -880,19 +908,51 @@ impl MfVideoReader {
             let first = r.decode()?;
             if let Some((t, f)) = first {
                 r.origin_hns = t;
+                r.pending = Some(DecodedFrame {
+                    file_ns: 0,
+                    frame: f,
+                });
                 if from_file_ns > 0 {
-                    seek(&r.reader, from_file_ns + t * 100)?;
-                    r.done = false;
-                } else {
-                    r.pending = Some(DecodedFrame {
-                        file_ns: 0,
-                        frame: f,
-                    });
+                    r.seek_to(from_file_ns)?;
                 }
             }
             Ok(r)
         }
     }
+}
+
+/// The decoder's own row pitch when its buffer gives one, else the media type's stride.
+fn nv12_of(sample: &IMFSample, size: SizePx, stride: Option<usize>) -> Result<CpuNv12Frame> {
+    unsafe {
+        let buf = sample.GetBufferByIndex(0).map_err(os)?;
+        if let Ok(b2) = buf.cast::<IMF2DBuffer2>() {
+            let mut scan0: *mut u8 = std::ptr::null_mut();
+            let mut pitch = 0i32;
+            let mut start: *mut u8 = std::ptr::null_mut();
+            let mut len = 0u32;
+            if b2
+                .Lock2DSize(
+                    MF2DBuffer_LockFlags_Read,
+                    &mut scan0,
+                    &mut pitch,
+                    &mut start,
+                    &mut len,
+                )
+                .is_ok()
+            {
+                let skip = scan0.offset_from(start).max(0) as usize;
+                let frame = (pitch > 0 && skip < len as usize).then(|| {
+                    let data = std::slice::from_raw_parts(scan0, len as usize - skip);
+                    nv12_from(data, size, Some(pitch as usize))
+                });
+                let _ = b2.Unlock2D();
+                if let Some(f) = frame {
+                    return Ok(f);
+                }
+            }
+        }
+    }
+    locked(sample, |d| nv12_from(d, size, stride))
 }
 
 /// Copies an NV12 picture out of a decoder buffer whose rows may be padded and whose planes
@@ -924,12 +984,50 @@ impl MfVideoReader {
         while !self.done {
             let r = read(&self.reader, self.stream)?;
             self.done = r.end;
+            if r.changed {
+                self.refresh_format()?;
+            }
             if let Some(s) = r.sample {
-                let frame = locked(&s, |d| nv12_from(d, self.size, self.stride))?;
+                let frame = nv12_of(&s, self.size, self.stride)?;
                 return Ok(Some((r.time_hns, FrameBuffer(Arc::new(frame)))));
             }
         }
         Ok(None)
+    }
+
+    fn refresh_format(&mut self) -> Result<()> {
+        unsafe {
+            let cur = self.reader.GetCurrentMediaType(self.stream).map_err(os)?;
+            let (w, h) = unpack(cur.GetUINT64(&MF_MT_FRAME_SIZE).map_err(os)?);
+            self.size = SizePx { w, h };
+            self.stride = cur
+                .GetUINT32(&MF_MT_DEFAULT_STRIDE)
+                .ok()
+                .map(|s| (s as i32).unsigned_abs() as usize)
+                .filter(|s| *s >= w as usize);
+        }
+        Ok(())
+    }
+
+    /// Source readers do not promise exact seeks: when the first frame lands after `file_ns`,
+    /// seek two seconds earlier once more, so callers get a frame at or before it.
+    fn seek_to(&mut self, file_ns: i64) -> Result<()> {
+        for back in [0, 2_000_000_000] {
+            let target = (file_ns - back).max(0);
+            seek(&self.reader, target + self.origin_hns * 100)?;
+            self.done = false;
+            if let Some((t, f)) = self.decode()? {
+                let at = (t - self.origin_hns) * 100;
+                self.pending = Some(DecodedFrame {
+                    file_ns: at,
+                    frame: f,
+                });
+                if at <= file_ns + 1_000_000 {
+                    return Ok(());
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -1145,7 +1243,7 @@ mod tests {
         VideoWriterSpec {
             size,
             fps: 30,
-            codec: VideoCodec::H264,
+            codec: VideoCodec::Hevc,
             keyframe_interval_s: 1.0,
             fragment_interval_s: 1.0,
             bits_per_pixel: 0.1,
@@ -1170,7 +1268,10 @@ mod tests {
         let dir = temp("video");
         let path = dir.join("screen.mp4");
         let size = SizePx { w: 640, h: 360 };
-        let mut w = MfVideoWriter::start(&path, &spec(size)).expect("writer");
+        let factory = MfWriters {
+            helper: HelperWriters::new(PathBuf::from("ffmpeg")),
+        };
+        let mut w = factory.video(&path, &spec(size)).expect("writer");
         for i in 0..60i64 {
             let f = frame(size, if i < 30 { 60 } else { 180 });
             while !w.is_ready() {
@@ -1184,7 +1285,7 @@ mod tests {
                 Append::Written
             );
         }
-        let done = Box::new(w).finish(Some(2_000_000_000)).expect("finish");
+        let done = w.finish(Some(2_000_000_000)).expect("finish");
         assert_eq!(done.duration_ns, Some(2_000_000_000));
 
         let d = MfDecoder::new(Arc::new(sc_platform::unsupported::Nothing::new("helper")));
@@ -1213,7 +1314,11 @@ mod tests {
             "{}",
             mean_luma(&frames[50])
         );
-        assert_eq!(frames[45].file_ns / 1_000_000, 1_500);
+        assert!(
+            (frames[45].file_ns - 1_500_000_000).abs() < 1_000_000,
+            "{}",
+            frames[45].file_ns
+        );
 
         let mut s = d.open_video_at(&path, 1_500_000_000).expect("seek");
         let first = s.next_frame().expect("frame").expect("some");
@@ -1226,6 +1331,48 @@ mod tests {
             "a keyframe at or before 1.5 s, at most a second back: {}",
             first.file_ns
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn odd_widths_read_back_without_shearing() {
+        let dir = temp("odd");
+        let path = dir.join("window.mp4");
+        let size = SizePx { w: 1366, h: 362 };
+        let mut halves = CpuNv12Frame::filled(size, 50, 128, 128, false);
+        for row in halves.y.chunks_exact_mut(size.w as usize) {
+            row[size.w as usize / 2..].fill(200);
+        }
+        let buffer = FrameBuffer(Arc::new(halves));
+        let mut w = MfVideoWriter::start(&path, &spec(size)).expect("writer");
+        for i in 0..10i64 {
+            while !w.is_ready() {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            let f = VideoFrame {
+                buffer: buffer.clone(),
+                ..frame(size, 0)
+            };
+            w.append_video(&f, i * 1_000_000_000 / 30).expect("append");
+        }
+        Box::new(w).finish(None).expect("finish");
+        let d = MfDecoder::new(Arc::new(sc_platform::unsupported::Nothing::new("helper")));
+        let mut r = d.open_video(&path).expect("reader");
+        assert_eq!(r.size(), size);
+        let f = r.next_frame().expect("frame").expect("some");
+        f.frame
+            .0
+            .with_nv12(&mut |v| {
+                for y in [10usize, 180, 350] {
+                    let row = &v.y[y * v.y_stride..];
+                    let (l, rt) = (row[300], row[1000]);
+                    assert!(
+                        (i32::from(l) - 50).abs() < 12 && (i32::from(rt) - 200).abs() < 12,
+                        "row {y}: {l} and {rt}"
+                    );
+                }
+            })
+            .expect("nv12");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

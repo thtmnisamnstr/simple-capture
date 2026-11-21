@@ -122,9 +122,12 @@ pub struct WindowsPlatform {
 /// back to the FFmpeg helper.
 fn media_writers(ffmpeg: &Path) -> Arc<dyn WriterFactory> {
     let forced = std::env::var("SC_MEDIA").is_ok_and(|v| v.eq_ignore_ascii_case("helper"));
-    if !forced && mf::MfWriters::usable() {
+    let mf = mf::MfWriters {
+        helper: HelperWriters::new(ffmpeg.to_path_buf()),
+    };
+    if !forced && mf.usable() {
         tracing::info!("tracks: Media Foundation (beta)");
-        return Arc::new(mf::MfWriters);
+        return Arc::new(mf);
     }
     tracing::info!("tracks: FFmpeg helper");
     Arc::new(HelperWriters::new(ffmpeg.to_path_buf()))

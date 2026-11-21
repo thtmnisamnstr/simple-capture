@@ -31,6 +31,12 @@
   let sort = $state<LibrarySort>(loadSort());
   let renaming: string | null = $state(null);
   let draft = $state('');
+  let renameTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function open(i: LibraryItem) {
+    clearTimeout(renameTimer);
+    if (editable(i) && !renaming) run(() => editor.open(i.dir));
+  }
 
   const items = $derived(
     sortItems(
@@ -159,7 +165,10 @@
     }
     if (e.key === 'Escape') selected = [];
     if (!chosen.length) return;
-    if ((e.key === 'Backspace' || e.key === 'Delete') && (e.metaKey || e.ctrlKey)) confirming = chosen.filter(editable);
+    if ((e.key === 'Backspace' || e.key === 'Delete') && (e.metaKey || e.ctrlKey)) {
+      const list = chosen.filter(editable);
+      if (list.length) confirming = list;
+    }
     if (!current) return;
     if (e.key === 'Enter' && editable(current)) run(() => editor.open(current!.dir));
     if (e.key === 'F2') startRename(current);
@@ -202,7 +211,7 @@
           class:selected={on}
           tabindex="0"
           onclick={(e) => pick(e, i)}
-          ondblclick={() => editable(i) && !renaming && run(() => editor.open(i.dir))}
+          ondblclick={() => open(i)}
           onkeydown={(e) => e.key === ' ' && (selected = [i.dir])}
         >
           <div class="poster">
@@ -237,7 +246,8 @@
                 onclick={(e) => {
                   if (on && selected.length === 1 && !e.metaKey && !e.shiftKey) {
                     e.stopPropagation();
-                    startRename(i);
+                    clearTimeout(renameTimer);
+                    renameTimer = setTimeout(() => startRename(i), 500);
                   }
                 }}>{i.title}</span
               >

@@ -79,6 +79,14 @@ fn stamped_name(stamp: &str, title: &str, n: u32) -> String {
 
 const STAMP_LEN: usize = "YYYY-MM-DD HH.MM.SS".len();
 
+/// On case-insensitive disks (APFS, NTFS) a name differing only in case is the same folder.
+fn same_folder(a: &Path, b: &Path) -> bool {
+    match (fs::canonicalize(a), fs::canonicalize(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => false,
+    }
+}
+
 fn folder_stamp(name: &str) -> Option<&str> {
     let stamp = name.get(..STAMP_LEN)?;
     let shape = stamp.bytes().enumerate().all(|(i, b)| match i {
@@ -88,6 +96,16 @@ fn folder_stamp(name: &str) -> Option<&str> {
         _ => b.is_ascii_digit(),
     });
     (shape && name.as_bytes().get(STAMP_LEN) == Some(&b' ')).then_some(stamp)
+}
+
+/// The project's date and time (from its folder name) followed by its title, as the default
+/// export name; just the title for a folder without a date.
+pub fn titled_stem(dir: &Path, title: &str) -> String {
+    let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    match folder_stamp(name) {
+        Some(stamp) => format!("{stamp} {}", sanitize_title(title)),
+        None => sanitize_title(title),
+    }
 }
 
 /// Renames a project folder to match `title`, keeping its date and time. Returns the folder's
@@ -107,7 +125,7 @@ pub fn rename_project_dir(dir: &Path, title: &str) -> Result<PathBuf> {
             return Ok(dir.to_path_buf());
         }
         let to = parent.join(&candidate);
-        if to.exists() {
+        if to.exists() && !same_folder(&to, dir) {
             continue;
         }
         fs::rename(dir, &to).map_err(|e| Error::io_at(e, "rename project folder", dir))?;

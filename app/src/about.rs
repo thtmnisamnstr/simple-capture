@@ -173,7 +173,7 @@ impl Core {
             "library_trash" => {
                 let dir = self.library_dir(args)?;
                 if self.editor_dir().as_deref() == Some(dir.as_path()) {
-                    self.editor_close()?;
+                    self.editor_close_then(false)?;
                     self.hide_window("editor");
                 }
                 self.platform

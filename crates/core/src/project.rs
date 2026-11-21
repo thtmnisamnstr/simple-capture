@@ -44,12 +44,14 @@ pub enum ProjectState {
     Damaged,
 }
 
-/// A box over the screen picture that hides what is under it for part of the timeline.
+/// A box over the screen picture that hides what is under it. Its span is in recording time,
+/// like camera keyframes, so it stays on the content it hides through every cut, move, paste,
+/// duplicate and speed change.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Redaction {
     pub id: String,
-    pub start_tl_ns: i64,
-    pub end_tl_ns: i64,
+    pub start_rec_ns: i64,
+    pub end_rec_ns: i64,
     /// Left, top, width and height as fractions of the screen picture, so the box stays on the
     /// same content when the frame shape or background changes.
     pub rect_norm: RectNorm,

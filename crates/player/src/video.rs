@@ -114,7 +114,7 @@ impl TimelineVideo {
             camera = Some((f, p));
         }
         let text = self.text_at(tl_ns.clamp(0, end), canvas);
-        let redact = redactions_at(&self.doc, tl);
+        let redact = redactions_at(&self.doc, rec);
         Ok(Composed {
             tl_ns: tl,
             rec_ns: rec,
@@ -165,11 +165,11 @@ impl TimelineVideo {
     }
 }
 
-/// The blur boxes showing at timeline time `tl`, in the order they were added.
-pub fn redactions_at(doc: &Doc, tl: i64) -> Vec<Redact> {
+/// The blur boxes over recording time `rec`, in the order they were added.
+pub fn redactions_at(doc: &Doc, rec: i64) -> Vec<Redact> {
     doc.redactions
         .iter()
-        .filter(|r| r.start_tl_ns <= tl && tl < r.end_tl_ns)
+        .filter(|r| r.start_rec_ns <= rec && rec < r.end_rec_ns)
         .map(|r| Redact {
             rect: [r.rect_norm.x, r.rect_norm.y, r.rect_norm.w, r.rect_norm.h],
             black: r.style == sc_core::project::RedactStyle::Black,

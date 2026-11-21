@@ -3,10 +3,12 @@
   import { editor, formatTime, type Silences } from '../../lib/editor.ts';
 
   let {
+    revision,
     onpreview,
     onremove,
     onclose,
   }: {
+    revision: number;
     onpreview: (ranges: [number, number][]) => void;
     onremove: (ranges: [number, number][]) => Promise<void>;
     onclose: () => void;
@@ -28,6 +30,7 @@
   $effect(() => {
     const t = threshold;
     const m = minMs;
+    void revision;
     const mine = ++seq;
     const timer = setTimeout(
       () => {
@@ -68,7 +71,8 @@
   function onkeydown(e: KeyboardEvent) {
     e.stopPropagation();
     if (e.key === 'Escape') onclose();
-    if (e.key === 'Enter' && !busy) void remove();
+    const onButton = (e.target as HTMLElement | null)?.tagName === 'BUTTON';
+    if (e.key === 'Enter' && !busy && !onButton && found && found.removed_ns < found.duration_ns) void remove();
   }
 </script>
 

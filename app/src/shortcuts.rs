@@ -68,12 +68,14 @@ impl Core {
     /// Registers the settings' shortcuts in place of the current ones (none while paused) and
     /// remembers why any failed.
     pub fn apply_shortcuts(self: &Arc<Self>) -> BTreeMap<String, String> {
+        let mut current = self.shortcut_errors();
         let gs = self.app.global_shortcut();
         if let Err(e) = gs.unregister_all() {
             tracing::warn!("shortcuts: unregister: {e}");
         }
         let mut errors = BTreeMap::new();
         if self.shortcuts_paused() {
+            current.clear();
             return errors;
         }
         let keys = merged(&self.current_settings().shortcuts);
@@ -115,7 +117,7 @@ impl Core {
         if !errors.is_empty() {
             tracing::warn!(?errors, "shortcuts");
         }
-        *self.shortcut_errors() = errors.clone();
+        *current = errors.clone();
         errors
     }
 

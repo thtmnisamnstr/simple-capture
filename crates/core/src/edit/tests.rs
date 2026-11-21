@@ -582,8 +582,8 @@ fn delete_ranges_removes_several_spans_as_one_edit() {
 fn blur(id: &str, a: i64, b: i64) -> crate::project::Redaction {
     crate::project::Redaction {
         id: id.into(),
-        start_tl_ns: a,
-        end_tl_ns: b,
+        start_rec_ns: a,
+        end_rec_ns: b,
         rect_norm: crate::project::RectNorm {
             x: 0.1,
             y: 0.1,
@@ -595,18 +595,8 @@ fn blur(id: &str, a: i64, b: i64) -> crate::project::Redaction {
     }
 }
 
-fn blur_spans(d: &Doc) -> Vec<(i64, i64)> {
-    let mut v: Vec<_> = d
-        .redactions
-        .iter()
-        .map(|t| (t.start_tl_ns, t.end_tl_ns))
-        .collect();
-    v.sort_unstable();
-    v
-}
-
 #[test]
-fn blur_boxes_ripple_like_text() {
+fn blur_boxes_keep_their_recording_time_through_edits() {
     let d = doc(vec![clip(0, 10 * S)]);
     let d = apply(
         &d,
@@ -616,49 +606,96 @@ fn blur_boxes_ripple_like_text() {
         LIM,
     )
     .expect("add");
-    let d1 = apply(
-        &d,
-        &EditOp::DeleteRange {
+    let ops = [
+        EditOp::DeleteRange {
             a_tl_ns: S,
             b_tl_ns: 3 * S,
         },
-        LIM,
-    )
-    .expect("delete");
-    assert_eq!(blur_spans(&d1), vec![(4 * S, 6 * S)]);
-    let cb = copy_range(&d1, 3 * S, 7 * S);
-    assert_eq!(cb.redactions.len(), 1);
-    let d2 = apply(
-        &d1,
-        &EditOp::Paste {
-            at_tl_ns: 0,
-            clipboard: cb,
-        },
-        LIM,
-    )
-    .expect("paste");
-    assert_eq!(blur_spans(&d2), vec![(S, 3 * S), (8 * S, 10 * S)]);
-    let ids = ids(&d2, &[0]);
-    let d3 = apply(
-        &d2,
-        &EditOp::SetSpeed {
-            ids,
-            speed: Speed { num: 2, den: 1 },
-        },
-        LIM,
-    )
-    .expect("speed");
-    assert_eq!(blur_spans(&d3)[0], (S / 2, 3 * S / 2));
+        EditOp::Split { at_tl_ns: 5 * S },
+    ];
+    let mut e = d.clone();
+    for op in &ops {
+        e = apply(&e, op, LIM).expect("edit");
+    }
+    let id = e.edl.clips[1].id.clone();
+    let e = apply(&e, &EditOp::MoveClip { id, to_index: 0 }, LIM).expect("move");
+    assert_eq!(
+        (e.redactions[0].start_rec_ns, e.redactions[0].end_rec_ns),
+        (6 * S, 8 * S)
+    );
     let gone = apply(
-        &d3,
+        &e,
         &EditOp::DeleteRedactions {
-            ids: d3.redactions.iter().map(|r| r.id.clone()).collect(),
+            ids: vec!["b".into()],
         },
         LIM,
     )
     .expect("remove");
     assert!(gone.redactions.is_empty());
+}
+
+#[test]
+fn blur_boxes_are_checked_and_capped_at_eight_at_once() {
+    let d = doc(vec![clip(0, 10 * S)]);
     let mut flat = blur("f", 0, S);
     flat.rect_norm.w = 0.0;
     assert!(apply(&d, &EditOp::UpsertRedaction { item: flat }, LIM).is_err());
+    assert!(
+        apply(
+            &d,
+            &EditOp::UpsertRedaction {
+                item: blur("s", S, S + S / 20)
+            },
+            LIM
+        )
+        .is_err()
+    );
+    let mut wide = blur("w", -S, 90 * S);
+    wide.rect_norm = crate::project::RectNorm {
+        x: 0.8,
+        y: -0.5,
+        w: 5.0,
+        h: 0.9,
+    };
+    let c = apply(&d, &EditOp::UpsertRedaction { item: wide }, LIM).expect("clamped");
+    let r = &c.redactions[0];
+    assert_eq!((r.start_rec_ns, r.end_rec_ns), (0, 60 * S));
+    assert!((r.rect_norm.x - 0.8).abs() < 1e-9 && (r.rect_norm.w - 0.2).abs() < 1e-9);
+    assert_eq!(r.rect_norm.y, 0.0);
+    let mut e = d.clone();
+    for k in 0..8 {
+        e = apply(
+            &e,
+            &EditOp::UpsertRedaction {
+                item: blur(&format!("b{k}"), k * S / 10, 5 * S),
+            },
+            LIM,
+        )
+        .expect("fits");
+    }
+    assert!(
+        apply(
+            &e,
+            &EditOp::UpsertRedaction {
+                item: blur("ninth", 2 * S, 3 * S)
+            },
+            LIM
+        )
+        .is_err()
+    );
+    assert!(
+        apply(
+            &e,
+            &EditOp::UpsertRedaction {
+                item: blur("later", 5 * S, 6 * S)
+            },
+            LIM
+        )
+        .is_ok()
+    );
+    let moved = blur("b0", 0, 4 * S);
+    assert!(
+        apply(&e, &EditOp::UpsertRedaction { item: moved }, LIM).is_ok(),
+        "editing one of the eight"
+    );
 }

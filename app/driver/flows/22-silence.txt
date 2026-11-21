@@ -9,7 +9,7 @@ cmd editor {"action":"state"}
 cmd editor {"action":"silences","threshold_db":-5,"min_ms":500}
 cmd editor {"action":"silences","min_ms":1000}
 cmd editor {"action":"edit","op":{"op":"delete_ranges","ranges":[[0,1000000000],[3000000000,4000000000]]}}
-cmd editor {"action":"edit","op":{"op":"upsert_redaction","item":{"id":"drv-blur","start_tl_ns":0,"end_tl_ns":1000000000,"rect_norm":{"x":0.0,"y":0.0,"w":1.0,"h":1.0},"style":"black"}}}
+cmd editor {"action":"edit","op":{"op":"upsert_redaction","item":{"id":"drv-blur","start_rec_ns":1000000000,"end_rec_ns":2000000000,"rect_norm":{"x":0.0,"y":0.0,"w":1.0,"h":1.0},"style":"black"}}}
 cmd editor {"action":"export","size":"480"}
 wait-phase saved 120000
 cmd editor {"action":"close"}

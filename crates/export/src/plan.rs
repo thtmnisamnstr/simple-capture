@@ -170,17 +170,6 @@ pub fn free_path(dir: &Path, stem: &str, ext: &str) -> Result<PathBuf> {
     )))
 }
 
-fn project_stem(project_dir: &Path) -> String {
-    let name = project_dir
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    name.strip_suffix(sc_core::folder::PROJECT_SUFFIX)
-        .filter(|b| !b.is_empty())
-        .unwrap_or(&name)
-        .to_string()
-}
-
 /// What a size limit becomes for one edit.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TargetBitrate {
@@ -298,7 +287,7 @@ pub fn plan(project: &ProjectV1, req: &ExportRequest, now: LocalDateTime) -> Res
                     .map(Path::to_path_buf)
                     .ok_or_else(|| Error::Other("sc_export: the project has no folder".into()))?,
             };
-            let title = project_stem(&req.project_dir);
+            let title = sc_core::folder::titled_stem(&req.project_dir, &project.title);
             let stem = file_stem(&st.name, &title, now, canvas, fps, st.extension());
             free_path(&dir, &stem, st.extension())?
         }

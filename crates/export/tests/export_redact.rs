@@ -23,8 +23,8 @@ fn a_black_box_hides_the_screen_only_while_it_is_on_the_timeline() {
     proj.segment(Seg::new(0, 2_000, 1280, 720));
     proj.project.redactions.push(Redaction {
         id: "r1".into(),
-        start_tl_ns: 500 * MS,
-        end_tl_ns: 1_500 * MS,
+        start_rec_ns: 500 * MS,
+        end_rec_ns: 1_500 * MS,
         rect_norm: RectNorm {
             x: 0.25,
             y: 0.25,

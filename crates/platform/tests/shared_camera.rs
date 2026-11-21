@@ -68,11 +68,22 @@ fn recording_without_a_preview_opens_and_closes_the_device() {
         .expect("start");
     assert_eq!(cam.open_device().as_deref(), Some(CAMERA_DEVICE_ID));
     wait("recorded frames", || rec.camera().len() > 3);
+    let main = Collector::new();
+    let second = p
+        .camera()
+        .start(CAMERA_DEVICE_ID, CameraLimit::default(), main.clone())
+        .expect("the same camera as the main picture too");
+    wait("frames to both", || main.camera().len() > 3);
     assert!(matches!(
         p.camera()
-            .start(CAMERA_DEVICE_ID, CameraLimit::default(), rec.clone()),
+            .start("another", CameraLimit::default(), Collector::new()),
         Err(Error::Busy(_))
     ));
+    second.stop().expect("stop the second");
+    let seen = rec.camera().len();
+    wait("the first keeps recording", || {
+        rec.camera().len() > seen + 2
+    });
     assert!(matches!(
         cam.set_preview(Some("another".into())),
         Err(Error::Busy(_))

@@ -85,6 +85,8 @@ pub struct Core {
     last_project: Mutex<Option<PathBuf>>,
     shortcut_errors: Mutex<BTreeMap<String, String>>,
     shortcuts_paused: AtomicBool,
+    camera_hidden_for_switch: AtomicBool,
+    folder_moves: Mutex<Vec<(PathBuf, String)>>,
     last_export: Mutex<Option<String>>,
     ui_log: Mutex<Vec<String>>,
     exiting: AtomicBool,
@@ -137,6 +139,8 @@ impl Core {
             last_project: Mutex::new(None),
             shortcut_errors: Mutex::new(BTreeMap::new()),
             shortcuts_paused: AtomicBool::new(false),
+            camera_hidden_for_switch: AtomicBool::new(false),
+            folder_moves: Mutex::new(Vec::new()),
             last_export: Mutex::new(None),
             ui_log: Mutex::new(Vec::new()),
             exiting: AtomicBool::new(false),
@@ -569,6 +573,19 @@ impl Core {
         lock(&self.shortcut_errors)
     }
 
+    /// The corner camera was hidden for a switch to the camera that did not happen.
+    pub fn show_camera_after_failed_switch(&self) {
+        if !self.camera_hidden_for_switch.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        let key = self.settings.load().camera_key;
+        if let Some(s) = lock(&self.session).as_ref()
+            && let Err(e) = s.camera_key(key)
+        {
+            tracing::warn!("camera key after a failed switch: {e}");
+        }
+    }
+
     pub fn current_settings(&self) -> RecorderSettings {
         self.settings.load()
     }
@@ -699,14 +716,35 @@ impl Core {
         let mut p = ProjectV1::load(dir).map_err(|e| e.to_string())?;
         p.title = title.to_string();
         p.save(dir).map_err(|e| e.to_string())?;
+        self.renamed(dir, dir, title);
+        Ok(self.move_folder_to_title(dir, title))
+    }
+
+    /// Moves `dir` to match `title`, or after the export that is reading it ends. Retries for a
+    /// second: Windows refuses while a reader that is shutting down still holds a file.
+    pub fn move_folder_to_title(&self, dir: &Path, title: &str) -> PathBuf {
         let exporting = matches!(&*lock(&self.phase), Phase::Exporting { project_dir, .. } if project_dir == dir);
-        let to = if exporting {
-            dir.to_path_buf()
-        } else {
-            sc_core::folder::rename_project_dir(dir, title).map_err(|e| e.to_string())?
-        };
-        self.renamed(dir, &to, title);
-        Ok(to)
+        if exporting {
+            lock(&self.folder_moves).push((dir.to_path_buf(), title.to_string()));
+            return dir.to_path_buf();
+        }
+        let mut last = None;
+        for _ in 0..10 {
+            match sc_core::folder::rename_project_dir(dir, title) {
+                Ok(to) => {
+                    if to != dir {
+                        self.renamed(dir, &to, title);
+                    }
+                    return to;
+                }
+                Err(e) => last = Some(e),
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        if let Some(e) = last {
+            tracing::warn!(dir = %dir.display(), "rename folder: {e}");
+        }
+        dir.to_path_buf()
     }
 
     /// The recording in `from` is now titled `title` and lives in `to`.
@@ -1068,6 +1106,8 @@ impl Core {
         let s = guard.as_ref().ok_or("not recording")?;
         s.switch_source(spec, via).map_err(|e| e.to_string())?;
         let key = self.settings.load().camera_key;
+        self.camera_hidden_for_switch
+            .store(to_camera && key.visible, Ordering::SeqCst);
         if key.visible
             && let Err(e) = s.camera_key(sc_core::project::CameraKey {
                 visible: !to_camera,
@@ -1351,6 +1391,12 @@ impl Core {
                 });
             }
             let _ = self.advance(Input::ExportEnd);
+            let moves: Vec<(PathBuf, String)> = lock(&self.folder_moves).drain(..).collect();
+            for (dir, title) in moves {
+                if self.editor_dir().as_deref() != Some(dir.as_path()) {
+                    self.move_folder_to_title(&dir, &title);
+                }
+            }
             let dir = lock(&self.raw_after_export).remove(id);
             if let (ExportState::Done { .. }, Some(dir)) = (s, dir)
                 && self.settings.load().delete_raw_after_export
@@ -1695,6 +1741,9 @@ impl SessionObserver for Observer {
     }
     fn on_notice(&self, n: &Notice) {
         if let Some(c) = self.core.upgrade() {
+            if matches!(n, Notice::SwitchFailed { .. } | Notice::SourceLost { .. }) {
+                c.show_camera_after_failed_switch();
+            }
             c.emit("notice", dto::notice(n));
         }
     }

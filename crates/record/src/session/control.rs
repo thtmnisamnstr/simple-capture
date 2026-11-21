@@ -141,6 +141,11 @@ fn check_permission(p: &dyn Platform, k: PermissionKind) -> Result<()> {
 fn container_codec(ext: &str, video: bool) -> (String, String) {
     if ext == "sctrk" {
         ("sctrk".into(), "sctrk".into())
+    } else if ext == "mp4" {
+        (
+            "mp4_fragmented".into(),
+            if video { "h264" } else { "aac" }.into(),
+        )
     } else if ext == "mkv" {
         (
             "matroska".into(),
@@ -1116,8 +1121,9 @@ impl Control {
             return;
         };
         sw.error = error.clone();
+        let camera = matches!(sw.spec, SourceSpec::Camera { .. });
         match sw.stage {
-            Stage::First if self.screen.is_some() => {
+            Stage::First if self.screen.is_some() && !camera => {
                 self.journal(JournalEvent::SwitchFailed {
                     host_ns: self.sh.now(),
                     error,
@@ -1325,6 +1331,18 @@ impl Control {
     }
 
     fn device_lost(&mut self, kind: DeviceKind, device_id: &str) {
+        let main_camera = kind == DeviceKind::Camera
+            && self.cur.as_ref().is_some_and(
+                |c| matches!(&c.spec, SourceSpec::Camera { device } if device == device_id),
+            );
+        if main_camera && let Some(tag) = self.screen.as_ref().map(|l| l.tag) {
+            let reason = "the camera was disconnected".to_string();
+            let ev = SourceEvent::SourceLost {
+                stream: tag,
+                reason: reason.clone(),
+            };
+            self.stream_lost(tag, reason, ev);
+        }
         let Some(i) = self.cont.iter().position(|c| {
             c.device
                 .as_ref()

@@ -4,7 +4,7 @@ use common::TempDir;
 use sc_core::Error;
 use sc_core::folder::{
     LocalDateTime, MAX_TITLE_BYTES, PROJECT_SUFFIX, ProjectLock, create_project_dir,
-    is_project_dir, project_folder_name, rename_project_dir, rfc3339,
+    is_project_dir, project_folder_name, rename_project_dir, rfc3339, titled_stem,
 };
 
 const T: LocalDateTime = LocalDateTime {
@@ -224,4 +224,35 @@ fn renaming_keeps_the_date_and_steps_around_other_projects() {
     let mine = movies.join("My take.sc");
     std::fs::create_dir(&mine).expect("mkdir");
     assert_eq!(rename_project_dir(&mine, "Other").expect("undated"), mine);
+}
+
+#[test]
+fn a_case_only_rename_changes_the_case_in_place() {
+    let root = TempDir::new("case");
+    let movies = root.path().join("Simple Capture");
+    let a = create_project_dir(&movies, &T, "demo").expect("a");
+    let b = rename_project_dir(&a, "Demo").expect("rename");
+    assert_eq!(
+        b.file_name().and_then(|n| n.to_str()),
+        Some("2026-11-09 07.05.03 Demo.sc")
+    );
+    let names: Vec<String> = std::fs::read_dir(&movies)
+        .expect("list")
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, vec!["2026-11-09 07.05.03 Demo.sc".to_string()]);
+}
+
+#[test]
+fn exports_are_named_after_the_title_with_the_recording_date() {
+    let dir = std::path::Path::new("/x/2026-11-09 07.05.03 Old name 2.sc");
+    assert_eq!(
+        titled_stem(dir, "New: name"),
+        "2026-11-09 07.05.03 New- name"
+    );
+    assert_eq!(
+        titled_stem(std::path::Path::new("/x/Mine.sc"), "Talk"),
+        "Talk"
+    );
 }

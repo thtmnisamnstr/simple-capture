@@ -99,22 +99,49 @@ export type EditOp =
 export type RedactStyle = 'pixelate' | 'black';
 export interface Redaction {
   id: string;
-  start_tl_ns: number;
-  end_tl_ns: number;
+  start_rec_ns: number;
+  end_rec_ns: number;
   rect_norm: { x: number; y: number; w: number; h: number };
   style: RedactStyle;
 }
 
-/** A new blur box at `at`, three seconds long (or to the end), in the middle of the picture. */
-export function newRedaction(id: string, at: number, duration: number): Redaction {
-  const start = Math.min(Math.max(0, at), Math.max(0, duration - 100_000_000));
+/** A new blur box over the recording at `rec`, three seconds long or to the end of the clip
+ *  `clipEnd`, in the middle of the picture. */
+export function newRedaction(id: string, rec: number, clipEnd: number): Redaction {
+  const start = Math.round(Math.max(0, Math.min(rec, clipEnd - 100_000_000)));
   return {
     id,
-    start_tl_ns: Math.round(start),
-    end_tl_ns: Math.round(Math.min(duration, start + 3_000_000_000)),
+    start_rec_ns: start,
+    end_rec_ns: Math.round(Math.min(clipEnd, start + 3_000_000_000)),
     rect_norm: { x: 0.35, y: 0.4, w: 0.3, h: 0.2 },
     style: 'pixelate',
   };
+}
+
+/** Where a blur box's recording span shows on the timeline: once per clip that plays it. */
+export function onTimeline(clips: Clip[], b: Pick<Redaction, 'start_rec_ns' | 'end_rec_ns'>): [number, number][] {
+  const st = starts(clips);
+  const out: [number, number][] = [];
+  clips.forEach((c, i) => {
+    const lo = Math.max(b.start_rec_ns, c.src_in_rec_ns);
+    const hi = Math.min(b.end_rec_ns, c.src_out_rec_ns);
+    if (hi <= lo) return;
+    const tl = (r: number) => st[i] + Math.floor(((r - c.src_in_rec_ns) * c.speed.den) / c.speed.num);
+    out.push([tl(lo), tl(hi)]);
+  });
+  return out;
+}
+
+/** A box's recording span after its timeline appearance was moved or trimmed to `[s, e)`:
+ *  measured in the clip under `s`, and kept inside it. */
+export function recSpan(clips: Clip[], s: number, e: number): [number, number] | null {
+  const st = starts(clips);
+  const at = locate(clips, st, s);
+  if (!at) return null;
+  const c = clips[at.index];
+  const start = at.rec_ns;
+  const len = Math.round(((e - s) * c.speed.num) / c.speed.den);
+  return [start, Math.min(c.src_out_rec_ns, start + Math.max(len, 100_000_000))];
 }
 
 /** `r` moved by `dx, dy` or, with `corner`, resized from that corner; kept inside the picture. */

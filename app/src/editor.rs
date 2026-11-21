@@ -73,6 +73,7 @@ pub struct EditorHost {
     pub view: Mutex<Option<usize>>,
     pub frames: AtomicU64,
     next_id: AtomicU64,
+    scan: Mutex<()>,
 }
 
 impl EditorHost {
@@ -536,16 +537,22 @@ impl Core {
     }
 
     pub fn editor_close(&self) -> Reply {
+        self.editor_close_then(true)
+    }
+
+    /// `settle`: move a renamed project's folder to its title; skipped when the folder is about
+    /// to go to the Trash.
+    pub fn editor_close_then(&self, settle: bool) -> Reply {
         let _ = self.editor_pause();
         self.editor_save_now();
         if let Some(p) = lock(&self.editor.playback).take() {
             p.pause();
         }
         let closed = lock(&self.editor.session).take();
-        if let Some(s) = closed {
+        self.editor.poke();
+        if let Some(s) = closed.filter(|_| settle) {
             self.settle_folder(s);
         }
-        self.editor.poke();
         self.hide_window("editor");
         #[cfg(target_os = "macos")]
         if !self.no_key_windows {
@@ -574,6 +581,12 @@ impl Core {
         if tracks.is_empty() {
             return Err("This recording has no sound to find pauses in.".into());
         }
+        let _one_scan = lock(&self.editor.scan);
+        let cached = lock(&self.editor.session)
+            .as_ref()
+            .filter(|s| s.id == id)
+            .and_then(|s| s.loudness.clone())
+            .or(cached);
         let loud = match cached.filter(|l| l.tracks == tracks) {
             Some(l) => l,
             None => {
@@ -618,14 +631,8 @@ impl Core {
 
     /// A project leaving the editor after a rename: its folder now follows the title.
     fn settle_folder(&self, s: Session) {
-        if !s.retitled {
-            return;
-        }
-        let title = s.project.title.clone();
-        match sc_core::folder::rename_project_dir(&s.dir, &title) {
-            Ok(to) if to != s.dir => self.renamed(&s.dir, &to, &title),
-            Ok(_) => {}
-            Err(e) => tracing::warn!(dir = %s.dir.display(), "rename folder: {e}"),
+        if s.retitled {
+            self.move_folder_to_title(&s.dir, &s.project.title);
         }
     }
 

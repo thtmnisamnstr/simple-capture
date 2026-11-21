@@ -188,8 +188,6 @@ pub fn locate_in(edl: &Edl, starts: &[i64], tl: i64) -> Option<Located> {
 pub struct Clipboard {
     pub clips: Vec<Clip>,
     pub text: Vec<TextItem>,
-    #[serde(default)]
-    pub redactions: Vec<Redaction>,
 }
 
 impl Clipboard {
@@ -389,19 +387,7 @@ pub fn apply(doc: &Doc, op: &EditOp, lim: Limits) -> Result<Doc> {
             }
         }
         EditOp::DeleteText { ids } => d.text.retain(|t| !ids.contains(&t.id)),
-        EditOp::UpsertRedaction { item } => {
-            let r = item.rect_norm;
-            if item.end_tl_ns - item.start_tl_ns < MIN_TEXT_NS {
-                return Err(Error::Invalid("a blur box must last at least 0.1 s".into()));
-            }
-            if !(r.w > 0.0 && r.h > 0.0 && r.x.is_finite() && r.y.is_finite()) {
-                return Err(Error::Invalid("a blur box needs a size".into()));
-            }
-            match d.redactions.iter().position(|t| t.id == item.id) {
-                Some(i) => d.redactions[i] = item.clone(),
-                None => d.redactions.push(item.clone()),
-            }
-        }
+        EditOp::UpsertRedaction { item } => upsert_redaction(&mut d, item, lim)?,
         EditOp::DeleteRedactions { ids } => d.redactions.retain(|t| !ids.contains(&t.id)),
     }
     if d.edl.clips.is_empty() && !doc.edl.clips.is_empty() {
@@ -483,6 +469,51 @@ fn delete_range(d: &mut Doc, a: i64, b: i64) {
     ripple_remove_all(d, new_a, new_a + removed);
 }
 
+/// Blur boxes showing at one moment that the renderer draws.
+pub const MAX_REDACTIONS: usize = 8;
+
+fn upsert_redaction(d: &mut Doc, item: &Redaction, lim: Limits) -> Result<()> {
+    let mut item = item.clone();
+    item.start_rec_ns = item.start_rec_ns.clamp(0, lim.rec_len_ns);
+    item.end_rec_ns = item.end_rec_ns.clamp(0, lim.rec_len_ns);
+    if item.end_rec_ns - item.start_rec_ns < MIN_TEXT_NS {
+        return Err(Error::Invalid("a blur box must last at least 0.1 s".into()));
+    }
+    let r = &mut item.rect_norm;
+    if ![r.x, r.y, r.w, r.h].iter().all(|v| v.is_finite()) || r.w <= 0.0 || r.h <= 0.0 {
+        return Err(Error::Invalid("a blur box needs a size".into()));
+    }
+    r.x = r.x.clamp(0.0, 1.0);
+    r.y = r.y.clamp(0.0, 1.0);
+    r.w = r.w.min(1.0 - r.x);
+    r.h = r.h.min(1.0 - r.y);
+    if r.w <= 0.0 || r.h <= 0.0 {
+        return Err(Error::Invalid("a blur box must be on the picture".into()));
+    }
+    let others: Vec<&Redaction> = d.redactions.iter().filter(|o| o.id != item.id).collect();
+    let busiest = std::iter::once(item.start_rec_ns)
+        .chain(others.iter().map(|o| o.start_rec_ns))
+        .filter(|t| (item.start_rec_ns..item.end_rec_ns).contains(t))
+        .map(|t| {
+            others
+                .iter()
+                .filter(|o| o.start_rec_ns <= t && t < o.end_rec_ns)
+                .count()
+        })
+        .max()
+        .unwrap_or(0);
+    if busiest >= MAX_REDACTIONS {
+        return Err(Error::Invalid(format!(
+            "at most {MAX_REDACTIONS} blur boxes can show at once"
+        )));
+    }
+    match d.redactions.iter().position(|t| t.id == item.id) {
+        Some(i) => d.redactions[i] = item,
+        None => d.redactions.push(item),
+    }
+    Ok(())
+}
+
 fn delete_ranges(d: &mut Doc, ranges: &[(i64, i64)]) -> Result<()> {
     let mut r: Vec<(i64, i64)> = ranges.iter().map(|&(a, b)| (a.min(b), a.max(b))).collect();
     r.sort_unstable();
@@ -521,7 +552,6 @@ pub fn copy_range(d: &Doc, a: i64, b: i64) -> Clipboard {
     Clipboard {
         clips: scratch.edl.clips[i..j].iter().map(Clip::fresh).collect(),
         text: within(&d.text, a, b, a),
-        redactions: within(&d.redactions, a, b, a),
     }
 }
 
@@ -533,14 +563,12 @@ pub fn copy_clips(d: &Doc, ids: &[String]) -> Result<Clipboard> {
         let piece = copy_range(d, a, b);
         cb.text
             .extend(piece.text.into_iter().map(|t| shifted(t, off)));
-        cb.redactions
-            .extend(piece.redactions.into_iter().map(|t| shifted(t, off)));
         cb.clips.extend(piece.clips);
     }
     Ok(cb)
 }
 
-/// A timeline item with a start and an end: text and blur boxes.
+/// A timeline item with a start and an end.
 pub trait Timed: Clone {
     fn span(&self) -> (i64, i64);
     fn set_span(&mut self, start: i64, end: i64);
@@ -548,18 +576,6 @@ pub trait Timed: Clone {
 }
 
 impl Timed for TextItem {
-    fn span(&self) -> (i64, i64) {
-        (self.start_tl_ns, self.end_tl_ns)
-    }
-    fn set_span(&mut self, start: i64, end: i64) {
-        (self.start_tl_ns, self.end_tl_ns) = (start, end);
-    }
-    fn renew_id(&mut self) {
-        self.id = crate::ids::new_id();
-    }
-}
-
-impl Timed for Redaction {
     fn span(&self) -> (i64, i64) {
         (self.start_tl_ns, self.end_tl_ns)
     }
@@ -591,12 +607,10 @@ fn within<T: Timed>(items: &[T], a: i64, b: i64, origin: i64) -> Vec<T> {
 
 fn ripple_remove_all(d: &mut Doc, a: i64, b: i64) {
     ripple_remove(&mut d.text, a, b);
-    ripple_remove(&mut d.redactions, a, b);
 }
 
 fn ripple_insert_all(d: &mut Doc, at: i64, len: i64) {
     ripple_insert(&mut d.text, at, len);
-    ripple_insert(&mut d.redactions, at, len);
 }
 
 fn paste(d: &mut Doc, at: i64, cb: &Clipboard) {
@@ -612,8 +626,6 @@ fn paste(d: &mut Doc, at: i64, cb: &Clipboard) {
     }
     ripple_insert_all(d, at, len);
     d.text.extend(within(&cb.text, i64::MIN, i64::MAX, -at));
-    d.redactions
-        .extend(within(&cb.redactions, i64::MIN, i64::MAX, -at));
 }
 
 fn trim(d: &mut Doc, id: &str, edge: Edge, rec_ns: i64, lim: Limits) -> Result<()> {
@@ -661,7 +673,6 @@ fn set_speed(d: &mut Doc, ids: &[String], speed: Speed) -> Result<()> {
         }
     }
     retime(&mut d.text, &old, &d.edl);
-    retime(&mut d.redactions, &old, &d.edl);
     Ok(())
 }
 

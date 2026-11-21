@@ -1641,15 +1641,18 @@ they are not a substitute for an M1 run.
   quieter than a level for at least 0.5/1/2 s keep 150 ms each side, leading and trailing quiet go
   whole; the level starts a third of the way from room tone to speech. One undoable
   `delete_ranges` edit.
-- **Blur and black boxes:** timeline items like text, placed as fractions of the screen picture so
-  they follow the content through frame changes; the renderer mosaics (cells a twelfth of the box,
-  at least a sixtieth of the picture) or blacks out the covered texels between the prefilter and
-  the composite, identical on GPU and CPU; the camera and text stay on top.
+- **Blur and black boxes:** spans in recording time, like camera keyframes, so a box stays on the
+  content it hides through every cut, move, paste, duplicate and speed change (timeline-time boxes
+  let pasted or moved footage escape the blur); placed as fractions of the screen picture so they
+  follow the content through frame changes; at most 8 at once. The renderer mosaics (cells a
+  twelfth of the box, at least a sixtieth of the picture) or blacks out the covered texels between
+  the prefilter and the composite, identical on GPU and CPU; the camera and text stay on top.
 - **Customizable shortcuts:** each global shortcut takes new keys from the recorder panel; keys
   need ⌘, ⌃ or ⌥; clashes (between actions or with other apps) show next to the shortcut.
-- **Windows tracks (beta):** Media Foundation in process: H.264 (hardware encoder when present)
-  and AAC into fragmented MP4 through a sink writer, read with a source reader; times count from
-  the first frame (the encoder's reorder delay shifts stored times). `.mkv` tracks from older
+- **Windows tracks (beta):** Media Foundation in process: H.264 (hardware encoder when present,
+  1 s GOP, no B-frames) and AAC into fragmented MP4 through a sink writer, read with a source
+  reader that counts times from the first frame and uses the decoder's row pitch. Pictures over
+  4096 px and audio at rates other than 44.1/48 kHz go to the helper. `.mkv` tracks from older
   recordings, and anything Media Foundation cannot open, still go through the helper;
   `SC_MEDIA=helper` or a system without Media Foundation records with the helper.
 - **Linux screen track (beta):** GStreamer in process (WebKitGTK already links it, so no new

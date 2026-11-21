@@ -9,6 +9,7 @@
     starts as clipStarts,
     tickStep,
     type Clip,
+    onTimeline,
     type Redaction,
     type TextItem,
   } from '../../lib/editor.ts';
@@ -94,12 +95,19 @@
   let textGhost = $state<{ id: string; start: number; end: number } | null>(null);
   const MIN_TEXT_NS = 100_000_000;
 
-  function onTextDown(e: PointerEvent, it: TextItem | Redaction, part: 'body' | 'start' | 'end', lane: 'text' | 'blur' = 'text') {
+  type BlurItem = { id: string; blur: string; style: Redaction['style']; start_tl_ns: number; end_tl_ns: number };
+  const blurItems = $derived<BlurItem[]>(
+    blurs.flatMap((b) =>
+      onTimeline(clips, b).map(([s, e], k) => ({ id: `${b.id}#${k}`, blur: b.id, style: b.style, start_tl_ns: s, end_tl_ns: e })),
+    ),
+  );
+
+  function onTextDown(e: PointerEvent, it: TextItem | BlurItem, part: 'body' | 'start' | 'end', lane: 'text' | 'blur' = 'text') {
     if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
-    if (lane === 'blur') onselectblur?.(it.id);
+    if (lane === 'blur') onselectblur?.((it as BlurItem).blur);
     else onselecttext?.(it.id);
     drag = { kind: 'text', lane, id: it.id, part, startX: e.clientX, s0: it.start_tl_ns, e0: it.end_tl_ns, moved: false };
   }
@@ -128,7 +136,7 @@
 
   function snapTargets(): number[] {
     const out = [...st, playhead];
-    for (const it of [...text, ...blurs]) out.push(it.start_tl_ns, it.end_tl_ns);
+    for (const it of [...text, ...blurItems]) out.push(it.start_tl_ns, it.end_tl_ns);
     return out;
   }
 
@@ -448,13 +456,13 @@
         </div>
       {/each}
     </div>
-    {#if blurs.length}
+    {#if blurItems.length}
       <div class="track text blurs" style:height="{BLUR_H}px" role="presentation" onpointerdown={onTrackDown}>
-        {#each blurs as it (it.id)}
+        {#each blurItems as it (it.id)}
           {@const g = textGhost && textGhost.id === it.id ? textGhost : null}
           <div
             class="titem blur"
-            class:sel={selectedBlur === it.id}
+            class:sel={selectedBlur === it.blur}
             style:left="{x(g ? g.start : it.start_tl_ns)}px"
             style:width="{Math.max(6, x(g ? g.end : it.end_tl_ns) - x(g ? g.start : it.start_tl_ns))}px"
             role="button"

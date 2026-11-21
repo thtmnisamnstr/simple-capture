@@ -23,6 +23,9 @@ use sc_tracks::nv12::{even, pack_nv12};
 
 const NS: f64 = 1e9;
 const VIDEO_QUEUE: usize = 4;
+/// The widest picture these H.264 encoders take; bigger tracks go to the helper.
+const MAX_SIDE: u32 = 4096;
+const QUEUED_FRAMES: u64 = 4;
 
 /// Hardware first; x264enc (GPL) only when `SC_GST_ENCODER` names it, since the app keeps GPL
 /// code in its helper process.
@@ -45,14 +48,18 @@ fn encoder_props(encoder: &str, kbps: u32, gop: u32) -> String {
     }
 }
 
+fn frame_bytes(size: SizePx) -> u64 {
+    u64::from(size.w) * u64::from(size.h) * 3 / 2
+}
+
 fn describe(encoder: &str, path: &Path, size: SizePx, fps: u32, kbps: u32, gop: u32) -> String {
     let location = path.to_string_lossy().replace('"', "\\\"");
     format!(
-        "appsrc name=src format=time block=true max-bytes={} \
+        "appsrc name=src format=time block=false max-bytes={} \
          caps=video/x-raw,format=NV12,width={},height={},framerate={fps}/1 \
          ! queue ! {encoder} {} ! h264parse ! video/x-h264,profile=(string){{high,main,constrained-baseline}} \
          ! matroskamux ! filesink location=\"{location}\"",
-        u64::from(size.w) * u64::from(size.h) * 3 / 2 * 4,
+        frame_bytes(size) * QUEUED_FRAMES,
         size.w,
         size.h,
         encoder_props(encoder, kbps, gop),
@@ -78,7 +85,7 @@ pub fn usable_encoder() -> Option<&'static str> {
             encoder: enc,
             helper: HelperWriters::new(PathBuf::from("ffmpeg")),
         };
-        match w.encode_benchmark(SizePx { w: 256, h: 144 }, 30, 5, VideoCodec::H264) {
+        match w.encode_benchmark(SizePx { w: 256, h: 144 }, 30, 5, VideoCodec::Hevc) {
             Ok(_) => true,
             Err(e) => {
                 tracing::info!("GStreamer {enc}: {e}");
@@ -100,6 +107,9 @@ impl WriterFactory for GstWriters {
     }
 
     fn video(&self, path: &Path, spec: &VideoWriterSpec) -> Result<Box<dyn TrackWriter>> {
+        if spec.size.w > MAX_SIDE || spec.size.h > MAX_SIDE {
+            return self.helper.video(path, spec);
+        }
         Ok(Box::new(GstVideoWriter::start(self.encoder, path, spec)?))
     }
 
@@ -146,6 +156,7 @@ impl WriterFactory for GstWriters {
         Box::new(w).finish(None)?;
         let secs = t0.elapsed().as_secs_f64();
         let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
         Ok(f64::from(frames) / secs.max(1e-6))
     }
 }
@@ -163,10 +174,11 @@ struct Outcome {
 struct Pipe {
     pipeline: gst::Pipeline,
     src: gst_app::AppSrc,
+    max_bytes: u64,
 }
 
 impl Pipe {
-    fn open(desc: &str) -> Result<Pipe> {
+    fn open(desc: &str, max_bytes: u64) -> Result<Pipe> {
         gst::init().map_err(|e| gst_error("init", e))?;
         let pipeline = gst::parse::launch(desc)
             .map_err(|e| gst_error("pipeline", e))?
@@ -179,7 +191,11 @@ impl Pipe {
         pipeline
             .set_state(gst::State::Playing)
             .map_err(|e| gst_error("start", e))?;
-        Ok(Pipe { pipeline, src })
+        Ok(Pipe {
+            pipeline,
+            src,
+            max_bytes,
+        })
     }
 
     fn bus_error(&self) -> Option<String> {
@@ -191,9 +207,23 @@ impl Pipe {
         }
     }
 
+    /// Waits for room in the queue instead of blocking inside appsrc, so a pipeline that errors
+    /// or stalls is noticed rather than hanging the writer.
     fn push(&self, bytes: &[u8], pts_ns: u64, dur_ns: u64) -> Result<()> {
-        if let Some(e) = self.bus_error() {
-            return Err(Error::Other(format!("GStreamer: {e}")));
+        let since = Instant::now();
+        loop {
+            if let Some(e) = self.bus_error() {
+                return Err(Error::Other(format!("GStreamer: {e}")));
+            }
+            if self.src.current_level_bytes() < self.max_bytes {
+                break;
+            }
+            if since.elapsed() > std::time::Duration::from_secs(10) {
+                return Err(Error::Other(
+                    "GStreamer: the encoder stopped taking frames".into(),
+                ));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
         }
         let mut buf = gst::Buffer::from_slice(bytes.to_vec());
         {
@@ -247,9 +277,6 @@ pub struct GstVideoWriter {
 
 impl GstVideoWriter {
     pub fn start(encoder: &str, path: &Path, spec: &VideoWriterSpec) -> Result<GstVideoWriter> {
-        if spec.codec != VideoCodec::H264 {
-            return Err(Error::Unsupported("GStreamer tracks are H.264"));
-        }
         let size = even(spec.size);
         let fps = spec.fps.max(1);
         let gop = (f64::from(fps) * spec.keyframe_interval_s).round().max(1.0) as u32;
@@ -258,7 +285,10 @@ impl GstVideoWriter {
                 / 1000.0)
                 .clamp(500.0, 200_000.0) as u32;
         std::fs::File::create(path)?;
-        let pipe = Pipe::open(&describe(encoder, path, size, fps, kbps, gop))?;
+        let pipe = Pipe::open(
+            &describe(encoder, path, size, fps, kbps, gop),
+            frame_bytes(size) * QUEUED_FRAMES,
+        )?;
         let (tx, rx) = sync_channel(VIDEO_QUEUE);
         let inflight = Arc::new(AtomicUsize::new(0));
         let failed = Arc::new(Mutex::new(None));
@@ -447,7 +477,7 @@ mod tests {
         let spec = VideoWriterSpec {
             size,
             fps: 30,
-            codec: VideoCodec::H264,
+            codec: VideoCodec::Hevc,
             keyframe_interval_s: 1.0,
             fragment_interval_s: 1.0,
             bits_per_pixel: 0.1,

@@ -424,7 +424,6 @@ pub(crate) fn redact_rects(p: [i32; 2], boxes: &[crate::Redact]) -> Vec<RedactRe
     let [pw, ph] = p;
     boxes
         .iter()
-        .take(crate::MAX_REDACTIONS)
         .filter_map(|b| {
             let [x, y, w, h] = b.rect;
             let at = |v: f64, n: i32, up: bool| {
@@ -443,6 +442,7 @@ pub(crate) fn redact_rects(p: [i32; 2], boxes: &[crate::Redact]) -> Vec<RedactRe
                 },
             })
         })
+        .take(crate::MAX_REDACTIONS)
         .collect()
 }
 

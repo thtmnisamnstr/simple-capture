@@ -1764,3 +1764,60 @@ fn switching_between_the_screen_and_the_camera_keeps_one_recording() {
     assert_eq!(kinds, ["screen", "camera", "screen"]);
     assert_eq!(proj.recording.screen.segments[1].frame_px, size(160, 120));
 }
+
+#[test]
+fn the_corner_camera_can_also_become_the_main_picture() {
+    let dir = tmp("corner_to_main");
+    let p = platform(
+        Scenario::new()
+            .screen(
+                "main",
+                ScreenScript {
+                    size: size(320, 180),
+                    ..Default::default()
+                },
+            )
+            .camera(Some(VideoScript {
+                size: size(160, 120),
+                fps: 30,
+            })),
+    );
+    let (shared, _cam) = sc_platform::WithSharedCamera::new(as_dyn(&p));
+    let mut req = request(&dir, display_spec("main", None));
+    req.camera = Some(sc_platform::synthetic::CAMERA_DEVICE_ID.into());
+    let obs = Arc::new(Obs::default());
+    let s = Session::start(shared.clone(), req, obs.clone()).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 700 * MS);
+    s.switch_source(
+        SourceSpec::Camera {
+            device: sc_platform::synthetic::CAMERA_DEVICE_ID.into(),
+        },
+        Via::OwnChooser,
+    )
+    .expect("to camera");
+    sleep_host(&*p, 900 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let failed: Vec<_> = obs
+        .notices()
+        .into_iter()
+        .filter(|n| matches!(n, Notice::SwitchFailed { .. }))
+        .collect();
+    assert!(failed.is_empty(), "{failed:?}");
+    let proj = ProjectV1::load(&pdir).expect("load");
+    let kinds: Vec<bool> = proj
+        .recording
+        .screen
+        .segments
+        .iter()
+        .map(|g| matches!(g.source, SourceDescriptor::Camera { .. }))
+        .collect();
+    assert_eq!(kinds, [false, true]);
+    let camera = proj
+        .recording
+        .tracks
+        .iter()
+        .find(|t| t.kind == sc_core::project::TrackKind::Camera)
+        .expect("the corner camera track keeps recording");
+    assert!(camera.health.frames > 30, "{}", camera.health.frames);
+}
