@@ -95,6 +95,7 @@ pub fn compose_png(
                 h: size.h,
             },
             dst: contain_fit(canvas, size),
+            redact: &[],
         }
     });
     let camera = camera.map(|(p, f)| {

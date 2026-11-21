@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::project::{
-    AudioMixEntry, CameraKey, CameraLayout, Canvas, Clip, Edl, Extra, Output, ProjectV1, Speed,
-    TextItem,
+    AudioMixEntry, CameraKey, CameraLayout, Canvas, Clip, Edl, Extra, Output, ProjectV1, Redaction,
+    Speed, TextItem,
 };
 use crate::{Error, Result};
 
@@ -29,6 +29,8 @@ pub const SPEEDS: [Speed; 5] = [
 pub struct Doc {
     pub edl: Edl,
     pub text: Vec<TextItem>,
+    #[serde(default)]
+    pub redactions: Vec<Redaction>,
     pub camera_layout: CameraLayout,
     pub audio_mix: BTreeMap<String, AudioMixEntry>,
     pub output: Output,
@@ -39,6 +41,7 @@ impl Doc {
         Doc {
             edl: p.edl.clone(),
             text: p.text.clone(),
+            redactions: p.redactions.clone(),
             camera_layout: p.camera_layout.clone(),
             audio_mix: p.audio_mix.clone(),
             output: p.output.clone(),
@@ -48,6 +51,7 @@ impl Doc {
     pub fn apply_to(&self, p: &mut ProjectV1) {
         p.edl = self.edl.clone();
         p.text = self.text.clone();
+        p.redactions = self.redactions.clone();
         p.camera_layout = self.camera_layout.clone();
         p.audio_mix = self.audio_mix.clone();
         p.output = self.output.clone();
@@ -184,6 +188,8 @@ pub fn locate_in(edl: &Edl, starts: &[i64], tl: i64) -> Option<Located> {
 pub struct Clipboard {
     pub clips: Vec<Clip>,
     pub text: Vec<TextItem>,
+    #[serde(default)]
+    pub redactions: Vec<Redaction>,
 }
 
 impl Clipboard {
@@ -271,6 +277,12 @@ pub enum EditOp {
         item: TextItem,
     },
     DeleteText {
+        ids: Vec<String>,
+    },
+    UpsertRedaction {
+        item: Redaction,
+    },
+    DeleteRedactions {
         ids: Vec<String>,
     },
 }
@@ -377,6 +389,20 @@ pub fn apply(doc: &Doc, op: &EditOp, lim: Limits) -> Result<Doc> {
             }
         }
         EditOp::DeleteText { ids } => d.text.retain(|t| !ids.contains(&t.id)),
+        EditOp::UpsertRedaction { item } => {
+            let r = item.rect_norm;
+            if item.end_tl_ns - item.start_tl_ns < MIN_TEXT_NS {
+                return Err(Error::Invalid("a blur box must last at least 0.1 s".into()));
+            }
+            if !(r.w > 0.0 && r.h > 0.0 && r.x.is_finite() && r.y.is_finite()) {
+                return Err(Error::Invalid("a blur box needs a size".into()));
+            }
+            match d.redactions.iter().position(|t| t.id == item.id) {
+                Some(i) => d.redactions[i] = item.clone(),
+                None => d.redactions.push(item.clone()),
+            }
+        }
+        EditOp::DeleteRedactions { ids } => d.redactions.retain(|t| !ids.contains(&t.id)),
     }
     if d.edl.clips.is_empty() && !doc.edl.clips.is_empty() {
         return Err(Error::Invalid(
@@ -454,7 +480,7 @@ fn delete_range(d: &mut Doc, a: i64, b: i64) {
     let removed: i64 = d.edl.clips[i..j].iter().map(Clip::tl_len).sum();
     d.edl.clips.drain(i..j);
     let new_a = starts(&d.edl)[i];
-    ripple_remove(&mut d.text, new_a, new_a + removed);
+    ripple_remove_all(d, new_a, new_a + removed);
 }
 
 fn delete_ranges(d: &mut Doc, ranges: &[(i64, i64)]) -> Result<()> {
@@ -494,7 +520,8 @@ pub fn copy_range(d: &Doc, a: i64, b: i64) -> Clipboard {
     let (a, b) = (st[i], st[j]);
     Clipboard {
         clips: scratch.edl.clips[i..j].iter().map(Clip::fresh).collect(),
-        text: text_within(&d.text, a, b, a),
+        text: within(&d.text, a, b, a),
+        redactions: within(&d.redactions, a, b, a),
     }
 }
 
@@ -504,26 +531,72 @@ pub fn copy_clips(d: &Doc, ids: &[String]) -> Result<Clipboard> {
     for (a, b) in clip_ranges(&d.edl, ids)? {
         let off = cb.len();
         let piece = copy_range(d, a, b);
-        cb.text.extend(piece.text.into_iter().map(|mut t| {
-            t.start_tl_ns += off;
-            t.end_tl_ns += off;
-            t
-        }));
+        cb.text
+            .extend(piece.text.into_iter().map(|t| shifted(t, off)));
+        cb.redactions
+            .extend(piece.redactions.into_iter().map(|t| shifted(t, off)));
         cb.clips.extend(piece.clips);
     }
     Ok(cb)
 }
 
-fn text_within(text: &[TextItem], a: i64, b: i64, origin: i64) -> Vec<TextItem> {
-    text.iter()
-        .filter(|t| t.start_tl_ns >= a && t.end_tl_ns <= b)
-        .map(|t| TextItem {
-            id: crate::ids::new_id(),
-            start_tl_ns: t.start_tl_ns - origin,
-            end_tl_ns: t.end_tl_ns - origin,
-            ..t.clone()
+/// A timeline item with a start and an end: text and blur boxes.
+pub trait Timed: Clone {
+    fn span(&self) -> (i64, i64);
+    fn set_span(&mut self, start: i64, end: i64);
+    fn renew_id(&mut self);
+}
+
+impl Timed for TextItem {
+    fn span(&self) -> (i64, i64) {
+        (self.start_tl_ns, self.end_tl_ns)
+    }
+    fn set_span(&mut self, start: i64, end: i64) {
+        (self.start_tl_ns, self.end_tl_ns) = (start, end);
+    }
+    fn renew_id(&mut self) {
+        self.id = crate::ids::new_id();
+    }
+}
+
+impl Timed for Redaction {
+    fn span(&self) -> (i64, i64) {
+        (self.start_tl_ns, self.end_tl_ns)
+    }
+    fn set_span(&mut self, start: i64, end: i64) {
+        (self.start_tl_ns, self.end_tl_ns) = (start, end);
+    }
+    fn renew_id(&mut self) {
+        self.id = crate::ids::new_id();
+    }
+}
+
+fn shifted<T: Timed>(mut t: T, by: i64) -> T {
+    let (s, e) = t.span();
+    t.set_span(s + by, e + by);
+    t
+}
+
+fn within<T: Timed>(items: &[T], a: i64, b: i64, origin: i64) -> Vec<T> {
+    items
+        .iter()
+        .filter(|t| t.span().0 >= a && t.span().1 <= b)
+        .map(|t| {
+            let mut t = shifted(t.clone(), -origin);
+            t.renew_id();
+            t
         })
         .collect()
+}
+
+fn ripple_remove_all(d: &mut Doc, a: i64, b: i64) {
+    ripple_remove(&mut d.text, a, b);
+    ripple_remove(&mut d.redactions, a, b);
+}
+
+fn ripple_insert_all(d: &mut Doc, at: i64, len: i64) {
+    ripple_insert(&mut d.text, at, len);
+    ripple_insert(&mut d.redactions, at, len);
 }
 
 fn paste(d: &mut Doc, at: i64, cb: &Clipboard) {
@@ -537,13 +610,10 @@ fn paste(d: &mut Doc, at: i64, cb: &Clipboard) {
     for (k, c) in cb.clips.iter().enumerate() {
         d.edl.clips.insert(i + k, c.fresh());
     }
-    ripple_insert(&mut d.text, at, len);
-    d.text.extend(cb.text.iter().map(|t| TextItem {
-        id: crate::ids::new_id(),
-        start_tl_ns: t.start_tl_ns + at,
-        end_tl_ns: t.end_tl_ns + at,
-        ..t.clone()
-    }));
+    ripple_insert_all(d, at, len);
+    d.text.extend(within(&cb.text, i64::MIN, i64::MAX, -at));
+    d.redactions
+        .extend(within(&cb.redactions, i64::MIN, i64::MAX, -at));
 }
 
 fn trim(d: &mut Doc, id: &str, edge: Edge, rec_ns: i64, lim: Limits) -> Result<()> {
@@ -556,9 +626,9 @@ fn trim(d: &mut Doc, id: &str, edge: Edge, rec_ns: i64, lim: Limits) -> Result<(
             let delta_tl = tl_of(new_in - c.src_in_rec_ns, c.speed);
             d.edl.clips[i].src_in_rec_ns = new_in;
             if delta_tl > 0 {
-                ripple_remove(&mut d.text, st[i], st[i] + delta_tl);
+                ripple_remove_all(d, st[i], st[i] + delta_tl);
             } else {
-                ripple_insert(&mut d.text, st[i], -delta_tl);
+                ripple_insert_all(d, st[i], -delta_tl);
             }
         }
         Edge::End => {
@@ -568,9 +638,9 @@ fn trim(d: &mut Doc, id: &str, edge: Edge, rec_ns: i64, lim: Limits) -> Result<(
             d.edl.clips[i].src_out_rec_ns = new_out;
             let new_end = st[i] + new_len;
             if new_end < end {
-                ripple_remove(&mut d.text, new_end, end);
+                ripple_remove_all(d, new_end, end);
             } else {
-                ripple_insert(&mut d.text, end, new_end - end);
+                ripple_insert_all(d, end, new_end - end);
             }
         }
     }
@@ -590,12 +660,13 @@ fn set_speed(d: &mut Doc, ids: &[String], speed: Speed) -> Result<()> {
             c.src_out_rec_ns = c.src_in_rec_ns + src_of(MIN_CLIP_NS, speed);
         }
     }
-    retime_text(&mut d.text, &old, &d.edl);
+    retime(&mut d.text, &old, &d.edl);
+    retime(&mut d.redactions, &old, &d.edl);
     Ok(())
 }
 
-/// Moves text along when clips keep their order and identity but change length.
-fn retime_text(text: &mut [TextItem], old: &Edl, new: &Edl) {
+/// Moves timeline items along when clips keep their order and identity but change length.
+fn retime<T: Timed>(items: &mut [T], old: &Edl, new: &Edl) {
     let (so, sn) = (starts(old), starts(new));
     let (to, tn) = (*so.last().unwrap_or(&0), *sn.last().unwrap_or(&0));
     let map = |t: i64| -> i64 {
@@ -610,16 +681,15 @@ fn retime_text(text: &mut [TextItem], old: &Edl, new: &Edl) {
         }
         na + ((i128::from(t - a) * i128::from(nb - na)) / i128::from(b - a)) as i64
     };
-    for t in text.iter_mut() {
-        let (s, e) = (map(t.start_tl_ns), map(t.end_tl_ns));
-        t.start_tl_ns = s;
-        t.end_tl_ns = e.max(s + MIN_TEXT_NS);
+    for t in items.iter_mut() {
+        let (s, e) = (map(t.span().0), map(t.span().1));
+        t.set_span(s, e.max(s + MIN_TEXT_NS));
     }
 }
 
-/// Removes `[a, b)` from the text track: later items move back, items inside it go, items
-/// across an edge are cut.
-pub fn ripple_remove(text: &mut Vec<TextItem>, a: i64, b: i64) {
+/// Removes `[a, b)` from a track of timeline items: later items move back, items inside it go,
+/// items across an edge are cut.
+pub fn ripple_remove<T: Timed>(items: &mut Vec<T>, a: i64, b: i64) {
     let len = b - a;
     if len <= 0 {
         return;
@@ -633,22 +703,21 @@ pub fn ripple_remove(text: &mut Vec<TextItem>, a: i64, b: i64) {
             t - len
         }
     };
-    text.retain_mut(|t| {
-        let (s, e) = (f(t.start_tl_ns), f(t.end_tl_ns));
-        t.start_tl_ns = s;
-        t.end_tl_ns = e;
+    items.retain_mut(|t| {
+        let (s, e) = (f(t.span().0), f(t.span().1));
+        t.set_span(s, e);
         e - s >= MIN_TEXT_NS
     });
 }
 
 /// Opens a gap of `len` at `at`: items that start at or after it move later.
-pub fn ripple_insert(text: &mut [TextItem], at: i64, len: i64) {
+pub fn ripple_insert<T: Timed>(items: &mut [T], at: i64, len: i64) {
     if len <= 0 {
         return;
     }
-    for t in text.iter_mut().filter(|t| t.start_tl_ns >= at) {
-        t.start_tl_ns += len;
-        t.end_tl_ns += len;
+    for t in items.iter_mut().filter(|t| t.span().0 >= at) {
+        let (s, e) = t.span();
+        t.set_span(s + len, e + len);
     }
 }
 

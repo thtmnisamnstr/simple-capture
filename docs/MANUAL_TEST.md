@@ -713,6 +713,11 @@ stop. The editor opens by itself. Check, in order:
 | E18 | Record 30 s talking with a few long pauses; editor → Remove Silences… | The pauses are marked red on the timeline; the count and total update as you move the level or pick 0.5 s / 1 s / 2 s |
 | E19 | Remove | The marked pauses are gone in one step; speech keeps a short breath at each cut; ⌘Z brings them all back |
 | E20 | Mute the system audio track in Audio, open Remove Silences again | Only the microphone counts: music in the muted track no longer hides the pauses |
+| E21 | Pause on an email address; Blur (or B) | A box appears over the middle of the screen for 3 s and the preview shows a mosaic there; a Blur item appears in its own lane |
+| E22 | Drag the box over the address and resize it from a corner; switch it to Black | The preview follows; the camera bubble and text stay on top |
+| E23 | Change the frame to 9:16 or add padding | The box stays on the same screen content |
+| E24 | Drag the Blur item's edges on the timeline; cut a range before it; ⌘Z | It moves and ripples like text; undo restores it |
+| E25 | Export | The exported video hides the area for exactly that stretch |
 
 ## 10d. Text (M4)
 

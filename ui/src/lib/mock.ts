@@ -433,6 +433,7 @@ const mockDoc = {
 };
 
 let editorTitle = 'Recording';
+let mockRevision = 3;
 
 function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
   if (action === 'silences') {
@@ -514,6 +515,34 @@ function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
     };
   }
   if (action === 'play' || action === 'pause') return { playhead_tl_ns: 12 * S, playing: action === 'play' };
+  if (action === 'rect' && a.rect && typeof a.rect === 'object') {
+    const r = a.rect as { x: number; y: number; w: number; h: number };
+    const f0 = containFit(r, { w: 16, h: 9 });
+    const fit = { x: r.x + f0.x, y: r.y + f0.y, w: f0.w, h: f0.h };
+    busEmit('editor-frame', {
+      text: [],
+      native: false,
+      canvas_px: { w: 1920, h: 1080 },
+      rect: fit,
+      camera: null,
+      screen: { x: fit.w * 0.05, y: fit.h * 0.05, w: fit.w * 0.9, h: fit.h * 0.9 },
+      rec_ns: 12 * S,
+    });
+    return null;
+  }
+  if (action === 'edit' && a.op && typeof a.op === 'object') {
+    const op = JSON.parse(JSON.stringify(a.op)) as { op: string; item?: { id: string }; ids?: string[] };
+    const list = (mockDoc as { redactions?: { id: string }[] }).redactions ?? [];
+    if (op.op === 'upsert_redaction' && op.item) {
+      const i = list.findIndex((r) => r.id === op.item!.id);
+      if (i >= 0) list[i] = op.item;
+      else list.push(op.item);
+    }
+    if (op.op === 'delete_redactions') list.splice(0, list.length, ...list.filter((r) => !op.ids?.includes(r.id)));
+    (mockDoc as { redactions?: unknown[] }).redactions = list;
+    mockRevision += 1;
+    return { doc: JSON.parse(JSON.stringify(mockDoc)), revision: mockRevision, can_undo: true, can_redo: false };
+  }
   return { revision: 3 };
 }
 

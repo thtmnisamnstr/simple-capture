@@ -26,6 +26,8 @@ pub struct ProjectV1 {
     pub edl: Edl,
     pub audio_mix: BTreeMap<String, AudioMixEntry>,
     pub text: Vec<TextItem>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redactions: Vec<Redaction>,
     pub output: Output,
     pub export_presets: ExportPresets,
     pub fonts: Vec<FontRef>,
@@ -40,6 +42,35 @@ pub enum ProjectState {
     Finalized,
     Recovered,
     Damaged,
+}
+
+/// A box over the screen picture that hides what is under it for part of the timeline.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Redaction {
+    pub id: String,
+    pub start_tl_ns: i64,
+    pub end_tl_ns: i64,
+    /// Left, top, width and height as fractions of the screen picture, so the box stays on the
+    /// same content when the frame shape or background changes.
+    pub rect_norm: RectNorm,
+    pub style: RedactStyle,
+    #[serde(flatten)]
+    pub extra: Extra,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RectNorm {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RedactStyle {
+    Pixelate,
+    Black,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -704,6 +735,7 @@ impl ProjectV1 {
             },
             audio_mix: BTreeMap::new(),
             text: Vec::new(),
+            redactions: Vec::new(),
             output: Output {
                 canvas: Canvas {
                     aspect: Aspect::Original,

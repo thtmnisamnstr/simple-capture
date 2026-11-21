@@ -409,3 +409,79 @@ mod tests {
         assert_eq!(p.clip, [0, 808, 1080, 1112]);
     }
 }
+
+/// A redaction on the prefiltered screen texels: x0, y0, x1, y1 and the mosaic cell side in
+/// texels (0: black).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RedactRect {
+    pub r: [i32; 4],
+    pub cell: i32,
+}
+
+/// Mosaic cells are about a twelfth of the box's long side, and never smaller than a sixtieth
+/// of the picture's short side, so text under a small box is not readable.
+pub(crate) fn redact_rects(p: [i32; 2], boxes: &[crate::Redact]) -> Vec<RedactRect> {
+    let [pw, ph] = p;
+    boxes
+        .iter()
+        .take(crate::MAX_REDACTIONS)
+        .filter_map(|b| {
+            let [x, y, w, h] = b.rect;
+            let at = |v: f64, n: i32, up: bool| {
+                let t = v * f64::from(n);
+                let t = if up { t.ceil() } else { t.floor() };
+                (t.clamp(0.0, f64::from(n))) as i32
+            };
+            let (x0, y0) = (at(x, pw, false), at(y, ph, false));
+            let (x1, y1) = (at(x + w, pw, true), at(y + h, ph, true));
+            (x1 > x0 && y1 > y0).then(|| RedactRect {
+                r: [x0, y0, x1, y1],
+                cell: if b.black {
+                    0
+                } else {
+                    ((x1 - x0).max(y1 - y0) / 12).max(pw.min(ph) / 60).max(4)
+                },
+            })
+        })
+        .collect()
+}
+
+/// The texel at `(x, y)` after the redactions (the last covering one wins), read from the
+/// unredacted texels `pre` (`pw` wide); `None` outside every box. A mosaic cell is the mean of a
+/// 4×4 grid of taps spread over it.
+pub(crate) fn redact_texel(
+    pre: &[[u8; 3]],
+    pw: i32,
+    x: i32,
+    y: i32,
+    rects: &[RedactRect],
+) -> Option<[u8; 3]> {
+    let mut out = None;
+    for rr in rects {
+        let [x0, y0, x1, y1] = rr.r;
+        if x < x0 || x >= x1 || y < y0 || y >= y1 {
+            continue;
+        }
+        let c = rr.cell;
+        if c == 0 {
+            out = Some([0, 0, 0]);
+            continue;
+        }
+        let cx0 = x0 + (x - x0) / c * c;
+        let cy0 = y0 + (y - y0) / c * c;
+        let (cw, ch) = ((cx0 + c).min(x1) - cx0, (cy0 + c).min(y1) - cy0);
+        let mut s = [0i32; 3];
+        for j in 0..4 {
+            let ty = cy0 + ((2 * j + 1) * ch) / 8;
+            for i in 0..4 {
+                let tx = cx0 + ((2 * i + 1) * cw) / 8;
+                let px = pre[(ty * pw + tx) as usize];
+                for k in 0..3 {
+                    s[k] += i32::from(px[k]);
+                }
+            }
+        }
+        out = Some(s.map(|v| ((v + 8) / 16) as u8));
+    }
+    out
+}

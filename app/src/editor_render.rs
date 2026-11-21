@@ -226,6 +226,12 @@ pub fn render_loop(core: Weak<Core>) {
                 let cam = composed
                     .camera_dst(canvas)
                     .map(|r| json!({ "x": r.x * s, "y": r.y * s, "w": r.w * s, "h": r.h * s }));
+                let screen = composed.screen_dst(canvas).map(|r| {
+                    json!({
+                        "x": f64::from(r.x) * s, "y": f64::from(r.y) * s,
+                        "w": f64::from(r.w) * s, "h": f64::from(r.h) * s,
+                    })
+                });
                 let text: Vec<serde_json::Value> = composed
                     .text
                     .iter()
@@ -246,6 +252,7 @@ pub fn render_loop(core: Weak<Core>) {
                         "w": f64::from(canvas.w) * s, "h": f64::from(canvas.h) * s,
                     },
                     "camera": cam,
+                    "screen": screen,
                     "rec_ns": composed.rec_ns,
                 });
                 if told.as_ref() != Some(&frame) {

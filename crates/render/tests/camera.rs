@@ -167,6 +167,7 @@ fn gpu_matches_cpu_for_every_camera_option() {
                     frame: &screen,
                     src: rect(0, 0, 1920, 1080),
                     dst: rect(0, 0, 1280, 720),
+                    redact: &[],
                 }),
                 camera: Some(cam_layer.clone()),
             };
@@ -312,6 +313,7 @@ fn reused_background_and_screen_uploads_match_fresh_renders() {
         frame: f,
         src: rect(0, 0, 800, 450),
         dst,
+        redact: &[],
     };
     let steps: [(&RgbaImage, Option<u64>, &FrameBuffer, RectPx); 9] = [
         (&bg1, Some(1), &a, shown),

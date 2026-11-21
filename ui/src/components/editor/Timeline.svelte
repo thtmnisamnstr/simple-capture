@@ -9,6 +9,7 @@
     starts as clipStarts,
     tickStep,
     type Clip,
+    type Redaction,
     type TextItem,
   } from '../../lib/editor.ts';
   import type { CameraKey } from '../../lib/types.ts';
@@ -35,6 +36,10 @@
     ontextmove,
     selectedText = null,
     marks = [],
+    blurs = [],
+    selectedBlur = null,
+    onselectblur,
+    onblurmove,
   }: {
     clips: Clip[];
     text: TextItem[];
@@ -43,6 +48,10 @@
     selected: string[];
     range: [number, number] | null;
     marks?: [number, number][];
+    blurs?: Redaction[];
+    selectedBlur?: string | null;
+    onselectblur?: (id: string) => void;
+    onblurmove?: (id: string, start: number, end: number) => void;
     thumbs: Thumbs | null;
     peaks: Uint8Array | null;
     snapping?: boolean;
@@ -60,6 +69,7 @@
   const RULER_H = 24;
   const TRACK_H = 64;
   const TEXT_H = 26;
+  const BLUR_H = 20;
   const PAD = 16;
   const MIN_CLIP_NS = 10_000_000;
 
@@ -78,19 +88,20 @@
     | { kind: 'range'; from: number }
     | { kind: 'trim'; id: string; edge: 'start' | 'end'; startX: number; index: number }
     | { kind: 'move'; id: string; startX: number; index: number; moved: boolean }
-    | { kind: 'text'; id: string; part: 'body' | 'start' | 'end'; startX: number; s0: number; e0: number; moved: boolean };
+    | { kind: 'text'; lane: 'text' | 'blur'; id: string; part: 'body' | 'start' | 'end'; startX: number; s0: number; e0: number; moved: boolean };
   let drag = $state<Drag | null>(null);
   let ghost = $state<{ index: number; start: number; end: number } | null>(null);
   let textGhost = $state<{ id: string; start: number; end: number } | null>(null);
   const MIN_TEXT_NS = 100_000_000;
 
-  function onTextDown(e: PointerEvent, it: TextItem, part: 'body' | 'start' | 'end') {
+  function onTextDown(e: PointerEvent, it: TextItem | Redaction, part: 'body' | 'start' | 'end', lane: 'text' | 'blur' = 'text') {
     if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
-    onselecttext?.(it.id);
-    drag = { kind: 'text', id: it.id, part, startX: e.clientX, s0: it.start_tl_ns, e0: it.end_tl_ns, moved: false };
+    if (lane === 'blur') onselectblur?.(it.id);
+    else onselecttext?.(it.id);
+    drag = { kind: 'text', lane, id: it.id, part, startX: e.clientX, s0: it.start_tl_ns, e0: it.end_tl_ns, moved: false };
   }
   let dropAt = $state<number | null>(null);
   let pointerX = 0;
@@ -117,7 +128,7 @@
 
   function snapTargets(): number[] {
     const out = [...st, playhead];
-    for (const it of text) out.push(it.start_tl_ns, it.end_tl_ns);
+    for (const it of [...text, ...blurs]) out.push(it.start_tl_ns, it.end_tl_ns);
     return out;
   }
 
@@ -252,7 +263,7 @@
     if (d.kind === 'text') {
       const g = textGhost;
       textGhost = null;
-      if (d.moved && g) ontextmove?.(g.id, Math.round(g.start), Math.round(g.end));
+      if (d.moved && g) (d.lane === 'blur' ? onblurmove : ontextmove)?.(g.id, Math.round(g.start), Math.round(g.end));
       return;
     }
     if (d.kind === 'scrub') onseek(playhead, true);
@@ -437,6 +448,27 @@
         </div>
       {/each}
     </div>
+    {#if blurs.length}
+      <div class="track text blurs" style:height="{BLUR_H}px" role="presentation" onpointerdown={onTrackDown}>
+        {#each blurs as it (it.id)}
+          {@const g = textGhost && textGhost.id === it.id ? textGhost : null}
+          <div
+            class="titem blur"
+            class:sel={selectedBlur === it.id}
+            style:left="{x(g ? g.start : it.start_tl_ns)}px"
+            style:width="{Math.max(6, x(g ? g.end : it.end_tl_ns) - x(g ? g.start : it.start_tl_ns))}px"
+            role="button"
+            tabindex="-1"
+            aria-label={it.style === 'black' ? 'Black box' : 'Blur box'}
+            onpointerdown={(e) => onTextDown(e, it, 'body', 'blur')}
+          >
+            <span class="tlabel2">{it.style === 'black' ? 'Black' : 'Blur'}</span>
+            <span class="tedge l" role="presentation" onpointerdown={(e) => onTextDown(e, it, 'start', 'blur')}></span>
+            <span class="tedge r" role="presentation" onpointerdown={(e) => onTextDown(e, it, 'end', 'blur')}></span>
+          </div>
+        {/each}
+      </div>
+    {/if}
     {#each marks as m (m[0])}
       <div class="mark" style:left="{x(m[0])}px" style:width="{Math.max(1, x(m[1]) - x(m[0]))}px"></div>
     {/each}
@@ -583,6 +615,9 @@
     font-size: 11px;
     overflow: hidden;
     cursor: grab;
+  }
+  .titem.blur {
+    background: color-mix(in srgb, var(--label-2) 55%, transparent);
   }
   .titem.sel {
     box-shadow: inset 0 0 0 2px var(--yellow);

@@ -56,6 +56,44 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<u32> {
 }
 "#;
 
+const REDACT: &str = r#"
+struct Red { n: vec4<i32>, r: array<vec4<i32>, 8>, c: array<vec4<i32>, 8> };
+@group(0) @binding(0) var<uniform> u: Red;
+@group(0) @binding(1) var tp: texture_2d<u32>;
+
+@fragment
+fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<u32> {
+  let x = i32(pos.x);
+  let y = i32(pos.y);
+  var o = textureLoad(tp, vec2<i32>(x, y), 0);
+  for (var i = 0; i < u.n.x; i = i + 1) {
+    let r = u.r[i];
+    if (x < r.x || x >= r.z || y < r.y || y >= r.w) {
+      continue;
+    }
+    let c = u.c[i].x;
+    if (c == 0) {
+      o = vec4<u32>(0u, 0u, 0u, 255u);
+      continue;
+    }
+    let cx0 = r.x + (x - r.x) / c * c;
+    let cy0 = r.y + (y - r.y) / c * c;
+    let cw = min(cx0 + c, r.z) - cx0;
+    let ch = min(cy0 + c, r.w) - cy0;
+    var s = vec3<i32>(0);
+    for (var j = 0; j < 4; j = j + 1) {
+      let ty = cy0 + ((2 * j + 1) * ch) / 8;
+      for (var k = 0; k < 4; k = k + 1) {
+        let tx = cx0 + ((2 * k + 1) * cw) / 8;
+        s = s + vec3<i32>(textureLoad(tp, vec2<i32>(tx, ty), 0).rgb);
+      }
+    }
+    o = vec4<u32>(vec3<u32>((s + vec3<i32>(8)) / vec3<i32>(16)), 255u);
+  }
+  return o;
+}
+"#;
+
 const COMPOSITE: &str = r#"
 struct Comp { dst: vec4<i32>, sk: vec4<i32>, p: vec4<i32> };
 @group(0) @binding(0) var<uniform> u: Comp;
@@ -267,6 +305,9 @@ pub(crate) struct Gpu {
     summary: AdapterSummary,
     max_dim: u32,
     prefilter: wgpu::RenderPipeline,
+    redact: wgpu::RenderPipeline,
+    red_ubuf: wgpu::Buffer,
+    pre_red: Option<Tex>,
     composite: wgpu::RenderPipeline,
     to_y: wgpu::RenderPipeline,
     to_uv: wgpu::RenderPipeline,
@@ -608,6 +649,19 @@ impl Gpu {
             "fs",
             &[uint_target(wgpu::TextureFormat::Rgba8Uint)],
         );
+        let redact = pipeline(
+            &device,
+            "sc_render redact",
+            REDACT,
+            "fs",
+            &[uint_target(wgpu::TextureFormat::Rgba8Uint)],
+        );
+        let red_ubuf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("sc_render redact uniforms"),
+            size: 16 + 2 * 16 * crate::MAX_REDACTIONS as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let composite = pipeline(
             &device,
             "sc_render composite",
@@ -691,6 +745,9 @@ impl Gpu {
             blit: None,
             blit_ubuf,
             prefilter,
+            redact,
+            red_ubuf,
+            pre_red: None,
             composite,
             to_y,
             to_uv,
@@ -1001,7 +1058,9 @@ impl Gpu {
             );
         }
         if let Some(plan) = &plan {
-            self.encode_screen(&mut enc, plan)?;
+            let boxes = job.screen.as_ref().map_or(&[][..], |l| l.redact);
+            let rects = maths::redact_rects(plan.p, boxes);
+            self.encode_screen(&mut enc, plan, &rects)?;
         }
         if let Some(plan) = &cam_plan {
             self.encode_camera(&mut enc, canvas, plan)?;
@@ -1146,7 +1205,12 @@ impl Gpu {
         Ok(Some(plan))
     }
 
-    fn encode_screen(&mut self, enc: &mut wgpu::CommandEncoder, plan: &ScreenPlan) -> Result<()> {
+    fn encode_screen(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        plan: &ScreenPlan,
+        rects: &[maths::RedactRect],
+    ) -> Result<()> {
         let c = maths::coeffs(plan.full_range);
         let [sx, sy, sw, sh] = plan.src;
         let [kx, ky] = plan.k;
@@ -1172,7 +1236,34 @@ impl Gpu {
             wgpu::TextureFormat::Rgba8Uint,
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         );
+        if !rects.is_empty() {
+            ensure_tex(
+                &self.device,
+                &mut self.pre_red,
+                "sc_render redacted",
+                (pw as u32, ph as u32),
+                wgpu::TextureFormat::Rgba8Uint,
+                wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            );
+            let mut u = vec![rects.len() as i32, 0, 0, 0];
+            let mut cells = Vec::new();
+            for i in 0..crate::MAX_REDACTIONS {
+                let rr = rects
+                    .get(i)
+                    .copied()
+                    .unwrap_or(maths::RedactRect { r: [0; 4], cell: 0 });
+                u.extend_from_slice(&rr.r);
+                cells.extend_from_slice(&[rr.cell, 0, 0, 0]);
+            }
+            u.extend(cells);
+            self.queue.write_buffer(&self.red_ubuf, 0, &i32s(&u));
+        }
         let pre = tex_of(&self.pre)?;
+        let shown = if rects.is_empty() {
+            pre
+        } else {
+            tex_of(&self.pre_red)?
+        };
         let pre_bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.prefilter.get_bind_group_layout(0),
@@ -1201,7 +1292,7 @@ impl Gpu {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&pre.view),
+                    resource: wgpu::BindingResource::TextureView(&shown.view),
                 },
             ],
         });
@@ -1209,6 +1300,26 @@ impl Gpu {
             let mut p = pass(enc, &[&pre.view], false);
             p.set_pipeline(&self.prefilter);
             p.set_bind_group(0, &pre_bind, &[]);
+            p.draw(0..3, 0..1);
+        }
+        if !rects.is_empty() {
+            let red_bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
+                layout: &self.redact.get_bind_group_layout(0),
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.red_ubuf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&pre.view),
+                    },
+                ],
+            });
+            let mut p = pass(enc, &[&shown.view], false);
+            p.set_pipeline(&self.redact);
+            p.set_bind_group(0, &red_bind, &[]);
             p.draw(0..3, 0..1);
         }
         {

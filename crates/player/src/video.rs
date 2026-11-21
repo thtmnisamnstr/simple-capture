@@ -12,7 +12,7 @@ use sc_core::project::ProjectV1;
 use sc_decode::{SegmentFrame, SegmentFrameSource, TrackFrameSource};
 use sc_geometry::{Ratio, RectF, RectPx, SizePx, camera_rects, contain_fit};
 use sc_platform::{Decoder, Error, FrameBuffer, Result};
-use sc_render::{FrameJob, ScreenLayer, TextLayer};
+use sc_render::{FrameJob, Redact, ScreenLayer, TextLayer};
 use sc_text::{BackgroundCache, TextEngine, TextFrame};
 
 pub struct TimelineVideo {
@@ -33,6 +33,7 @@ pub struct Composed {
     pub screen: Option<SegmentFrame>,
     pub camera: Option<(FrameBuffer, CameraPlacement)>,
     pub text: Vec<TextFrame>,
+    pub redact: Vec<Redact>,
 }
 
 impl TimelineVideo {
@@ -113,12 +114,14 @@ impl TimelineVideo {
             camera = Some((f, p));
         }
         let text = self.text_at(tl_ns.clamp(0, end), canvas);
+        let redact = redactions_at(&self.doc, tl);
         Ok(Composed {
             tl_ns: tl,
             rec_ns: rec,
             screen,
             camera,
             text,
+            redact,
         })
     }
 
@@ -162,6 +165,18 @@ impl TimelineVideo {
     }
 }
 
+/// The blur boxes showing at timeline time `tl`, in the order they were added.
+pub fn redactions_at(doc: &Doc, tl: i64) -> Vec<Redact> {
+    doc.redactions
+        .iter()
+        .filter(|r| r.start_tl_ns <= tl && tl < r.end_tl_ns)
+        .map(|r| Redact {
+            rect: [r.rect_norm.x, r.rect_norm.y, r.rect_norm.w, r.rect_norm.h],
+            black: r.style == sc_core::project::RedactStyle::Black,
+        })
+        .collect()
+}
+
 impl Composed {
     pub fn text_layers(&self) -> Vec<TextLayer<'_>> {
         self.text
@@ -187,6 +202,7 @@ impl Composed {
                 frame: &f.frame,
                 src: f.content_px,
                 dst,
+                redact: &self.redact,
             })
         });
         let camera = self.camera.as_ref().map(|(f, p)| {

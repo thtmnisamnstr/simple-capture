@@ -12,8 +12,8 @@ mod surface;
 pub mod cpu;
 
 pub use compositor::{
-    AdapterSummary, Backend, CameraLayer, Compositor, FrameJob, OutputFormat, RenderedFrame,
-    ScreenLayer, TextLayer, camera_layer,
+    AdapterSummary, Backend, CameraLayer, Compositor, FrameJob, MAX_REDACTIONS, OutputFormat,
+    Redact, RenderedFrame, ScreenLayer, TextLayer, camera_layer,
 };
 pub use diff::{DiffStats, diff};
 pub use sc_platform::{Error, Result};

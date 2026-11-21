@@ -37,6 +37,7 @@ export interface TextItem {
 export interface Doc {
   edl: { clips: Clip[] };
   text: TextItem[];
+  redactions?: Redaction[];
   camera_layout: { overlays: CameraOverlay[] };
   audio_mix: Record<string, AudioMixEntry>;
   output: { canvas: ProjectCanvas };
@@ -71,6 +72,7 @@ export interface EditorFrame {
   canvas_px: { w: number; h: number };
   rect: { x: number; y: number; w: number; h: number };
   camera: { x: number; y: number; w: number; h: number } | null;
+  screen?: { x: number; y: number; w: number; h: number } | null;
   rec_ns: number;
 }
 
@@ -90,7 +92,49 @@ export type EditOp =
   | { op: 'set_track_mix'; track_id: string; gain_db: number; muted: boolean }
   | { op: 'set_canvas'; canvas: ProjectCanvas }
   | { op: 'upsert_text'; item: TextItem }
-  | { op: 'delete_text'; ids: string[] };
+  | { op: 'delete_text'; ids: string[] }
+  | { op: 'upsert_redaction'; item: Redaction }
+  | { op: 'delete_redactions'; ids: string[] };
+
+export type RedactStyle = 'pixelate' | 'black';
+export interface Redaction {
+  id: string;
+  start_tl_ns: number;
+  end_tl_ns: number;
+  rect_norm: { x: number; y: number; w: number; h: number };
+  style: RedactStyle;
+}
+
+/** A new blur box at `at`, three seconds long (or to the end), in the middle of the picture. */
+export function newRedaction(id: string, at: number, duration: number): Redaction {
+  const start = Math.min(Math.max(0, at), Math.max(0, duration - 100_000_000));
+  return {
+    id,
+    start_tl_ns: Math.round(start),
+    end_tl_ns: Math.round(Math.min(duration, start + 3_000_000_000)),
+    rect_norm: { x: 0.35, y: 0.4, w: 0.3, h: 0.2 },
+    style: 'pixelate',
+  };
+}
+
+/** `r` moved by `dx, dy` or, with `corner`, resized from that corner; kept inside the picture. */
+export function dragRect(
+  r: Redaction['rect_norm'],
+  dx: number,
+  dy: number,
+  corner: [number, number] | null,
+  min = 0.02,
+): Redaction['rect_norm'] {
+  if (!corner) {
+    return { ...r, x: Math.min(Math.max(r.x + dx, 0), 1 - r.w), y: Math.min(Math.max(r.y + dy, 0), 1 - r.h) };
+  }
+  let [x0, y0, x1, y1] = [r.x, r.y, r.x + r.w, r.y + r.h];
+  if (corner[0] < 0) x0 = Math.min(Math.max(x0 + dx, 0), x1 - min);
+  else x1 = Math.max(Math.min(x1 + dx, 1), x0 + min);
+  if (corner[1] < 0) y0 = Math.min(Math.max(y0 + dy, 0), y1 - min);
+  else y1 = Math.max(Math.min(y1 + dy, 1), y0 + min);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
 
 export interface Selection { ids?: string[]; a_tl_ns?: number; b_tl_ns?: number }
 

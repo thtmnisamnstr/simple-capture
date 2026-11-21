@@ -194,6 +194,7 @@ pub fn render_loop(core: Weak<Core>) {
                         h: size.h,
                     },
                     dst: contain_fit(canvas, size),
+                    redact: &[],
                 }
             });
             let placement = inputs

@@ -15,7 +15,7 @@ pub fn render_cpu(job: &FrameJob, out: OutputFormat) -> Result<RenderedFrame> {
     if let Some(layer) = &job.screen {
         let mut result = Ok(());
         layer.frame.0.with_nv12(&mut |view| {
-            result = draw_screen(&mut rgba, canvas, layer.src, layer.dst, &view);
+            result = draw_screen(&mut rgba, canvas, layer, &view);
         })?;
         result?;
     }
@@ -101,18 +101,38 @@ fn pack_background(bg: &RgbaImage, canvas: SizePx) -> Vec<u8> {
 fn draw_screen(
     rgba: &mut [u8],
     canvas: SizePx,
-    src: sc_geometry::RectPx,
-    dst: sc_geometry::RectPx,
+    layer: &crate::ScreenLayer<'_>,
     view: &Nv12View<'_>,
 ) -> Result<()> {
     maths::check_size("frame", view.size)?;
     check_view(view)?;
-    let Some(plan) = maths::plan_screen(canvas, view.size, view.full_range, src, dst)? else {
+    let Some(plan) = maths::plan_screen(canvas, view.size, view.full_range, layer.src, layer.dst)?
+    else {
         return Ok(());
     };
     let pre = prefilter(&plan, view);
+    let pre = redact(&plan, pre, &maths::redact_rects(plan.p, layer.redact));
     composite(rgba, canvas, &plan, &pre);
     Ok(())
+}
+
+fn redact(plan: &ScreenPlan, pre: Vec<[u8; 3]>, rects: &[maths::RedactRect]) -> Vec<[u8; 3]> {
+    if rects.is_empty() {
+        return pre;
+    }
+    let pw = plan.p[0];
+    let mut out = pre.clone();
+    for rr in rects {
+        let [x0, y0, x1, y1] = rr.r;
+        for y in y0..y1 {
+            for x in x0..x1 {
+                if let Some(v) = maths::redact_texel(&pre, pw, x, y, rects) {
+                    out[(y * pw + x) as usize] = v;
+                }
+            }
+        }
+    }
+    out
 }
 
 /// k×k box average of the converted source, one RGB triple per prefiltered texel.

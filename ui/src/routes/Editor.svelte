@@ -5,11 +5,14 @@
   import { isExportProgress, isExportState, isObject } from '../lib/guards.ts';
   import {
     NS,
+    dragRect,
     editor,
     formatTime,
     keyAt,
     locate,
+    newRedaction,
     starts,
+    type Redaction,
     type Doc,
     type DocUpdate,
     type EditOp,
@@ -65,6 +68,7 @@
   let error = $state<string | null>(null);
   let titleDraft = $state<string | null>(null);
   let silencePanel = $state(false);
+  let selectedBlur = $state<string | null>(null);
   let silenceMarks = $state<[number, number][]>([]);
 
   function focusSelect(el: HTMLInputElement) {
@@ -371,6 +375,7 @@
 
   function selectText(id: string) {
     selectedText = id;
+    selectedBlur = null;
     selected = [];
     tab = 'text';
     const it = textItems.find((t) => t.id === id);
@@ -411,8 +416,9 @@
     if (hit) {
       if (hit.id !== selectedText) selectText(hit.id);
       startTextDrag(e, 'move', hit.id);
-    } else if (selectedText) {
+    } else {
       selectedText = null;
+      selectedBlur = null;
       editingText = null;
     }
   }
@@ -544,7 +550,8 @@
       case 'Delete':
       case 'Backspace':
         handled();
-        if (selectedText && !selected.length && !range) deleteText();
+        if (selectedBlur && !selected.length && !range) deleteBlur();
+        else if (selectedText && !selected.length && !range) deleteText();
         else void deleteSelection();
         break;
       case 't':
@@ -552,10 +559,16 @@
         handled();
         addText();
         break;
+      case 'b':
+      case 'B':
+        handled();
+        addBlur();
+        break;
       case 'Escape':
         selected = [];
         range = null;
         selectedText = null;
+        selectedBlur = null;
         editingText = null;
         break;
       case 'Home':
@@ -630,6 +643,67 @@
 
   const camRect = $derived(frame?.camera && previewEl ? frame.camera : null);
 
+  const blurs = $derived(doc?.redactions ?? []);
+  const shownBlurs = $derived(blurs.filter((b) => b.start_tl_ns <= playhead && playhead < b.end_tl_ns));
+  const blurSel = $derived(blurs.find((b) => b.id === selectedBlur) ?? null);
+
+  function selectBlur(id: string) {
+    selectedBlur = id;
+    selectedText = null;
+    editingText = null;
+    selected = [];
+    const b = blurs.find((x) => x.id === id);
+    if (b && (playhead < b.start_tl_ns || playhead >= b.end_tl_ns)) seek(b.start_tl_ns + Math.min(500_000_000, (b.end_tl_ns - b.start_tl_ns) / 2), true);
+  }
+
+  function addBlur() {
+    if (!doc) return;
+    if (playing) void editor.pause();
+    const b = newRedaction(crypto.randomUUID(), playhead, duration);
+    void edit({ op: 'upsert_redaction', item: b });
+    selectBlur(b.id);
+  }
+
+  function deleteBlur() {
+    if (!selectedBlur) return;
+    void edit({ op: 'delete_redactions', ids: [selectedBlur] });
+    selectedBlur = null;
+  }
+
+  type BlurDrag = { id: string; corner: [number, number] | null; x: number; y: number; start: Redaction };
+  let blurDrag: BlurDrag | null = null;
+
+  function blurDown(e: PointerEvent, b: Redaction, corner: [number, number] | null) {
+    if (e.button !== 0 || playing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    if (selectedBlur !== b.id) selectBlur(b.id);
+    blurDrag = { id: b.id, corner, x: e.clientX, y: e.clientY, start: $state.snapshot(b) as Redaction };
+  }
+
+  let blurQueued: Redaction | null = null;
+  function blurMove(e: PointerEvent) {
+    const sc = frame?.screen;
+    if (!blurDrag || !sc || sc.w <= 0 || sc.h <= 0) return;
+    const s = blurDrag.start;
+    const rect = dragRect(s.rect_norm, (e.clientX - blurDrag.x) / sc.w, (e.clientY - blurDrag.y) / sc.h, blurDrag.corner);
+    const first = blurQueued === null;
+    blurQueued = { ...s, rect_norm: rect };
+    if (first)
+      requestAnimationFrame(() => {
+        const next = blurQueued;
+        blurQueued = null;
+        if (next) void edit({ op: 'upsert_redaction', item: next }, `blur-${next.id}`);
+      });
+  }
+
+  function blurUp() {
+    if (!blurDrag) return;
+    blurDrag = null;
+    void editor.seal();
+  }
+
   function focusOnMount(node: HTMLTextAreaElement) {
     node.focus();
     node.select();
@@ -641,10 +715,12 @@
   onpointermove={(e) => {
     camMove(e);
     onTextMove(e);
+    blurMove(e);
   }}
   onpointerup={() => {
     camUp();
     onTextUp();
+    blurUp();
   }}
 />
 
@@ -782,6 +858,42 @@
             {/if}
           </div>
         {/if}
+        {#if frame?.screen && !playing && previewEl}
+          {@const origin = previewEl.getBoundingClientRect()}
+          {@const sc = frame.screen}
+          {#each shownBlurs as b (b.id)}
+            {@const on = b.id === selectedBlur}
+            <div
+              class="blurbox"
+              class:sel={on}
+              style:left="{frame.rect.x - origin.left + sc.x + b.rect_norm.x * sc.w}px"
+              style:top="{frame.rect.y - origin.top + sc.y + b.rect_norm.y * sc.h}px"
+              style:width="{b.rect_norm.w * sc.w}px"
+              style:height="{b.rect_norm.h * sc.h}px"
+              role="presentation"
+              onpointerdown={(e) => blurDown(e, b, null)}
+            >
+              {#if on}
+                {#each [[-1, -1], [1, -1], [-1, 1], [1, 1]] as c (c.join())}
+                  <span
+                    class="handle"
+                    style:left={c[0] < 0 ? '0' : '100%'}
+                    style:top={c[1] < 0 ? '0' : '100%'}
+                    role="presentation"
+                    onpointerdown={(e) => blurDown(e, b, [c[0], c[1]])}
+                  ></span>
+                {/each}
+                <div class="blurbar" role="toolbar" aria-label="Blur box" tabindex="-1" onpointerdown={(e) => e.stopPropagation()}>
+                  <div class="segmented" role="radiogroup" aria-label="Look">
+                    <button role="radio" aria-checked={b.style === 'pixelate'} onclick={() => void edit({ op: 'upsert_redaction', item: { ...b, style: 'pixelate' } })}>Blur</button>
+                    <button role="radio" aria-checked={b.style === 'black'} onclick={() => void edit({ op: 'upsert_redaction', item: { ...b, style: 'black' } })}>Black</button>
+                  </div>
+                  <button class="plain icon" title="Delete (⌫)" aria-label="Delete blur box" onclick={deleteBlur}><Icon name="trash" size={13} /></button>
+                </div>
+              {/if}
+            </div>
+          {/each}
+        {/if}
         {#if camRect && camKey?.visible && !playing && previewEl}
           {@const origin = previewEl.getBoundingClientRect()}
           <div
@@ -858,6 +970,7 @@
       <button class="plain" onclick={() => void copy(false)} disabled={!selected.length && !range} title="Copy (⌘C)">Copy</button>
       <button class="plain" onclick={paste} disabled={clipboardNs <= 0} title="Paste at playhead (⌘V)">Paste</button>
       <button class="plain" onclick={addText} title="Add text at the playhead (T)"><span class="tglyph">T</span> Text</button>
+      <button class="plain" onclick={addBlur} disabled={!doc} title="Hide part of the screen from the playhead (B)"><span class="tglyph">▦</span> Blur</button>
       <button class="plain" onclick={() => (silencePanel = !silencePanel)} aria-expanded={silencePanel} disabled={!doc} title="Find the pauses and cut them out">Remove Silences…</button>
       <span class="spacer"></span>
       {#if range}<span class="badge">Range {formatTime(Math.abs(range[1] - range[0]))}</span>{/if}
@@ -871,7 +984,7 @@
       <button class="plain icon" onclick={() => (pxPerSec = Math.min(pxPerSec * 1.4, 600))} aria-label="Zoom in">+</button>
       <button class="plain" onclick={fitZoom}>Fit</button>
     </div>
-    <div class="timeline" bind:this={timelineEl}>
+    <div class="timeline" class:tall={blurs.length > 0} bind:this={timelineEl}>
       {#if doc}
         <Timeline
           {clips}
@@ -881,12 +994,20 @@
           {selected}
           {range}
           marks={silencePanel ? silenceMarks : []}
+          {blurs}
+          {selectedBlur}
+          onselectblur={selectBlur}
+          onblurmove={(id, s, e) => {
+            const b = blurs.find((x) => x.id === id);
+            if (b) void edit({ op: 'upsert_redaction', item: { ...b, start_tl_ns: s, end_tl_ns: e } });
+          }}
           {thumbs}
           {peaks}
           bind:pxPerSec
           onseek={seek}
           onselect={(ids) => {
             selected = ids;
+            if (ids.length) selectedBlur = null;
             if (ids.length) tab = 'clip';
           }}
           onrange={(r) => (range = r)}
@@ -1032,6 +1153,30 @@
     width: 1px;
     height: 1px;
   }
+  .blurbox {
+    position: absolute;
+    cursor: grab;
+    outline: 1px dashed rgba(255, 255, 255, 0.75);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  }
+  .blurbox.sel {
+    outline: 2px solid var(--accent);
+  }
+  .blurbar {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    background: var(--window);
+    box-shadow: var(--shadow-pop);
+    cursor: default;
+    white-space: nowrap;
+  }
   .cam {
     position: absolute;
     cursor: grab;
@@ -1139,6 +1284,9 @@
     min-width: 0;
     height: 150px;
     padding: 0 0 6px;
+  }
+  .timeline.tall {
+    height: 176px;
   }
   .status {
     display: flex;

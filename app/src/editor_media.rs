@@ -260,6 +260,7 @@ fn thumbs(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
                         h: f.content_px.h,
                     },
                 ),
+                redact: &[],
             });
         let job = FrameJob {
             text: &[],

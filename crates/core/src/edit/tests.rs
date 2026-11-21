@@ -578,3 +578,87 @@ fn delete_ranges_removes_several_spans_as_one_edit() {
     };
     assert!(apply(&d, &all, LIM).is_err());
 }
+
+fn blur(id: &str, a: i64, b: i64) -> crate::project::Redaction {
+    crate::project::Redaction {
+        id: id.into(),
+        start_tl_ns: a,
+        end_tl_ns: b,
+        rect_norm: crate::project::RectNorm {
+            x: 0.1,
+            y: 0.1,
+            w: 0.2,
+            h: 0.1,
+        },
+        style: crate::project::RedactStyle::Pixelate,
+        extra: Default::default(),
+    }
+}
+
+fn blur_spans(d: &Doc) -> Vec<(i64, i64)> {
+    let mut v: Vec<_> = d
+        .redactions
+        .iter()
+        .map(|t| (t.start_tl_ns, t.end_tl_ns))
+        .collect();
+    v.sort_unstable();
+    v
+}
+
+#[test]
+fn blur_boxes_ripple_like_text() {
+    let d = doc(vec![clip(0, 10 * S)]);
+    let d = apply(
+        &d,
+        &EditOp::UpsertRedaction {
+            item: blur("b", 6 * S, 8 * S),
+        },
+        LIM,
+    )
+    .expect("add");
+    let d1 = apply(
+        &d,
+        &EditOp::DeleteRange {
+            a_tl_ns: S,
+            b_tl_ns: 3 * S,
+        },
+        LIM,
+    )
+    .expect("delete");
+    assert_eq!(blur_spans(&d1), vec![(4 * S, 6 * S)]);
+    let cb = copy_range(&d1, 3 * S, 7 * S);
+    assert_eq!(cb.redactions.len(), 1);
+    let d2 = apply(
+        &d1,
+        &EditOp::Paste {
+            at_tl_ns: 0,
+            clipboard: cb,
+        },
+        LIM,
+    )
+    .expect("paste");
+    assert_eq!(blur_spans(&d2), vec![(S, 3 * S), (8 * S, 10 * S)]);
+    let ids = ids(&d2, &[0]);
+    let d3 = apply(
+        &d2,
+        &EditOp::SetSpeed {
+            ids,
+            speed: Speed { num: 2, den: 1 },
+        },
+        LIM,
+    )
+    .expect("speed");
+    assert_eq!(blur_spans(&d3)[0], (S / 2, 3 * S / 2));
+    let gone = apply(
+        &d3,
+        &EditOp::DeleteRedactions {
+            ids: d3.redactions.iter().map(|r| r.id.clone()).collect(),
+        },
+        LIM,
+    )
+    .expect("remove");
+    assert!(gone.redactions.is_empty());
+    let mut flat = blur("f", 0, S);
+    flat.rect_norm.w = 0.0;
+    assert!(apply(&d, &EditOp::UpsertRedaction { item: flat }, LIM).is_err());
+}

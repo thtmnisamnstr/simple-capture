@@ -663,6 +663,17 @@ if basic("22-silence", log):
         check("22-silence", "one delete_ranges edit cut two seconds in two places",
               len(clips) == 2 and abs(total - (rec - 2_000_000_000)) <= 2_000_000,
               {"clips": [(c["src_in_rec_ns"], c["src_out_rec_ns"]) for c in clips], "rec": rec})
+        blurs = pr["project"].get("redactions", [])
+        check("22-silence", "the blur box is saved with the project", [b.get("id") for b in blurs] == ["drv-blur"], blurs)
+        ex = [x for x in events(log, "export-state") if x.get("state") == "done"]
+        check("22-silence", "the export with the blur box finished", bool(ex), [x.get("state") for x in events(log, "export-state")])
+        if ex and FFMPEG:
+            r = subprocess.run([FFMPEG, "-v", "error", "-ss", "0.5", "-i", ex[0].get("path", ""), "-frames:v", "1",
+                                "-vf", "scale=160:-2", "-f", "rawvideo", "-pix_fmt", "gray", "-"], capture_output=True)
+            px = r.stdout
+            mean = sum(px) / len(px) if px else 255
+            check("22-silence", "the screen is black under the box (export at 0.5 s)", px and mean < 20 and max(px) < 40,
+                  {"mean": mean, "max": max(px) if px else None})
 
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)

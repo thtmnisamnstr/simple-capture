@@ -156,6 +156,18 @@ pub struct ScreenLayer<'a> {
     pub frame: &'a FrameBuffer,
     pub src: RectPx,
     pub dst: RectPx,
+    /// Drawn as a mosaic or black, in order; at most [`MAX_REDACTIONS`].
+    pub redact: &'a [Redact],
+}
+
+/// Redactions drawn at once; later ones are left out.
+pub const MAX_REDACTIONS: usize = 8;
+
+/// A box over the screen picture: `rect` is x, y, w, h as fractions of `src`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Redact {
+    pub rect: [f64; 4],
+    pub black: bool,
 }
 
 /// The camera drawn over the screen: `src` of the camera frame (BT.709, either range) scaled
