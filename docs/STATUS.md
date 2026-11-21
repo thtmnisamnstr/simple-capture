@@ -53,7 +53,9 @@ Capture_0.1.0_aarch64.dmg` (37 MB), `…_x64-setup.exe` (32 MB), `…_x64_en-US.
 
 **Not verified:** any real Windows or Linux desktop; the Linux portal dialog end to end (the
 headless test compositor could not hand frames to the portal backend); the mic level meter and
-the countdown by eye (driver mode turns both off); installing and running the built installers.
+the countdown by eye (driver mode turns both off); installing and running the built installers;
+NVENC and VA-API on real GPUs; a new 30-minute soak (it records the screen for half an hour, so it
+waits for a time you are away; the M1 numbers in §2.1 stand).
 
 ### Owner decisions needed
 1. **Windows records with Media Foundation and Linux's screen track goes through GStreamer, both
