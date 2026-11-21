@@ -3,7 +3,7 @@
 
 mod devices;
 mod frames;
-mod pcm;
+pub(crate) mod pcm;
 mod reader;
 #[cfg(test)]
 mod tests;

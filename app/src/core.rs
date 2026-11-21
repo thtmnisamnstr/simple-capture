@@ -55,6 +55,7 @@ pub struct Core {
     pub app: AppHandle,
     pub platform: Arc<dyn Platform>,
     pub camera: Arc<SharedCamera>,
+    mic_meter: Mutex<Option<(String, Box<dyn sc_platform::DeviceStream>)>>,
     pub live: crate::live::LiveHub,
     pub preview: Mutex<crate::preview::PreviewState>,
     pub editor: crate::editor::EditorHost,
@@ -106,6 +107,7 @@ impl Core {
             app,
             platform,
             camera,
+            mic_meter: Mutex::new(None),
             live: crate::live::LiveHub::default(),
             preview: Mutex::new(crate::preview::PreviewState::default()),
             editor: crate::editor::EditorHost::default(),
@@ -1631,10 +1633,43 @@ impl Core {
         self.refresh_camera()
     }
 
+    /// Runs the panel's microphone level while the panel is open, a mic is chosen and allowed,
+    /// and nothing records (the recorder then owns the mic).
+    fn refresh_mic_meter(&self, s: &crate::settings::RecorderSettings, recording: bool) {
+        let want = s.mic.clone().filter(|_| {
+            !recording
+                && !self.no_key_windows
+                && lock(&self.preview).panel_open
+                && self
+                    .platform
+                    .permissions()
+                    .status(sc_platform::PermissionKind::Microphone)
+                    == sc_platform::PermissionStatus::Granted
+        });
+        let mut cur = lock(&self.mic_meter);
+        if cur.as_ref().map(|(d, _)| d.as_str()) == want.as_deref() {
+            return;
+        }
+        if let Some((_, stream)) = cur.take() {
+            let _ = stream.stop();
+        }
+        if let Some(device) = want {
+            let sink = Arc::new(crate::meter::MeterSink {
+                app: self.app.clone(),
+                last: Mutex::new((Instant::now(), 0.0)),
+            });
+            match self.platform.mic().start(&device, sink) {
+                Ok(stream) => *cur = Some((device, stream)),
+                Err(e) => tracing::debug!("mic meter: {e}"),
+            }
+        }
+    }
+
     /// Opens or releases the camera and shows or hides the preview window to match the settings.
     pub fn refresh_camera(&self) -> Reply {
         let s = self.settings.load();
         let recording = is_recording(&self.phase());
+        self.refresh_mic_meter(&s, recording);
         let active = lock(&self.preview).panel_open || recording;
         let device = if active { s.camera.clone() } else { None };
         let camera_error = self.camera.set_preview(device.clone()).err();

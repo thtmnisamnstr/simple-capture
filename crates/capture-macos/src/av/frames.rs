@@ -170,6 +170,9 @@ impl NativeAudio for MacAudioSample {
     fn as_any(&self) -> &dyn Any {
         self
     }
+    fn to_f32(&self) -> Option<Vec<f32>> {
+        super::pcm::to_f32(&self.sb)
+    }
 }
 
 pub(crate) fn asbd_of_desc(fd: &CMFormatDescription) -> Option<AudioStreamBasicDescription> {

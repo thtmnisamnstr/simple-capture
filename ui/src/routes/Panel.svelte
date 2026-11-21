@@ -105,6 +105,9 @@
         : null,
   );
 
+  let micDb: number | null = $state(null);
+  let micTimer: ReturnType<typeof setTimeout> | undefined;
+
   const portalOnly = $derived(!!caps?.system_picker && loaded && displays.length === 0);
 
   async function load() {
@@ -170,6 +173,12 @@
         if (settings && JSON.stringify(next) !== JSON.stringify($state.snapshot(settings))) {
           settings = next as unknown as RecorderSettings;
         }
+      }),
+      onEvent('mic-level', isObject, (m) => {
+        if (typeof m.peak_db !== 'number') return;
+        micDb = micDb === null ? m.peak_db : Math.max(m.peak_db, micDb - 3);
+        clearTimeout(micTimer);
+        micTimer = setTimeout(() => (micDb = null), 1500);
       }),
       onEvent('recording-state', isRecordingState, (s) => {
         recording = s.state === 'preparing' || s.state === 'recording' || s.state === 'switching' || s.state === 'stopping';
@@ -554,6 +563,11 @@
               {/if}
             </div>
           </div>
+          {#if settings.mic && micDb !== null}
+            <div class="meter" role="meter" aria-label="Microphone level" aria-valuemin={-60} aria-valuemax={0} aria-valuenow={Math.round(micDb)}>
+              <span style:width={`${Math.max(0, Math.min(100, ((micDb + 60) / 60) * 100))}%`} class:hot={micDb > -3}></span>
+            </div>
+          {/if}
           <div class="grow">
             <span class="glabel with-icon"><Icon name="speaker" />System audio</span>
             <div class="gcontrol">
@@ -1024,5 +1038,21 @@
   }
   .keys dd {
     margin: 0;
+  }
+  .meter {
+    height: 4px;
+    margin: 0 10px 8px;
+    border-radius: 2px;
+    background: var(--fill-2);
+    overflow: hidden;
+  }
+  .meter span {
+    display: block;
+    height: 100%;
+    background: var(--green);
+    transition: width 60ms linear;
+  }
+  .meter span.hot {
+    background: var(--orange);
   }
 </style>

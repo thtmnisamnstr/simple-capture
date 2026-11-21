@@ -135,6 +135,19 @@ pub struct VideoFrame {
 
 pub trait NativeAudio: Send + Sync + 'static {
     fn as_any(&self) -> &dyn Any;
+    /// The samples as interleaved f32, when the platform can give them (level meters).
+    fn to_f32(&self) -> Option<Vec<f32>> {
+        None
+    }
+}
+
+impl AudioData {
+    pub fn samples(&self) -> Option<std::borrow::Cow<'_, [f32]>> {
+        match self {
+            AudioData::F32Interleaved(s) => Some(std::borrow::Cow::Borrowed(s)),
+            AudioData::Native(n) => n.to_f32().map(std::borrow::Cow::Owned),
+        }
+    }
 }
 
 #[derive(Clone)]

@@ -114,6 +114,9 @@ impl NativeAudio for ScAudio {
     fn as_any(&self) -> &dyn Any {
         &self.sb
     }
+    fn to_f32(&self) -> Option<Vec<f32>> {
+        crate::av::pcm::to_f32(&self.sb)
+    }
 }
 
 /// The CMSampleBuffer behind a frame delivered by this crate.

@@ -12,6 +12,7 @@ mod editor_render;
 mod exports;
 mod library;
 mod live;
+mod meter;
 #[cfg(target_os = "macos")]
 mod objc;
 mod preview;
