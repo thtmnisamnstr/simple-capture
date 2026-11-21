@@ -1623,3 +1623,37 @@ they are not a substitute for an M1 run.
 - **Not done:** customizable shortcuts; a separate performance pass beyond the M2 CPU work (the
   30-minute soak numbers in STATUS stand); per-OS onboarding text for Windows and Linux beyond
   what the permission screens already say.
+
+## ADR-050: Owner requests after M7 (record modes, rename, silences, blur, shortcuts, built-in media)
+
+- **Status:** accepted (owner, 2026-11-21). Windows and Linux media parts are **beta** until the
+  owner has tried them on his own machines.
+- **Record modes:** Screen, Screen + Camera and Camera Only. A camera can be the main picture
+  (`SourceSpec::Camera`), recorded as a screen segment, so camera-only takes and switches between
+  a screen and the camera stay one recording; the corner camera hides while the camera is the
+  main picture.
+- **Rename:** Library, editor title and summary. The project folder follows the title and keeps
+  its date; while the editor has it open, the folder moves when the editor closes. Quitting now
+  saves and closes the editor.
+- **Library tidy-up:** sort (newest, oldest, longest, largest, name), Finder-style multi-select,
+  Move N to Trash.
+- **Remove Silences:** loudness of the heard tracks (muted ones ignored) per 10 ms; pauses
+  quieter than a level for at least 0.5/1/2 s keep 150 ms each side, leading and trailing quiet go
+  whole; the level starts a third of the way from room tone to speech. One undoable
+  `delete_ranges` edit.
+- **Blur and black boxes:** timeline items like text, placed as fractions of the screen picture so
+  they follow the content through frame changes; the renderer mosaics (cells a twelfth of the box,
+  at least a sixtieth of the picture) or blacks out the covered texels between the prefilter and
+  the composite, identical on GPU and CPU; the camera and text stay on top.
+- **Customizable shortcuts:** each global shortcut takes new keys from the recorder panel; keys
+  need ⌘, ⌃ or ⌥; clashes (between actions or with other apps) show next to the shortcut.
+- **Windows tracks (beta):** Media Foundation in process: H.264 (hardware encoder when present)
+  and AAC into fragmented MP4 through a sink writer, read with a source reader; times count from
+  the first frame (the encoder's reorder delay shifts stored times). `.mkv` tracks from older
+  recordings, and anything Media Foundation cannot open, still go through the helper;
+  `SC_MEDIA=helper` or a system without Media Foundation records with the helper.
+- **Linux screen track (beta):** GStreamer in process (WebKitGTK already links it, so no new
+  runtime dependency): VA-API, NVENC or OpenH264 into the same Matroska the helper writes, so
+  reading, probing, recovery and audio stay with the helper. x264enc is never picked by the app
+  (GPL stays in the helper); with no such encoder, or `SC_MEDIA=helper`, the helper records as
+  before. The helper itself still has no hardware encoder on Linux.

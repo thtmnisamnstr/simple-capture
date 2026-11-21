@@ -25,6 +25,8 @@ ashpd = { version = "0.14.1", default-features = false, features = ["tokio", "sc
 tokio = { version = "1.54.1", default-features = false, features = ["rt", "rt-multi-thread"] }
 pipewire = { version = "0.10.1", features = ["v0_3_53"] }
 v4l = "0.14.0"
+gstreamer = "0.25.4"
+gstreamer-app = "0.25.2"
 
 [lints]
 workspace = true

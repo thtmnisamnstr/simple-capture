@@ -10,6 +10,8 @@ RUN apt-get update -q && apt-get install -y --no-install-recommends \
       sway xdg-desktop-portal xdg-desktop-portal-wlr \
       ffmpeg python3 \
       gstreamer1.0-tools gstreamer1.0-pipewire gstreamer1.0-plugins-base \
+      libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good \
+      gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly \
       nasm cmake ninja-build meson autoconf automake libtool \
       mingw-w64 \
     && rm -rf /var/lib/apt/lists/*

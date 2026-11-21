@@ -835,12 +835,16 @@ fn locked<T>(sample: &IMFSample, f: impl FnOnce(&[u8]) -> T) -> Result<T> {
     }
 }
 
+/// File times count from the first frame: the encoder's reorder delay shifts every stored
+/// time by a frame or so, which would put video behind audio.
 struct MfVideoReader {
     reader: IMFSourceReader,
     size: SizePx,
     stride: Option<usize>,
     stream: u32,
     done: bool,
+    origin_hns: i64,
+    pending: Option<DecodedFrame>,
 }
 
 unsafe impl Send for MfVideoReader {}
@@ -864,14 +868,29 @@ impl MfVideoReader {
                 .ok()
                 .map(|s| (s as i32).unsigned_abs() as usize)
                 .filter(|s| *s >= w as usize);
-            seek(&reader, from_file_ns)?;
-            Ok(MfVideoReader {
+            let mut r = MfVideoReader {
                 reader,
                 size: SizePx { w, h },
                 stride,
                 stream,
                 done: false,
-            })
+                origin_hns: 0,
+                pending: None,
+            };
+            let first = r.decode()?;
+            if let Some((t, f)) = first {
+                r.origin_hns = t;
+                if from_file_ns > 0 {
+                    seek(&r.reader, from_file_ns + t * 100)?;
+                    r.done = false;
+                } else {
+                    r.pending = Some(DecodedFrame {
+                        file_ns: 0,
+                        frame: f,
+                    });
+                }
+            }
+            Ok(r)
         }
     }
 }
@@ -900,24 +919,33 @@ fn nv12_from(data: &[u8], size: SizePx, stride: Option<usize>) -> CpuNv12Frame {
     f
 }
 
+impl MfVideoReader {
+    fn decode(&mut self) -> Result<Option<(i64, FrameBuffer)>> {
+        while !self.done {
+            let r = read(&self.reader, self.stream)?;
+            self.done = r.end;
+            if let Some(s) = r.sample {
+                let frame = locked(&s, |d| nv12_from(d, self.size, self.stride))?;
+                return Ok(Some((r.time_hns, FrameBuffer(Arc::new(frame)))));
+            }
+        }
+        Ok(None)
+    }
+}
+
 impl VideoReader for MfVideoReader {
     fn size(&self) -> SizePx {
         self.size
     }
 
     fn next_frame(&mut self) -> Result<Option<DecodedFrame>> {
-        while !self.done {
-            let r = read(&self.reader, self.stream)?;
-            self.done = r.end;
-            if let Some(s) = r.sample {
-                let frame = locked(&s, |d| nv12_from(d, self.size, self.stride))?;
-                return Ok(Some(DecodedFrame {
-                    file_ns: r.time_hns * 100,
-                    frame: FrameBuffer(Arc::new(frame)),
-                }));
-            }
+        if let Some(p) = self.pending.take() {
+            return Ok(Some(p));
         }
-        Ok(None)
+        Ok(self.decode()?.map(|(t, frame)| DecodedFrame {
+            file_ns: (t - self.origin_hns) * 100,
+            frame,
+        }))
     }
 }
 
@@ -1028,6 +1056,7 @@ fn probe_mp4(path: &Path) -> Result<TrackProbe> {
     }
     let mut samples = 0u64;
     let mut end_hns = None::<i64>;
+    let mut origin_hns = None::<i64>;
     loop {
         let mut flags = 0u32;
         let mut time = 0i64;
@@ -1049,15 +1078,21 @@ fn probe_mp4(path: &Path) -> Result<TrackProbe> {
             samples += 1;
             let d = unsafe { s.GetSampleDuration() }.unwrap_or(0);
             end_hns = Some(end_hns.unwrap_or(0).max(time + d));
+            origin_hns = Some(origin_hns.map_or(time, |o| o.min(time)));
         }
         if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
             break;
         }
     }
-    let readable = samples > 0 && end_hns.is_some_and(|e| e > 0);
+    let origin = if size.is_some() {
+        origin_hns.unwrap_or(0)
+    } else {
+        0
+    };
+    let readable = samples > 0 && end_hns.is_some_and(|e| e > origin);
     Ok(TrackProbe {
         readable,
-        duration_ns: end_hns.filter(|_| readable).map(|e| e * 100),
+        duration_ns: end_hns.filter(|_| readable).map(|e| (e - origin) * 100),
         samples: if size.is_some() { samples } else { 0 },
         size,
         error: (!readable).then(|| "no samples".to_string()),
@@ -1276,8 +1311,12 @@ mod tests {
         std::mem::forget(w);
         let copy = dir.join("copy.mp4");
         std::fs::copy(&path, &copy).expect("copy");
-        let p =
-            MfDecoder::new(Arc::new(sc_platform::unsupported::Nothing::new("helper"))).probe(&copy);
-        println!("mf unfinished: {len} bytes on disk, probe {p:?}");
+        let p = MfDecoder::new(Arc::new(sc_platform::unsupported::Nothing::new("helper")))
+            .probe(&copy)
+            .expect("probe");
+        assert!(
+            p.readable && p.samples >= 30,
+            "an unfinished track keeps its completed fragments: {len} bytes, {p:?}"
+        );
     }
 }
