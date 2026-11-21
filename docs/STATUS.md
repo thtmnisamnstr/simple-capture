@@ -4,6 +4,25 @@
 stops were taken, so every milestone from M2 on waits for the owner's hands-on review.** M1 is
 merged to `main` (35b7d3e); M2 is on `m2` and also contained in `m3`.
 
+## After M7: the owner's requests (2026-11-21, ADR-050)
+
+| Feature | Where to try it | Verified here |
+|---|---|---|
+| Record modes: Screen, Screen + Camera, Camera Only; switch to or from the camera mid-recording | MANUAL_TEST R12–R14 | driver flow 21 live (14/14), synthetic recorder tests, panel in the browser |
+| Rename from the Library, the editor title and the summary; the folder follows | Y9–Y11 | folder rename tests, Library rename in the browser |
+| Library: sort, ⌘/⇧-click and ⌘A selection, Move N to Trash | Y12 | sort and selection tests, browser |
+| Export destinations (Email under 18 MB, Slack & Teams, YouTube, Reels/Shorts, GIF) and Size Limit | §10e | size-limit export tests |
+| Mic level in the recording bar | R9 | driver flow 20 (64 levels in 4.5 s) |
+| Remove Silences | E18–E20 | silence and delete_ranges tests; driver flow 22 live on a real recording |
+| Blur and black boxes | E21–E25 | GPU = CPU exactly; export test; driver flow 22 exports a black box over the real screen |
+| Customizable shortcuts | R15–R17 | driver flow 23 (registration, clash, bare key refused, clear) |
+| Windows: Media Foundation tracks (beta) | TESTING_ON_WINDOWS_LINUX.md | round trips on GitHub's Windows runner |
+| Linux: GStreamer screen track (beta) | TESTING_ON_WINDOWS_LINUX.md | round trip in tools/linux-dev and on GitHub's Ubuntu runner |
+| NVENC in the Linux and Windows helpers | — | builds in the `package` workflow; no NVIDIA GPU to run it on |
+
+Independent reviews of the new code ran before handing over; their verified findings were fixed
+(see the commits after "Guide for testing").
+
 ## M3–M7 build-out (2026-11-21)
 
 | Milestone | What is in it | ADR | Hands-on script |
@@ -29,30 +48,30 @@ Windows runners. The first `package` run (44939780618) built every installer: `S
 Capture_0.1.0_aarch64.dmg` (37 MB), `…_x64-setup.exe` (32 MB), `…_x64_en-US.msi` (43 MB),
 `…_amd64.deb` and `…_amd64.AppImage`, plus the helper source archive.
 
-**Not verified:** the editor's open time on a 10-minute recording (the definition of done says
-under 2 s; measured 158 ms to the first frame on a 9 s recording, and nothing in the open path
-grows with length except the async thumbnails and waveform); any real Windows or Linux desktop; the Linux portal dialog end to end (the
+**Editor open time on a 10-minute recording:** first frame 900 ms (definition of done: under
+2 s), driver flow 24 on a generated 3024×1964 HEVC recording (no capture involved).
+
+**Not verified:** any real Windows or Linux desktop; the Linux portal dialog end to end (the
 headless test compositor could not hand frames to the portal backend); the mic level meter and
 the countdown by eye (driver mode turns both off); installing and running the built installers.
 
 ### Owner decisions needed
-1. ⚑ **Recording on Windows and Linux goes through the FFmpeg helper process** instead of Media
-   Foundation / the LGPL FFmpeg libraries in-process (ADR-048). Hardware encoders are still used
-   through the helper where the machine has them. Accept, or ask for the in-process path.
+1. **Windows records with Media Foundation and Linux's screen track goes through GStreamer, both
+   beta** (ADR-050). Older recordings and any file these cannot open still go through the
+   helper; `SC_MEDIA=helper` switches back. Untested on a real desktop until you try them
+   (docs/TESTING_ON_WINDOWS_LINUX.md).
 2. ⚑ **Linux records only what the system's share dialog picks** (displays and windows; no app or
    region sources), and hides our windows while recording (ADR-048).
 3. **Pause keeps the paused time in the raw tracks and cuts it in the starting timeline**
    (ADR-049); recording time no longer subtracts pauses.
-4. **Linux raw tracks use x264** until a VAAPI-capable helper can be shipped without making the
-   helper need libva to start.
-5. **The package workflow also runs on `m*` branches** while M6 is reviewed; restrict it to tags
-   and `main` afterwards if CI minutes matter.
+4. **Linux hardware encoding** goes through GStreamer (VA-API, NVENC) in the app and NVENC in the
+   helper; the helper still has no VA-API (it would need libva to start).
+5. **The package workflow runs on pull requests, version tags and manual runs** (owner, ok).
 
 ### Open items
 - Pause edge: after resume the video shows the pre-pause frame until the screen next changes
   (ScreenCaptureKit sends frames only on change, about 1 per second when idle).
 - Linux cameras that only offer MJPEG are not supported yet.
-- Shortcuts are fixed (⌥⇧R/P/S/C/O), not configurable.
 - Carried: the Windows CI flake `stop_before_the_duration_ends_there`; Preview at ~24 fps while
   recording; camera A/V sync unmeasured (STATUS §3).
 - The owner's own hands-on recording `~/Movies/Simple Capture/2026-11-20 15.35.33 Recording.sc`

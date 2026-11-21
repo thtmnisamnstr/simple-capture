@@ -698,6 +698,19 @@ if basic("23-shortcuts", log, allow_fail=('cmd app {"action":"shortcut_set","id"
     check("23-shortcuts", "a cleared shortcut is saved as none", bool(st) and st[-1]["shortcuts"].get("pause") == "",
           st[-1]["shortcuts"] if st else None)
 
+log = lines("24-long")
+if basic("24-long", log):
+    st = [x["result"] for x in steps(log, 'cmd editor {"action":"state"}')]
+    if len(st) == 2:
+        opened, after = st
+        check("24-long", "the 10-minute recording opened with its full length",
+              opened.get("rec_len_ns", 0) >= 590_000_000_000, opened.get("rec_len_ns"))
+        check("24-long", "first frame within 2 s of opening (definition of done)",
+              (opened.get("first_frame_ms") or 99999) < 2000, opened.get("first_frame_ms"))
+        check("24-long", "a seek near the end drew new frames",
+              after.get("frames_presented", 0) > opened.get("frames_presented", 0),
+              {"before": opened.get("frames_presented"), "after": after.get("frames_presented")})
+
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)
 failed = [r for r in results if not r["ok"]]

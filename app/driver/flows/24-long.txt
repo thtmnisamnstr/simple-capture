@@ -1,0 +1,13 @@
+# A 10-minute 3K recording (made by longproject.py, nothing captured) opens in the editor within
+# 2 s, and a seek near the end shows its frame quickly.
+cmd editor {"action":"open","project_dir":"@LONG@"}
+wait 2500
+cmd editor {"action":"rect","rect":{"x":0,"y":52,"w":880,"h":520}}
+wait 1500
+cmd editor {"action":"state"}
+cmd editor {"action":"seek","tl_ns":590000000000}
+wait 1500
+cmd editor {"action":"state"}
+cmd editor {"action":"close"}
+wait 500
+quit

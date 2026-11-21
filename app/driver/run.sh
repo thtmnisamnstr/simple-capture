@@ -135,6 +135,11 @@ if wanted 10-kill; then
 fi
 flow 11-quit-export
 [ ${#FILTERS[@]} -gt 0 ] && wanted 16-soak && flow 16-soak
+if [ ${#FILTERS[@]} -gt 0 ] && wanted 24-long && [ -n "$FFMPEG" ]; then
+  LONG="$(python3 -I "$HERE/longproject.py" "$FFMPEG" "$RUN/projects" "${SC_LONG_SECS:-600}")" || exit 1
+  sed -e "s|@LONG@|$LONG|g" "$HERE/flows/24-long.txt" > "$RUN/scripts/24-long.txt"
+  drive 24-long
+fi
 sleep 1
 [ -n "$FFMPEG" ] && pgrep -fl "$FFMPEG" > "$RUN/ffmpeg-after.txt" 2>/dev/null
 
