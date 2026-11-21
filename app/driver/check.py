@@ -546,6 +546,30 @@ if basic("17-editor", log):
             pj = pr["project"].get("text", [])
             check("17-editor", "text item autosaved", len(pj) == 1 and pj[0].get("content") == "DRIVER TEXT",
                   [t.get("content") for t in pj])
+        done = [x.get("path", "") for x in events(log, "export-state") if x.get("state") == "done"]
+        probe_bin = os.path.join(os.path.dirname(FFMPEG), "ffprobe") if FFMPEG else ""
+
+        def codec_of(path):
+            if not (probe_bin and os.path.exists(probe_bin) and os.path.exists(path)):
+                return None
+            r = subprocess.run([probe_bin, "-v", "error", "-show_entries", "stream=codec_name,width,height",
+                                "-of", "json", path], capture_output=True, text=True)
+            try:
+                return json.loads(r.stdout).get("streams", [])
+            except ValueError:
+                return None
+
+        gif = [p for p in done if p.endswith(".gif")]
+        webm = [p for p in done if p.endswith(".webm")]
+        g = codec_of(gif[0]) if gif else None
+        w = codec_of(webm[0]) if webm else None
+        check("17-editor", "export sheet path: GIF (240p) and WebM (VP9 + Opus) exported",
+              bool(g) and g[0].get("codec_name") == "gif" and g[0].get("height") == 240
+              and bool(w) and sorted(x.get("codec_name") for x in w) == ["opus", "vp9"],
+              {"gif": g, "webm": w})
+        est = [s["result"] for s in steps(log, 'cmd editor {"action":"export_estimate"')]
+        check("17-editor", "estimate before export", bool(est) and est[0].get("canvas", {}).get("h") == 240
+              and est[0].get("bytes_high", 0) > est[0].get("bytes_low", 0) > 0, est[:1])
         ui = [l for l in log if l.get("event") == "editor-frame"]
         check("17-editor", "editor-frame says native on macOS", sys.platform != "darwin" or (ui and ui[-1]["payload"].get("native")),
               ui[-1]["payload"] if ui else None)

@@ -28,6 +28,11 @@ cmd editor {"action":"state"}
 wait 800
 cmd editor {"action":"export","size":"720"}
 wait-phase saved 180000
+cmd editor {"action":"export_estimate","settings":{"format":"gif","fps":10,"size":{"kind":"class","value":240}}}
+cmd editor {"action":"export_start","settings":{"format":"gif","fps":10,"size":{"kind":"class","value":240}}}
+wait-phase saved 180000
+cmd editor {"action":"export_start","settings":{"format":"webm","quality":{"tier":"small"},"size":{"kind":"class","value":480}}}
+wait-phase saved 180000
 cmd editor {"action":"close"}
 wait 500
 quit
