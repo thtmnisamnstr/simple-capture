@@ -29,18 +29,17 @@
     aspectRatio,
     CAMERA_SIZE_PRESETS,
     cornerCenter,
-    fitBox,
     ratioOf,
     referenceCanvasSize,
     smallContent,
     type Corner,
   } from '../lib/geometry.ts';
   import { CAMERA_SHAPES, shapeAspect, shapeChange } from '../lib/camera.ts';
-  const PREVIEW_MAX = 112;
   import { backgroundCss, backgroundSummary } from '../lib/backgrounds.ts';
   import { rememberSource } from '../lib/recent.ts';
   import { beginPick, beginRegion, hideSelf, showWindow, systemPicker } from '../lib/windows.ts';
   import BackgroundEditor from '../components/BackgroundEditor.svelte';
+  import Icon from '../components/Icon.svelte';
 
   let perms = $state<PermissionsDto | null>(null);
   let caps = $state<CapabilitiesDto | null>(null);
@@ -52,6 +51,8 @@
   let via = $state<Via>('own_chooser');
   let tab = $state<'displays' | 'windows' | 'apps'>('displays');
   let appDisplay = $state<string | null>(null);
+  const PREVIEW_W = 316;
+  const PREVIEW_H = 138;
   let still = $state<string | null>(null);
   let bgOpen = $state(false);
   let error = $state<string | null>(null);
@@ -79,7 +80,11 @@
     const fixed = aspectRatio(settings.canvas.aspect);
     return referenceCanvasSize(settings.canvas.aspect, fixed ?? ratioOf(contentPx), [contentPx]);
   });
-  const previewBox = $derived(fitBox(canvasPx ?? { w: 16, h: 10 }, PREVIEW_MAX));
+  const previewBox = $derived.by(() => {
+    const c = canvasPx ?? { w: 16, h: 10 };
+    const k = Math.min(PREVIEW_W / c.w, PREVIEW_H / c.h);
+    return { w: Math.max(1, Math.round(c.w * k)), h: Math.max(1, Math.round(c.h * k)) };
+  });
   const isSmall = $derived(!!canvasPx && !!contentPx && smallContent(canvasPx, contentPx));
   const missingPerms = $derived(perms ? (['screen', 'camera', 'mic'] as const).filter((k) => perms![k] !== 'granted') : []);
 
@@ -284,268 +289,335 @@
 </script>
 
 <div class="window panel">
-  <header>
-    <h1>Simple Capture</h1>
+  <div class="scroll">
     {#if missingPerms.length}
-      <button class="link" onclick={() => showWindow('onboarding')}>Permissions…</button>
-    {/if}
-  </header>
-
-  {#if recovery.length}
-    <p class="warn" role="status">
-      {recovery.length === 1 ? 'A recording from a previous session was recovered.' : `${recovery.length} recordings from a previous session were recovered.`}
-      <button class="link" onclick={() => run(() => api.reveal(recovery[0].dir))}>Reveal</button>
-    </p>
-  {/if}
-
-  <section aria-labelledby="src-h">
-    <h2 id="src-h">Source</h2>
-    <div class="segmented tabs" role="tablist" aria-label="Source type">
-      <button role="tab" aria-selected={tab === 'displays'} onclick={() => (tab = 'displays')}>Displays</button>
-      <button role="tab" aria-selected={tab === 'windows'} onclick={() => (tab = 'windows')}>Windows</button>
-      {#if caps?.application_source !== false}
-        <button role="tab" aria-selected={tab === 'apps'} onclick={() => (tab = 'apps')}>Apps</button>
-      {/if}
-    </div>
-
-    <div class="list" role="tabpanel" aria-label="Sources">
-      {#if tab === 'displays'}
-        {#each displays as d (d.id)}
-          {@const spec: SourceSpecDto = { kind: 'display', display_id: d.id }}
-          <button class="item" aria-pressed={sameSource(source, spec)} onclick={() => choose(spec)}>
-            <span class="name">{d.name}{d.is_main ? ' (main)' : ''}</span>
-            <span class="muted small">{d.size_px.w}×{d.size_px.h}</span>
-          </button>
-        {/each}
-      {:else if !screenGranted}
-        <p class="muted empty">Grant Screen Recording to list windows and apps.</p>
-        <div class="row empty">
-          <button onclick={() => showWindow('onboarding')}>Grant…</button>
-          {#if caps?.system_picker}<button onclick={() => run(() => systemPicker('start'))}>System picker…</button>{/if}
-        </div>
-      {:else if tab === 'windows'}
-        {#each all.windows.filter((w) => w.on_screen) as w (w.id)}
-          {@const spec: SourceSpecDto = { kind: 'window', window_id: w.id }}
-          <button class="item" aria-pressed={sameSource(source, spec)} onclick={() => choose(spec)}>
-            <span class="name">{windowTitle(w)}</span>
-            <span class="muted small">{Math.round(w.frame_pt.w)}×{Math.round(w.frame_pt.h)} pt</span>
-          </button>
-        {:else}
-          <p class="muted empty">No windows to record.</p>
-        {/each}
-      {:else}
-        {#if displays.length > 1}
-          <label class="row small app-display">
-            Record on
-            <select bind:value={appDisplay}>
-              {#each displays as d (d.id)}<option value={d.id}>{d.name}</option>{/each}
-            </select>
-          </label>
-        {/if}
-        {#each all.apps as a (a.app.pid)}
-          {@const spec: SourceSpecDto = { kind: 'application', display_id: appDisplay ?? displays[0]?.id ?? '', pid: a.app.pid, bundle_id: a.app.bundle_id }}
-          <button class="item" aria-pressed={sameSource(source, spec)} onclick={() => choose(spec)}>
-            <span class="name">{a.name}</span>
-            <span class="muted small">all its windows</span>
-          </button>
-        {:else}
-          <p class="muted empty">No apps to record.</p>
-        {/each}
-      {/if}
-    </div>
-
-    <div class="row actions">
-      <button onclick={() => run(() => beginRegion('start', sourceDisplay?.id ?? null))}>Select region…</button>
-      <button onclick={() => run(() => beginPick('start'))}>Pick window by clicking</button>
-      {#if caps?.system_picker}<button onclick={() => run(() => systemPicker('start'))}>System picker…</button>{/if}
-    </div>
-
-    {#if pickedDisplay}
-      <div class="choice" role="group" aria-label="Picked display">
-        <span>Record the whole display or a region of it?</span>
-        <button onclick={() => (pickedDisplay = null)}>Whole display</button>
-        <button onclick={regionOfPicked}>Select region…</button>
-      </div>
+      <button class="banner" onclick={() => showWindow('onboarding')}>
+        <span class="banner-icon"><Icon name="lock" size={15} /></span>
+        <span class="banner-text">
+          <strong>Permissions needed</strong>
+          <span class="caption">Simple Capture can’t use {missingPerms.length === 1 ? 'one device' : `${missingPerms.length} devices`} yet.</span>
+        </span>
+        <Icon name="chevron" size={13} />
+      </button>
     {/if}
 
-    {#if source}
-      <p class="current small">
-        <span class="muted">Source:</span>
-        {sourceLabel(source, all)}{via === 'system_picker' ? ' (system picker)' : ''}
+    {#if recovery.length}
+      <p class="warn" role="status">
+        <Icon name="warning" size={14} />
+        <span>
+          {recovery.length === 1 ? 'A recording from a previous session was recovered.' : `${recovery.length} recordings from a previous session were recovered.`}
+          <button class="link" onclick={() => run(() => api.reveal(recovery[0].dir))}>Show in Finder</button>
+        </span>
       </p>
     {/if}
-  </section>
 
-  {#if settings}
-    <section aria-labelledby="frame-h">
-      <h2 id="frame-h">Frame</h2>
-      <div class="preview-row">
-        <div
-          class="preview"
-          style:width="{previewBox.w}px"
-          style:height="{previewBox.h}px"
-          style:background={backgroundCss(settings.canvas.background)}
-        >
-          {#if still}<img src={still} alt="Preview of the frame" />{/if}
-        </div>
-        <div class="frame-controls">
-          <div class="segmented" role="radiogroup" aria-label="Frame shape">
-            {#each ASPECTS as a (a.value)}
-              <button role="radio" aria-checked={settings.canvas.aspect === a.value} onclick={() => (settings!.canvas.aspect = a.value)}>
-                {a.label}
-              </button>
-            {/each}
-          </div>
-          <p class="muted small">Original = the first source’s shape.</p>
-          <label class="small"><input type="checkbox" bind:checked={settings.preview_shown} /> Show the Preview window</label>
-          {#if canvasPx}<p class="muted small">Video size {canvasPx.w}×{canvasPx.h}</p>{/if}
-        </div>
-      </div>
-      {#if isSmall}
-        <p class="warn" role="status">
-          The source will look small in this frame (under a quarter of its width or height). Try a frame closer to its shape, or
-          record a region.
-        </p>
-      {/if}
-      <div class="row">
-        <span class="label">Background</span>
-        <button class="bg-button" aria-expanded={bgOpen} aria-haspopup="dialog" onclick={() => (bgOpen = !bgOpen)}>
-          <span class="chip" style:background={backgroundCss(settings.canvas.background)}></span>
-          {backgroundSummary(settings.canvas.background)}
-        </button>
-      </div>
-      {#if bgOpen}
-        <BackgroundEditor bind:canvas={settings.canvas} onclose={() => (bgOpen = false)} />
-      {/if}
-    </section>
-
-    <section aria-labelledby="av-h">
-      <h2 id="av-h">Camera and audio</h2>
-      <div class="row nowrap">
-        <label class="label" for="camera">Camera</label>
-        <select id="camera" bind:value={settings.camera}>
-          <option value={null}>None</option>
-          {#each devices.cameras as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
-        </select>
-        {#if caps?.mic_modes}
-          <button onclick={() => run(() => api.showVideoEffects())} disabled={!settings.camera}>Video Effects…</button>
-        {/if}
-      </div>
-      {#if settings.camera}
-        {@const k = settings.camera_key}
-        <div class="row">
-          <span class="label" id="shape-l">Shape</span>
-          <div class="segmented wrap" role="radiogroup" aria-labelledby="shape-l">
-            {#each CAMERA_SHAPES as sh (sh.value)}
-              <button role="radio" aria-checked={k.shape === sh.value} title={sh.title} onclick={() => setKey(shapeChange(k, sh.value))}>{sh.label}</button>
-            {/each}
-          </div>
-        </div>
-        {#if k.shape !== 'circle'}
-          <div class="row nowrap">
-            <label class="label" for="radius">Corners</label>
-            <input id="radius" type="range" min="0" max="1" step="0.01" value={k.corner_radius} oninput={(e) => setKey({ corner_radius: Number(e.currentTarget.value) })} />
-          </div>
-        {/if}
-        <div class="row">
-          <span class="label" id="size-l">Size</span>
-          <div class="segmented" role="radiogroup" aria-labelledby="size-l">
-            {#each ['S', 'M', 'L'] as label, i (label)}
-              <button role="radio" aria-checked={Math.abs(k.size_norm - CAMERA_SIZE_PRESETS[i]) < 0.005} onclick={() => setKey({ size_norm: CAMERA_SIZE_PRESETS[i] })}>{label}</button>
-            {/each}
-          </div>
-          <div class="segmented" role="group" aria-label="Corner">
-            <button title="Top left" onclick={() => placeCorner('top_left')}>↖</button>
-            <button title="Top right" onclick={() => placeCorner('top_right')}>↗</button>
-            <button title="Bottom left" onclick={() => placeCorner('bottom_left')}>↙</button>
-            <button title="Bottom right" onclick={() => placeCorner('bottom_right')}>↘</button>
-          </div>
-        </div>
-        <div class="row indent">
-          <label><input type="checkbox" checked={k.mirror} onchange={(e) => setKey({ mirror: e.currentTarget.checked })} /> Mirror</label>
-          <label
-            ><input
-              type="checkbox"
-              checked={!!k.border}
-              onchange={(e) => setKey({ border: e.currentTarget.checked ? { width_px_1080: 6, color: [1, 1, 1, 1] } : null })}
-            /> Border</label
-          >
-          <label><input type="checkbox" checked={!!k.shadow} onchange={(e) => setKey({ shadow: e.currentTarget.checked ? { strength: 0.7 } : null })} /> Shadow</label>
-          <label><input type="checkbox" checked={k.visible} onchange={(e) => setKey({ visible: e.currentTarget.checked })} /> In the video</label>
-          {#if k.zoom > 1 || k.pan_norm.x !== 0 || k.pan_norm.y !== 0}
-            <button class="link" onclick={() => setKey({ zoom: 1, pan_norm: { x: 0, y: 0 } })}>Reset framing</button>
+    <section aria-labelledby="src-h">
+      <div class="head">
+        <h2 id="src-h">Source</h2>
+        <div class="segmented" role="tablist" aria-label="Source type">
+          <button role="tab" aria-selected={tab === 'displays'} onclick={() => (tab = 'displays')}>Displays</button>
+          <button role="tab" aria-selected={tab === 'windows'} onclick={() => (tab = 'windows')}>Windows</button>
+          {#if caps?.application_source !== false}
+            <button role="tab" aria-selected={tab === 'apps'} onclick={() => (tab = 'apps')}>Apps</button>
           {/if}
         </div>
-        <p class="muted small indent">Place the camera in the Preview window: drag it, resize it by its corners, scroll on it to zoom.</p>
-      {/if}
-      <div class="row nowrap">
-        <label class="label" for="mic">Microphone</label>
-        <select id="mic" bind:value={settings.mic}>
-          <option value={null}>None</option>
-          {#each devices.mics as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
-        </select>
-        {#if caps?.mic_modes}
-          <button onclick={() => run(() => api.showMicModes())} disabled={!settings.mic}>Mic Mode…</button>
+      </div>
+
+      <div class="group list" role="tabpanel" aria-label="Sources">
+        {#if tab === 'displays'}
+          {#each displays as d (d.id)}
+            {@const spec: SourceSpecDto = { kind: 'display', display_id: d.id }}
+            <button class="item" aria-pressed={sameSource(source, spec)} onclick={() => choose(spec)}>
+              <Icon name="display" />
+              <span class="name">{d.name}</span>
+              {#if d.is_main}<span class="tag">Main</span>{/if}
+              <span class="dim tnum">{d.size_px.w} × {d.size_px.h}</span>
+            </button>
+          {/each}
+        {:else if !screenGranted}
+          <div class="empty">
+            <p class="muted">Allow Screen Recording to list windows and apps.</p>
+            <div class="row">
+              <button onclick={() => showWindow('onboarding')}>Allow…</button>
+              {#if caps?.system_picker}<button onclick={() => run(() => systemPicker('start'))}>Use the System Picker…</button>{/if}
+            </div>
+          </div>
+        {:else if tab === 'windows'}
+          {#each all.windows.filter((w) => w.on_screen) as w (w.id)}
+            {@const spec: SourceSpecDto = { kind: 'window', window_id: w.id }}
+            <button class="item" aria-pressed={sameSource(source, spec)} onclick={() => choose(spec)}>
+              <Icon name="window" />
+              <span class="name">{windowTitle(w)}</span>
+              <span class="dim tnum">{Math.round(w.frame_pt.w)} × {Math.round(w.frame_pt.h)}</span>
+            </button>
+          {:else}
+            <p class="muted empty">No windows to record.</p>
+          {/each}
+        {:else}
+          {#if displays.length > 1}
+            <label class="app-display caption">
+              Record on
+              <select bind:value={appDisplay}>
+                {#each displays as d (d.id)}<option value={d.id}>{d.name}</option>{/each}
+              </select>
+            </label>
+          {/if}
+          {#each all.apps as a (a.app.pid)}
+            {@const spec: SourceSpecDto = { kind: 'application', display_id: appDisplay ?? displays[0]?.id ?? '', pid: a.app.pid, bundle_id: a.app.bundle_id }}
+            <button class="item" aria-pressed={sameSource(source, spec)} onclick={() => choose(spec)}>
+              <Icon name="app" />
+              <span class="name">{a.name}</span>
+              <span class="dim">All windows</span>
+            </button>
+          {:else}
+            <p class="muted empty">No apps to record.</p>
+          {/each}
         {/if}
       </div>
-      <div class="row">
-        <span class="label" id="sa-l">System audio</span>
-        <div class="segmented" role="radiogroup" aria-labelledby="sa-l">
-          <button role="radio" aria-checked={settings.system_audio === 'off'} onclick={() => (settings!.system_audio = 'off')}>Off</button>
-          <button role="radio" aria-checked={settings.system_audio === 'all'} onclick={() => (settings!.system_audio = 'all')}>All</button>
-          <button
-            role="radio"
-            aria-checked={settings.system_audio === 'app'}
-            disabled={!!whyAppAudio}
-            title={whyAppAudio ?? ''}
-            onclick={() => (settings!.system_audio = 'app')}>App</button
-          >
-        </div>
-      </div>
-      {#if whyAppAudio && source?.kind !== 'application'}<p class="muted small indent">App: {whyAppAudio}.</p>{/if}
-    </section>
 
-    <section aria-labelledby="vid-h">
-      <h2 id="vid-h">Video</h2>
-      <div class="row">
-        <span class="label" id="fps-l">Frame rate</span>
-        <div class="segmented" role="radiogroup" aria-labelledby="fps-l">
-          <button role="radio" aria-checked={fpsChoice === '30'} onclick={() => setFps('30')}>30 fps</button>
-          <button role="radio" aria-checked={fpsChoice === '60'} disabled={!!why60} title={why60 ?? ''} onclick={() => setFps('60')}>60 fps</button>
-          <button role="radio" aria-checked={fpsChoice === '60-1x'} disabled={!!why60x1} title={why60x1 ?? ''} onclick={() => setFps('60-1x')}>
-            60 fps at 1×
-          </button>
-        </div>
+      <div class="tools">
+        <button onclick={() => run(() => beginRegion('start', sourceDisplay?.id ?? null))}><Icon name="region" size={14} />Region…</button>
+        <button onclick={() => run(() => beginPick('start'))}><Icon name="pointer" size={14} />Click a Window</button>
+        {#if caps?.system_picker}<button onclick={() => run(() => systemPicker('start'))} title="Choose with the macOS picker"><Icon name="picker" size={14} />System…</button>{/if}
       </div>
-      {#if why60}<p class="muted small indent">60 fps: {why60}.</p>{/if}
-      {#if why60x1 && why60x1 !== why60}<p class="muted small indent">60 fps at 1×: {why60x1}.</p>{/if}
-      <div class="row">
-        <span class="label" id="res-l">Resolution</span>
-        <div class="segmented" role="radiogroup" aria-labelledby="res-l">
-          <button
-            role="radio"
-            aria-checked={settings.resolution === 'native'}
-            disabled={settings.fps === 60 && !!why60}
-            onclick={() => (settings!.resolution = 'native')}>Native</button
-          >
-          <button role="radio" aria-checked={settings.resolution === '1x'} onclick={() => (settings!.resolution = '1x')}>1×</button>
+
+      {#if pickedDisplay}
+        <div class="choice" role="group" aria-label="Picked display">
+          <span>Record the whole display, or a region of it?</span>
+          <div class="row">
+            <button onclick={() => (pickedDisplay = null)}>Whole Display</button>
+            <button class="primary" onclick={regionOfPicked}>Select Region…</button>
+          </div>
         </div>
-      </div>
-      <label class="row check"><input type="checkbox" bind:checked={settings.cursor} /> Show the cursor</label>
-      {#if caps?.show_clicks}
-        <label class="row check">
-          <input type="checkbox" bind:checked={settings.click_highlight} disabled={!settings.cursor} /> Highlight clicks
-        </label>
       {/if}
     </section>
-  {/if}
 
-  {#if error}<p class="warn" role="alert">{error}</p>{/if}
+    {#if settings}
+      <section aria-labelledby="frame-h">
+        <h2 id="frame-h">Frame</h2>
+        <div class="group">
+          <div class="grow stage-row">
+            <div class="stage-well">
+              <div
+                class="preview"
+                style:width="{previewBox.w}px"
+                style:height="{previewBox.h}px"
+                style:background={backgroundCss(settings.canvas.background)}
+              >
+                {#if still}<img src={still} alt="Preview of the frame" />{/if}
+              </div>
+            </div>
+            {#if canvasPx}<p class="caption center tnum">{canvasPx.w} × {canvasPx.h} video</p>{/if}
+          </div>
+          <div class="grow">
+            <span class="glabel">Shape</span>
+            <div class="gcontrol wide">
+              <div class="segmented" role="radiogroup" aria-label="Frame shape">
+                {#each ASPECTS as a (a.value)}
+                  <button
+                    role="radio"
+                    aria-checked={settings.canvas.aspect === a.value}
+                    title={a.value === 'original' ? 'The first source’s shape' : a.label}
+                    onclick={() => (settings!.canvas.aspect = a.value)}>{a.label}</button
+                  >
+                {/each}
+              </div>
+            </div>
+          </div>
+          <div class="grow">
+            <span class="glabel">Background</span>
+            <div class="gcontrol">
+              <button class="bg-button" aria-expanded={bgOpen} aria-haspopup="dialog" onclick={() => (bgOpen = !bgOpen)}>
+                <span class="chip" style:background={backgroundCss(settings.canvas.background)}></span>
+                <span class="bg-name">{backgroundSummary(settings.canvas.background)}</span>
+              </button>
+            </div>
+          </div>
+          <label class="grow">
+            <span class="glabel">Show the Preview window</span>
+            <input class="switch" type="checkbox" bind:checked={settings.preview_shown} />
+          </label>
+        </div>
+        {#if isSmall}
+          <p class="warn" role="status">
+            <Icon name="warning" size={14} />
+            <span>The source will look small in this frame. Try a shape closer to the source, or record a region.</span>
+          </p>
+        {/if}
+        {#if bgOpen}
+          <BackgroundEditor bind:canvas={settings.canvas} onclose={() => (bgOpen = false)} />
+        {/if}
+      </section>
+
+      <section aria-labelledby="cam-h">
+        <h2 id="cam-h">Camera</h2>
+        <div class="group">
+          <div class="grow">
+            <span class="glabel with-icon"><Icon name="camera" />Camera</span>
+            <div class="gcontrol">
+              <select id="camera" aria-label="Camera" bind:value={settings.camera}>
+                <option value={null}>None</option>
+                {#each devices.cameras as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
+              </select>
+            </div>
+          </div>
+          {#if settings.camera}
+            {@const k = settings.camera_key}
+            <div class="grow stack">
+              <span class="glabel">Shape</span>
+              <div class="segmented shapes" role="radiogroup" aria-label="Camera shape">
+                {#each CAMERA_SHAPES as sh (sh.value)}
+                  <button role="radio" aria-checked={k.shape === sh.value} title={sh.title} onclick={() => setKey(shapeChange(k, sh.value))}>{sh.label}</button>
+                {/each}
+              </div>
+            </div>
+            {#if k.shape !== 'circle'}
+              <div class="grow">
+                <label class="glabel" for="radius">Corners</label>
+                <div class="gcontrol"><input id="radius" class="slider" type="range" min="0" max="1" step="0.01" value={k.corner_radius} oninput={(e) => setKey({ corner_radius: Number(e.currentTarget.value) })} /></div>
+              </div>
+            {/if}
+            <div class="grow">
+              <span class="glabel">Size and place</span>
+              <div class="gcontrol">
+                <div class="segmented" role="radiogroup" aria-label="Camera size">
+                  {#each ['S', 'M', 'L'] as label, i (label)}
+                    <button role="radio" aria-checked={Math.abs(k.size_norm - CAMERA_SIZE_PRESETS[i]) < 0.005} onclick={() => setKey({ size_norm: CAMERA_SIZE_PRESETS[i] })}>{label}</button>
+                  {/each}
+                </div>
+                <div class="corners" role="group" aria-label="Corner">
+                  <button class="corner" title="Top left" aria-label="Top left" onclick={() => placeCorner('top_left')}><span class="tl"></span></button>
+                  <button class="corner" title="Top right" aria-label="Top right" onclick={() => placeCorner('top_right')}><span class="tr"></span></button>
+                  <button class="corner" title="Bottom left" aria-label="Bottom left" onclick={() => placeCorner('bottom_left')}><span class="bl"></span></button>
+                  <button class="corner" title="Bottom right" aria-label="Bottom right" onclick={() => placeCorner('bottom_right')}><span class="br"></span></button>
+                </div>
+              </div>
+            </div>
+            <div class="grow stack">
+              <div class="checks">
+                <label><input type="checkbox" checked={k.visible} onchange={(e) => setKey({ visible: e.currentTarget.checked })} /> In the video</label>
+                <label><input type="checkbox" checked={k.mirror} onchange={(e) => setKey({ mirror: e.currentTarget.checked })} /> Mirror</label>
+                <label
+                  ><input
+                    type="checkbox"
+                    checked={!!k.border}
+                    onchange={(e) => setKey({ border: e.currentTarget.checked ? { width_px_1080: 6, color: [1, 1, 1, 1] } : null })}
+                  /> Border</label
+                >
+                <label><input type="checkbox" checked={!!k.shadow} onchange={(e) => setKey({ shadow: e.currentTarget.checked ? { strength: 0.7 } : null })} /> Shadow</label>
+              </div>
+            </div>
+            <div class="grow">
+              <span class="glabel caption">Drag, resize and zoom the camera in the Preview window.</span>
+              <div class="gcontrol">
+                {#if k.zoom > 1 || k.pan_norm.x !== 0 || k.pan_norm.y !== 0}
+                  <button onclick={() => setKey({ zoom: 1, pan_norm: { x: 0, y: 0 } })}>Reset Framing</button>
+                {/if}
+                {#if caps?.mic_modes}
+                  <button onclick={() => run(() => api.showVideoEffects())}>Effects…</button>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </div>
+      </section>
+
+      <section aria-labelledby="audio-h">
+        <h2 id="audio-h">Audio</h2>
+        <div class="group">
+          <div class="grow">
+            <span class="glabel with-icon"><Icon name="mic" />Microphone</span>
+            <div class="gcontrol">
+              <select id="mic" aria-label="Microphone" bind:value={settings.mic}>
+                <option value={null}>None</option>
+                {#each devices.mics as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
+              </select>
+              {#if caps?.mic_modes && settings.mic}
+                <button class="icon" title="Mic Mode" aria-label="Mic Mode" onclick={() => run(() => api.showMicModes())}>⋯</button>
+              {/if}
+            </div>
+          </div>
+          <div class="grow">
+            <span class="glabel with-icon"><Icon name="speaker" />System audio</span>
+            <div class="gcontrol">
+              <div class="segmented" role="radiogroup" aria-label="System audio">
+                <button role="radio" aria-checked={settings.system_audio === 'off'} onclick={() => (settings!.system_audio = 'off')}>Off</button>
+                <button role="radio" aria-checked={settings.system_audio === 'all'} onclick={() => (settings!.system_audio = 'all')}>All</button>
+                <button
+                  role="radio"
+                  aria-checked={settings.system_audio === 'app'}
+                  disabled={!!whyAppAudio}
+                  title={whyAppAudio ?? 'Only the chosen app’s audio'}
+                  onclick={() => (settings!.system_audio = 'app')}>App</button
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="vid-h">
+        <h2 id="vid-h">Video</h2>
+        <div class="group">
+          <div class="grow">
+            <span class="glabel">Frame rate</span>
+            <div class="gcontrol">
+              <div class="segmented" role="radiogroup" aria-label="Frame rate">
+                <button role="radio" aria-checked={fpsChoice === '30'} onclick={() => setFps('30')}>30</button>
+                <button role="radio" aria-checked={fpsChoice === '60'} disabled={!!why60} title={why60 ?? '60 fps'} onclick={() => setFps('60')}>60</button>
+                <button role="radio" aria-checked={fpsChoice === '60-1x'} disabled={!!why60x1} title={why60x1 ?? '60 fps at 1×'} onclick={() => setFps('60-1x')}>60 at 1×</button>
+              </div>
+            </div>
+          </div>
+          <div class="grow">
+            <span class="glabel">Resolution</span>
+            <div class="gcontrol">
+              <div class="segmented" role="radiogroup" aria-label="Resolution">
+                <button
+                  role="radio"
+                  aria-checked={settings.resolution === 'native'}
+                  disabled={settings.fps === 60 && !!why60}
+                  onclick={() => (settings!.resolution = 'native')}>Retina</button
+                >
+                <button role="radio" aria-checked={settings.resolution === '1x'} onclick={() => (settings!.resolution = '1x')}>1×</button>
+              </div>
+            </div>
+          </div>
+          <label class="grow">
+            <span class="glabel">Show the cursor</span>
+            <input class="switch" type="checkbox" bind:checked={settings.cursor} />
+          </label>
+          {#if caps?.show_clicks}
+            <label class="grow">
+              <span class="glabel">Highlight clicks</span>
+              <input class="switch" type="checkbox" bind:checked={settings.click_highlight} disabled={!settings.cursor} />
+            </label>
+          {/if}
+        </div>
+        {#if why60}<p class="caption note">60 fps: {why60}.</p>{/if}
+        {#if why60x1 && why60x1 !== why60}<p class="caption note">60 fps at 1×: {why60x1}.</p>{/if}
+      </section>
+    {/if}
+
+    {#if error}
+      <p class="warn" role="alert"><Icon name="warning" size={14} /><span>{error}</span></p>
+    {/if}
+  </div>
 
   <footer>
-    <button class="primary record" onclick={record} disabled={!settings?.source || recording || starting}>
+    <div class="summary">
+      {#if source}
+        <span class="summary-name">{sourceLabel(source, all)}{via === 'system_picker' ? ' (System Picker)' : ''}</span>
+        <span class="caption tnum">
+          {canvasPx ? `${canvasPx.w} × ${canvasPx.h}` : ''}{settings ? ` · ${settings.fps} fps` : ''}{settings?.camera ? ' · Camera' : ''}{settings?.mic ? ' · Mic' : ''}
+        </span>
+      {:else}
+        <span class="caption">Choose what to record.</span>
+      {/if}
+    </div>
+    <button class="record" onclick={record} disabled={!settings?.source || recording || starting}>
       <span class="dot" aria-hidden="true"></span>
-      {recording ? 'Recording…' : starting ? 'Starting…' : 'Record'}
+      {recording ? 'Recording' : starting ? 'Starting…' : 'Record'}
     </button>
   </footer>
 </div>
@@ -554,111 +626,182 @@
   .panel {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 12px 14px 0;
+    height: 100vh;
   }
-  header {
+  .scroll {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 12px 14px 14px;
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .scroll > :global(*) {
+    flex: none;
   }
   section {
     display: flex;
     flex-direction: column;
     gap: 7px;
   }
-  .tabs {
-    align-self: flex-start;
+  section h2 {
+    margin: 0 0 0 10px;
   }
-  .tabs button[aria-selected='true'] {
-    background: var(--accent);
-    color: var(--accent-text);
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 9px;
+    background: var(--warn-fill);
+    box-shadow: none;
+    text-align: left;
+    justify-content: flex-start;
+    color: var(--label);
+    white-space: normal;
+  }
+  .banner-icon {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    background: var(--orange);
+    color: #fff;
+  }
+  .banner-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .banner-text strong {
+    font-weight: 600;
   }
   .list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    max-height: 132px;
+    gap: 1px;
+    padding: 4px;
+    max-height: 148px;
     overflow-y: auto;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-    padding: 3px;
   }
   .item {
     display: flex;
-    justify-content: space-between;
     align-items: center;
     gap: 8px;
-    border: none;
-    text-align: left;
+    min-height: 26px;
+    padding: 3px 7px;
+    border-radius: 6px;
     background: transparent;
+    box-shadow: none;
+    text-align: left;
+    justify-content: flex-start;
+    color: var(--label);
     flex: none;
+  }
+  .item :global(.icon) {
+    color: var(--accent);
+  }
+  .item:hover:not([aria-pressed='true']) {
+    background: var(--fill);
   }
   .item[aria-pressed='true'] {
     background: var(--accent);
-    color: var(--accent-text);
+    color: var(--on-accent);
   }
-  .item[aria-pressed='true'] .muted {
+  .item[aria-pressed='true'] :global(.icon),
+  .item[aria-pressed='true'] .dim,
+  .item[aria-pressed='true'] .tag {
     color: inherit;
-    opacity: 0.85;
+  }
+  .item[aria-pressed='true'] .tag {
+    background: rgba(255, 255, 255, 0.22);
   }
   .name {
+    flex: 1 1 auto;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    min-width: 0;
+  }
+  .dim {
+    flex: none;
+    color: var(--label-2);
+    font-size: 11px;
+  }
+  .tag {
+    flex: none;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 0 5px;
+    border-radius: 4px;
+    color: var(--label-2);
+    background: var(--fill);
   }
   .empty {
-    margin: 6px;
+    padding: 8px 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
   .app-display {
-    padding: 2px 6px 4px;
-  }
-  .row {
     display: flex;
     align-items: center;
     gap: 8px;
+    padding: 3px 7px 5px;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
     flex-wrap: wrap;
   }
-  .nowrap {
-    flex-wrap: nowrap;
+  .tools {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    gap: 6px;
   }
-  .nowrap select {
+  .tools button {
     min-width: 0;
-    flex: 1;
-  }
-  .actions button {
     font-size: 12px;
+  }
+  .tools :global(.icon) {
+    color: var(--label-2);
   }
   .choice {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: 9px;
+    background: var(--group);
+    box-shadow: 0 0 0 0.5px var(--group-border);
+  }
+  .stage-row {
+    flex-direction: column;
+    align-items: stretch;
     gap: 6px;
-    align-items: center;
-    padding: 6px 8px;
-    border-radius: 6px;
-    background: var(--surface-2);
+    padding: 10px 10px 8px;
   }
-  .current {
-    margin: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .preview-row {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-  }
-  .preview {
-    flex: none;
-    border-radius: 5px;
-    border: 1px solid var(--border);
-    overflow: hidden;
+  .stage-well {
     display: flex;
     align-items: center;
     justify-content: center;
+    height: 146px;
+    border-radius: 7px;
+    background: var(--fill);
+  }
+  .preview {
+    flex: none;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.18);
   }
   .preview img {
     width: 100%;
@@ -666,62 +809,141 @@
     object-fit: contain;
     display: block;
   }
-  .frame-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
+  .center {
+    text-align: center;
   }
-  .frame-controls p {
-    margin: 0;
-  }
-  .label {
-    width: 86px;
-    flex: none;
-    color: var(--muted);
-  }
-  .indent {
-    margin: -3px 0 0 94px;
-  }
-  .bg-button {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .chip {
-    width: 14px;
-    height: 14px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-  }
-  .check {
-    gap: 6px;
-  }
-  p.warn {
-    margin: 0;
-  }
-  footer {
-    position: sticky;
-    bottom: 0;
-    padding: 10px 0 12px;
-    background: linear-gradient(transparent, var(--bg) 30%);
-    display: flex;
-    justify-content: flex-end;
-  }
-  .record {
-    min-width: 120px;
-    min-height: 30px;
-    font-weight: 600;
+  .with-icon {
     display: inline-flex;
     align-items: center;
     gap: 7px;
-    justify-content: center;
+  }
+  .with-icon :global(.icon) {
+    color: var(--label-2);
+  }
+  .gcontrol select {
+    max-width: 190px;
+  }
+  .wide {
+    max-width: 80%;
+  }
+  .bg-button {
+    max-width: 200px;
+  }
+  .bg-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chip {
+    flex: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 3.5px;
+    box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25);
+  }
+  .shapes {
+    display: flex;
+    width: 100%;
+  }
+  .shapes button {
+    padding: 1px 4px;
+  }
+  .slider {
+    width: 150px;
+  }
+  .corners {
+    display: grid;
+    grid-template-columns: repeat(2, 20px);
+    grid-template-rows: repeat(2, 11px);
+    gap: 2px;
+  }
+  .corner {
+    min-height: 0;
+    width: 20px;
+    height: 11px;
+    padding: 0;
+    border-radius: 3px;
+    position: relative;
+  }
+  .corner span {
+    position: absolute;
+    width: 5px;
+    height: 4px;
+    border-radius: 1px;
+    background: var(--label-2);
+  }
+  .tl {
+    top: 2px;
+    left: 3px;
+  }
+  .tr {
+    top: 2px;
+    right: 3px;
+  }
+  .bl {
+    bottom: 2px;
+    left: 3px;
+  }
+  .br {
+    bottom: 2px;
+    right: 3px;
+  }
+  .checks {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+    padding: 2px 0;
+  }
+  .checks label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .note {
+    margin: 0 10px;
+  }
+  footer {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px 12px;
+    background: var(--window);
+    box-shadow: 0 -0.5px 0 var(--separator);
+  }
+  .summary {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .summary-name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .record {
+    flex: none;
+    min-width: 104px;
+    min-height: 30px;
+    padding: 4px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    gap: 8px;
+    color: #fff;
+    background: linear-gradient(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0)), var(--red);
+    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+  .record:active:not(:disabled) {
+    background: var(--red);
+    filter: brightness(0.92);
   }
   .dot {
-    width: 9px;
-    height: 9px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
-    background: #ff3b30;
-    box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.9);
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
   }
 </style>

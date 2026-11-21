@@ -1371,3 +1371,36 @@ they are not a substitute for an M1 run.
 - **Consequences:** "the bubble matches the output" (SPEC) is met by showing the output itself.
   The bubble window, its renderer, `bubble_drag`/`bubble_state` and `OverlayRole::Bubble` are
   removed; `bubble_shown` in settings is read as `preview_shown`.
+
+## ADR-044: A macOS look for every window
+
+- **Status:** Accepted (owner 2026-11-20: "make the UI look better… more like a Mac tool-level UI
+  in terms of refinement, fit and finish").
+- **Decision:**
+  - One design system in `ui/src/app.css`:
+    - macOS semantic colours for light and dark, and the system accent colour (`AccentColor`) with
+      white text on it;
+    - controls drawn at AppKit sizes: push buttons, segmented controls, popup buttons with the
+      blue chevron box, switches, checkboxes, sliders and search fields;
+    - System Settings-style grouped forms (`.group` / `.grow`).
+  - A small set of SF Symbols-style line icons (`ui/src/components/Icon.svelte`, inline SVG; no
+    icon font or new dependency).
+  - The panel, Saved, Permissions and switcher windows are laid out as grouped forms and dialogs:
+    - the panel ends in a footer with the chosen source and a red Record button;
+    - Saved and Permissions hide their window titles (`hiddenTitle`), since their pages carry the
+      header.
+  - Native materials where windows float: `sc_capture_macos::material` puts an
+    `NSVisualEffectView` under the transparent webview:
+    - the HUD material (always dark) behind the control bar, as a rounded pill;
+    - the popover material behind the source switcher.
+
+    It makes those windows non-opaque through public AppKit API; Tauri's `macOSPrivateApi` stays
+    off (ADR-026).
+  - The panel, Saved, Permissions and Preview windows keep the standard title bar.
+- **Alternatives:** a component library (new dependency, still not native); Tauri's
+  `windowEffects` (needs `transparent` windows); real AppKit controls (a rewrite of the UI).
+- **Consequences:**
+  - The browser mock shows a solid stand-in for the materials (`:root[data-native]` marks the app).
+  - MANUAL_TEST uses the new labels: Region…, Click a Window, System…, Allow…, Show in Finder,
+    Export Video.
+  - Windows and Linux get the same CSS and no native material.

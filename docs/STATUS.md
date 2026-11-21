@@ -40,6 +40,14 @@ independent review of the branch (ADR-042 update, "review fixes"):
   looked like Square; the export's first frame had no camera.
 - The driver's summary ignored failures in flows 12 and 14.
 
+**UI refresh (owner 2026-11-20, ADR-044):** every window now follows macOS conventions:
+- system colours in light and dark, AppKit-sized controls and System Settings-style grouped forms;
+- a red Record button with a summary of what will be recorded;
+- a blurred HUD control bar and a popover-material source switcher (native `NSVisualEffectView`).
+
+Checked on the build Mac in a live driver run (flows 01, 04 and 14: 26/26) and on window
+screenshots.
+
 **What M2 does.** A Preview window shows the composed output with the live camera (any shape,
 size, position, zoom/pan, mirror, border, shadow) while the recorder panel is open or a recording
 runs, and is where the camera is placed (ADR-043). Moves, resizes, shape changes and hiding during a recording become keyframes. The quick

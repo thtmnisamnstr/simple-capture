@@ -1,6 +1,6 @@
 // Mock backend for the UI outside Tauri (Vite dev server, Browser pane, node tests).
 // Browser scenarios via the query string, e.g. `?screen=denied`, `?state=recording`,
-// `?notice=source_lost`, `?saved=1`.
+// `?notice=source_lost`, `?saved=1`, `?camera=1` (a camera chosen).
 
 import type {
   Background,
@@ -78,7 +78,7 @@ const devices: DevicesDto = {
 let settings: RecorderSettings = {
   source: { kind: 'display', display_id: '1' },
   canvas: { aspect: 'original', background: { kind: 'solid', color: [0.07, 0.07, 0.08, 1] }, background_image: null },
-  camera: null,
+  camera: q.get('camera') ? 'cam-1' : null,
   mic: 'mic-1',
   system_audio: 'off',
   fps: 30,

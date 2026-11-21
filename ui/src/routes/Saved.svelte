@@ -6,6 +6,7 @@
   import { basename, formatElapsed } from '../lib/format.ts';
   import { aspectRatio, ratioOf, referenceCanvasSize, type Size } from '../lib/geometry.ts';
   import { sourceSizePx } from '../lib/sources.ts';
+  import Icon from '../components/Icon.svelte';
 
   let projectDir = $state<string | null>(null);
   let duration = $state(0);
@@ -111,120 +112,173 @@
 
 <div class="window saved">
   {#if failed && !projectDir}
-    <h1>Recording failed</h1>
-    <p class="warn" role="alert">{failed}</p>
+    <header>
+      <span class="badge-icon bad"><Icon name="warning" size={20} /></span>
+      <div><h1>Recording failed</h1><p class="caption">{failed}</p></div>
+    </header>
   {:else if !projectDir}
-    <h1>Recording saved</h1>
-    <p class="muted">Nothing recorded yet.</p>
+    <header>
+      <span class="badge-icon"><Icon name="film" size={20} /></span>
+      <div><h1>Recording saved</h1><p class="caption">Nothing recorded yet.</p></div>
+    </header>
   {:else}
-    <h1>Recording saved</h1>
+    <header>
+      <span class="badge-icon ok"><Icon name="check" size={22} /></span>
+      <div class="title">
+        <h1>Recording saved</h1>
+        <p class="caption tnum">{formatElapsed(duration)}{size ? ` · ${size.w} × ${size.h}` : ''}</p>
+      </div>
+    </header>
+
     {#if stoppedFor}
       <p class="warn" role="status">
-        {stoppedFor === 'sleep' ? 'Recording stopped because the Mac went to sleep.' : 'Recording stopped because the disk is full.'}
-        Everything up to that point is saved.
+        <Icon name="warning" size={14} />
+        <span>
+          {stoppedFor === 'sleep' ? 'Recording stopped because the Mac went to sleep.' : 'Recording stopped because the disk is full.'}
+          Everything up to that point is saved.
+        </span>
       </p>
     {/if}
-    <dl>
-      <dt>Duration</dt>
-      <dd>{formatElapsed(duration)}</dd>
-      {#if size}
-        <dt>Size</dt>
-        <dd>{size.w}×{size.h}</dd>
-      {/if}
-      {#if contents}
-        <dt>Recorded</dt>
-        <dd>{contents}</dd>
-      {/if}
-      <dt>Project</dt>
-      <dd class="path" title={projectDir}>{basename(projectDir)}</dd>
-    </dl>
-    {#if contents}<p class="muted small">Export makes one video with all of it: the screen in its frame, the camera where you placed it, and the audio mixed.</p>{/if}
 
-    <div class="export" role="group" aria-label="Export">
-      {#if exporting}
-        <progress max="100" value={pct} aria-label="Export progress">{pct}%</progress>
-        <span class="muted small">
-          {exportState?.state === 'finalizing' ? 'Finishing…' : `${pct}%`}{progress?.eta_s != null ? ` · about ${Math.ceil(progress.eta_s)} s left` : ''}
+    <div class="group">
+      {#if contents}
+        <div class="grow"><span class="glabel muted">Recorded</span><span class="gcontrol value">{contents}</span></div>
+      {/if}
+      <div class="grow">
+        <span class="glabel muted">Project</span>
+        <span class="gcontrol value">
+          <span class="path" title={projectDir}>{basename(projectDir)}</span>
+          <button class="plain icon-btn" title="Show in Finder" aria-label="Show in Finder" onclick={() => run(() => api.reveal(projectDir!))}
+            ><Icon name="folder" size={14} /></button
+          >
         </span>
-        <button onclick={() => job && run(() => api.cancelExport(job!))}>Cancel</button>
-      {:else}
-        <label class="row">
-          <span class="muted">Size</span>
-          <select bind:value={exportSize}>
+      </div>
+      <div class="grow">
+        <label class="glabel muted" for="export-size">Export size</label>
+        <span class="gcontrol">
+          <select id="export-size" bind:value={exportSize} disabled={exporting}>
             {#each SIZES as s (s.value)}<option value={s.value}>{s.label}</option>{/each}
           </select>
-        </label>
-        <button class="primary" onclick={startExport}>Export video</button>
-      {/if}
+        </span>
+      </div>
     </div>
+    {#if contents}<p class="caption note">One video with all of it: the screen in its frame, the camera where you placed it, and the audio mixed.</p>{/if}
 
     {#if exportState?.state === 'done'}
       <p class="done" role="status">
-        Exported {basename(exportState.path)}
-        <button class="link" onclick={() => exportState?.state === "done" && run(() => api.reveal((exportState as { path: string }).path))}>Reveal</button>
+        <Icon name="check" size={14} />
+        <span class="path">Exported {basename(exportState.path)}</span>
+        <button class="link" onclick={() => exportState?.state === "done" && run(() => api.reveal((exportState as { path: string }).path))}>Show in Finder</button>
       </p>
     {:else if exportState?.state === 'failed'}
-      <p class="warn" role="alert">Export failed: {exportState.error}</p>
+      <p class="warn" role="alert"><Icon name="warning" size={14} /><span>Export failed: {exportState.error}</span></p>
     {:else if exportState?.state === 'canceled'}
-      <p class="muted" role="status">Export cancelled.</p>
+      <p class="caption note" role="status">Export cancelled.</p>
     {/if}
+    {#if error}<p class="warn" role="alert"><Icon name="warning" size={14} /><span>{error}</span></p>{/if}
 
-    {#if error}<p class="warn" role="alert">{error}</p>{/if}
-
-    <footer>
-      <button onclick={() => run(() => api.reveal(projectDir!))}>Reveal in Finder</button>
+    <footer role="group" aria-label="Export">
+      {#if exporting}
+        <div class="progress">
+          <progress max="100" value={pct} aria-label="Export progress">{pct}%</progress>
+          <span class="caption tnum">
+            {exportState?.state === 'finalizing' ? 'Finishing…' : `Exporting ${pct}%`}{progress?.eta_s != null ? ` · about ${Math.ceil(progress.eta_s)} s left` : ''}
+          </span>
+        </div>
+        <button onclick={() => job && run(() => api.cancelExport(job!))}>Cancel</button>
+      {:else}
+        <button onclick={() => run(() => api.reveal(projectDir!))}>Show in Finder</button>
+        <button class="primary" onclick={startExport}><Icon name="export" size={14} />Export Video</button>
+      {/if}
     </footer>
   {/if}
 </div>
 
 <style>
   .saved {
-    padding: 14px 16px;
+    padding: 16px 18px 14px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
   }
-  p {
-    margin: 0;
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
-  dl {
+  .title {
+    min-width: 0;
+  }
+  .badge-icon {
+    flex: none;
     display: grid;
-    grid-template-columns: 70px 1fr;
-    gap: 4px 10px;
-    margin: 0;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    color: #fff;
+    background: var(--label-3);
   }
-  dt {
-    color: var(--muted);
+  .badge-icon.ok {
+    background: var(--green);
   }
-  dd {
-    margin: 0;
-    font-variant-numeric: tabular-nums;
+  .badge-icon.bad {
+    background: var(--orange);
+  }
+  .value {
+    max-width: 70%;
+    justify-content: flex-end;
+    text-align: right;
   }
   .path {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
   }
-  .export {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
+  .icon-btn {
+    padding: 2px 4px;
+    color: var(--label-2);
   }
-  .row {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-  progress {
-    flex: 1;
-    min-width: 120px;
+  .note {
+    margin: -4px 10px 0;
   }
   .done {
-    color: var(--ok);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--green);
+    font-size: 12px;
+    min-width: 0;
   }
   footer {
+    margin-top: auto;
     display: flex;
     justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+  }
+  footer button {
+    min-width: 92px;
+  }
+  .progress {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  progress {
+    appearance: none;
+    width: 100%;
+    height: 6px;
+  }
+  progress::-webkit-progress-bar {
+    border-radius: 3px;
+    background: var(--fill-2);
+  }
+  progress::-webkit-progress-value {
+    border-radius: 3px;
+    background: var(--accent);
   }
 </style>

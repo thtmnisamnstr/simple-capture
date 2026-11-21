@@ -115,21 +115,22 @@ fail (note the frame time and which window).
 
 **L3. Recorder panel**
 - Do: tray → Open Recorder.
-- Expect: the "Simple Capture" panel with Source (Displays / Windows / Apps tabs), Frame, Camera
-  and audio, Video, and a Record button. No "Permissions…" link (all three grants held). If a
-  recording from an earlier crash exists, a yellow "A recording from a previous session was
-  recovered." line with Reveal.
+- Expect: the "Simple Capture" panel with grouped sections Source (Displays / Windows / Apps),
+  Frame, Camera, Audio and Video, and a footer with the chosen source and a red Record button. No
+  "Permissions needed" banner (all three grants held). If a recording from an earlier crash exists,
+  a yellow "A recording from a previous session was recovered." line with Show in Finder. The
+  controls look and behave like macOS ones in light and dark mode (System Settings → Appearance).
 - Look: the panel.
 
 **L4. Onboarding window**
-- Do: if the panel shows "Permissions…" (the dev host lacks one grant), click it. If all three
-  grants are held the link is hidden; then this step is covered by B1 and B5 in the release
+- Do: if the panel shows "Permissions needed" (the dev host lacks one grant), click it. If all
+  three grants are held the banner is hidden; then this step is covered by B1 and B5 in the release
   bundle. Do not change grants to test it.
 - Expect (whenever it shows): three rows, Screen Recording, Camera, Microphone, each with a status
   badge (Granted / Denied / Not asked yet / Restricted / Unknown) read **without prompting**;
-  Request only on "Not asked yet"; Open System Settings on anything not granted; the "Why macOS may
-  ask again" text explains the ad-hoc re-prompt and the macOS 15 reminder / private-picker bypass
-  alert, and points to System picker….
+  Allow… only on "Not asked yet"; Open Settings… on anything not granted; the "Why macOS may ask
+  again" disclosure explains the ad-hoc re-prompt and the macOS 15 reminder / private-picker bypass
+  alert, and points to the System Picker.
 - Look: the onboarding window; §12 for any prompt.
 
 ---
@@ -143,7 +144,7 @@ scrolling something inside the source, stop with the bar's **Stop**, then `scsho
 - Do: Displays tab → the "(main)" display → Record.
 - Expect: the floating bar appears (timer counting, Switch, Stop, ✕); the tray title shows the
   elapsed time (`0:07`); Stop opens the "Recording saved" window (Duration, Size, Project, Export
-  MP4, Reveal in Finder). One segment, `frame_px` = the display's pixel size shown in the list.
+  MP4, Show in Finder). One segment, `frame_px` = the display's pixel size shown in the list.
 - Look: bar, menu bar title, Saved window, `scshow`, `screen-000.mov` in QuickTime.
 
 **S2. Window**
@@ -161,7 +162,7 @@ scrolling something inside the source, stop with the bar's **Stop**, then `scsho
 - Look: QuickTime, `scshow` (`source.kind = application`).
 
 **S4. Region (drag)**
-- Do: Select region… → the region overlay covers the display with "Drag to select a region ·
+- Do: Region… → the region overlay covers the display with "Drag to select a region ·
   Esc to cancel". Drag a rectangle; move it by dragging inside; resize from a corner and an edge
   handle; type W and H in the toolbar; try the shape presets (Free, 16:9, 9:16, 4:3, 1:1; Match
   frame is disabled while the frame is Original); Esc once to cancel, then again with Use region.
@@ -178,7 +179,7 @@ scrolling something inside the source, stop with the bar's **Stop**, then `scsho
 - Look: `scshow`, QuickTime.
 
 **S6. Pick mode (click)**
-- Do: Pick window by clicking. A dimmed overlay with a card "Record… / Click a window / D whole
+- Do: Click a Window. A dimmed overlay with a card "Record… / Click a window / D whole
   display / Drag for a region / P system picker / Esc cancel". Hover over windows (each is
   highlighted with its title), click one.
 - Expect: the panel Source line shows that window. Repeat with **D** (whole display), with a drag
@@ -187,8 +188,8 @@ scrolling something inside the source, stop with the bar's **Stop**, then `scsho
 
 **S7. Second display at a different scale** (needs an external display whose scale differs from
 the built-in one, e.g. a 1× monitor next to a 2× Retina screen; a Sidecar iPad also works)
-- Do: (a) record the non-main display; (b) Select region… with the cursor on the second display
-  and drag a region there; (c) Pick window by clicking, move the cursor from one display to the
+- Do: (a) record the non-main display; (b) Region… with the cursor on the second display
+  and drag a region there; (c) Click a Window, move the cursor from one display to the
   other, click a window on the second display; (d) Apps tab: "Record on" the second display.
 - Expect: (a) `frame_px` = the second display's pixel size; (b) the overlay opens on the display
   under the cursor; px = pt × that display's scale; the recording shows the right area of the
@@ -218,9 +219,9 @@ the built-in one, e.g. a 1× monitor next to a 2× Retina screen; a Sidecar iPad
   only its audio" otherwise); `system_audio.mov` has only the chosen app's sound.
 - Look: panel, QuickTime on `system_audio.mov`.
 
-**S11. Mic Mode…**
-- Do: choose a microphone, click Mic Mode… (also once during a recording).
-- Expect: macOS's own Mic Mode panel (Control Center) opens; the button is disabled with no mic.
+**S11. Mic Mode**
+- Do: choose a microphone, click the ⋯ button next to it (Mic Mode; also once during a recording).
+- Expect: macOS's own Mic Mode panel (Control Center) opens; the button is hidden with no mic.
   If macOS shows nothing while the mic is idle, note whether it works during a recording.
 - Look: the Control Center panel; note the macOS version in §11.
 
@@ -232,7 +233,7 @@ the built-in one, e.g. a 1× monitor next to a 2× Retina screen; a Sidecar iPad
 - Look: QuickTime.
 
 **S13. 60 fps gating**
-- Do: Frame rate: try 30 fps, 60 fps and 60 fps at 1× on each display; then plug in a display
+- Do: Frame rate: try 30, 60 and 60 at 1× on each display; then plug in a display
   that was not connected at launch and select it.
 - Expect: 60 fps options are enabled only when the launch probe passed for that display; a
   disabled option says why ("This Mac can't keep up…" or, for a display connected after launch,
@@ -250,8 +251,8 @@ adds a segment whose start equals the previous segment's end; audio and camera t
 whole recording without gaps.
 
 **W1. From the bar**
-- Do: bar → Switch → the switch popover (Recent, Displays, Windows, search box, Select region…,
-  Pick by clicking, System picker…). Type part of a window title, choose it. Then Switch → a
+- Do: bar → Switch → the switch popover (Recent, Displays, Windows, search box, Region…,
+  Click a Window, System… (System Picker)). Type part of a window title, choose it. Then Switch → a
   display.
 - Expect: the bar says "Switching…" briefly, then "Recording"; the popover closes; Esc closes the
   popover without switching. Segments: display → window → display, `end=user_switch`.
@@ -298,45 +299,45 @@ whole recording without gaps.
 
 ## 4. System picker (under the dev host)
 
-Panel → System picker… (or **P** in pick mode). macOS shows its own content-sharing picker.
+Panel → System… (System Picker) (or **P** in pick mode). macOS shows its own content-sharing picker.
 
 **P1. Pick a display**
-- Do: System picker… → choose a display → in the panel "Record the whole display or a region of
-  it?" → Whole display → Record 10 s.
+- Do: System… (System Picker) → choose a display → in the panel "Record the whole display, or a region of
+  it?" → Whole Display → Record 10 s.
 - Expect: Source line ends "(system picker)"; segment `via=system_picker`, `frame_px` = display
   pixels. Any prompt or "bypass the private window picker" alert goes in §12.
 - Look: panel, `scshow`, §12.
 
 **P2. Pick a window**
-- Do: System picker… → a window → Record 10 s.
+- Do: System… (System Picker) → a window → Record 10 s.
 - Expect: as S2, `via=system_picker`.
 - Look: `scshow`, QuickTime.
 
 **P3. Pick an app**
-- Do: System picker… → an app → Record 10 s.
+- Do: System… (System Picker) → an app → Record 10 s.
 - Expect: as S3 (that app's windows only), `via=system_picker`.
 - Look: `scshow`, QuickTime.
 
 **P4. Cancel**
-- Do: System picker… → Cancel in the picker. Again from pick mode with **P** → Cancel.
+- Do: System… (System Picker) → Cancel in the picker. Again from pick mode with **P** → Cancel.
 - Expect: nothing changes, no error; the source stays as before.
 - Look: panel.
 
 **P5. Display then region**
-- Do: System picker… → a display → Select region… → drag a region on that display → Use region →
+- Do: System… (System Picker) → a display → Region… → drag a region on that display → Use region →
   Record 10 s.
 - Expect: the region overlay opens on the picked display; the recording shows the region;
   `source.kind = region`, `via=system_picker`.
 - Look: `scshow`, QuickTime.
 
 **P6. Switch with the picker**
-- Do: during a recording, bar → Switch → System picker… → a window; then Switch → System
+- Do: during a recording, bar → Switch → System… (System Picker) → a window; then Switch → System
   picker… → a display.
 - Expect: two new segments with `via=system_picker`; no gap in audio.
 - Look: `scshow`.
 
 **P7. Picked display with the floating bar visible — our pixels**
-- Do: System picker… → the display where the floating bar will show → Whole display → Record
+- Do: System… (System Picker) → the display where the floating bar will show → Whole Display → Record
   15 s. During the recording open the switch popover and close it, and open the tray menu.
 - Expect: the bar, the popover and the tray menu are **absent** from the recording
   (`excludedWindowIDs` on a picked display), per §0.4.
@@ -349,7 +350,7 @@ Panel → System picker… (or **P** in pick mode). macOS shows its own content-
 **E1. Quick export from the Saved window**
 - Do: after a recording, Size "Full size (long side up to 3840)" → Export MP4; then 1080p; then
   start one more and press Cancel.
-- Expect: a progress bar with % and about-N-s-left, then "Exported <name>.mp4" with Reveal; the
+- Expect: a progress bar with % and about-N-s-left, then "Exported <name>.mp4" with Show in Finder; the
   MP4 sits next to the project folder. Cancel shows "Export cancelled." and leaves no `.part`
   file and no `ffmpeg` process.
 - Look: Saved window; `ls "$(dirname "$(sclast)")"/*.part`; `pgrep -l ffmpeg`.
@@ -394,7 +395,7 @@ open "$OUT"
 **E4. Our UI and the tray menu absent from recordings**
 - Do: record the main display 20 s with Original; during it: open the recorder panel (tray →
   Open Recorder), open the switch popover, open the tray menu and hold it open 3 s, press ⌥⇧S and
-  Esc, open Select region… from the popover and Esc. Export.
+  Esc, open Region… from the popover and Esc. Export.
 - Expect: none of our windows, overlays or the tray menu are in any frame; the menu bar shows a
   gap where our status item is (§0.4). If the open tray menu does appear, write it down with the
   frame time: the docs then ask whether to accept that exception.
@@ -480,7 +481,7 @@ open "$OUT"
   system audio; switch source once; after 15 s `kill -KILL "$(cat "$TMPDIR/sc-app.pid")"`. Run
   `just run` again.
 - Expect: on relaunch the panel shows "A recording from a previous session was recovered." with
-  Reveal; `state: recovered`; the last segment ends with `end=recovered`; at most about 1 s is
+  Show in Finder; `state: recovered`; the last segment ends with `end=recovered`; at most about 1 s is
   lost per track; every track file plays; `"$SC" export "$(sclast)"` writes an MP4 that plays.
 - Look: panel, `scshow`, QuickTime, the export.
 
@@ -581,15 +582,15 @@ bar.
 
 **B1. Never-granted: onboarding and lists without a prompt**
 - Do: `open "$APP"`. Tray → Open Recorder. Click the Windows and Apps tabs. Click
-  "Permissions…".
+  "Permissions needed".
 - Expect: no prompt appears from opening the app, the panel, the tabs or the onboarding window
-  (status is read without asking). Windows/Apps say "Grant Screen Recording to list windows and
-  apps." with Grant… and System picker…. Onboarding shows "Not asked yet" (or the real state) for
+  (status is read without asking). Windows/Apps say "Allow Screen Recording to list windows and
+  apps." with Allow… and Use the System Picker…. Onboarding shows "Not asked yet" (or the real state) for
   all three.
 - Look: screen, §12.
 
 **B2. Never-granted: record through the system picker**
-- Do: System picker… → a display → Whole display; System audio All; Record 15 s with music
+- Do: System… (System Picker) → a display → Whole Display; System audio All; Record 15 s with music
   playing; stop; export. Repeat once with a window.
 - Expect: the macOS picker works without a Screen Recording grant (picking is consent for that
   recording). Note in §12 every prompt or alert (Screen Recording prompt, "bypass the private
@@ -604,7 +605,7 @@ bar.
 - Look: §12.
 
 **B4. Grant Screen Recording; whole-app exclusion re-test**
-- Do: onboarding → Screen Recording → Request (write down the prompt), grant it in System
+- Do: onboarding → Screen Recording → Allow… (write down the prompt), grant it in System
   Settings as macOS asks, and relaunch as macOS suggests. Quit the app, then:
   ```bash
   open -n --env SC_EXCLUSION=app "$APP"
@@ -617,7 +618,7 @@ bar.
 - Look: QuickTime frame by frame.
 
 **B5. Camera and microphone prompts**
-- Do: onboarding → Camera → Request; Microphone → Request. Then record with a camera and mic.
+- Do: onboarding → Camera → Allow…; Microphone → Allow…. Then record with a camera and mic.
 - Expect: each prompt shows our usage string: "Simple Capture records your camera when you turn
   the camera on for a recording." / "Simple Capture records your microphone when you choose a
   microphone for a recording."; after granting, the recording has `camera.mov` and `mic.mov`.
@@ -662,7 +663,7 @@ iPhone cameras all work on the build Mac.
   dashed outline and handles move with the camera.
 
 **M4. Video Effects**
-- Do: press Video Effects… next to the camera.
+- Do: press Effects… in the Camera section.
 - Expect: macOS's Video Effects panel opens for the camera and the Preview shows the effect.
 
 **M5. Other sources and frame shapes**
@@ -672,7 +673,7 @@ iPhone cameras all work on the build Mac.
 **M6. Record, move the camera, export**
 - Do: record for about 15 s; at 5 s drag the camera in the Preview to another corner, at 10 s
   untick "In the video", stop. Check the control bar's timer counts up, drag the bar by its grip,
-  and check the Saved window's duration and "Recorded" list; press Export video.
+  and check the Saved window's duration and "Recorded" list; press Export Video.
 - Expect: the export is one MP4 with the screen, the camera staying put until about 5 s, then
   following your drag, and gone from about 10 s, and the mic and system audio mixed; the Preview
   never appears in it. After Stop (the panel is hidden) the camera light goes off and the Preview

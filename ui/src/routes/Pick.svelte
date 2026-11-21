@@ -197,8 +197,11 @@
     gap: 14px;
     align-items: center;
     padding: 10px 16px;
-    border-radius: 12px;
-    background: rgba(30, 30, 32, 0.88);
+    border-radius: 14px;
+    background: rgba(30, 30, 32, 0.82);
+    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+    backdrop-filter: blur(20px) saturate(1.6);
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 8px 30px rgba(0, 0, 0, 0.35);
     color: #fff;
     font-size: 13px;
     white-space: nowrap;
@@ -206,9 +209,11 @@
   }
   kbd {
     font: inherit;
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 4px;
-    padding: 0 5px;
+    font-size: 12px;
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.3);
   }
   .err {
     position: absolute;

@@ -7,6 +7,7 @@ mod util;
 
 pub mod av;
 pub mod mainloop;
+pub mod material;
 pub mod preview;
 pub mod sck;
 

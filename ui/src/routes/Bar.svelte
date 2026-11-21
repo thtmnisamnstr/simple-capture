@@ -5,6 +5,7 @@
   import type { NoticeDto, RecordingState } from '../lib/types.ts';
   import { formatBytes, formatElapsed } from '../lib/format.ts';
   import { beginPick, showWindow } from '../lib/windows.ts';
+  import Icon from '../components/Icon.svelte';
 
   let rec = $state<RecordingState>({ state: 'idle' });
   let elapsed = $state(0);
@@ -131,7 +132,11 @@
 <svelte:window {onkeydown} onpointermove={gripMove} onpointerup={gripUp} />
 
 <div class="bar" role="toolbar" aria-label="Recording controls">
-  <span class="grip" role="presentation" title="Drag to move" onpointerdown={gripDown}>⋮⋮</span>
+  <span class="grip" role="presentation" title="Drag to move" onpointerdown={gripDown}>
+    <svg width="8" height="18" viewBox="0 0 8 18" aria-hidden="true"
+      >{#each [3, 9, 15] as y (y)}<circle cx="2" cy={y} r="1.1" /><circle cx="6" cy={y} r="1.1" />{/each}</svg
+    >
+  </span>
   <span class="rec" class:live aria-hidden="true"></span>
   <span class="timer" role="timer" aria-label="Elapsed">{formatElapsed(elapsed)}</span>
 
@@ -139,30 +144,32 @@
     <div class="msg" role="alertdialog" aria-labelledby="discard-q">
       <span id="discard-q">Discard this recording?</span>
     </div>
-    <button onclick={() => (confirming = false)}>Keep</button>
-    <button class="danger" onclick={() => act(async () => { confirming = false; await api.discardRecording(); })}>Discard</button>
+    <button class="hud" onclick={() => (confirming = false)}>Keep</button>
+    <button class="hud danger" onclick={() => act(async () => { confirming = false; await api.discardRecording(); })}>Discard</button>
   {:else}
     <div class="msg" aria-live="polite">
       {#if sourceLost}
-        <span class="lost">Source closed —</span>
-        <button class="link" onclick={() => act(switchSource)}>Switch source</button>
-        <span class="muted">·</span>
-        <button class="link" onclick={() => act(() => api.stopRecording())}>Stop</button>
+        <span class="lost">Source closed</span>
+        <button class="hud" onclick={() => act(switchSource)}>Switch…</button>
       {:else if error}
         <span class="err" title={error}>{error}</span>
       {:else if notice}
         <span class="notice" title={noticeText(notice)}>{noticeText(notice)}</span>
       {:else}
-        <span class="muted">{label}</span>
+        <span class="state">{label}</span>
       {/if}
     </div>
     {#if !sourceLost}
-      <button onclick={() => act(switchSource)} disabled={!live} title="Switch source (⌥⇧S)">Switch</button>
-      <button class="stop" onclick={() => act(() => api.stopRecording())} disabled={!live} aria-label="Stop recording">
-        <span class="square" aria-hidden="true"></span>Stop
+      <button class="hud round" onclick={() => act(switchSource)} disabled={!live} title="Switch Source (⌥⇧S)" aria-label="Switch source">
+        <Icon name="switch" size={16} />
       </button>
     {/if}
-    <button class="icon" onclick={() => (confirming = true)} disabled={!live && rec.state !== 'failed'} aria-label="Discard recording" title="Discard">✕</button>
+    <button class="stop" onclick={() => act(() => api.stopRecording())} disabled={!live && !sourceLost} aria-label="Stop recording" title="Stop">
+      <span class="square" aria-hidden="true"></span>
+    </button>
+    <button class="hud round" onclick={() => (confirming = true)} disabled={!live && rec.state !== 'failed'} aria-label="Discard recording" title="Discard">
+      <Icon name="close" size={14} />
+    </button>
   {/if}
 </div>
 
@@ -172,36 +179,41 @@
   }
   .bar {
     height: 100vh;
-    min-height: 40px;
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 0 10px;
-    background: var(--surface);
-    border-radius: 10px;
-    border: 1px solid var(--border);
+    gap: 8px;
+    padding: 0 10px 0 8px;
+    color: rgba(255, 255, 255, 0.92);
+    border-radius: 16px;
+    background: rgba(30, 30, 32, 0.94);
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
+  }
+  :global(:root[data-native]) .bar {
+    background: transparent;
   }
   .grip {
+    display: grid;
+    place-items: center;
+    width: 14px;
+    height: 32px;
     cursor: grab;
-    color: var(--muted);
-    font-size: 12px;
-    letter-spacing: -2px;
-    padding: 0 2px;
+    fill: rgba(255, 255, 255, 0.35);
   }
   .rec {
+    flex: none;
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--muted);
-    flex: none;
+    background: rgba(255, 255, 255, 0.35);
   }
   .rec.live {
-    background: #ff3b30;
+    background: #ff453a;
+    box-shadow: 0 0 8px rgba(255, 69, 58, 0.7);
     animation: pulse 1.6s ease-in-out infinite;
   }
   @keyframes pulse {
     50% {
-      opacity: 0.45;
+      opacity: 0.4;
     }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -210,16 +222,18 @@
     }
   }
   .timer {
-    font-variant-numeric: tabular-nums;
+    font-size: 17px;
     font-weight: 600;
-    min-width: 44px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+    min-width: 52px;
   }
   .msg {
     flex: 1;
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
     white-space: nowrap;
     overflow: hidden;
     font-size: 12px;
@@ -227,6 +241,9 @@
   .msg span {
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .state {
+    color: rgba(255, 255, 255, 0.55);
   }
   .notice,
   .err {
@@ -238,25 +255,54 @@
     line-height: 1.25;
   }
   .notice {
-    color: var(--warn-text);
+    color: #ffd60a;
   }
   .lost,
   .err {
-    color: var(--danger);
+    color: #ff6961;
+  }
+  .hud {
+    min-height: 26px;
+    color: rgba(255, 255, 255, 0.92);
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
+  }
+  .hud:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .hud:active:not(:disabled) {
+    background: rgba(255, 255, 255, 0.28);
+  }
+  .hud.danger {
+    background: #ff453a;
+    color: #fff;
+  }
+  .round {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 50%;
   }
   .stop {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 50%;
+    background: #ff453a;
+    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+  .stop:hover:not(:disabled) {
+    background: #ff5a50;
+  }
+  .stop:active:not(:disabled) {
+    background: #e0352b;
   }
   .square {
-    width: 8px;
-    height: 8px;
-    background: currentColor;
-    border-radius: 1px;
-  }
-  .icon {
-    width: 26px;
-    padding: 0;
+    width: 11px;
+    height: 11px;
+    border-radius: 2.5px;
+    background: #fff;
   }
 </style>

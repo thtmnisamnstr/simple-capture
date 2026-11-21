@@ -5,6 +5,8 @@ import { inTauri } from './lib/api.ts';
 import { bootMock } from './lib/mock.ts';
 import { installUiLog } from './lib/uilog.ts';
 
+if (inTauri()) document.documentElement.dataset.native = '';
+
 const target = document.getElementById('app');
 if (!target) throw new Error('missing #app');
 

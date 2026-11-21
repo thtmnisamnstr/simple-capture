@@ -200,6 +200,14 @@ impl Core {
                 .ok_or_else(|| format!("window {label} missing from tauri.conf.json"))?;
             let id = configure_one(&*self.platform, &w, role)
                 .map_err(|e| format!("configure window {label}: {e}"))?;
+            #[cfg(target_os = "macos")]
+            match label {
+                "bar" => apply_material(&w, sc_capture_macos::material::Material::Hud, 16.0),
+                "switcher" => {
+                    apply_material(&w, sc_capture_macos::material::Material::Popover, 12.0)
+                }
+                _ => {}
+            }
             tracing::info!(label, id = id.0, ?role, "configured window");
             ids.push((label.to_string(), id));
         }
@@ -1148,6 +1156,28 @@ impl Core {
         }
         self.exit_done.store(true, Ordering::SeqCst);
         self.app.exit(code);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn apply_material(
+    w: &tauri::WebviewWindow,
+    material: sc_capture_macos::material::Material,
+    radius: f64,
+) {
+    let label = w.label().to_string();
+    let applied = w.with_webview(move |pw| {
+        let Some(wk) = std::ptr::NonNull::new(pw.inner()) else {
+            return;
+        };
+        // SAFETY: Tauri runs this on the main thread with the live WKWebView.
+        if let Err(e) = unsafe { sc_capture_macos::material::material_under(wk, material, radius) }
+        {
+            tracing::warn!(label, "window material: {e}");
+        }
+    });
+    if let Err(e) = applied {
+        tracing::warn!("window material: {e}");
     }
 }
 

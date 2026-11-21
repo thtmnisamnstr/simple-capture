@@ -246,6 +246,7 @@ Other references:
 ## Platform notes
 - macOS (primary):
   - The bubble and control bar don't steal focus and stay visible on all Spaces and over full-screen apps (set via objc2 on the window handle). Transparent windows no longer need Tauri's macOSPrivateApi setting (Tauri 2.12.1+, ADR-026).
+  - The UI follows macOS conventions in light and dark mode (system colours and accent, AppKit-sized controls, grouped forms), with system materials behind the floating control bar and source switcher (owner 2026-11-20, ADR-044).
   - The Preview window draws its video into a Metal layer under its transparent webview (owner 2026-11-20, ADR-007), not through the webview. Windows and Linux send frames to the webview until their native paths are proven on real hardware.
   - Hardened runtime with camera/mic entitlements; sign the helpers too.
   - Sign every build with one stable Apple Development identity (a free personal team works). Ad-hoc signing makes macOS forget the Screen Recording permission on every build. Document "tccutil reset ScreenCapture <bundle-id>". (2026-11-19: the owner has no identity and may not create one. Until one exists, run development builds of the app through the Simple Capture Dev host, and expect ad-hoc-signed release builds to ask for permissions again after each update. See DECISIONS ADR-003.)
