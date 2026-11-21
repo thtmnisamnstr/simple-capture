@@ -3,14 +3,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use sc_core::camera::camera_at;
 use sc_core::image::RgbaImage;
-use sc_core::project::{Background, CameraKey, ProjectV1, TrackKind};
-use sc_decode::{SegmentFrameSource, TrackFrameSource, cfr_frame_times};
-use sc_geometry::{Ratio, RectPx, SizePx, camera_rects, contain_fit, even_round, preset_size};
+use sc_core::project::ProjectV1;
+use sc_decode::cfr_frame_times;
+use sc_geometry::{Ratio, RectPx, SizePx, even_round, preset_size};
 use sc_platform::{Decoder, Error, Result};
-use sc_render::{Backend, Compositor, FrameJob, OutputFormat, RenderedFrame, ScreenLayer};
-use sc_text::BackgroundCache;
+use sc_player::video::TimelineVideo;
+use sc_render::{Backend, Compositor, OutputFormat, RenderedFrame};
 
 use crate::{ExportSize, QuickExportRequest};
 
@@ -214,12 +213,14 @@ pub fn quick_plan(
     project_dir: &Path,
     req: &QuickExportRequest,
 ) -> Result<QuickPlan> {
-    let duration_ns = project.duration_ns().filter(|d| *d > 0).ok_or_else(|| {
-        Error::Other(format!(
-            "sc_export: {} has no recorded duration (still recording, or empty)",
-            project_dir.display()
-        ))
-    })?;
+    let duration_ns = Some(sc_player::timeline_doc(project).duration())
+        .filter(|d| *d > 0)
+        .ok_or_else(|| {
+            Error::Other(format!(
+                "sc_export: {} has no recorded duration (still recording, or empty)",
+                project_dir.display()
+            ))
+        })?;
     let fps = req
         .fps
         .unwrap_or(project.recording.screen.fps_requested)
@@ -245,24 +246,12 @@ pub fn quick_plan(
     })
 }
 
-pub(crate) fn audio_track_ids(project: &ProjectV1) -> Vec<String> {
-    project
-        .recording
-        .tracks
-        .iter()
-        .filter(|t| matches!(t.kind, TrackKind::Mic | TrackKind::SystemAudio))
-        .map(|t| t.id.clone())
-        .collect()
-}
+pub(crate) use sc_player::audio::audio_track_ids;
 
-/// Background, then the active (or held) screen segment contain-fit on the canvas.
+/// One output frame of the edited timeline: background, screen segment, camera.
 pub struct FrameRenderer {
-    source: SegmentFrameSource,
+    video: TimelineVideo,
     compositor: Compositor,
-    camera: Option<(TrackFrameSource, Vec<CameraKey>)>,
-    backgrounds: BackgroundCache,
-    background: Background,
-    project_dir: PathBuf,
     canvas: SizePx,
     format: OutputFormat,
 }
@@ -285,20 +274,14 @@ impl FrameRenderer {
         backend: Backend,
         format: OutputFormat,
     ) -> Result<FrameRenderer> {
-        let camera = match project.camera_layout.overlays.first() {
-            Some(o) if !o.keyframes.is_empty() => {
-                TrackFrameSource::open(project, project_dir, decoder.clone(), &o.track_id)?
-                    .map(|src| (src, o.keyframes.clone()))
-            }
-            _ => None,
-        };
         Ok(FrameRenderer {
-            camera,
-            source: SegmentFrameSource::open(project, project_dir, decoder)?,
+            video: TimelineVideo::open(
+                project,
+                project_dir,
+                decoder,
+                sc_player::timeline_doc(project),
+            )?,
             compositor: Compositor::new(backend)?,
-            backgrounds: BackgroundCache::new(1),
-            background: project.output.canvas.background.clone(),
-            project_dir: project_dir.to_path_buf(),
             canvas,
             format,
         })
@@ -309,52 +292,16 @@ impl FrameRenderer {
     }
 
     pub fn background(&mut self) -> Result<Arc<RgbaImage>> {
-        self.backgrounds
-            .get(&self.background, self.canvas, &self.project_dir)
-            .map_err(|e| Error::Other(format!("sc_export: background: {e}")))
+        self.video.background(self.canvas)
     }
 
-    /// Also returns where the screen frame landed (`None`: background only).
-    pub fn render(&mut self, t_rec_ns: i64) -> Result<(RenderedFrame, Option<RectPx>)> {
+    /// The frame at timeline time `t_tl_ns`, and where the screen landed (`None`: background
+    /// only).
+    pub fn render(&mut self, t_tl_ns: i64) -> Result<(RenderedFrame, Option<RectPx>)> {
         let bg = self.background()?;
-        let shown = self.source.frame_at(t_rec_ns)?;
-        let layer = shown
-            .as_ref()
-            .filter(|f| f.content_px.w > 0 && f.content_px.h > 0)
-            .map(|f| ScreenLayer {
-                frame: &f.frame,
-                src: f.content_px,
-                dst: contain_fit(
-                    self.canvas,
-                    SizePx {
-                        w: f.content_px.w,
-                        h: f.content_px.h,
-                    },
-                ),
-            });
-        let dst = layer.as_ref().map(|l| l.dst);
-        let mut cam_frame = None;
-        let mut placement = None;
-        if let Some((src, keys)) = self.camera.as_mut()
-            && let Some(p) = camera_at(keys, t_rec_ns)
-        {
-            cam_frame = src.frame_at(t_rec_ns)?;
-            placement = Some(p);
-        }
-        let camera = match (&cam_frame, &placement) {
-            (Some(f), Some(p)) => {
-                let rects = camera_rects(self.canvas, f.0.size(), p.shape.aspect(), &p.pose);
-                Some(sc_render::camera_layer(p, f, rects.dst))
-            }
-            _ => None,
-        };
-        let job = FrameJob {
-            background_key: None,
-            camera,
-            canvas: self.canvas,
-            background: &bg,
-            screen: layer,
-        };
+        let c = self.video.compose(t_tl_ns)?;
+        let dst = c.screen_dst(self.canvas);
+        let job = c.job(self.canvas, &bg, None);
         Ok((self.compositor.render(&job, self.format)?, dst))
     }
 }

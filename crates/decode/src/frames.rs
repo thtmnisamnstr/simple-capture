@@ -12,8 +12,13 @@ pub struct SegmentFrameSource {
     segs: Vec<Seg>,
     active: Option<Active>,
     carry: Option<(usize, FrameBuffer)>,
+    carry_known: bool,
     last_t: Option<i64>,
 }
+
+/// A request further ahead than this reopens the reader at the new time instead of decoding
+/// every frame in between.
+pub const SEEK_AHEAD_NS: i64 = 1_500_000_000;
 
 struct Seg {
     id: String,
@@ -117,6 +122,7 @@ impl SegmentFrameSource {
             segs,
             active: None,
             carry: None,
+            carry_known: false,
             last_t: None,
         })
     }
@@ -125,28 +131,61 @@ impl SegmentFrameSource {
     /// at `t` (a gap, before its first frame, a dropped segment); the id and sizes are those of
     /// the segment the frame came from.
     pub fn frame_at(&mut self, t_rec_ns: i64) -> Result<Option<SegmentFrame>> {
-        if self.last_t.is_some_and(|l| t_rec_ns < l) {
-            self.active = None;
-            self.carry = None;
-        }
+        let jump = self
+            .last_t
+            .is_none_or(|l| t_rec_ns < l || t_rec_ns - l > SEEK_AHEAD_NS);
         self.last_t = Some(t_rec_ns);
         let k = self.segs.partition_point(|s| s.start <= t_rec_ns);
         let Some(k) = k.checked_sub(1) else {
             return Ok(None);
         };
-        if self.active.as_ref().is_none_or(|a| a.seg != k) {
+        let rel = t_rec_ns - self.segs[k].start;
+        let same = self.active.as_ref().is_some_and(|a| a.seg == k);
+        if jump {
+            self.seek_to(k, rel)?;
+        } else if !same {
             self.switch_to(k)?;
         }
         let seg = &self.segs[k];
         let Some(active) = self.active.as_mut() else {
             return Ok(None);
         };
-        active.advance(t_rec_ns - seg.start, seg)?;
+        active.advance(rel, seg)?;
         let past_end = seg.end.is_some_and(|e| t_rec_ns >= e);
         if let Some(f) = active.current.clone() {
             return Ok(Some(self.shown(k, f, past_end)));
         }
+        if !self.carry_known {
+            self.find_carry(k)?;
+        }
         Ok(self.carry.clone().map(|(j, f)| self.shown(j, f, true)))
+    }
+
+    fn seek_to(&mut self, k: usize, rel: i64) -> Result<()> {
+        self.carry = None;
+        self.carry_known = false;
+        let from = self.segs[k].limit().map_or(rel, |l| rel.min(l - 1));
+        self.active = Some(self.open_segment(k, from)?);
+        Ok(())
+    }
+
+    /// The last frame of the nearest earlier segment that has one.
+    fn find_carry(&mut self, k: usize) -> Result<()> {
+        self.carry_known = true;
+        for j in (0..k).rev() {
+            let from = self.segs[j].limit().map_or(0, |l| (l - 1).max(0));
+            let mut prev = self.open_segment(j, from)?;
+            prev.advance(i64::MAX, &self.segs[j])?;
+            if prev.current.is_none() && from > 0 {
+                prev = self.open_segment(j, 0)?;
+                prev.advance(i64::MAX, &self.segs[j])?;
+            }
+            if let Some(f) = prev.current {
+                self.carry = Some((j, f));
+                break;
+            }
+        }
+        Ok(())
     }
 
     fn shown(&self, seg: usize, frame: FrameBuffer, held: bool) -> SegmentFrame {
@@ -161,36 +200,31 @@ impl SegmentFrameSource {
     }
 
     fn switch_to(&mut self, k: usize) -> Result<()> {
-        let mut lower = 0;
         match self.active.take() {
-            Some(mut a) if a.seg < k => {
+            Some(mut a) if a.seg + 1 == k => {
                 a.advance(i64::MAX, &self.segs[a.seg])?;
                 if let Some(f) = a.current {
                     self.carry = Some((a.seg, f));
                 }
-                lower = a.seg + 1;
+                self.carry_known = self.carry.is_some();
             }
-            Some(_) => self.carry = None,
-            None => lower = self.carry.as_ref().map_or(0, |(j, _)| j + 1),
-        }
-        for j in (lower..k).rev() {
-            let mut skipped = self.open_segment(j)?;
-            skipped.advance(i64::MAX, &self.segs[j])?;
-            if let Some(f) = skipped.current {
-                self.carry = Some((j, f));
-                break;
+            _ => {
+                self.carry = None;
+                self.carry_known = false;
             }
         }
-        self.active = Some(self.open_segment(k)?);
+        self.active = Some(self.open_segment(k, 0)?);
         Ok(())
     }
 
-    fn open_segment(&self, j: usize) -> Result<Active> {
+    fn open_segment(&self, j: usize, from_rel: i64) -> Result<Active> {
         let seg = &self.segs[j];
-        let reader = self
-            .decoder
-            .open_video(&seg.path)
-            .map_err(|e| seg.err("opening", e))?;
+        let reader = if from_rel > 0 {
+            self.decoder.open_video_at(&seg.path, from_rel)
+        } else {
+            self.decoder.open_video(&seg.path)
+        }
+        .map_err(|e| seg.err("opening", e))?;
         let size = reader.size();
         if size != seg.frame_px {
             tracing::warn!(
@@ -249,13 +283,20 @@ impl TrackFrameSource {
     }
 
     pub fn frame_at(&mut self, t_rec_ns: i64) -> Result<Option<FrameBuffer>> {
-        if self.last_t.is_some_and(|l| t_rec_ns < l) {
-            self.reader = Some(self.decoder.open_video(&self.path)?);
+        let rel = t_rec_ns - self.offset;
+        if self
+            .last_t
+            .is_some_and(|l| t_rec_ns < l || t_rec_ns - l > SEEK_AHEAD_NS)
+        {
+            self.reader = Some(if rel > 0 {
+                self.decoder.open_video_at(&self.path, rel)?
+            } else {
+                self.decoder.open_video(&self.path)?
+            });
             self.current = None;
             self.pending = None;
         }
         self.last_t = Some(t_rec_ns);
-        let rel = t_rec_ns - self.offset;
         loop {
             let next = match self.pending.take() {
                 Some(f) => f,

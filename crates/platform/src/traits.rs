@@ -156,6 +156,25 @@ pub trait Decoder: Send + Sync {
     fn open_video(&self, path: &Path) -> Result<Box<dyn VideoReader>>;
     fn open_audio(&self, path: &Path, rate: u32, channels: u16) -> Result<Box<dyn AudioReader>>;
     fn probe(&self, path: &Path) -> Result<TrackProbe>;
+
+    /// A reader whose first frame is at or before `from_file_ns` (the frame shown then, when
+    /// there is one), so a seek decodes from the nearest keyframe instead of the file start.
+    fn open_video_at(&self, path: &Path, from_file_ns: i64) -> Result<Box<dyn VideoReader>> {
+        let _ = from_file_ns;
+        self.open_video(path)
+    }
+
+    /// A reader starting at or before `from_file_ns`; `first_sample_file_ns` says where.
+    fn open_audio_at(
+        &self,
+        path: &Path,
+        rate: u32,
+        channels: u16,
+        from_file_ns: i64,
+    ) -> Result<Box<dyn AudioReader>> {
+        let _ = from_file_ns;
+        self.open_audio(path, rate, channels)
+    }
 }
 
 pub trait Permissions: Send + Sync {

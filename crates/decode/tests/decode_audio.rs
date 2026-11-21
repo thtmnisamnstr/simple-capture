@@ -126,3 +126,28 @@ fn bad_requests_fail_with_context() {
         .expect("missing file");
     assert!(e.to_string().contains("mic"), "{e}");
 }
+
+#[test]
+fn opening_at_a_time_starts_with_the_sample_at_that_time() {
+    let dir = TempDir::new("audio-at");
+    let mut p = project();
+    write_audio(dir.path(), &mut p, "mic", 48_000, 1, 10 * MS, &ramp(1000));
+    let at = |from_ms: i64| {
+        let mut a = TrackAudio::open_at(
+            &p,
+            dir.path(),
+            "mic",
+            Arc::new(SctrkDecoder),
+            48_000,
+            1,
+            from_ms * MS,
+        )
+        .expect("open_at");
+        read_all(&mut a, 1, 200, 64)
+    };
+    assert_eq!(&at(15)[..100], &ramp(1000)[240..340]);
+    let early = at(9);
+    assert!(early[..48].iter().all(|&s| s == 0.0));
+    assert_eq!(&early[48..148], &ramp(1000)[..100]);
+    assert!(at(40).iter().all(|&s| s == 0.0));
+}

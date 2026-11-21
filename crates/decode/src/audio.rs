@@ -25,6 +25,19 @@ impl TrackAudio {
         rate: u32,
         channels: u16,
     ) -> Result<TrackAudio> {
+        TrackAudio::open_at(project, dir, track_id, decoder, rate, channels, 0)
+    }
+
+    /// Audio from recording time `from_rec_ns` on: the first frame read is the one at that time.
+    pub fn open_at(
+        project: &ProjectV1,
+        dir: &Path,
+        track_id: &str,
+        decoder: Arc<dyn Decoder>,
+        rate: u32,
+        channels: u16,
+        from_rec_ns: i64,
+    ) -> Result<TrackAudio> {
         if rate == 0 || channels == 0 {
             return Err(Error::Other(format!(
                 "sc_decode: track {track_id}: audio needs rate and channels > 0 ({rate} Hz, {channels} ch)"
@@ -41,13 +54,28 @@ impl TrackAudio {
                 ))
             })?;
         let path = dir.join(&track.file);
-        let reader = decoder.open_audio(&path, rate, channels).map_err(|e| {
+        let open_err = |e: Error| {
             Error::Other(format!(
                 "sc_decode: opening audio track {track_id} ({}): {e}",
                 path.display()
             ))
-        })?;
-        let offset = i128::from(track.first_sample_offset_ns);
+        };
+        let from_file = from_rec_ns - track.first_sample_offset_ns;
+        let start = decoder
+            .open_audio(&path, rate, channels)
+            .map_err(open_err)?;
+        let (reader, first_rec) = if from_file > 0 {
+            let base = start.first_sample_file_ns();
+            drop(start);
+            let r = decoder
+                .open_audio_at(&path, rate, channels, base + from_file)
+                .map_err(open_err)?;
+            let first = track.first_sample_offset_ns + r.first_sample_file_ns() - base;
+            (r, first)
+        } else {
+            (start, track.first_sample_offset_ns)
+        };
+        let offset = i128::from(first_rec - from_rec_ns);
         let offset_frames =
             (2 * offset * i128::from(rate) + 1_000_000_000).div_euclid(2_000_000_000);
         let (pad_frames, skip_frames) = if offset_frames >= 0 {

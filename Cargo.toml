@@ -11,6 +11,7 @@ members = [
     "crates/decode",
     "crates/render",
     "crates/text",
+    "crates/player",
     "crates/helpers",
     "crates/export",
     "app",
@@ -40,6 +41,7 @@ simple-capture-render = { path = "crates/render" }
 simple-capture-text = { path = "crates/text" }
 simple-capture-helpers = { path = "crates/helpers" }
 simple-capture-export = { path = "crates/export" }
+simple-capture-player = { path = "crates/player", default-features = false }
 
 # App shell
 tauri = { version = "2.12.7", features = ["tray-icon"] }
@@ -99,6 +101,10 @@ wgpu-hal = "30.0.2"
 skia-safe = { version = "=0.157.0", features = ["textlayout", "embed-freetype"] }
 pollster = "1.0.3"
 bytemuck = { version = "1.25.2", features = ["derive"] }
+
+# Audio (SPEC tech stack)
+cpal = "0.18.2"
+signalsmith-stretch = "0.1.3"
 
 # General
 serde = { version = "1.0.229", features = ["derive"] }

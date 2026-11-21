@@ -122,11 +122,31 @@ impl MacDecoder {
 
 impl Decoder for MacDecoder {
     fn open_video(&self, path: &Path) -> Result<Box<dyn VideoReader>> {
-        Ok(Box::new(reader::MacVideoReader::open(path)?))
+        Ok(Box::new(reader::MacVideoReader::open(path, None)?))
     }
     fn open_audio(&self, path: &Path, rate: u32, channels: u16) -> Result<Box<dyn AudioReader>> {
         Ok(Box::new(reader::MacAudioReader::open(
-            path, rate, channels,
+            path, rate, channels, None,
+        )?))
+    }
+    fn open_video_at(&self, path: &Path, from_file_ns: i64) -> Result<Box<dyn VideoReader>> {
+        Ok(Box::new(reader::MacVideoReader::open(
+            path,
+            Some(from_file_ns),
+        )?))
+    }
+    fn open_audio_at(
+        &self,
+        path: &Path,
+        rate: u32,
+        channels: u16,
+        from_file_ns: i64,
+    ) -> Result<Box<dyn AudioReader>> {
+        Ok(Box::new(reader::MacAudioReader::open(
+            path,
+            rate,
+            channels,
+            Some(from_file_ns),
         )?))
     }
     fn probe(&self, path: &Path) -> Result<TrackProbe> {
