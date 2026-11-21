@@ -1391,12 +1391,7 @@ impl Core {
                 });
             }
             let _ = self.advance(Input::ExportEnd);
-            let moves: Vec<(PathBuf, String)> = lock(&self.folder_moves).drain(..).collect();
-            for (dir, title) in moves {
-                if self.editor_dir().as_deref() != Some(dir.as_path()) {
-                    self.move_folder_to_title(&dir, &title);
-                }
-            }
+            let mut trashed = None;
             let dir = lock(&self.raw_after_export).remove(id);
             if let (ExportState::Done { .. }, Some(dir)) = (s, dir)
                 && self.settings.load().delete_raw_after_export
@@ -1406,8 +1401,16 @@ impl Core {
                     Ok(()) => {
                         tracing::info!(dir = %dir.display(), "raw files moved to the Trash after export");
                         self.emit("library-changed", json!({}));
+                        trashed = Some(dir);
                     }
                     Err(e) => tracing::warn!("delete raw files after export: {e}"),
+                }
+            }
+            let moves: Vec<(PathBuf, String)> = lock(&self.folder_moves).drain(..).collect();
+            for (dir, title) in moves {
+                let open = self.editor_dir().as_deref() == Some(dir.as_path());
+                if !open && trashed.as_ref() != Some(&dir) {
+                    self.move_folder_to_title(&dir, &title);
                 }
             }
         }
