@@ -40,22 +40,24 @@ at 1920×1080 30 fps):
 | Camera layer GPU vs CPU reference, every shape/option, RGBA and I420 | max difference 0 | `crates/render/tests/camera.rs` |
 | Camera frames read in place from IOSurfaces vs uploaded, 420v and 420f | max difference 0 | `iosurface_camera_frames_match_uploaded_copies` |
 | Geometry Rust vs TS, shared case table | all cases equal | `crates/geometry/tests/camera_cases.json` |
-| Preview window: live frames, placement, camera edits, 9:16 (live, driver flow 12) | 24 fps (FaceTime HD); on screen in the bottom-right; edits arrive at once; colours checked on a window screenshot | `app/driver/flows/12-preview.txt` |
+| Preview window: live frames, placement, camera edits, 9:16 (live, driver flow 12) | 25 fps (FaceTime HD), drawn by the native Metal layer; on screen in the bottom-right; edits arrive at once; a window screenshot shows the camera outline and handles on the drawn camera | `app/driver/flows/12-preview.txt` |
+| Same, webview-frames fallback (`SC_PREVIEW=webview`) | 13/13 checks, 25 fps | flow 12 |
 | Preview window absent from a display recording (live, flow 14) | 0 of 57 frames show it | `app/driver/flows/14-preview-capture.txt` |
 | Keyframes while recording (live, flow 14; synthetic + recovery test) | start key at 0 plus the drag; journaled; rebuilt by recovery | flow 14, `camera_keys_are_recorded_journaled_and_recovered` |
 | Export with the camera (unit + real CLI recording, 9:16) | camera drawn where the keys put it, hidden after a hide key; real export checked by eye | `export_camera.rs` |
-| CPU, Preview window + panel shown, camera on (FaceTime HD, about 25 fps), **release** | app 20.5% + its WebKit processes 9.0% = **29.5% of one core** (plan budget: 15%; 34.6% before the 2026-11-20 cuts) | CPU time over 15 s of a driver run, MacBook display |
-| Same, **debug build** (`just run`) | **31.7%** | same |
-| Same, camera off, release | **4.5%** (frames only when something changes) | same |
-| Same, camera on, release, Preview capped at 15 fps (experiment, not shipped) | 19.8% | same |
+| CPU, Preview window + panel shown, camera on (FaceTime HD, about 25 fps), **release**, native Metal layer (ADR-007) | app 17.5–17.9% + its WebKit processes 0.5–0.8% = **18.1–18.4% of one core** in three runs (plan budget: 15%) | CPU time over 15 s of a driver run, MacBook display |
+| Same through webview frames (before the native layer) | app 20.5% + WebKit 9.0% = 29.5% (34.6% before the first 2026-11-20 cuts; 31.7% debug) | same |
+| Same, camera off, release, native layer | **4.3%** (frames only when something changes) | same |
 | Local CI (`ci-local-fast`, helpers and GPU required) | 394 Rust + 40 UI tests, 0 failures | |
 
 **Not verified / open:**
-- **The CPU budget is missed with the camera on** (29.5% release vs 15%). What is left is per
-  frame: WebKit's work for each frame (about 9% in its processes, 3.6% on the app's main thread),
-  wgpu encoding (about 6%), and about 5% that is macOS's camera pipeline (CoreMedia, Video
-  Effects), which any camera app pays. Reaching 15% needs the native CAMetalLayer slot
-  (ADR-007, conditional on Windows/Linux proof) or a Preview at about 10 fps.
+- **The CPU budget is still missed with the camera on, by about 3 points** (about 18% release vs
+  15%). WebKit is out of the per-frame path; what is left is macOS's camera pipeline (CoreMediaIO
+  threads, about 5%), Metal's own command-queue threads, and wgpu's per-frame work on the stage
+  thread (about 3.6%). A Preview capped below the camera's rate would close it.
+- Native Preview layer: window resizes are picked up every 250 ms (the last frame is stretched
+  until then); dragging to a display with another scale was not tested; photon latency was not
+  measured. Windows and Linux still use webview frames (ADR-007).
 - Real mouse interaction (camera drag and resize in the Preview, the bar's grip) was driven
   through commands, not real clicks; MANUAL_TEST §10b M1–M7 covers it.
 - No 30-minute soak with the Preview window shown; no A/V sync measurement of the camera (M1 gap remains).

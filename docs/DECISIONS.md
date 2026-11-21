@@ -172,7 +172,7 @@ they are not a substitute for an M1 run.
     trim those features. No network code is called, but the shipped binary should not link them.
 
 ## ADR-007: Preview transport per OS
-- **Status:** **Conditional, condition not yet met** (owner 2026-11-19: "Yeah, but only if you can figure out ways to do this in Windows and Linux"). Until native paths are proven on real Windows and Linux hardware, **every OS, macOS included, uses webview frames** behind `PreviewSink`. See the 2026-11-19 update below.
+- **Status:** **Accepted for macOS** (owner 2026-11-20, choosing "Try native layer" to close the M2 Preview's CPU gap). Windows and Linux stay on webview frames until their native paths are proven on real hardware (owner 2026-11-19: "Yeah, but only if you can figure out ways to do this in Windows and Linux"). See the 2026-11-19 and 2026-11-20 updates below.
 - **Evidence [S2]**, quiet medians:
 
   | path | fps (of 60) | total CPU (% of one core) | WebContent memory |
@@ -222,6 +222,25 @@ they are not a substitute for an M1 run.
     after hardware runs (Windows 10/11 for spike 5's probe; GNOME/KDE Wayland and Xorg for spike 6)
     show Windows and at least Wayland working; X11 would then stay on webview frames.
   - Cost of the decision on macOS: about 47% vs 20% of one core at 1080 in spike 2.
+- **Update 2026-11-20 (macOS native layer on, M2 Preview window):**
+  - The owner lifted the condition for macOS. The Preview window draws into a `CAMetalLayer` in an
+    NSView just below its WKWebView (`sc_capture_macos::preview`). The view covers the window's
+    content layout rectangle (the page's viewport, which stops under the title bar), so the
+    page's camera handles line up with the drawn camera; it resizes with the window.
+  - The stage renderer draws at the display's pixel size with `Compositor::present` (the same
+    compositor passes, then a blit into the drawable; no readback, BT.709 values passed through as
+    sRGB, layer colour space sRGB to match WebKit). The page learns only the frame size, through a
+    pixel-less `sc://live/stage` frame (format 2), and turns its background transparent.
+  - The window gets `backgroundColor` in `tauri.conf.json`, which makes wry clear
+    `drawsBackground`. `SC_PREVIEW=webview`, or any failure to attach the layer, falls back to
+    webview frames.
+  - Measured (release, FaceTime HD at about 25 fps, same driver method as ADR-042): **about 18% of
+    one core** for the app and its WebKit processes (18.1–18.4% in three runs), down from 29.5%;
+    WebKit's share fell from 9.0% to 0.5%. Camera off: 4.3%. The rest is macOS's camera pipeline,
+    Metal's own threads and wgpu's per-frame work; the plan's 15% is still missed by about 3 points.
+  - Not measured: photon latency. Window resize is synced every 250 ms (CoreAnimation stretches
+    the last frame until then).
+  - Windows and Linux: unchanged, webview frames.
 
 ## ADR-008: Raw tracks are fragmented QuickTime files from AVAssetWriter
 - **Status:** Accepted (within the spec: "fragmented MP4/MOV", HEVC screen, ~1 s keyframes; verified by [S3]). Amended 2026-11-19 by ADR-034: the screen track is a list of segment files, one per source.
@@ -1312,6 +1331,7 @@ they are not a substitute for an M1 run.
   - Measured (release, camera at about 25 fps): 29.5% of one core for the app plus its WebKit
     processes, against the 15% budget; 4.5% without a camera. About 5 points of that is macOS's own
     camera pipeline inside the app's process.
+  - Superseded on macOS the same day by the native layer (ADR-007 update 2026-11-20): about 18%.
 
 ## ADR-043: The Preview window replaces the floating camera bubble
 

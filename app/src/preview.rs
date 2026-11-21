@@ -16,6 +16,8 @@ pub struct PreviewState {
     pub stage: Option<(SourceSpecDto, CanvasDto)>,
     pub last_key_sent: Option<Instant>,
     pub placed: bool,
+    pub frames: u64,
+    pub native: bool,
 }
 
 pub fn display_for<'a>(

@@ -3715,6 +3715,7 @@ dependencies = [
  "objc2-core-video",
  "objc2-foundation",
  "objc2-io-surface",
+ "objc2-quartz-core",
  "objc2-screen-capture-kit",
  "simple-capture-core",
  "simple-capture-geometry",

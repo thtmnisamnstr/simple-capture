@@ -4,6 +4,7 @@ use sc_platform::{Error, FrameBuffer, Result};
 
 use crate::cpu;
 use crate::gpu::{self, Gpu};
+use crate::surface::NativeSurface;
 
 /// `SC_WGPU_BACKEND` overrides `Auto`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,6 +91,39 @@ impl Compositor {
             None => cpu::render_cpu(job, out),
         }
     }
+
+    /// A surface on a `CAMetalLayer` for [`Compositor::present`]. Fails without a GPU.
+    ///
+    /// # Safety
+    /// `layer` points to a live `CAMetalLayer`.
+    #[cfg(target_os = "macos")]
+    pub unsafe fn metal_layer_surface(
+        &self,
+        layer: std::ptr::NonNull<std::ffi::c_void>,
+    ) -> Result<NativeSurface> {
+        let gpu = self.gpu.as_ref().ok_or_else(no_gpu)?;
+        // SAFETY: forwarded from the caller.
+        unsafe { gpu.metal_layer_surface(layer) }
+    }
+
+    /// Composites `job` into a `drawable`-sized frame of `surface` filled with `clear`, the canvas
+    /// at `at` (pixels from the top left), shown from the display's next refresh. `Ok(false)`:
+    /// the surface is not on screen (hidden, occluded or resizing) and nothing was drawn.
+    pub fn present(
+        &mut self,
+        job: &FrameJob,
+        surface: &mut NativeSurface,
+        drawable: SizePx,
+        at: (u32, u32),
+        clear: [u8; 3],
+    ) -> Result<bool> {
+        let gpu = self.gpu.as_mut().ok_or_else(no_gpu)?;
+        gpu.present(job, surface, drawable, at, clear)
+    }
+}
+
+fn no_gpu() -> Error {
+    Error::Other("sc_render: a native surface needs a GPU".into())
 }
 
 #[derive(Debug, Clone)]

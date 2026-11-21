@@ -2,7 +2,8 @@
 //! renderer publishes the newest frame per stream, and `sc://live/<name>?after=<id>` waits
 //! for one newer than `id`. Body: a 16-byte header (id, width, height, format as little-endian
 //! u32) followed by the tightly packed pixels: premultiplied RGBA (format 0) or I420 planes, BT.709
-//! limited range ([`I420`]).
+//! limited range ([`I420`]). `NATIVE` (macOS) carries no pixels: a native layer under the page
+//! draws the frame, and the header gives its size.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -10,6 +11,8 @@ use std::time::{Duration, Instant};
 
 pub const HEADER: usize = 16;
 pub const I420: u32 = 1;
+#[cfg(target_os = "macos")]
+pub const NATIVE: u32 = 2;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
@@ -44,10 +47,6 @@ impl LiveHub {
             },
         );
         self.cv.notify_all();
-    }
-
-    pub fn latest_id(&self, name: &str) -> u32 {
-        lock(&self.frames).get(name).map_or(0, |f| f.id)
     }
 
     pub fn clear(&self, name: &str) {

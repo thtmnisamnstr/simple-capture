@@ -649,6 +649,9 @@ iPhone cameras all work on the build Mac.
   corner handle out and in; scroll on it. Move the Preview window itself and reopen the panel.
 - Expect: the camera follows, snaps to the margins and centre lines, grows and shrinks, zooms, and
   never leaves the frame; the Preview reopens where you left it.
+- Also: resize the Preview by its edges and corners, and drag it to the other display if there is
+  one. The picture stays sharp and centred, the dashed outline and handles stay on the camera
+  (during a fast resize the picture may lag for a moment, then catch up).
 - Look: Preview window.
 
 **M3. Shape, framing, mirror, border, shadow**

@@ -7,6 +7,7 @@ mod gpu;
 #[cfg(target_os = "macos")]
 mod iosurface;
 mod maths;
+mod surface;
 
 pub mod cpu;
 
@@ -16,3 +17,4 @@ pub use compositor::{
 };
 pub use diff::{DiffStats, diff};
 pub use sc_platform::{Error, Result};
+pub use surface::NativeSurface;

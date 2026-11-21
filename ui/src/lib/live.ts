@@ -1,10 +1,11 @@
 // Wire format shared with app/src/live.rs: a 16-byte header (id, width, height, format as
 // little-endian u32), then premultiplied RGBA (format 0) or I420 planes in BT.709 limited range
-// (format 1).
+// (format 1). Format 2 has no pixels: a native layer under the page draws the frame.
 
 const HEADER = 16;
 const RGBA = 0;
 const I420 = 1;
+const NATIVE = 2;
 
 const VS = `#version 300 es
 out vec2 uv;
@@ -58,9 +59,9 @@ export class LiveView {
   private running = true;
   private canvas: HTMLCanvasElement;
   private name: string;
-  private onFrame: (w: number, h: number) => void;
+  private onFrame: (w: number, h: number, native: boolean) => void;
 
-  constructor(canvas: HTMLCanvasElement, name: string, onFrame: (w: number, h: number) => void) {
+  constructor(canvas: HTMLCanvasElement, name: string, onFrame: (w: number, h: number, native: boolean) => void) {
     this.canvas = canvas;
     this.name = name;
     this.onFrame = onFrame;
@@ -105,6 +106,10 @@ export class LiveView {
     const w = head.getUint32(4, true);
     const h = head.getUint32(8, true);
     const format = head.getUint32(12, true);
+    if (format === NATIVE) {
+      this.onFrame(w, h, true);
+      return;
+    }
     const planes = framePlanes(format, w, h);
     if (!planes || buf.byteLength < HEADER + planes.reduce((n, [pw, ph, b]) => n + pw * ph * b, 0)) return;
     const fresh = w !== this.size.w || h !== this.size.h || format !== this.size.format;
@@ -127,7 +132,7 @@ export class LiveView {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    this.onFrame(w, h);
+    this.onFrame(w, h, false);
   }
 
   private async pump() {

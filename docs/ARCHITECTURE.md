@@ -171,7 +171,7 @@ flowchart LR
   DEC --> FS --> IMP[IOSurface to wgpu textures]
   BG[background raster: Skia, cached] --> COMP
   IMP --> COMP[compositor: background, screen fit, camera, text]
-  COMP --> PREV[PreviewSink: webview frames]
+  COMP --> PREV[PreviewSink: native layer on macOS, webview frames elsewhere]
   COMP --> EXP[export: NV12/Y4M over stdin]
   FILES --> MIX[audio mix in Rust to WAV]
   EXP --> FF[ffmpeg sidecar]
@@ -908,15 +908,23 @@ Draw order per output frame: background → screen (src = `content_px`, dst = fi
   protocol; since M2 it also includes the camera at the current placement.
 - **Preview window (M2, ADR-042/043).** `stage.rs` in the app runs a renderer thread that
   composites the output (source snapshot once a second, letterbox background, live camera) with
-  the same `camera_layer` as the export, only when one of those or the window size changed, and
-  publishes I420 frames to `LiveHub`; the window pulls them from `sc://live/stage` (long poll,
-  latest wins, 16-byte header with a format code, then I420 planes) and converts them to RGB in a
-  WebGL2 shader. Camera frames come from `SharedCamera` (one AVCaptureSession for preview and
-  recording).
-- **Native slots, off until hardware proof.** `PreviewSink` keeps one native implementation slot
-  per OS. They are switched on only after hardware runs show Windows and at least Wayland working:
-  - macOS: CAMetalLayer under a transparent WKWebView (**verified [S2]**: 60.1 fps, about 20% CPU,
-    HTML composites on top). Relies on wry's private `drawsBackground` key.
+  the same `camera_layer` as the export, only when one of those or the window size changed. Camera
+  frames come from `SharedCamera` (one AVCaptureSession for preview and recording). Where the
+  frame goes is the renderer's `Sink`:
+  - **macOS, native layer (ADR-007, on since 2026-11-20):** `sc_capture_macos::preview` puts a
+    `CAMetalLayer` view under the WKWebView, covering the page's viewport; `Compositor::present`
+    draws the canvas at the display's pixel size, centred on the `#111` letterbox, straight into
+    it. The page gets a pixel-less frame (format 2) with the canvas size, turns transparent and
+    keeps only its HTML (camera outline and handles) on top.
+  - **Webview frames (other OSes, `SC_PREVIEW=webview`, or if the layer can't attach):** I420
+    frames at the window's point size go to `LiveHub`; the window pulls them from
+    `sc://live/stage` (long poll, latest wins, 16-byte header with a format code, then I420
+    planes) and converts them to RGB in a WebGL2 shader.
+- **Native slots.** `PreviewSink` keeps one native implementation slot per OS. Windows and Linux are
+  switched on only after hardware runs show Windows and at least Wayland working:
+  - macOS: CAMetalLayer under a transparent WKWebView: **in use** for the Preview window (spike 2
+    [S2]: 60.1 fps, about 20% CPU; M2: about 18% with the live camera, ADR-007). Relies on wry's
+    private `drawsBackground` key.
   - Windows: a non-topmost DirectComposition visual under the WebView2 child window [S5]. Compiles
     for `x86_64-pc-windows-msvc`; nothing has been composited on Windows.
   - Linux Wayland: wgpu on a `wl_subsurface` below a transparent toplevel; passed in Docker with

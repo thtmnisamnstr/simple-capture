@@ -8,6 +8,7 @@ use sc_platform::{Error, Nv12View, Result};
 
 use crate::cpu::{check_job, check_view};
 use crate::maths::{self, CameraPlan, ScreenPlan};
+use crate::surface::NativeSurface;
 use crate::{AdapterSummary, FrameJob, OutputFormat, RenderedFrame};
 
 const VS: &str = r#"
@@ -199,6 +200,16 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
+const BLIT: &str = r#"
+@group(0) @binding(0) var<uniform> origin: vec4<i32>;
+@group(0) @binding(1) var src: texture_2d<f32>;
+
+@fragment
+fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  return textureLoad(src, vec2<i32>(pos.xy) - origin.xy, 0);
+}
+"#;
+
 const TARGET: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const ROW_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
@@ -208,8 +219,14 @@ struct Tex {
 }
 
 pub(crate) struct Gpu {
+    #[cfg(target_os = "macos")]
+    instance: wgpu::Instance,
+    #[cfg(target_os = "macos")]
+    adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
+    blit: Option<(wgpu::TextureFormat, wgpu::RenderPipeline)>,
+    blit_ubuf: wgpu::Buffer,
     summary: AdapterSummary,
     max_dim: u32,
     prefilter: wgpu::RenderPipeline,
@@ -301,7 +318,7 @@ pub(crate) fn open(backends: wgpu::Backends, auto: bool) -> Result<Option<Gpu>> 
     }
     for adapter in candidates {
         let info = adapter.get_info();
-        match Gpu::new(&adapter) {
+        match Gpu::new(&instance, &adapter) {
             Ok(gpu) => {
                 tracing::info!(adapter = %info.name, backend = ?info.backend, "sc_render: wgpu adapter");
                 return Ok(Some(gpu));
@@ -514,7 +531,9 @@ fn pass<'e>(
 }
 
 impl Gpu {
-    fn new(adapter: &wgpu::Adapter) -> Result<Gpu> {
+    fn new(instance: &wgpu::Instance, adapter: &wgpu::Adapter) -> Result<Gpu> {
+        #[cfg(not(target_os = "macos"))]
+        let _ = instance;
         let limits = adapter.limits();
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("sc_render"),
@@ -592,6 +611,7 @@ impl Gpu {
         let comp_ubuf = ubuf("sc_render comp uniforms");
         let cam_pre_ubuf = ubuf("sc_render camera pre uniforms");
         let cam_ubuf = ubuf("sc_render camera uniforms");
+        let blit_ubuf = ubuf("sc_render blit uniforms");
         if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(other("pipeline setup", e));
         }
@@ -600,8 +620,14 @@ impl Gpu {
         Ok(Gpu {
             summary: summarize(&adapter.get_info()),
             max_dim: limits.max_texture_dimension_2d,
+            #[cfg(target_os = "macos")]
+            instance: instance.clone(),
+            #[cfg(target_os = "macos")]
+            adapter: adapter.clone(),
             device,
             queue,
+            blit: None,
+            blit_ubuf,
             prefilter,
             composite,
             to_y,
@@ -639,16 +665,48 @@ impl Gpu {
 
     pub(crate) fn render(&mut self, job: &FrameJob, out: OutputFormat) -> Result<RenderedFrame> {
         check_job(job, out)?;
+        self.fits(job.canvas)?;
+        self.scoped(|gpu| gpu.render_inner(job, out))
+    }
+
+    pub(crate) fn present(
+        &mut self,
+        job: &FrameJob,
+        surface: &mut NativeSurface,
+        drawable: SizePx,
+        at: (u32, u32),
+        clear: [u8; 3],
+    ) -> Result<bool> {
+        check_job(job, OutputFormat::Rgba8)?;
+        self.fits(job.canvas)?;
+        maths::check_size("drawable", drawable)?;
         let canvas = job.canvas;
-        if canvas.w > self.max_dim || canvas.h > self.max_dim {
+        if u64::from(at.0) + u64::from(canvas.w) > u64::from(drawable.w)
+            || u64::from(at.1) + u64::from(canvas.h) > u64::from(drawable.h)
+        {
             return Err(Error::Other(format!(
-                "sc_render: canvas {}x{} exceeds the adapter's {} px texture limit",
-                canvas.w, canvas.h, self.max_dim
+                "sc_render: canvas {}x{} at {at:?} does not fit the {}x{} drawable",
+                canvas.w, canvas.h, drawable.w, drawable.h
             )));
         }
+        self.fits(drawable)?;
+        self.scoped(|gpu| gpu.present_inner(job, surface, drawable, at, clear))
+    }
+
+    fn fits(&self, size: SizePx) -> Result<()> {
+        if size.w > self.max_dim || size.h > self.max_dim {
+            return Err(Error::Other(format!(
+                "sc_render: {}x{} exceeds the adapter's {} px texture limit",
+                size.w, size.h, self.max_dim
+            )));
+        }
+        Ok(())
+    }
+
+    fn scoped<T>(&mut self, f: impl FnOnce(&mut Gpu) -> Result<T>) -> Result<T> {
         let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let oom = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let result = self.render_inner(job, out);
+        let result = f(self);
         let oom = pollster::block_on(oom.pop());
         let validation = pollster::block_on(scope.pop());
         if let Some(e) = validation.or(oom) {
@@ -658,6 +716,123 @@ impl Gpu {
     }
 
     fn render_inner(&mut self, job: &FrameJob, out: OutputFormat) -> Result<RenderedFrame> {
+        let mut enc = self.compose(job)?;
+        let (copies, total) = self.encode_output(&mut enc, job.canvas, out)?;
+        self.queue.submit([enc.finish()]);
+        let data = self.read(&copies, total);
+        self.release_camera();
+        Ok(RenderedFrame {
+            size: job.canvas,
+            format: out,
+            data: data?,
+        })
+    }
+
+    /// # Safety
+    /// `layer` points to a live `CAMetalLayer`.
+    #[cfg(target_os = "macos")]
+    pub(crate) unsafe fn metal_layer_surface(
+        &self,
+        layer: std::ptr::NonNull<std::ffi::c_void>,
+    ) -> Result<NativeSurface> {
+        // SAFETY: a live CAMetalLayer, which wgpu retains for the surface's lifetime.
+        let surface = unsafe {
+            self.instance
+                .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::CoreAnimationLayer(
+                    layer.as_ptr(),
+                ))
+        }
+        .map_err(|e| other("create_surface", e))?;
+        NativeSurface::new(surface, &self.adapter)
+    }
+
+    fn present_inner(
+        &mut self,
+        job: &FrameJob,
+        surface: &mut NativeSurface,
+        drawable: SizePx,
+        at: (u32, u32),
+        clear: [u8; 3],
+    ) -> Result<bool> {
+        let Some(frame) = surface.acquire(&self.device, drawable)? else {
+            return Ok(false);
+        };
+        let mut enc = self.compose(job)?;
+        let format = surface.format;
+        if self.blit.as_ref().is_none_or(|(f, _)| *f != format) {
+            let target = wgpu::ColorTargetState {
+                format,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            };
+            let p = pipeline(&self.device, "sc_render blit", BLIT, "fs", &[Some(target)]);
+            self.blit = Some((format, p));
+        }
+        let Some((_, blit)) = &self.blit else {
+            return Err(Error::Other("sc_render: blit pipeline missing".into()));
+        };
+        let origin = [at.0 as i32, at.1 as i32, 0, 0];
+        self.queue.write_buffer(&self.blit_ubuf, 0, &i32s(&origin));
+        let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &blit.get_bind_group_layout(0),
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.blit_ubuf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&tex_of(&self.target)?.view),
+                },
+            ],
+        });
+        let view = frame.texture.create_view(&Default::default());
+        let [r, g, b] = clear.map(|c| f64::from(c) / 255.0);
+        {
+            let mut p = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("sc_render present"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color { r, g, b, a: 1.0 }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            let canvas = job.canvas;
+            p.set_pipeline(blit);
+            p.set_bind_group(0, &bind, &[]);
+            p.set_viewport(
+                at.0 as f32,
+                at.1 as f32,
+                canvas.w as f32,
+                canvas.h as f32,
+                0.0,
+                1.0,
+            );
+            p.draw(0..3, 0..1);
+        }
+        self.queue.submit([enc.finish()]);
+        self.queue.present(frame);
+        self.release_camera();
+        Ok(true)
+    }
+
+    fn release_camera(&mut self) {
+        if self.cam_imported.take().is_some() {
+            #[cfg(target_os = "macos")]
+            if let Some(cache) = &self.cv_cache {
+                cache.flush();
+            }
+        }
+    }
+
+    /// Background, screen and camera into `self.target`, recorded but not submitted.
+    fn compose(&mut self, job: &FrameJob) -> Result<wgpu::CommandEncoder> {
         let canvas = job.canvas;
         let rw = wgpu::TextureUsages::RENDER_ATTACHMENT
             | wgpu::TextureUsages::TEXTURE_BINDING
@@ -762,21 +937,7 @@ impl Gpu {
         if let Some(plan) = &cam_plan {
             self.encode_camera(&mut enc, canvas, plan)?;
         }
-        let (copies, total) = self.encode_output(&mut enc, canvas, out)?;
-        self.queue.submit([enc.finish()]);
-        let data = self.read(&copies, total);
-        if self.cam_imported.take().is_some() {
-            #[cfg(target_os = "macos")]
-            if let Some(cache) = &self.cv_cache {
-                cache.flush();
-            }
-        }
-        let data = data?;
-        Ok(RenderedFrame {
-            size: canvas,
-            format: out,
-            data,
-        })
+        Ok(enc)
     }
 
     fn upload_frame(

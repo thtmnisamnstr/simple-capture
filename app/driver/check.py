@@ -379,6 +379,8 @@ if basic("12-preview", log):
               and bool(win and win["visible"]), {"state": a, "window": win})
         fps = b.get("frame", 0) - a.get("frame", 0)
         check("12-preview", "preview frames keep coming (>= 15 in 1 s)", fps >= 15, fps)
+        if sys.platform == "darwin" and os.environ.get("SC_PREVIEW") != "webview":
+            check("12-preview", "drawn by the native Metal layer (ADR-007)", a.get("native") is True, a.get("native"))
         frames = [x["frame_pt"] for x in DISPLAYS]
         r = (win or {}).get("rect_pt") or {}
         check("12-preview", "preview window placed on a display", bool(r) and any(

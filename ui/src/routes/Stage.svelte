@@ -17,6 +17,7 @@
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let frame = $state({ w: 0, h: 0 });
+  let native = $state(false);
   let key = $state<CameraKey | null>(null);
   let error = $state<string | null>(null);
   let drag: { corner: [number, number] | null; x: number; y: number; start: CameraKey } | null = null;
@@ -46,8 +47,9 @@
 
   $effect(() => {
     if (!canvas) return;
-    const stream = new LiveView(canvas, 'stage', (w, h) => {
+    const stream = new LiveView(canvas, 'stage', (w, h, n) => {
       if (w !== frame.w || h !== frame.h) frame = { w, h };
+      native = n;
     });
     load();
     const off = onEvent('settings-changed', isObject, (s) => {
@@ -130,7 +132,7 @@
 
 <svelte:window onpointermove={move} onpointerup={up} />
 
-<div class="stage window">
+<div class="stage window" class:native>
   <div class="frame" style:width="{css.w}px" style:height="{css.h}px">
     <canvas bind:this={canvas} style:width="{css.w}px" style:height="{css.h}px"></canvas>
     {#if rect && key?.visible}
@@ -170,6 +172,12 @@
     justify-content: center;
     background: #111;
     overflow: hidden;
+  }
+  .stage.native {
+    background: transparent;
+  }
+  .native canvas {
+    visibility: hidden;
   }
   .frame {
     position: relative;
