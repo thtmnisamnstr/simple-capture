@@ -7,6 +7,7 @@
   import { aspectRatio, ratioOf, referenceCanvasSize, type Size } from '../lib/geometry.ts';
   import { sourceSizePx } from '../lib/sources.ts';
   import Icon from '../components/Icon.svelte';
+  import { editor } from '../lib/editor.ts';
 
   let projectDir = $state<string | null>(null);
   let duration = $state(0);
@@ -188,6 +189,7 @@
         <button onclick={() => job && run(() => api.cancelExport(job!))}>Cancel</button>
       {:else}
         <button onclick={() => run(() => api.reveal(projectDir!))}>Show in Finder</button>
+        <button onclick={() => run(() => editor.open(projectDir!).then(() => undefined))}>Edit…</button>
         <button class="primary" onclick={startExport}><Icon name="export" size={14} />Export Video</button>
       {/if}
     </footer>

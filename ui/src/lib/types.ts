@@ -92,6 +92,7 @@ export interface RecorderSettings {
   preview_shown: boolean;
   preview_at?: PointF | null;
   bar_at?: PointF | null;
+  after_recording?: 'editor' | 'saved';
 }
 
 export type CameraShape = 'circle' | 'square' | 'rect_4_3' | 'rect_16_9' | 'rect_3_4' | 'rect_9_16' | 'rounded';

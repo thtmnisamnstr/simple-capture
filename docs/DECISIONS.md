@@ -1404,3 +1404,58 @@ they are not a substitute for an M1 run.
   - MANUAL_TEST uses the new labels: Region…, Click a Window, System…, Allow…, Show in Finder,
     Export Video.
   - Windows and Linux get the same CSS and no native material.
+
+## ADR-045: M3 editor: edit model, playback, preview and export of edits
+- **Status:** Accepted by the agent on 2026-11-21 under the owner's instruction "Build the rest of
+  it out. I'll test when i get a chance." (no ★ stop between M3 and M7). Open to change at the
+  owner's review.
+- **Decision:**
+  - **Edit model** (`sc_core::edit`): every edit is a pure function from one document (EDL, text,
+    camera layout, audio mix, output canvas) to the next. Undo/redo keeps whole-document snapshots
+    (a few KB each, unlimited); a slider or handle drag passes a coalesce key so it is one undo
+    step. Edits that would empty the timeline are refused. Text moves with ripple edits: deleted
+    ranges remove the text inside them and cut text across their edges; insertions shift text that
+    starts at or after the insertion point; speed changes rescale text inside the clip.
+  - **Seeking:** `Decoder::open_video_at` / `open_audio_at`. On macOS an AVAssetReader time range
+    starting at the seek time; tested to start on the frame shown at that time even across a
+    2.7 s gap with no frames, and AAC continues sample-for-sample (max difference < 0.01).
+  - **New crate `player`** (`sc_player`): `TimelineAudio` (all audio tracks through the clips,
+    per-track gain and mute, clip mute, pitch-kept speed with Signalsmith Stretch, a 5 ms
+    raised-cosine fade on both sides of every cut that is not a continuation), `TimelineVideo`
+    (the screen frame, camera frame and placement at any timeline time) and, with the `output`
+    feature, playback through cpal. The editor preview, thumbnails and every export use the same
+    two types, so the preview and the export agree.
+  - **Playback clock** (ADR-025 as built): the frames the output device has played, minus the
+    device's reported latency, plus the time since the last callback. Without an output device, a
+    wall clock. Video picks the frame for that time; audio runs 250 ms ahead in a ring buffer.
+  - **Editor window:** a normal (not panel) window, excluded from captures like every window of
+    ours (`OverlayRole::Editor`). The app turns into a regular Dock app while it is open and back
+    into a menu-bar app when it closes (not under the driver). The preview is drawn by the
+    compositor into the shared native layer (`sink.rs`, the Preview window's ADR-007 path) at the
+    preview's rectangle in the page; elsewhere webview frames.
+  - **One `editor` command** with an `action` (open, state, edit, undo, redo, copy, cut, paste,
+    play, pause, seek, rect, export, close, background_image) instead of 15 commands.
+  - **Autosave:** project.json is rewritten 400 ms after the last edit, and on close, export and
+    when another project opens.
+  - **Thumbnails and waveform** are made in the background and stored in the project's `thumbs/`
+    folder (SPEC: the project folder holds thumbnails), indexed by recording time so no edit makes
+    them stale. Thumbnails: one per second, or fewer for long recordings (at most 400), made
+    coarse-to-fine. Waveform: one byte per 10 ms, the loudest sample over the audio tracks on a
+    square-root scale. Served as `sc://thumb/<step>/<n>.png` and `sc://peaks/v1`. Driver runs
+    delete `thumbs/` with the media.
+  - **After recording** the editor opens by default; a panel setting ("When Recording Stops: Open
+    Editor / Show Summary") brings back the Saved window. The tray gains "Edit Last Recording";
+    the Saved window an "Edit…" button.
+  - **Export of edits:** the quick export (x264 MP4) renders and mixes the edited timeline. The
+    full export dialog is M5.
+  - **Shortcuts:** Space play/pause; K pause, L play, J back 2 s (no reverse playback); ←/→ one
+    frame, ⇧←/⇧→ one second; ↑/↓ previous/next cut; S split; I/O range; ⌫ delete (ripple); ⌘X/C/V
+    cut/copy/paste at the playhead; ⌘D duplicate; ⌘Z/⇧⌘Z undo/redo; ⌘A select all clips; ⌘+/⌘−
+    or ⌘-scroll zoom; Shift-drag a range.
+- **Dependencies added** (all in the SPEC tech stack): `cpal` 0.18.2 (Apache-2.0),
+  `signalsmith-stretch` 0.1.3 (MIT; its C++ library is MIT; builds with `cc` and `bindgen`, which
+  CI already has for Skia). Linux CI installs `libasound2-dev`. `rubato` was not needed: the
+  decoders resample.
+- **Not built / limits:** reverse shuttle (J jumps back); trimming shows the new length while
+  dragging but the preview frame only after release; the waveform is one combined lane, not one
+  per track; editor open time was measured only on short recordings.

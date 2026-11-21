@@ -45,6 +45,8 @@ pub struct Session {
     pub changed_at: Option<Instant>,
     pub rect: Option<PreviewRect>,
     pub fps: u32,
+    pub opened_at: Instant,
+    pub first_frame_ms: Option<u64>,
 }
 
 impl Session {
@@ -193,6 +195,8 @@ impl Core {
             changed_at: None,
             rect: None,
             fps,
+            opened_at: Instant::now(),
+            first_frame_ms: None,
         });
         self.editor.poke();
         self.emit("editor-open", json!({ "project_dir": dir }));
@@ -238,6 +242,7 @@ impl Core {
                 "playing": s.playing,
                 "clipboard_ns": s.clipboard.len(),
                 "frames_presented": self.editor.frames.load(Ordering::Relaxed),
+                "first_frame_ms": s.first_frame_ms,
             }))
         })
     }
@@ -463,6 +468,14 @@ impl Core {
                 .set_activation_policy(tauri::ActivationPolicy::Accessory);
         }
         Ok(Value::Null)
+    }
+
+    pub fn edit_last(self: &Arc<Self>) -> Reply {
+        let dir = self
+            .last_project()
+            .or_else(|| crate::library::latest_editable(&self.projects_dir()))
+            .ok_or("there are no recordings yet")?;
+        self.editor_open(&dir)
     }
 
     #[cfg(debug_assertions)]

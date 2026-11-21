@@ -213,6 +213,14 @@ pub fn render_loop(core: Weak<Core>) {
                 core.editor
                     .frames
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if let Some(s) = lock(&core.editor.session).as_mut()
+                    && s.id == snap.id
+                    && s.first_frame_ms.is_none()
+                {
+                    let ms = s.opened_at.elapsed().as_millis() as u64;
+                    s.first_frame_ms = Some(ms);
+                    tracing::info!(ms, "editor: first frame after opening");
+                }
                 let s = 1.0 / scale;
                 let cam = composed
                     .camera_dst(canvas)

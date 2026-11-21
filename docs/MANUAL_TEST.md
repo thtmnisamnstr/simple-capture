@@ -686,6 +686,31 @@ iPhone cameras all work on the build Mac.
 - Expect: the recovered recording exports with the camera, including the move (up to 0.2 s of the
   last motion may be lost).
 
+## 10c. Editor (M3)
+
+Record about 30 seconds with screen, camera and mic (talk, and show something that moves), then
+stop. The editor opens by itself. Check, in order:
+
+| # | Step | Expected |
+|---|---|---|
+| E1 | Look at the editor | Preview of the composed video on top; inspector on the right (Clip, Camera, Audio, Frame); timeline with thumbnails and a waveform filling in within a few seconds |
+| E2 | Space; Space again after a few seconds | Plays with sound from the playhead, picture and sound in step; pauses |
+| E3 | Click and drag on the ruler | The playhead follows and the preview shows that moment |
+| E4 | Put the playhead somewhere and press S | The clip splits there |
+| E5 | Click a clip, press ⌫ | It is removed and the gap closes (ripple); playing across the new cut has no click |
+| E6 | Shift-drag a range on the ruler, ⌘X, move the playhead, ⌘V | The range moves to the playhead; the camera in the pasted piece is where it was when recorded |
+| E7 | Select a clip, set 2× in the Clip tab, play it | Twice as fast, voice at the same pitch; the clip shows 2× |
+| E8 | Drag a clip's yellow edge (select it first) | Trims; the timeline gets shorter or longer as you drag, applied on release |
+| E9 | Drag a clip body sideways | A blue marker shows where it will land; release reorders |
+| E10 | ⌘Z repeatedly, then ⇧⌘Z | Every edit undoes and redoes in order |
+| E11 | Camera tab: change shape, size, corner; drag the camera in the preview; scroll on it | The preview updates; orange keyframe marks show on the timeline; "Use Everywhere" makes one placement for the whole video |
+| E12 | Audio tab: lower the microphone, mute system audio | Playback and the export follow |
+| E13 | Frame tab: 9:16, then a gradient background | The preview reshapes and letterboxes with the background |
+| E14 | Export → 1080p | Progress in the toolbar; "Exported. Show in Finder"; the file plays with every edit |
+| E15 | Close the editor, tray → Edit Last Recording | The editor opens with the edits kept (autosaved) |
+| E16 | Recorder panel → When Recording Stops → Show Summary; record again | The Saved window appears instead; its Edit… button opens the editor |
+| E17 | Light and dark appearance | Both look right |
+
 ## 11. Results log
 
 Copy this table into the M1 review notes (or STATUS) with one line per step run.

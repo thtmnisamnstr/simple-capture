@@ -512,6 +512,8 @@ if basic("17-editor", log):
               {"playhead_s": last["playhead_tl_ns"] / 1e9})
         check("17-editor", "the preview drew frames", last.get("frames_presented", 0) >= 20,
               last.get("frames_presented"))
+        check("17-editor", "first frame within 2 s of opening", (last.get("first_frame_ms") or 99999) < 2000,
+              last.get("first_frame_ms"))
         ex = [x for x in events(log, "export-state") if x.get("state") == "done"]
         check("17-editor", "export done", bool(ex), [x.get("state") for x in events(log, "export-state")])
         if ex and FFMPEG:

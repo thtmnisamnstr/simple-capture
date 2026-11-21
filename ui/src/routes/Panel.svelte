@@ -597,6 +597,21 @@
         {#if why60}<p class="caption note">60 fps: {why60}.</p>{/if}
         {#if why60x1 && why60x1 !== why60}<p class="caption note">60 fps at 1×: {why60x1}.</p>{/if}
       </section>
+
+      <section aria-labelledby="after-h">
+        <h2 id="after-h">When Recording Stops</h2>
+        <div class="group">
+          <div class="grow">
+            <span class="glabel">Then</span>
+            <div class="gcontrol">
+              <div class="segmented" role="radiogroup" aria-label="When recording stops">
+                <button role="radio" aria-checked={(settings.after_recording ?? 'editor') === 'editor'} onclick={() => (settings!.after_recording = 'editor')}>Open Editor</button>
+                <button role="radio" aria-checked={settings.after_recording === 'saved'} onclick={() => (settings!.after_recording = 'saved')}>Show Summary</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     {/if}
 
     {#if error}

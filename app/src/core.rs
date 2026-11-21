@@ -166,6 +166,10 @@ impl Core {
         })
     }
 
+    pub fn projects_dir(&self) -> PathBuf {
+        self.projects_dir.clone()
+    }
+
     pub fn last_project(&self) -> Option<PathBuf> {
         lock(&self.last_project).clone()
     }

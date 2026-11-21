@@ -14,10 +14,11 @@ use tauri::{AppHandle, LogicalPosition, Manager};
 use crate::core::{Core, Reply};
 use crate::state::Phase;
 
-pub const ITEMS: [(&str, &str); 4] = [
+pub const ITEMS: [(&str, &str); 5] = [
     ("open", "Open Recorder"),
     ("start-stop", "Start Recording"),
     ("switch", "Switch Source…"),
+    ("edit", "Edit Last Recording"),
     ("quit", "Quit"),
 ];
 
@@ -175,6 +176,7 @@ pub fn on_item(core: &Arc<Core>, id: &str) -> Reply {
             }
             core.show_window("switcher", true).map(|_| Value::Null)
         }
+        "edit" => core.edit_last(),
         "quit" => {
             core.shutdown(StopReason::Quit, 0);
             Ok(Value::Null)
