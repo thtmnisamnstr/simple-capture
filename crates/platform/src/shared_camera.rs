@@ -3,7 +3,7 @@
 //! attaches to the session the preview already holds instead of opening the device again.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::Duration;
 
@@ -25,6 +25,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 #[derive(Default)]
 struct Fanout {
     latest: Mutex<Option<VideoFrame>>,
+    open: AtomicBool,
     fresh: Condvar,
     recorder: Mutex<Option<Arc<dyn FrameSink>>>,
     frames: AtomicU64,
@@ -40,6 +41,9 @@ impl FrameSink for Fanout {
         }
         {
             let mut latest = lock(&self.latest);
+            if !self.open.load(Ordering::Relaxed) {
+                return;
+            }
             *latest = Some(f);
             self.frames.fetch_add(1, Ordering::Relaxed);
         }
@@ -156,7 +160,11 @@ impl SharedCamera {
     fn close(&self, st: &mut State) {
         st.lost = false;
         if let Some(old) = st.open.take() {
-            *lock(&self.fan.latest) = None;
+            {
+                let mut latest = lock(&self.fan.latest);
+                self.fan.open.store(false, Ordering::Relaxed);
+                *latest = None;
+            }
             if let Err(e) = old.stream.stop() {
                 tracing::warn!(device = old.device, "camera stop: {e}");
             }
@@ -165,6 +173,7 @@ impl SharedCamera {
 
     fn open(&self, device: &str, limit: CameraLimit) -> Result<Open> {
         let sink: Arc<dyn FrameSink> = self.fan.clone();
+        self.fan.open.store(true, Ordering::Relaxed);
         let stream = self.platform.camera().start(device, limit, sink)?;
         let format = stream.format();
         tracing::info!(device, format, "camera opened");
@@ -357,6 +366,7 @@ mod tests {
     #[test]
     fn wait_newer_wakes_on_a_frame_and_times_out_without_one() {
         let fan = Arc::new(Fanout::default());
+        fan.open.store(true, Ordering::Relaxed);
         let cam = SharedCamera {
             platform: crate::synthetic::SyntheticPlatform::new(crate::synthetic::Scenario::new()),
             me: Weak::new(),
