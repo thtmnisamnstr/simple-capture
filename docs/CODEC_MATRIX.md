@@ -129,7 +129,7 @@ Helper gaps that affect this table (S1): the shipped ffmpeg has **no AV1 decoder
 | Mode | Exact helper and args | Small / Balanced / High | M3 Pro speed (960x540, 15 fps, 150 frames) | Notes |
 |---|---|---|---|---|
 | Best (default) | `gifski --fps N --quality Q --repeat R --y4m-color-override bt709 -o OUT -` (Y4M on stdin) | quality 60 / 80 / 90 | q90: 40.9 fps, 26.2 MB; q70: 57.2 fps, 17.7 MB | Uses all cores (about 710-835% CPU). `--motion-quality` and `--lossy-quality` exist but were not exercised. Without the colour override gifski assumes BT.601 for frames up to 720x480 (R-eco). |
-| Palette (spec calls it "Fast") | `ffmpeg ... -filter_complex "[0:v]setparams=...bt709...,split[a][b];[a]palettegen=max_colors=C:stats_mode=full[p];[b][p]paletteuse=dither=sierra2_4a[out]" -loop L` | colors 64 / 128 / 256 | 14.2 fps median (12.8-16.3; about realtime), about 108% CPU, 36.7 MB | Adapted from Kap with attribution (docs/THIRD_PARTY.md). Single-threaded and about 2.9x slower than gifski q90, so present it as "colour and dither control", not as faster (S1). Without the BT.709 tag swscale uses BT.601 (patch error 32 vs ≤ 10). The single-pass `split` graph buffers every frame in ffmpeg: about 1.9 GB for 60 s at 960x540 15 fps, too much for an 8 GB M1, so M5 should use two passes or cap the length (R-kap). |
+| Palette (spec calls it "Fast") | `ffmpeg ... -filter_complex "[0:v]setparams=...bt709...,split[a][b];[a]palettegen=max_colors=C:stats_mode=full[p];[b][p]paletteuse=dither=sierra2_4a[out]" -loop L` | colors 64 / 128 / 256 | 14.2 fps median (12.8-16.3; about realtime), about 108% CPU, 36.7 MB | Adapted from Kap with attribution (docs/THIRD_PARTY.md). Single-threaded and about 2.9x slower than gifski q90, so present it as "colour and dither control", not as faster (S1). Without the BT.709 tag swscale uses BT.601 (patch error 32 vs ≤ 10). The single-pass `split` graph buffers every frame in ffmpeg: about 1.9 GB for 60 s at 960x540 15 fps, too much for an 8 GB M1 (R-kap). **M5:** two passes instead: pass 1 `palettegen` writes a 16×16 raw `rgb32` palette (the helper has no PNG decoder), pass 2 reads it as a second rawvideo input into `paletteuse` (ADR-047). |
 
 Loop settings differ per tool: gifski `--repeat` (-1 none, 0 forever, N); ffmpeg GIF `-loop` (-1 once, 0 forever, N = repeats, so "play 3 times" is `-loop 2`) (R-eco, R-kap).
 
@@ -194,6 +194,7 @@ Run once per machine and cache the result keyed by OS version, helper version an
 - VP8 colour exception (ADR-029) needs the owner's OK.
 - The S3 evidence behind section 1 (summaries, analyses, logs) is un-ignored under `out/`; only the recordings are gitignored (STATUS §1).
 - Visual check of all quality tiers on real screen recordings; only synthetic content was encoded.
-- Playback test in QuickTime, Chrome, Firefox and VLC for every offered combination (section 2.4 is unverified).
+- Playback test in QuickTime, Chrome, Firefox and VLC for every offered combination (section 2.4 is unverified; MANUAL_TEST §10e). ffprobe validation of every combination passes (`export_formats`, M5).
+- SSIM, text-heavy clip, 1280x720 30 fps: x264 Best 0.9365 at 134 KB vs `h264_videotoolbox` 0.9341 at 233 KB (`export_quality`, M5).
 - Decide on the helper's PNG decoder (enable zlib or drop it) and whether to add an AV1 decoder (`libdav1d`, BSD-2-Clause) for decode-back probes.
 - gifski x86_64, and all Windows/Linux helper builds, are not built yet.

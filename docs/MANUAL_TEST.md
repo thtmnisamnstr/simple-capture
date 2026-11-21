@@ -730,6 +730,28 @@ In the editor with any recording:
 | T11 | ⌘C, move the playhead, ⌘V | A copy appears at the playhead |
 | T12 | Export 1080p and 720p | The text looks identical in both and in the preview |
 
+## 10e. Export sheet (M5)
+
+In the editor with any recording, press ⌘E:
+
+| # | Step | Expected |
+|---|---|---|
+| X1 | Look at the sheet | Format tabs MP4, WebM, GIF, MOV; codecs, encoder, quality, fps, size; an estimate line with size range and time |
+| X2 | Change the size to 720p, then type a width | The other side follows (aspect locked); the estimate updates |
+| X3 | Pick fps 60 on a 30 fps recording | The sheet says it exports at 30 (capped at the recording's rate) |
+| X4 | MP4 + HEVC, export; open in QuickTime | Plays; ⌘I shows HEVC |
+| X5 | MP4 + AV1 + Opus | Marked "less compatible"; plays in Chrome and VLC |
+| X6 | WebM VP9 + Opus, then VP8 + Vorbis | Both play in Chrome and Firefox with the right colours |
+| X7 | MOV ProRes 422 + PCM | Plays in QuickTime; large file |
+| X8 | GIF (gifski) at 15 fps, 480p, loop 3 times | Plays in Safari, Chrome and Firefox at normal speed, three times then stops |
+| X9 | GIF palette mode, 64 colours, dither off | Visible banding; plays at the chosen speed |
+| X10 | Fast encoder on a 5K recording with H.264 at Original | A warning that hardware H.264 stops at 4096 px |
+| X11 | Save the settings as a preset, switch format, apply the preset | Every setting comes back; delete removes it |
+| X12 | Close and reopen the sheet | Each format kept its last settings |
+| X13 | Start an export and press Cancel | "Export cancelled"; no `.part` file left |
+| X14 | After an export: Show in Finder, Copy (paste into Finder or Messages), Open | Each works |
+| X15 | Output folder: choose another folder; name template `{title} {w}x{h}` | The file lands there with that name; a second export gets " 2" |
+
 ## 11. Results log
 
 Copy this table into the M1 review notes (or STATUS) with one line per step run.

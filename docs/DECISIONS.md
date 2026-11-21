@@ -1491,3 +1491,40 @@ they are not a substitute for an M1 run.
 - **Limits:** RTL and complex scripts untested; inline typing shows the browser's caret over
   Skia's glyphs, so the caret can sit a little off on fonts the page has to substitute (system
   fonts); per-character colours are not supported.
+
+## ADR-047: M5 export as built
+- **Status:** Accepted by the agent on 2026-11-21 under the owner's "Build the rest of it out"
+  (no ★ stop); open to change at the owner's review.
+- **Decision:**
+  - **Settings** (`sc_export::settings`): format (MP4, WebM, GIF, MOV), video and audio codec
+    chosen separately within the container (CODEC_MATRIX §2.4), encoder Best or Fast, quality
+    Small / Balanced / High / Custom (CRF or kbps), fps from the per-format list, size (Original,
+    a height class, a typed width or height, or a long side), upscale off by default, GIF settings
+    (gifski quality, motion quality, lossy; palette colours and dither; loop forever / once / N),
+    output folder and a file name template (`{title}`, `{date}`, `{time}`, `{w}`, `{h}`, `{fps}`).
+    `normalized()` repairs a codec pair the container cannot hold; `less_compatible()` names the
+    choices the UI labels.
+  - **FPS:** the effective fps is the largest list value not above min(chosen, recording fps)
+    with a 0.5 fps tolerance (Kap's rule), so a 30 fps recording never exports at 60.
+  - **Recipes** (`sc_export::encode`): every video recipe tags BT.709 through `setparams` and the
+    output flags; VP8 uses BT.601 (ADR-029); HEVC is tagged `hvc1`; MP4 and MOV get `+faststart`;
+    ProRes is `yuv422p10le`. Custom kbps uses `-b:v`/`-maxrate` with a 2× buffer.
+  - **GIF:** gifski reads Y4M on stdin. Palette mode runs two passes over the rendered frames:
+    pass 1 writes a 16×16 raw RGB32 palette (the helper has no PNG decoder), pass 2 maps the frames
+    onto it, so ffmpeg never buffers the whole clip (the single-pass graph needed about 1.9 GB per
+    minute, CODEC_MATRIX §2.5). Frame delays alternate so the total length stays exact.
+  - **Probe:** probe v1 records which encoders open on this machine (`lavfi` test pattern and
+    tone); the export sheet only offers those. A probe cached before this field existed is redone.
+  - **Sheet** (`app/src/exports.rs`, `ExportSheet.svelte`): settings remembered per format and
+    the last format; named presets; an estimate (size range, time, output size, warnings for less
+    compatible choices and the 4096 px hardware H.264 limit) refreshed as settings change;
+    progress and Cancel in the editor toolbar; then Show in Finder, Copy (the file on the
+    pasteboard) and Open.
+- **Verified:** `export_formats` exports every offered combination and checks codec, size, frame
+  count, duration, audio codec, `hvc1`, colour tags and the file extension; GIF frame delays at
+  10, 15 and 25 fps from both GIF modes. `export_quality`: on a text-heavy clip x264 Best scored
+  SSIM 0.9365 at 134 KB against VideoToolbox Fast 0.9341 at 233 KB. Live driver flow 17 exports
+  MP4, a 240p GIF and a VP9 + Opus WebM from the editor.
+- **Limits:** playback in Chrome, Firefox and VLC is still a manual check (MANUAL_TEST §10e);
+  animated WebP/APNG (nice-to-have) are not offered; Windows and Linux helper builds come in M6.
+
