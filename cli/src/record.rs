@@ -412,6 +412,7 @@ pub fn notice_json(n: &Notice) -> Value {
         }
         Notice::StoppedForSleep => json!({ "notice": "stopped_for_sleep" }),
         Notice::StoppedForDisk => json!({ "notice": "stopped_for_disk" }),
+        Notice::Paused { paused } => json!({ "notice": "paused", "paused": paused }),
     };
     let mut v = json!({ "ev": "notice" });
     if let (Some(o), Value::Object(b)) = (v.as_object_mut(), body) {

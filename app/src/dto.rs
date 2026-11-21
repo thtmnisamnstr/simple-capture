@@ -222,6 +222,7 @@ pub fn notice(n: &Notice) -> Value {
         }
         Notice::StoppedForSleep => json!({"kind": "stopped_for_sleep"}),
         Notice::StoppedForDisk => json!({"kind": "stopped_for_disk"}),
+        Notice::Paused { paused } => json!({"kind": "paused", "paused": paused}),
     }
 }
 

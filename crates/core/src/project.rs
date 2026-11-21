@@ -763,15 +763,12 @@ impl ProjectV1 {
         }
     }
 
-    /// Recording length in RecTime: `stop − start − pauses` once stopped, otherwise the latest
-    /// closed segment end. `None` while nothing is known.
+    /// Recording length in RecTime: `stop − start` once stopped, otherwise the latest closed
+    /// segment end. `None` while nothing is known. Paused spans stay in the tracks (ADR-048);
+    /// the EDL leaves them out.
     pub fn duration_ns(&self) -> Option<i64> {
         if let Some(stop) = self.recording.stop_host_ns {
-            let clock = self.rec_clock();
-            let d = stop
-                .saturating_sub(self.recording.start_host_ns)
-                .saturating_sub(clock.pause_total_before(HostTime(stop)));
-            return Some(d.max(0));
+            return Some(stop.saturating_sub(self.recording.start_host_ns).max(0));
         }
         self.recording
             .screen

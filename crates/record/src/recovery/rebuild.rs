@@ -6,10 +6,10 @@ use sc_core::journal::{
 };
 use sc_core::project::{
     ColorInfo, DeviceInfo, Extra, GapRecord, PauseRecord, ProjectState, ProjectV1, Resolution,
-    ScreenSegment, Speed, Track, TrackHealth, TrackKind, VideoInfo,
+    ScreenSegment, Track, TrackHealth, TrackKind, VideoInfo,
 };
 use sc_core::sessionlog::Level;
-use sc_core::{ClockKind, project::Clip, project::SystemAudioMode};
+use sc_core::{ClockKind, project::SystemAudioMode};
 use sc_geometry::{Ratio, SizePx};
 use sc_platform::Decoder;
 use serde_json::{Value, json};
@@ -171,14 +171,14 @@ pub(super) fn rebuild(
     if p.edl.clips.is_empty()
         && let Some(d) = p.duration_ns().filter(|d| *d > 0)
     {
-        p.edl.clips.push(Clip {
-            id: "c0".to_string(),
-            src_in_rec_ns: 0,
-            src_out_rec_ns: d,
-            speed: Speed { num: 1, den: 1 },
-            muted: false,
-            extra: Extra::new(),
-        });
+        let start = p.recording.start_host_ns;
+        let pauses: Vec<(i64, i64)> = p
+            .recording
+            .pauses
+            .iter()
+            .map(|q| (q.start_host_ns - start, q.end_host_ns - start))
+            .collect();
+        p.edl = sc_core::edit::edl_between_pauses(d, &pauses);
     }
     p.state = if damaged {
         ProjectState::Damaged
@@ -639,11 +639,5 @@ fn stop_from_tracks(p: &ProjectV1) -> i64 {
         .filter_map(|t| t.duration_ns.map(|d| t.first_sample_offset_ns + d))
         .max();
     let rec_end = seg_end.max(track_end).unwrap_or(0).max(0);
-    let mut host = p.recording.start_host_ns + rec_end;
-    for pause in &p.recording.pauses {
-        if pause.start_host_ns <= host {
-            host += pause.end_host_ns - pause.start_host_ns;
-        }
-    }
-    host
+    p.recording.start_host_ns + rec_end
 }

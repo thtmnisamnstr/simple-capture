@@ -258,8 +258,6 @@ fn records_every_track_and_finalizes() {
         Outcome::Locked,
         "the lock is held while recording"
     );
-    assert!(matches!(s.pause(), Err(Error::Unsupported(_))));
-    assert!(matches!(s.resume(), Err(Error::Unsupported(_))));
     let sum = s.stop(StopReason::User).expect("stop");
     assert!(!pdir.join(".lock").exists());
     assert_eq!(sum.segments, 1);
@@ -1581,4 +1579,77 @@ fn camera_keys_are_recorded_journaled_and_recovered() {
         back.camera_layout.overlays[0].keyframes, *keys,
         "rebuilt from the journal"
     );
+}
+
+#[test]
+fn pause_cuts_the_paused_time_out_of_the_timeline() {
+    let dir = tmp("pause");
+    let p = platform(
+        Scenario::new()
+            .screen(
+                "main",
+                ScreenScript {
+                    size: size(320, 180),
+                    ..Default::default()
+                },
+            )
+            .mic(Some(mic())),
+    );
+    let mut req = request(&dir, display_spec("main", None));
+    req.mic = Some(sc_platform::synthetic::MIC_DEVICE_ID.into());
+    let obs = Arc::new(Obs::default());
+    let s = Session::start(as_dyn(&p), req, obs.clone()).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 800 * MS);
+    s.pause().expect("pause");
+    assert!(s.paused());
+    s.pause().expect("pausing twice is a no-op");
+    sleep_host(&*p, 1000 * MS);
+    s.resume().expect("resume");
+    assert!(!s.paused());
+    sleep_host(&*p, 800 * MS);
+    let sum = s.stop(StopReason::User).expect("stop");
+
+    let proj = ProjectV1::load(&pdir).expect("load");
+    assert_eq!(proj.recording.pauses.len(), 1);
+    let pause = &proj.recording.pauses[0];
+    let paused = pause.end_host_ns - pause.start_host_ns;
+    assert!((paused - 1000 * MS).abs() < 150 * MS, "paused {paused} ns");
+    assert_eq!(proj.edl.clips.len(), 2, "{:?}", proj.edl.clips);
+    let start = proj.recording.start_host_ns;
+    assert_eq!(proj.edl.clips[0].src_in_rec_ns, 0);
+    assert_eq!(
+        proj.edl.clips[0].src_out_rec_ns,
+        pause.start_host_ns - start
+    );
+    assert_eq!(proj.edl.clips[1].src_in_rec_ns, pause.end_host_ns - start);
+    assert_eq!(proj.edl.clips[1].src_out_rec_ns, sum.duration_ns);
+    let edited = sc_core::edit::duration(&proj.edl);
+    assert_eq!(edited, sum.duration_ns - paused);
+
+    let n = obs.notices_at_end();
+    assert!(
+        n.iter()
+            .any(|x| matches!(x, Notice::Paused { paused: true }))
+            && n.iter()
+                .any(|x| matches!(x, Notice::Paused { paused: false })),
+        "{n:?}"
+    );
+    assert!(
+        !n.iter().any(|x| matches!(x, Notice::AudioGap { .. })),
+        "a pause is not an audio gap: {n:?}"
+    );
+    let j = read_journal(&pdir).expect("journal");
+    assert!(
+        j.events
+            .iter()
+            .any(|e| matches!(e, JournalEvent::Pause { .. }))
+    );
+    assert!(
+        j.events
+            .iter()
+            .any(|e| matches!(e, JournalEvent::Resume { .. }))
+    );
+    let screen = check_segments(&proj, &pdir, &*p.decoder());
+    assert!(screen > 0);
 }

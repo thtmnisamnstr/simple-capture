@@ -40,6 +40,7 @@ struct Worker {
     gaps: Vec<GapRecord>,
     errors: u32,
     last_gap_notice: Option<Instant>,
+    seen_resumes: u64,
 }
 
 pub(crate) fn spawn(
@@ -55,6 +56,7 @@ pub(crate) fn spawn(
         gaps: Vec::new(),
         errors: 0,
         last_gap_notice: None,
+        seen_resumes: 0,
     };
     std::thread::Builder::new().name(name).spawn(move || {
         while let Ok(m) = rx.recv() {
@@ -167,6 +169,13 @@ impl Worker {
                 .fetch_add(u64::from(a.frames - step.skip_frames), Ordering::Relaxed);
         }
         let Some(gap) = step.gap else { return };
+        let resumes = self.c.sh.resumes.load(Ordering::Acquire);
+        if resumes != self.seen_resumes {
+            self.seen_resumes = resumes;
+            if gap.kind == GapKind::Gap {
+                return;
+            }
+        }
         let at_rec_ns = gap.at_host_ns - start;
         self.c.sh.rec.journal(&JournalEvent::AudioGap {
             track: self.c.track_id.clone(),

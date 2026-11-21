@@ -608,11 +608,19 @@ fn empty_new_segment_is_dropped_without_damage_and_pauses_fold() {
         ),
         (START + 200_000_000, START + 500_000_000)
     );
-    assert_eq!(
-        p.recording.stop_host_ns,
-        Some(START + 30 * FRAME_NS + 300_000_000)
-    );
+    assert_eq!(p.recording.stop_host_ns, Some(START + 30 * FRAME_NS));
     assert_eq!(p.duration_ns(), Some(30 * FRAME_NS));
+    let spans: Vec<(i64, i64)> = p
+        .edl
+        .clips
+        .iter()
+        .map(|c| (c.src_in_rec_ns, c.src_out_rec_ns))
+        .collect();
+    assert_eq!(
+        spans,
+        vec![(0, 200_000_000), (500_000_000, 30 * FRAME_NS)],
+        "the pause is cut out of the timeline"
+    );
     assert!(fx.path(&seg_file(1)).exists());
 }
 

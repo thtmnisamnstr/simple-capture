@@ -186,6 +186,8 @@ else
 fi
 
 build_ffmpeg() {
+    # mingw's libgcc_s.a imports libgcc_s_seh-1.dll; the static libgcc covers everything.
+    $WIN && sed -i 's/ -lgcc_s//g' "$PREFIX"/lib/pkgconfig/*.pc
     prepare ffmpeg
     printf '%q ' ./configure "${FFMPEG_CONFIGURE[@]}" > "$OUT/ffmpeg.configure.txt"
     echo >> "$OUT/ffmpeg.configure.txt"

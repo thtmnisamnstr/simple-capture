@@ -533,3 +533,23 @@ fn every_timeline_instant_maps_inside_its_clip() {
         assert!(c.src_in_rec_ns <= l.rec_ns && l.rec_ns <= c.src_out_rec_ns);
     }
 }
+
+#[test]
+fn pauses_become_cuts() {
+    let s = 1_000_000_000;
+    let edl = edl_between_pauses(
+        10 * s,
+        &[(2 * s, 3 * s), (6 * s, 6 * s + 5_000_000), (9 * s, 12 * s)],
+    );
+    let spans: Vec<(i64, i64)> = edl
+        .clips
+        .iter()
+        .map(|c| (c.src_in_rec_ns, c.src_out_rec_ns))
+        .collect();
+    assert_eq!(
+        spans,
+        vec![(0, 2 * s), (3 * s, 6 * s), (6 * s + 5_000_000, 9 * s)]
+    );
+    assert_eq!(duration(&edl), 8 * s - 5_000_000);
+    assert_eq!(edl_between_pauses(4 * s, &[]).clips.len(), 1);
+}

@@ -44,6 +44,10 @@ pub(crate) struct SessionSink {
 }
 
 impl SessionSink {
+    fn paused(&self) -> bool {
+        self.sh.paused.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     pub(crate) fn new(sh: Arc<Shared>, router: SyncSender<RouterIn>) -> Arc<SessionSink> {
         Arc::new(SessionSink {
             sh,
@@ -104,6 +108,9 @@ fn forward(feed: &OnceLock<Feed>, item: TrackIn, audio: bool) {
 impl FrameSink for SessionSink {
     fn on_screen(&self, f: VideoFrame) {
         self.first(0, |x| x.screen = true);
+        if self.paused() {
+            return;
+        }
         if let Err(TrySendError::Full(_)) = self.router.try_send(RouterIn::Frame(f))
             && let Some(s) = lock(&self.sh.screen_stats).as_ref()
         {
@@ -114,11 +121,17 @@ impl FrameSink for SessionSink {
     fn on_camera(&self, f: VideoFrame) {
         let size = f.buffer.0.size();
         self.first(1, |x| x.camera = Some(size));
+        if self.paused() {
+            return;
+        }
         forward(&self.camera, TrackIn::Video(f), false);
     }
 
     fn on_audio(&self, track: AudioTrackKind, a: AudioBuffer) {
         let fmt = (a.sample_rate, a.channels);
+        if self.paused() {
+            return;
+        }
         match track {
             AudioTrackKind::Mic => {
                 self.first(2, |x| x.mic = Some(fmt));

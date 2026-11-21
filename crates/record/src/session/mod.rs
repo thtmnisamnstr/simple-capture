@@ -118,6 +118,9 @@ pub enum Notice {
     },
     StoppedForSleep,
     StoppedForDisk,
+    Paused {
+        paused: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -212,14 +215,28 @@ impl Session {
             .map_err(|_| Error::State(ENDED.into()))
     }
 
-    /// M1: pause/resume is M7.
+    /// Stops taking frames and sound until [`Session::resume`]; the paused time is cut out of
+    /// the finished recording's timeline. Pausing twice is a no-op.
     pub fn pause(&self) -> Result<()> {
-        Err(Error::Unsupported("pause/resume is M7"))
+        self.check_live()?;
+        let (tx, rx) = mpsc::channel();
+        self.ctl
+            .send(Ctl::Pause(tx))
+            .map_err(|_| Error::State(ENDED.into()))?;
+        rx.recv().map_err(|_| Error::State(ENDED.into()))?
     }
 
-    /// M1: pause/resume is M7.
     pub fn resume(&self) -> Result<()> {
-        Err(Error::Unsupported("pause/resume is M7"))
+        self.check_live()?;
+        let (tx, rx) = mpsc::channel();
+        self.ctl
+            .send(Ctl::Resume(tx))
+            .map_err(|_| Error::State(ENDED.into()))?;
+        rx.recv().map_err(|_| Error::State(ENDED.into()))?
+    }
+
+    pub fn paused(&self) -> bool {
+        self.sh.paused.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn set_exclusions(&self, exclude: Vec<WindowId>) -> Result<()> {

@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
-    branches: [main]
+    branches: [main, 'm[0-9]*']
 
 permissions:
   contents: read
@@ -142,6 +142,15 @@ jobs:
         with:
           name: helpers-${{ matrix.plat }}
           path: third_party/out/${{ matrix.plat }}
+      - name: Helper works here (raw-track round trip)
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          exe=""; [ "$RUNNER_OS" = Windows ] && exe=.exe
+          chmod +x third_party/out/${{ matrix.plat }}/* 2>/dev/null || true
+          "third_party/out/${{ matrix.plat }}/ffmpeg$exe" -hide_banner -version | head -n 1
+          SC_FFMPEG="$PWD/third_party/out/${{ matrix.plat }}/ffmpeg$exe" SC_REQUIRE_HELPERS=1 \
+            cargo test --locked -p simple-capture-tracks --test roundtrip
       - name: cargo-about
         shell: bash
         run: cargo install --locked cargo-about@0.9.3 --features cli

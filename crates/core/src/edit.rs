@@ -115,6 +115,36 @@ pub fn starts(edl: &Edl) -> Vec<i64> {
     out
 }
 
+/// The whole recording as clips that leave out the paused spans (`(start, end)` in recording
+/// time); stretches shorter than [`MIN_CLIP_NS`] are dropped.
+pub fn edl_between_pauses(duration_ns: i64, pauses_rec: &[(i64, i64)]) -> Edl {
+    let mut spans: Vec<(i64, i64)> = pauses_rec
+        .iter()
+        .map(|(a, b)| ((*a).clamp(0, duration_ns), (*b).clamp(0, duration_ns)))
+        .filter(|(a, b)| b > a)
+        .collect();
+    spans.sort_unstable();
+    let mut clips = Vec::new();
+    let mut at = 0;
+    for (a, b) in spans.into_iter().chain([(duration_ns, duration_ns)]) {
+        if a - at >= MIN_CLIP_NS {
+            clips.push(Clip {
+                id: format!("c{}", clips.len()),
+                src_in_rec_ns: at,
+                src_out_rec_ns: a,
+                speed: Speed::ONE,
+                muted: false,
+                extra: Extra::new(),
+            });
+        }
+        at = at.max(b);
+    }
+    Edl {
+        clips,
+        extra: Extra::new(),
+    }
+}
+
 pub fn duration(edl: &Edl) -> i64 {
     edl.clips.iter().map(Clip::tl_len).sum()
 }

@@ -13,8 +13,8 @@ use sc_core::journal::{
     DeviceChange, DeviceKindJ, JournalEvent, JournalWriter, StopReason, SwitchNext,
 };
 use sc_core::project::{
-    AudioInfo, AudioMixEntry, CameraKey, Clip, ColorInfo, DeviceInfo, Easing, Edl, EndReason,
-    Extra, ProjectState, ProjectV1, ScreenSegment, Speed, StartReason, Track, TrackHealth,
+    AudioInfo, AudioMixEntry, CameraKey, ColorInfo, DeviceInfo, Easing, EndReason, Extra,
+    PauseRecord, ProjectState, ProjectV1, ScreenSegment, StartReason, Track, TrackHealth,
     TrackKind, Via, VideoInfo, copy_background_asset,
 };
 use sc_core::sessionlog::{Level, SessionLog};
@@ -110,6 +110,7 @@ struct Control {
     results: Vec<TrackResult>,
     finished: Option<std::result::Result<StopSummary, String>>,
     camera_keys: Vec<CameraKey>,
+    pauses: Vec<(i64, Option<i64>)>,
     pending_keys: Vec<CameraKey>,
     pending_since: Option<Instant>,
 }
@@ -279,6 +280,8 @@ pub(crate) fn start(
         tuning: req.tuning.clone(),
         ctl: ctl_tx,
         screen_stats: Mutex::new(None),
+        paused: std::sync::atomic::AtomicBool::new(false),
+        resumes: std::sync::atomic::AtomicU64::new(0),
     });
     sh.set_state(SessionState::Preparing);
     let vspec = VideoWriterSpec {
@@ -319,6 +322,7 @@ pub(crate) fn start(
         results: Vec::new(),
         finished: None,
         camera_keys: Vec::new(),
+        pauses: Vec::new(),
         pending_keys: Vec::new(),
         pending_since: None,
     };
@@ -764,6 +768,43 @@ impl Control {
                 } else if self.active.is_none() {
                     let _ = self.finalize(StopReason::Error);
                 }
+            }
+            Ctl::Pause(reply) => {
+                let r = if !self.live() {
+                    Err(Error::State("the recording has ended".into()))
+                } else if self.pauses.last().is_some_and(|p| p.1.is_none()) {
+                    Ok(())
+                } else {
+                    let now = self.sh.now();
+                    self.sh
+                        .paused
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                    self.journal(JournalEvent::Pause { host_ns: now });
+                    self.pauses.push((now, None));
+                    self.sh.obs.on_notice(&Notice::Paused { paused: true });
+                    Ok(())
+                };
+                let _ = reply.send(r);
+            }
+            Ctl::Resume(reply) => {
+                let live = self.live();
+                let now = self.sh.now();
+                let r = match self.pauses.last_mut() {
+                    Some(p) if p.1.is_none() && live => {
+                        p.1 = Some(now);
+                        self.journal(JournalEvent::Resume { host_ns: now });
+                        self.sh
+                            .resumes
+                            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                        self.sh
+                            .paused
+                            .store(false, std::sync::atomic::Ordering::SeqCst);
+                        self.sh.obs.on_notice(&Notice::Paused { paused: false });
+                        Ok(())
+                    }
+                    _ => Ok(()),
+                };
+                let _ = reply.send(r);
             }
             Ctl::CameraKey(k, sent) => {
                 if self.live() {
@@ -1438,17 +1479,23 @@ impl Control {
         }
         p.state = ProjectState::Finalized;
         p.recording.stop_host_ns = Some(stop_host);
-        p.edl = Edl {
-            clips: vec![Clip {
-                id: "c0".into(),
-                src_in_rec_ns: 0,
-                src_out_rec_ns: duration,
-                speed: Speed { num: 1, den: 1 },
-                muted: false,
+        let pauses: Vec<(i64, i64)> = self
+            .pauses
+            .iter()
+            .map(|(a, b)| (*a, b.unwrap_or(stop_host).min(stop_host)))
+            .filter(|(a, b)| b > a)
+            .collect();
+        p.recording.pauses = pauses
+            .iter()
+            .map(|(a, b)| PauseRecord {
+                start_host_ns: *a,
+                end_host_ns: *b,
                 extra: Extra::new(),
-            }],
-            extra: Extra::new(),
-        };
+            })
+            .collect();
+        let pauses_rec: Vec<(i64, i64)> =
+            pauses.iter().map(|(a, b)| (a - start, b - start)).collect();
+        p.edl = sc_core::edit::edl_between_pauses(duration, &pauses_rec);
         let saved = self.project.save(&self.sh.dir);
         self.lock.take();
         let result = match saved {
