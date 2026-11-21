@@ -449,6 +449,41 @@ if basic("14-preview-capture", log):
             else:
                 check("14-preview-capture", "preview rect inside the frame", False, rp)
 
+log = lines("16-soak")
+if log is not None and basic("16-soak", log):
+    pr = P.get("drv soak")
+    finalized("16-soak", pr, "drv soak", reason="user")
+    if pr:
+        rec = pr["project"]["recording"]
+        dur_s = (rec["stop_host_ns"] - rec["start_host_ns"]) / 1e9 if rec.get("stop_host_ns") else 0
+        check("16-soak", "about 30 minutes recorded", 1790 <= dur_s <= 1830, round(dur_s, 1))
+        tracks = {t["id"]: t for t in rec["tracks"]}
+        kinds = sorted({t["kind"] for t in rec["tracks"]})
+        check("16-soak", "screen, camera, mic and system audio tracks", all(k in kinds for k in
+              ("screen", "camera", "mic", "system_audio")), kinds)
+        for tid, t in sorted(tracks.items()):
+            h = t.get("health") or {}
+            n, d = h.get("frames", 0), h.get("dropped", 0)
+            pct = 100.0 * d / max(1, n + d)
+            check("16-soak", f"{tid}: under 0.5% dropped, no writer stalls", pct < 0.5 and h.get("writer_not_ready", 0) == 0,
+                  {"frames": n, "dropped": d, "pct": round(pct, 3), "writer_not_ready": h.get("writer_not_ready"),
+                   "gaps": len(h.get("gaps") or [])})
+        ps = steps(log, "cmd preview_state")
+        st = [x["result"] for x in ps]
+        if len(st) >= 2:
+            cam = (tracks.get("camera") or {}).get("health", {}).get("frames", 0)
+            cam_fps = cam / max(1.0, dur_s)
+            rates = []
+            for a, b in zip(ps, ps[1:]):
+                dt = ((b.get("rec_ns") or 0) - (a.get("rec_ns") or 0)) / 1e9
+                if dt > 0:
+                    rates.append((b["result"].get("frame", 0) - a["result"].get("frame", 0)) / dt)
+            check("16-soak", "the Preview never stalled (each interval >= 75% of the camera's rate)",
+                  bool(rates) and cam_fps > 0 and min(rates) >= 0.75 * cam_fps,
+                  {"camera_fps": round(cam_fps, 1), "preview_fps": [round(r, 1) for r in rates]})
+            check("16-soak", "drawn natively throughout", all(x.get("native") for x in st) or sys.platform != "darwin",
+                  [x.get("native") for x in st])
+
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)
 failed = [r for r in results if not r["ok"]]

@@ -133,6 +133,7 @@ if wanted 10-kill; then
   drive 10b-relaunch
 fi
 flow 11-quit-export
+[ ${#FILTERS[@]} -gt 0 ] && wanted 16-soak && flow 16-soak
 sleep 1
 [ -n "$FFMPEG" ] && pgrep -fl "$FFMPEG" > "$RUN/ffmpeg-after.txt" 2>/dev/null
 
