@@ -259,6 +259,18 @@ pub(crate) struct Gpu {
     readback: Option<wgpu::Buffer>,
 }
 
+/// Render threads are plain threads with no autorelease pool, so the Metal and CoreVideo objects
+/// a frame autoreleases would otherwise live as long as the thread.
+#[cfg(target_os = "macos")]
+fn drain_autoreleased<T>(f: impl FnOnce() -> T) -> T {
+    objc2::rc::autoreleasepool(|_| f())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn drain_autoreleased<T>(f: impl FnOnce() -> T) -> T {
+    f()
+}
+
 fn other(what: &str, e: impl std::fmt::Display) -> Error {
     Error::Other(format!("sc_render: {what}: {e}"))
 }
@@ -704,15 +716,17 @@ impl Gpu {
     }
 
     fn scoped<T>(&mut self, f: impl FnOnce(&mut Gpu) -> Result<T>) -> Result<T> {
-        let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let oom = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        let result = f(self);
-        let oom = pollster::block_on(oom.pop());
-        let validation = pollster::block_on(scope.pop());
-        if let Some(e) = validation.or(oom) {
-            return Err(other("wgpu", e));
-        }
-        result
+        drain_autoreleased(|| {
+            let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+            let oom = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+            let result = f(self);
+            let oom = pollster::block_on(oom.pop());
+            let validation = pollster::block_on(scope.pop());
+            if let Some(e) = validation.or(oom) {
+                return Err(other("wgpu", e));
+            }
+            result
+        })
     }
 
     fn render_inner(&mut self, job: &FrameJob, out: OutputFormat) -> Result<RenderedFrame> {

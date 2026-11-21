@@ -59,6 +59,42 @@ impl std::fmt::Debug for MacScreenSource {
 }
 
 impl MacScreenSource {
+    fn snapshot_now(&self, spec: &SourceSpec, max: SizePx) -> Result<sc_core::image::RgbaImage> {
+        tcc::guard("SCScreenshotManager")?;
+        let mut cached = self
+            .snapshot_filter
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let fresh = cached
+            .as_ref()
+            .is_some_and(|c| c.spec == *spec && c.at.elapsed() < SNAPSHOT_FILTER_TTL);
+        if !fresh {
+            *cached = None;
+            let content = content::shareable(false)?;
+            let cfg = ScreenStreamConfig {
+                fps: 1,
+                resolution: Resolution::Native,
+                show_cursor: false,
+                show_clicks: false,
+                queue_depth: 3,
+                exclude: Vec::new(),
+            };
+            *cached = Some(SnapshotFilter {
+                spec: spec.clone(),
+                at: Instant::now(),
+                built: SendBox(build(Some(&content), spec, &cfg)?),
+            });
+        }
+        let Some(filter) = cached.as_ref() else {
+            return Err(Error::Other("snapshot: no filter".into()));
+        };
+        let image = snapshot(&filter.built.0, max);
+        if image.is_err() {
+            *cached = None;
+        }
+        image
+    }
+
     pub fn new() -> MacScreenSource {
         MacScreenSource::default()
     }
@@ -140,39 +176,7 @@ impl ScreenSource for MacScreenSource {
     }
 
     fn snapshot(&self, spec: &SourceSpec, max: SizePx) -> Result<sc_core::image::RgbaImage> {
-        tcc::guard("SCScreenshotManager")?;
-        let mut cached = self
-            .snapshot_filter
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        let fresh = cached
-            .as_ref()
-            .is_some_and(|c| c.spec == *spec && c.at.elapsed() < SNAPSHOT_FILTER_TTL);
-        if !fresh {
-            *cached = None;
-            let content = content::shareable(false)?;
-            let cfg = ScreenStreamConfig {
-                fps: 1,
-                resolution: Resolution::Native,
-                show_cursor: false,
-                show_clicks: false,
-                queue_depth: 3,
-                exclude: Vec::new(),
-            };
-            *cached = Some(SnapshotFilter {
-                spec: spec.clone(),
-                at: Instant::now(),
-                built: SendBox(build(Some(&content), spec, &cfg)?),
-            });
-        }
-        let Some(filter) = cached.as_ref() else {
-            return Err(Error::Other("snapshot: no filter".into()));
-        };
-        let image = snapshot(&filter.built.0, max);
-        if image.is_err() {
-            *cached = None;
-        }
-        image
+        objc2::rc::autoreleasepool(|_| self.snapshot_now(spec, max))
     }
 }
 
