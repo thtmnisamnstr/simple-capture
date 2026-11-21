@@ -66,7 +66,11 @@ mod windows {
         assert!(p.local_now().y >= 2026);
         assert!(p.camera().devices().is_ok());
         assert!(p.screen().list(&[]).is_ok());
-        assert_eq!(p.writers().extension(), "mkv");
+        assert_eq!(
+            p.writers().extension(),
+            "mp4",
+            "Media Foundation records on a system that has it"
+        );
     }
 
     /// Windows.Graphics.Capture on the main display. A runner without a desktop may list no
