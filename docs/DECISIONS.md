@@ -1501,7 +1501,7 @@ they are not a substitute for an M1 run.
     Small / Balanced / High / Custom (CRF or kbps), fps from the per-format list, size (Original,
     a height class, a typed width or height, or a long side), upscale off by default, GIF settings
     (gifski quality, motion quality, lossy; palette colours and dither; loop forever / once / N),
-    output folder and a file name template (`{title}`, `{date}`, `{time}`, `{w}`, `{h}`, `{fps}`).
+    output folder and a file name template (`{title}`, `{date}`, `{time}`, `{size}`, `{fps}`, `{format}`).
     `normalized()` repairs a codec pair the container cannot hold; `less_compatible()` names the
     choices the UI labels.
   - **FPS:** the effective fps is the largest list value not above min(chosen, recording fps)

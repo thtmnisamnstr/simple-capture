@@ -750,7 +750,7 @@ In the editor with any recording, press ⌘E:
 | X12 | Close and reopen the sheet | Each format kept its last settings |
 | X13 | Start an export and press Cancel | "Export cancelled"; no `.part` file left |
 | X14 | After an export: Show in Finder, Copy (paste into Finder or Messages), Open | Each works |
-| X15 | Output folder: choose another folder; name template `{title} {w}x{h}` | The file lands there with that name; a second export gets " 2" |
+| X15 | Output folder: choose another folder; name template `{title} {size}` | The file lands there with that name; a second export gets " 2" |
 
 ## 11. Results log
 
