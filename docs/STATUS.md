@@ -72,6 +72,8 @@ at 1920×1080 30 fps):
 | Same through webview frames (before the native layer) | app 20.5% + WebKit 9.0% = 29.5% (34.6% before the first 2026-11-20 cuts; 31.7% debug) | same |
 | Same, camera off, release, native layer | **4.3%** (frames only when something changes) | same |
 | Memory, Preview with the live camera for 2 min (release, 3,079 frames presented) | phys_footprint flat at 382–399 MB, RSS settles at about 135 MB: no per-frame growth | `footprint`/`ps` every 10 s |
+| **30-minute soak** (M2 review item 8; release; display + FaceTime HD + mic + system audio; Preview shown; overnight 2026-11-21 01:20, commit 7e1dfc0) | 18/18: 1800.1 s; 0 dropped and 0 writer stalls on every track (camera 53,979 frames, screen 51,864); the Preview drawn natively throughout at 23.6–25.7 fps (camera 30); app CPU 35.5% average, 38.6% max of one core; RSS 145 → 89 MB; phys_footprint 387 → 390 MB (+0.08 MB/min) | `app/driver/run.sh 16-soak`, CPU and memory every 30 s |
+| Same soak before the autorelease fix (two runs, 23:00 and 23:31) | 18/18 both, but phys_footprint grew 389 → 427 MB (+1.4 MB/min, linear). A/B runs of 6 min: Preview hidden 0 growth, Preview without camera +5 MB heap, Preview with camera +10 MB heap and +9 MB GPU. Cause: the Preview's render thread had no autorelease pool; renders and snapshots now drain one (7e1dfc0) | `footprint` by category at minutes 1 and 5 |
 | Local CI (`ci-local-fast`, helpers and GPU required) | 394 Rust + 40 UI tests, 0 failures | |
 
 **Not verified / open:**
@@ -84,7 +86,12 @@ at 1920×1080 30 fps):
   Windows and Linux still use webview frames (ADR-007).
 - Real mouse interaction (camera drag and resize in the Preview, the bar's grip) was driven
   through commands, not real clicks; MANUAL_TEST §10b M1–M7 covers it.
-- No 30-minute soak with the Preview window shown; no A/V sync measurement of the camera (M1 gap remains).
+- No A/V sync measurement of the camera (M1 gap remains).
+- While recording, the Preview presents about 24 fps from a 30 fps camera (it keeps every frame
+  when not recording); it never stalled in the soaks.
+- Seen once on Windows CI (2026-11-21, `stop_before_the_duration_ends_there`): a stop that lands
+  before the first segment has opened leaves that segment without an end time in the project. M1
+  code; the re-run passed and it does not reproduce locally; to look at before M3.
 - Keyframes are not editable until the M3 editor.
 - The Preview refreshes the screen once a second (the camera is live).
 
