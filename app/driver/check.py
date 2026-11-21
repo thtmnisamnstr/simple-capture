@@ -91,7 +91,8 @@ def basic(flow, log, allow_fail=()):
             check(flow, "ran", False, "no log")
         return False
     failed = [s for s in steps(log) if not s["ok"] and not any(s["line"].startswith(a) for a in allow_fail)]
-    check(flow, "every step ok and exit 0", not failed and rc(flow) == 0,
+    expected = any(not s["ok"] for s in steps(log))
+    check(flow, "every step ok (or failed as expected) and the matching exit status", not failed and rc(flow) == (1 if expected else 0),
           {"rc": rc(flow), "failed": [(s["line"][:80], s.get("error")) for s in failed]})
     return True
 
@@ -674,6 +675,28 @@ if basic("22-silence", log):
             mean = sum(px) / len(px) if px else 255
             check("22-silence", "the screen is black under the box (export at 0.5 s)", px and mean < 20 and max(px) < 40,
                   {"mean": mean, "max": max(px) if px else None})
+
+log = lines("23-shortcuts")
+if basic("23-shortcuts", log, allow_fail=('cmd app {"action":"shortcut_set","id":"record","keys":"KeyR"}',)):
+    res = [x for x in steps(log) if x["line"].startswith("cmd app")]
+    rows = lambda r: {x["id"]: x for x in (r.get("result") or [])}
+    first = rows(res[0])
+    check("23-shortcuts", "five actions with their defaults, all registered",
+          len(first) == 5 and all(x["keys"] == x["default"] and x["error"] is None for x in first.values()),
+          {k: (v["keys"], v["error"]) for k, v in first.items()})
+    set_pause = rows(res[1])["pause"]
+    check("23-shortcuts", "a new shortcut registers", set_pause["keys"] == "Control+Alt+KeyP" and set_pause["error"] is None,
+          set_pause)
+    clash = rows(res[2])["switch"]
+    check("23-shortcuts", "a clash with another action is reported", "Also used for" in (clash["error"] or ""), clash)
+    bare = res[3]
+    check("23-shortcuts", "a key without ⌘, ⌃ or ⌥ is refused", not bare["ok"] and "so typing" in (bare.get("error") or ""),
+          bare.get("error"))
+    after = rows(res[6])
+    check("23-shortcuts", "restoring the key clears the clash", after["switch"]["error"] is None, after["switch"])
+    st = [x["result"] for x in steps(log, "cmd get_settings")]
+    check("23-shortcuts", "a cleared shortcut is saved as none", bool(st) and st[-1]["shortcuts"].get("pause") == "",
+          st[-1]["shortcuts"] if st else None)
 
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)

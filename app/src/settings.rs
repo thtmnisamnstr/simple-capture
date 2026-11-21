@@ -85,6 +85,8 @@ pub struct RecorderSettings {
     pub delete_raw_after_export: bool,
     /// Frame rate, drops and drift in the recording bar.
     pub debug_overlay: bool,
+    /// Keys per global shortcut action (`""` = none); see `shortcuts::ACTIONS`.
+    pub shortcuts: std::collections::BTreeMap<String, String>,
 }
 
 pub fn default_camera_key() -> CameraKey {
@@ -111,6 +113,7 @@ impl Default for RecorderSettings {
             countdown_s: 3,
             delete_raw_after_export: false,
             debug_overlay: false,
+            shortcuts: crate::shortcuts::defaults(),
         }
     }
 }
@@ -252,6 +255,7 @@ mod tests {
             countdown_s: 5,
             delete_raw_after_export: true,
             debug_overlay: true,
+            shortcuts: [("record".to_string(), "Control+Alt+KeyR".to_string())].into(),
         };
         store.save(&s).expect("save");
         assert_eq!(store.load(), s);

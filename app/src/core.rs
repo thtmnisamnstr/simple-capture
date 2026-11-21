@@ -1,6 +1,6 @@
 //! App state and every operation behind the commands, tray, hotkey and debug driver.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak, mpsc};
@@ -83,6 +83,8 @@ pub struct Core {
     watcher: Mutex<Option<Box<dyn DeviceStream>>>,
     last_health: Mutex<Option<(Instant, i64)>>,
     last_project: Mutex<Option<PathBuf>>,
+    shortcut_errors: Mutex<BTreeMap<String, String>>,
+    shortcuts_paused: AtomicBool,
     last_export: Mutex<Option<String>>,
     ui_log: Mutex<Vec<String>>,
     exiting: AtomicBool,
@@ -133,6 +135,8 @@ impl Core {
             watcher: Mutex::new(None),
             last_health: Mutex::new(None),
             last_project: Mutex::new(None),
+            shortcut_errors: Mutex::new(BTreeMap::new()),
+            shortcuts_paused: AtomicBool::new(false),
             last_export: Mutex::new(None),
             ui_log: Mutex::new(Vec::new()),
             exiting: AtomicBool::new(false),
@@ -534,6 +538,7 @@ impl Core {
             let current = self.settings.load();
             s.bar_at = current.bar_at;
             s.preview_at = current.preview_at;
+            s.shortcuts = current.shortcuts.clone();
             self.settings.save(&s)?;
             let v = serde_json::to_value(&s).map_err(|e| e.to_string())?;
             self.emit("settings-changed", v.clone());
@@ -546,6 +551,34 @@ impl Core {
             tracing::warn!("camera after settings: {e}");
         }
         Ok(v)
+    }
+
+    pub fn edit_settings_pub(
+        &self,
+        f: impl FnOnce(&mut RecorderSettings),
+    ) -> Result<RecorderSettings, String> {
+        let s = self.edit_settings(f)?;
+        self.emit(
+            "settings-changed",
+            serde_json::to_value(&s).unwrap_or(Value::Null),
+        );
+        Ok(s)
+    }
+
+    pub fn shortcut_errors(&self) -> MutexGuard<'_, BTreeMap<String, String>> {
+        lock(&self.shortcut_errors)
+    }
+
+    pub fn current_settings(&self) -> RecorderSettings {
+        self.settings.load()
+    }
+
+    pub fn shortcuts_paused(&self) -> bool {
+        self.shortcuts_paused.load(Ordering::SeqCst)
+    }
+
+    pub fn set_shortcuts_paused(&self, paused: bool) {
+        self.shortcuts_paused.store(paused, Ordering::SeqCst);
     }
 
     /// Loads, changes and saves the settings under the write lock.

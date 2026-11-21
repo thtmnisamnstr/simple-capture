@@ -359,6 +359,24 @@ const library = [
 ];
 const folderOf = (a: Record<string, unknown>) => library.find((i) => i.dir.endsWith(`/${String(a.name)}`));
 
+const SHORTCUT_ACTIONS: [string, string, string][] = [
+  ['record', 'Start or stop recording', 'Alt+Shift+KeyR'],
+  ['pause', 'Pause or resume', 'Alt+Shift+KeyP'],
+  ['switch', 'Switch source', 'Alt+Shift+KeyS'],
+  ['camera', 'Show or hide the camera', 'Alt+Shift+KeyC'],
+  ['open', 'Open the recorder', 'Alt+Shift+KeyO'],
+];
+const mockShortcuts: Record<string, string> = Object.fromEntries(SHORTCUT_ACTIONS.map(([id, , k]) => [id, k]));
+function shortcutRows() {
+  const seen = new Map<string, string>();
+  return SHORTCUT_ACTIONS.map(([id, label, def]) => {
+    const keys = mockShortcuts[id];
+    const other = keys ? seen.get(keys) : undefined;
+    if (keys && !other) seen.set(keys, label);
+    return { id, label, keys, default: def, error: other ? `Also used for “${other}”` : null };
+  });
+}
+
 function mockApp(action: string, a: Record<string, unknown> = {}): unknown {
   switch (action) {
     case 'about':
@@ -372,6 +390,16 @@ function mockApp(action: string, a: Record<string, unknown> = {}): unknown {
       };
     case 'license_text':
       return 'MIT License';
+    case 'shortcuts':
+    case 'shortcuts_pause':
+      return shortcutRows();
+    case 'shortcut_set': {
+      const id = String(a.id);
+      const keys = String(a.keys ?? '');
+      if (keys && !/(Alt|Control|Super)\+/.test(keys)) throw new Error('Add ⌘, ⌃ or ⌥ so typing doesn’t trigger it');
+      mockShortcuts[id] = keys;
+      return shortcutRows();
+    }
     case 'library':
       return { root: LIB_ROOT, free_bytes: 212_000_000_000, items: library.map((i) => ({ ...i })) };
     case 'library_item':

@@ -18,6 +18,7 @@ mod objc;
 mod preview;
 mod protocol;
 mod settings;
+mod shortcuts;
 mod signals;
 mod sink;
 mod stage;
@@ -122,58 +123,6 @@ fn driver_active() -> bool {
     false
 }
 
-/// ⌥⇧S switch source (or pick one), ⌥⇧R start or stop, ⌥⇧P pause or resume, ⌥⇧C camera on
-/// or off, ⌥⇧O open the recorder.
-fn register_hotkey(core: &Arc<Core>) {
-    use tauri_plugin_global_shortcut::{
-        Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
-    };
-    type Action = fn(&Arc<Core>) -> core::Reply;
-    let keys: [(Code, &str, Action); 5] = [
-        (Code::KeyS, "⌥⇧S", |c| c.hotkey_switch()),
-        (Code::KeyR, "⌥⇧R", |c| {
-            if c.phase().is_recording() {
-                c.stop_recording()
-            } else {
-                c.tray_start()
-            }
-        }),
-        (Code::KeyP, "⌥⇧P", |c| c.toggle_pause()),
-        (Code::KeyC, "⌥⇧C", |c| c.toggle_camera()),
-        (Code::KeyO, "⌥⇧O", |c| {
-            c.show_window("panel", true)
-                .map(|_| serde_json::Value::Null)
-        }),
-    ];
-    let mut failed = Vec::new();
-    for (code, name, action) in keys {
-        let shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), code);
-        let c = core.clone();
-        let r = core
-            .app
-            .global_shortcut()
-            .on_shortcut(shortcut, move |_app, _sc, ev| {
-                if ev.state == ShortcutState::Pressed {
-                    let c = c.clone();
-                    std::thread::spawn(move || {
-                        if let Err(e) = action(&c) {
-                            tracing::warn!("hotkey {name}: {e}");
-                        }
-                    });
-                }
-            });
-        match r {
-            Ok(()) => tracing::info!("hotkey {name} registered"),
-            Err(e) => failed.push(format!("{name}: {e}")),
-        }
-    }
-    if !failed.is_empty() {
-        let error = failed.join("; ");
-        tracing::warn!("hotkeys: {error}");
-        core.emit("notice", dto::hotkey_unavailable(&error));
-    }
-}
-
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(r) = app.path().resource_dir() {
         sc_text::fonts::set_resource_fonts_dir(r.join("fonts"));
@@ -214,7 +163,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let _ = core.tray.set(tray);
     tracing::info!("tray ready");
     tray::start_timer(core.clone());
-    register_hotkey(&core);
+    let errors = core.apply_shortcuts();
+    if !errors.is_empty() {
+        let text = errors
+            .iter()
+            .map(|(id, e)| format!("{id}: {e}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        core.emit("notice", dto::hotkey_unavailable(&text));
+    }
     signals::attach(core.clone());
     let c = core.clone();
     std::thread::Builder::new()

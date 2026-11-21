@@ -183,6 +183,19 @@ impl Core {
                 self.emit("library-changed", json!({}));
                 Ok(Value::Null)
             }
+            "shortcuts" => Ok(self.shortcuts_state()),
+            "shortcut_set" => {
+                let id = args
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .ok_or("missing argument \"id\"")?;
+                let keys = args.get("keys").and_then(Value::as_str).unwrap_or("");
+                self.set_shortcut(id, keys)
+            }
+            "shortcuts_pause" => {
+                let paused = args.get("paused").and_then(Value::as_bool).unwrap_or(false);
+                self.pause_shortcuts(paused)
+            }
             "library_item" => {
                 let dir = self.library_dir(args)?;
                 serde_json::to_value(crate::library::summarize(&dir)).map_err(|e| e.to_string())

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { revealLabel } from '../lib/format.ts';
+  import { hostOs, revealLabel } from '../lib/format.ts';
+  import { keysFromEvent, keysLabel, shortcutsApi, type ShortcutRow } from '../lib/shortcuts.ts';
   import { editor } from '../lib/editor.ts';
   import { api, errorText } from '../lib/api.ts';
   import { onEvent } from '../lib/events.ts';
@@ -63,6 +64,38 @@
   let pickedDisplay = $state<PickedDto | null>(null);
   let loaded = $state(false);
   let lastScreen = $state<SourceSpecDto | null>(null);
+  let shortcuts = $state<ShortcutRow[]>([]);
+  let capturing = $state<string | null>(null);
+  const mac = hostOs() === 'macos';
+
+  async function startCapture(id: string) {
+    if (capturing === id) return;
+    capturing = id;
+    await shortcutsApi.pause(true).catch(() => undefined);
+  }
+
+  async function endCapture(id: string, keys: string | null) {
+    if (capturing !== id) return;
+    capturing = null;
+    try {
+      shortcuts = await shortcutsApi.pause(false);
+      if (keys !== null) shortcuts = await shortcutsApi.set(id, keys);
+    } catch (e) {
+      error = errorText(e);
+      shortcuts = await shortcutsApi.list().catch(() => shortcuts);
+    }
+  }
+
+  function captureKey(e: KeyboardEvent, id: string) {
+    if (capturing !== id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const plain = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+    if (e.key === 'Escape' && plain) return void endCapture(id, null);
+    if ((e.key === 'Backspace' || e.key === 'Delete') && plain) return void endCapture(id, '');
+    const keys = keysFromEvent(e);
+    if (keys) void endCapture(id, keys);
+  }
 
   type Mode = 'screen' | 'both' | 'camera';
   const mode = $derived<Mode>(settings?.source?.kind === 'camera' ? 'camera' : settings?.camera ? 'both' : 'screen');
@@ -137,6 +170,7 @@
       caps = c;
       displays = d;
       devices = dev;
+      shortcuts = await shortcutsApi.list().catch(() => []);
       recovery = rec.filter((r) => r.outcome === 'recovered' || r.outcome === 'damaged');
       const main = mainDisplay(d);
       settings = { ...s, source: s.source ?? (main ? { kind: 'display', display_id: main.id } : null) };
@@ -734,13 +768,32 @@
             <div class="gcontrol"><input id="debug-overlay" type="checkbox" class="switch" bind:checked={settings.debug_overlay} /></div>
           </div>
         </div>
-        <dl class="keys caption">
-          <dt>⌥⇧R</dt><dd>Start or stop recording</dd>
-          <dt>⌥⇧P</dt><dd>Pause or resume</dd>
-          <dt>⌥⇧S</dt><dd>Switch source</dd>
-          <dt>⌥⇧C</dt><dd>Show or hide the camera</dd>
-          <dt>⌥⇧O</dt><dd>Open the recorder</dd>
-        </dl>
+        {#if shortcuts.length}
+          <div class="group" role="group" aria-label="Shortcuts">
+            {#each shortcuts as sc (sc.id)}
+              <div class="grow">
+                <span class="glabel">{sc.label}</span>
+                <div class="gcontrol">
+                  {#if sc.keys !== sc.default && capturing !== sc.id}
+                    <button class="link small" onclick={() => shortcutsApi.set(sc.id, sc.default).then((r) => (shortcuts = r)).catch((e) => (error = errorText(e)))}>Default</button>
+                  {/if}
+                  <button
+                    class="keycap"
+                    class:capturing={capturing === sc.id}
+                    class:bad={!!sc.error}
+                    aria-label="{sc.label} shortcut"
+                    title={sc.error ?? (capturing === sc.id ? 'Type the new shortcut. Delete clears it, Escape keeps it.' : 'Click to change')}
+                    onclick={() => startCapture(sc.id)}
+                    onkeydown={(e) => captureKey(e, sc.id)}
+                    onblur={() => endCapture(sc.id, null)}
+                  >{capturing === sc.id ? 'Type shortcut…' : keysLabel(sc.keys, mac)}</button>
+                </div>
+              </div>
+              {#if sc.error}<p class="caption note bad-note">{sc.label}: {sc.error}</p>{/if}
+            {/each}
+          </div>
+          <p class="caption note">Click a shortcut, then press the new keys. Delete clears it.</p>
+        {/if}
       </section>
     {/if}
 
@@ -1098,18 +1151,24 @@
     background: #fff;
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
   }
-  .keys {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 2px 12px;
-    margin: 8px 10px 0;
-  }
-  .keys dt {
+  .keycap {
+    min-width: 72px;
     font-variant-numeric: tabular-nums;
-    color: var(--label-1, inherit);
+    letter-spacing: 0.04em;
   }
-  .keys dd {
-    margin: 0;
+  .keycap.capturing {
+    box-shadow: 0 0 0 2px var(--accent);
+    color: var(--label-2);
+  }
+  .keycap.bad {
+    color: var(--orange);
+  }
+  .bad-note {
+    color: var(--orange);
+    margin: 0 10px;
+  }
+  .small {
+    font-size: 11px;
   }
   .meter {
     height: 4px;

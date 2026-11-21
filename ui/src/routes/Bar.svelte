@@ -9,8 +9,22 @@
   import { isObject } from '../lib/guards.ts';
   import type { HealthDto } from '../lib/types.ts';
   import Icon from '../components/Icon.svelte';
+  import { hostOs } from '../lib/format.ts';
+  import { keysLabel, shortcutsApi } from '../lib/shortcuts.ts';
 
   let rec = $state<RecordingState>({ state: 'idle' });
+  let keys = $state<Record<string, string>>({});
+  const keyHint = (id: string) => (keys[id] ? ` (${keysLabel(keys[id], hostOs() === 'macos')})` : '');
+
+  $effect(() => {
+    const load = () =>
+      shortcutsApi
+        .list()
+        .then((rows) => (keys = Object.fromEntries(rows.map((r) => [r.id, r.keys]))))
+        .catch(() => undefined);
+    load();
+    return onEvent('settings-changed', isObject, () => load());
+  });
   let elapsed = $state(0);
   let base = { ns: 0, at: 0, running: false };
   let dragging = false;
@@ -229,7 +243,7 @@
       {/if}
     </div>
     {#if !sourceLost}
-      <button class="hud round" onclick={() => act(switchSource)} disabled={!live} title="Switch Source (⌥⇧S)" aria-label="Switch source">
+      <button class="hud round" onclick={() => act(switchSource)} disabled={!live} title="Switch Source{keyHint('switch')}" aria-label="Switch source">
         <Icon name="switch" size={16} />
       </button>
     {/if}
@@ -237,7 +251,7 @@
       class="hud round"
       onclick={() => act(() => appCall(paused ? 'resume' : 'pause'))}
       disabled={!live}
-      title={paused ? 'Resume (⌥⇧P)' : 'Pause (⌥⇧P)'}
+      title={(paused ? 'Resume' : 'Pause') + keyHint('pause')}
       aria-label={paused ? 'Resume recording' : 'Pause recording'}
     >
       {#if paused}<Icon name="play" size={14} />{:else}<Icon name="pause" size={14} />{/if}
