@@ -82,3 +82,47 @@ pub fn latest_editable(root: &Path) -> Option<PathBuf> {
         .find(|s| s.state != ProjectState::Recording)
         .map(|s| s.dir)
 }
+
+/// A small picture of the composed video (screen, camera and background) at one second or a
+/// third of the way in, cached in the project's thumbs folder.
+pub fn poster(
+    dir: &Path,
+    decoder: std::sync::Arc<dyn sc_platform::Decoder>,
+) -> Result<std::path::PathBuf, String> {
+    let file = dir.join("thumbs").join("poster-v1.png");
+    if file.is_file() {
+        return Ok(file);
+    }
+    let project = ProjectV1::load(dir).map_err(|e| e.to_string())?;
+    let (_, ratio) = sc_export::plan::reference(&project);
+    let w = 480u32;
+    let h = ((f64::from(w) / ratio.as_f64()).round() as u32).max(2) & !1;
+    let mut r = sc_export::recipe::FrameRenderer::new(
+        &project,
+        dir,
+        decoder,
+        sc_geometry::SizePx { w, h },
+        sc_render::Backend::Auto,
+        sc_render::OutputFormat::Rgba8,
+    )
+    .map_err(|e| e.to_string())?;
+    let len = sc_player::timeline_doc(&project).duration();
+    let at = (len / 3).clamp(0, 1_000_000_000);
+    let frame = r.render(at).map_err(|e| e.to_string())?.0;
+    let png = sc_text::encode_png(&sc_core::image::RgbaImage {
+        size: frame.size,
+        stride: frame.size.w as usize * 4,
+        data: frame.data,
+    })
+    .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dir.join("thumbs")).map_err(|e| e.to_string())?;
+    sc_core::fsio::atomic_write(&file, &png).map_err(|e| e.to_string())?;
+    Ok(file)
+}
+
+/// `name` names a project folder directly inside `root` (no separators, no `..`).
+pub fn project_in(root: &Path, name: &str) -> Option<std::path::PathBuf> {
+    let ok = !name.is_empty() && !name.contains(['/', '\\']) && name != ".." && name != ".";
+    let dir = root.join(name);
+    (ok && sc_core::folder::is_project_dir(&dir)).then_some(dir)
+}

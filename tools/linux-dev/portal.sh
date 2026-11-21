@@ -4,7 +4,7 @@
 # Example: tools/linux-dev/run.sh tools/linux-dev/portal.sh cargo test -p simple-capture-capture-linux -- --ignored
 set -euo pipefail
 export XDG_RUNTIME_DIR=/tmp/xdg-runtime
-mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 export XDG_CURRENT_DESKTOP=sway XDG_SESSION_TYPE=wayland
 DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address=1)
 export DBUS_SESSION_BUS_ADDRESS
@@ -17,7 +17,10 @@ printf 'output HEADLESS-1 resolution 1280x720 bg #336699 solid_color\n' > ~/.con
 WLR_BACKENDS=headless WLR_HEADLESS_OUTPUTS=1 WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 \
   sway --unsupported-gpu > /tmp/sway.log 2>&1 &
 for _ in $(seq 50); do
-  sock=$(ls "$XDG_RUNTIME_DIR" 2>/dev/null | grep -m1 '^wayland-[0-9]*$' || true)
+  sock=
+  for s in "$XDG_RUNTIME_DIR"/wayland-[0-9]*; do
+    [[ $s == *.lock ]] || { [ -S "$s" ] && sock=${s##*/}; }
+  done
   [ -n "$sock" ] && break
   sleep 0.1
 done

@@ -19,7 +19,10 @@ pin() {
     printf '%s\n' "$v"
 }
 
-sha256_of() { shasum -a 256 "$1" | awk '{print $1}'; }
+sha256_of() {
+    if command -v sha256sum >/dev/null; then sha256sum "$1" | awk '{print $1}'
+    else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
 
 fetch() {
     local sec=$1 url file sha dest got
@@ -48,4 +51,4 @@ unpack() {
     tar -xf "$1" -C "$2" --strip-components 1
 }
 
-ncpu() { sysctl -n hw.ncpu 2>/dev/null || echo 4; }
+ncpu() { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4; }

@@ -22,6 +22,13 @@ impl MacDesktop {
 }
 
 impl Desktop for MacDesktop {
+    fn trash(&self, path: &Path) -> Result<()> {
+        let url = NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()));
+        objc2_foundation::NSFileManager::defaultManager()
+            .trashItemAtURL_resultingItemURL_error(&url, None)
+            .map_err(|e| Error::Other(format!("move to the Trash: {}", e.localizedDescription())))
+    }
+
     fn reveal(&self, path: &Path) -> Result<()> {
         if !path.exists() {
             return Err(Error::NotFound(path.display().to_string()));

@@ -214,6 +214,11 @@ pub trait Desktop: Send + Sync {
         let _ = path;
         Err(crate::Error::Unsupported("copy a file to the clipboard"))
     }
+    /// Moves a file or folder to the Trash (Recycle Bin), where the person can restore it.
+    fn trash(&self, path: &Path) -> Result<()> {
+        let _ = path;
+        Err(crate::Error::Unsupported("move to the Trash"))
+    }
 }
 
 /// M3; kept for ADR-007.

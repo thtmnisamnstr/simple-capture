@@ -77,6 +77,37 @@ fn editor_file(
                 .unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..]))),
         );
     }
+    if host == "poster" {
+        let name = percent_decode(path.trim_start_matches('/'));
+        let name = name.strip_suffix(".png")?;
+        let dir = crate::library::project_in(&core.projects_dir(), name)?;
+        return Some(
+            match crate::library::poster(&dir, core.platform.decoder()) {
+                Ok(file) => match std::fs::read(&file) {
+                    Ok(bytes) => Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, "image/png")
+                        .header(header::CACHE_CONTROL, "max-age=600")
+                        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                        .body(Cow::Owned(bytes))
+                        .unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..]))),
+                    Err(_) => respond(
+                        StatusCode::NOT_FOUND,
+                        "text/plain",
+                        Cow::Borrowed(&b"not found"[..]),
+                    ),
+                },
+                Err(e) => {
+                    tracing::debug!(name, "poster: {e}");
+                    respond(
+                        StatusCode::NOT_FOUND,
+                        "text/plain",
+                        Cow::Borrowed(&b"no poster"[..]),
+                    )
+                }
+            },
+        );
+    }
     let dir = core.editor_dir()?;
     let (file, ctype) = match host.as_str() {
         "thumb" => {

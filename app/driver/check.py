@@ -596,6 +596,19 @@ if basic("18-diagnostics", log):
             except OSError:
                 pass
 
+log = lines("19-library")
+if basic("19-library", log):
+    res = [s["result"] for s in steps(log, 'cmd app {"action":"library"}')]
+    items = (res[-1] or {}).get("items", []) if res else []
+    check("19-library", "lists the recordings, newest first",
+          len(items) >= 1 and all(i.get("bytes", 0) > 0 for i in items)
+          and [i["created_at"] for i in items] == sorted((i["created_at"] for i in items), reverse=True),
+          [(i.get("title"), i.get("state")) for i in items])
+    posters = [os.path.join(i["dir"], "thumbs", "poster-v1.png") for i in items if i.get("state") != "recording"]
+    made = [p for p in posters if os.path.exists(p) and os.path.getsize(p) > 2000]
+    check("19-library", "posters rendered for the visible recordings", posters and len(made) == len(posters),
+          {"posters": len(posters), "made": len(made)})
+
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)
 failed = [r for r in results if not r["ok"]]

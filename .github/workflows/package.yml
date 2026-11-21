@@ -1,0 +1,172 @@
+name: package
+
+# Installable builds for all three OSes (SPEC M6): the export helpers (FFmpeg with networking
+# off, gifski) built from the pinned sources in third_party/versions.toml, the app bundled with
+# them and every license text, and the corresponding source of the GPL/AGPL helpers.
+#   macOS   .dmg (ad-hoc signed; not notarized, SPEC non-goal)
+#   Windows NSIS setup .exe and .msi
+#   Linux   .deb and .AppImage
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  NODE_VERSION: "26"
+  PNPM_VERSION: "12.21.0"
+
+jobs:
+  helpers:
+    name: helpers (${{ matrix.plat }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - plat: linux-x86_64
+            os_arg: linux
+          - plat: windows-x86_64
+            os_arg: windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Helper cache
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: third_party/out/${{ matrix.plat }}
+          key: helpers-${{ matrix.plat }}-${{ hashFiles('third_party/versions.toml', 'third_party/lib.sh', 'third_party/fetch.sh', 'third_party/ffmpeg/build-linux.sh', 'third_party/gifski/build.sh') }}
+      - name: Build tools
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends nasm cmake ninja-build meson pkg-config \
+            autoconf automake libtool mingw-w64
+      - name: Build helpers (cache miss)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          third_party/fetch.sh
+          third_party/ffmpeg/build-linux.sh ${{ matrix.os_arg }}
+          third_party/gifski/build.sh ${{ matrix.os_arg }}
+      - name: Save helpers
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: third_party/out/${{ matrix.plat }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: helpers-${{ matrix.plat }}
+          path: third_party/out/${{ matrix.plat }}
+          if-no-files-found: error
+
+  sources:
+    name: helper sources (GPL/AGPL)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Pinned sources and build scripts
+        run: |
+          third_party/fetch.sh
+          tar -czf simple-capture-helper-sources.tar.gz \
+            third_party/versions.toml third_party/lib.sh third_party/fetch.sh third_party/README.md \
+            third_party/ffmpeg third_party/gifski third_party/build/downloads
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: helper-sources
+          path: simple-capture-helper-sources.tar.gz
+
+  bundle:
+    name: bundle (${{ matrix.os }})
+    needs: helpers
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            plat: macos-arm64
+            bundles: dmg
+          - os: windows-2025
+            plat: windows-x86_64
+            bundles: nsis,msi
+          - os: ubuntu-24.04
+            plat: linux-x86_64
+            bundles: deb,appimage
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+        with:
+          full: "true"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: UI build
+        shell: bash
+        run: |
+          npm install -g "pnpm@$PNPM_VERSION"
+          pnpm --dir ui install --frozen-lockfile
+          pnpm --dir ui build
+      - id: skia
+        uses: ./.github/actions/skia-cache
+        with:
+          mode: restore
+      - name: LLVM >= 22 for the Skia build (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: choco upgrade llvm --version=22.1.8 --no-progress -y
+      - name: macOS helpers
+        if: runner.os == 'macOS'
+        uses: ./.github/actions/macos-helpers
+      - name: gifski (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          test -x third_party/out/macos-arm64/gifski || { third_party/fetch.sh; third_party/gifski/build.sh arm64; }
+      - name: Windows or Linux helpers
+        if: runner.os != 'macOS'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: helpers-${{ matrix.plat }}
+          path: third_party/out/${{ matrix.plat }}
+      - name: cargo-about
+        shell: bash
+        run: cargo install --locked cargo-about@0.9.3 --features cli
+      - name: Notices and staging
+        shell: bash
+        run: |
+          chmod +x third_party/out/${{ matrix.plat }}/* 2>/dev/null || true
+          scripts/ci/notices.sh
+          scripts/stage-helpers.sh third_party/out/${{ matrix.plat }}
+      - name: Tauri bundle
+        shell: bash
+        working-directory: app
+        run: ../ui/node_modules/.bin/tauri build --config tauri.bundle.conf.json --bundles ${{ matrix.bundles }} -- --locked
+      - name: Save Skia build
+        if: always() && steps.skia.outputs.cache-hit != 'true'
+        uses: ./.github/actions/skia-cache
+        with:
+          mode: save
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simple-capture-${{ matrix.plat }}
+          path: |
+            ${{ env.CARGO_TARGET_DIR }}/release/bundle/dmg/*.dmg
+            ${{ env.CARGO_TARGET_DIR }}/release/bundle/nsis/*.exe
+            ${{ env.CARGO_TARGET_DIR }}/release/bundle/msi/*.msi
+            ${{ env.CARGO_TARGET_DIR }}/release/bundle/deb/*.deb
+            ${{ env.CARGO_TARGET_DIR }}/release/bundle/appimage/*.AppImage
+          if-no-files-found: error

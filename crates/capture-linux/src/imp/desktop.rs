@@ -74,6 +74,51 @@ fn choose(folders: bool, done: Box<dyn FnOnce(Option<PathBuf>) + Send>) {
     });
 }
 
+/// The freedesktop.org Trash spec for the home Trash: the item moves to `files/`, and an
+/// `info/<name>.trashinfo` records where it came from. Only within one filesystem.
+fn xdg_trash(path: &Path) -> Result<()> {
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+        .ok_or(Error::NotFound("home folder".into()))?;
+    let trash = data.join("Trash");
+    std::fs::create_dir_all(trash.join("files"))?;
+    std::fs::create_dir_all(trash.join("info"))?;
+    let base = path
+        .file_name()
+        .ok_or(Error::Other("nothing to trash".into()))?
+        .to_string_lossy()
+        .into_owned();
+    let mut name = base.clone();
+    let mut n = 2;
+    while trash.join("files").join(&name).exists()
+        || trash
+            .join("info")
+            .join(format!("{name}.trashinfo"))
+            .exists()
+    {
+        name = format!("{base} {n}");
+        n += 1;
+    }
+    let abs = std::fs::canonicalize(path)?;
+    let t = super::sys::local_now();
+    let info = format!(
+        "[Trash Info]\nPath={}\nDeletionDate={:04}-{:02}-{:02}T{:02}:{:02}:{:02}\n",
+        uri(&abs).trim_start_matches("file://"),
+        t.y,
+        t.mo,
+        t.d,
+        t.h,
+        t.mi,
+        t.s
+    );
+    std::fs::write(trash.join("info").join(format!("{name}.trashinfo")), info)?;
+    std::fs::rename(&abs, trash.join("files").join(&name)).map_err(|e| {
+        let _ = std::fs::remove_file(trash.join("info").join(format!("{name}.trashinfo")));
+        Error::Other(format!("move to the Trash: {e}"))
+    })
+}
+
 pub struct LinuxDesktop;
 
 impl Desktop for LinuxDesktop {
@@ -99,6 +144,19 @@ impl Desktop for LinuxDesktop {
 
     fn choose_folder(&self, done: Box<dyn FnOnce(Option<PathBuf>) + Send>) {
         choose(true, done);
+    }
+
+    fn trash(&self, path: &Path) -> Result<()> {
+        if has("gio")
+            && Command::new("gio")
+                .args(["trash", "--"])
+                .arg(path)
+                .status()
+                .is_ok_and(|s| s.success())
+        {
+            return Ok(());
+        }
+        xdg_trash(path)
     }
 
     fn copy_file(&self, path: &Path) -> Result<()> {

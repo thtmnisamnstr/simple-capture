@@ -174,6 +174,7 @@
         }
       }),
       onEvent('editor-open', isObject, () => void load()),
+      onEvent('editor-export-sheet', isObject, () => (exportSheet = true)),
       onEvent('export-progress', isExportProgress, (p) => {
         if (p.id === exportJob) exportProgress = p;
       }),

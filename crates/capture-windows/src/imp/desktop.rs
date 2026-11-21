@@ -15,8 +15,9 @@ use windows::Win32::System::Memory::{
 use windows::Win32::System::Ole::CF_HDROP;
 use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
 use windows::Win32::UI::Shell::{
-    DROPFILES, FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, FileOpenDialog, IFileOpenDialog,
-    SIGDN_FILESYSPATH,
+    DROPFILES, FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT,
+    FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, FileOpenDialog, IFileOpenDialog, SHFILEOPSTRUCTW,
+    SHFileOperationW, SIGDN_FILESYSPATH,
 };
 use windows::core::{BOOL, PCWSTR};
 
@@ -87,6 +88,28 @@ impl Desktop for WinDesktop {
 
     fn choose_folder(&self, done: Box<dyn FnOnce(Option<PathBuf>) + Send>) {
         on_sta(true, done);
+    }
+
+    fn trash(&self, path: &Path) -> Result<()> {
+        let from: Vec<u16> = path
+            .as_os_str()
+            .to_string_lossy()
+            .encode_utf16()
+            .chain([0, 0])
+            .collect();
+        let mut op = SHFILEOPSTRUCTW {
+            wFunc: FO_DELETE,
+            pFrom: windows::core::PCWSTR(from.as_ptr()),
+            fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT).0 as u16,
+            ..Default::default()
+        };
+        let r = unsafe { SHFileOperationW(&mut op) };
+        if r != 0 || op.fAnyOperationsAborted.as_bool() {
+            return Err(Error::Other(format!(
+                "move to the Recycle Bin failed ({r})"
+            )));
+        }
+        Ok(())
     }
 
     fn copy_file(&self, path: &Path) -> Result<()> {

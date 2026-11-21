@@ -151,8 +151,51 @@ impl Core {
                     .map_err(|e| e.to_string())
             }
             "diagnostics_run" => self.diagnostics_run(),
+            "library" => {
+                let root = self.projects_dir();
+                let items = crate::library::list(&root);
+                Ok(json!({
+                    "root": root,
+                    "free_bytes": self.platform.free_disk_bytes(&root).ok(),
+                    "items": items,
+                }))
+            }
+            "library_trash" => {
+                let dir = self.library_dir(args)?;
+                if self.editor_dir().as_deref() == Some(dir.as_path()) {
+                    self.editor_close()?;
+                    self.hide_window("editor");
+                }
+                self.platform
+                    .desktop()
+                    .trash(&dir)
+                    .map_err(|e| e.to_string())?;
+                self.emit("library-changed", json!({}));
+                Ok(Value::Null)
+            }
+            "library_export" => {
+                let dir = self.library_dir(args)?;
+                self.editor_open(&dir)?;
+                self.emit("editor-export-sheet", json!({}));
+                Ok(Value::Null)
+            }
             other => Err(format!("unknown app action {other:?}")),
         }
+    }
+
+    fn library_dir(&self, args: &Value) -> Result<PathBuf, String> {
+        let name = args
+            .get("name")
+            .and_then(Value::as_str)
+            .ok_or("missing argument \"name\"")?;
+        let dir = crate::library::project_in(&self.projects_dir(), name)
+            .ok_or("no such recording in the library")?;
+        let project = sc_core::project::ProjectV1::load(&dir).map_err(|e| e.to_string())?;
+        if project.state == sc_core::project::ProjectState::Recording && self.phase().is_recording()
+        {
+            return Err("This recording is still in progress.".into());
+        }
+        Ok(dir)
     }
 
     fn diagnostics_run(self: &Arc<Self>) -> Reply {
