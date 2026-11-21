@@ -26,6 +26,11 @@ pub fn render_cpu(job: &FrameJob, out: OutputFormat) -> Result<RenderedFrame> {
         })?;
         result?;
     }
+    for layer in job.text {
+        if let Some(plan) = maths::plan_text(canvas, layer) {
+            draw_text(&mut rgba, canvas, layer.image, &plan);
+        }
+    }
     let data = match out {
         OutputFormat::Rgba8 => rgba,
         OutputFormat::I420Bt709Limited => rgba_to_i420(&rgba, canvas),
@@ -268,6 +273,53 @@ fn composite_camera(rgba: &mut [u8], canvas: SizePx, plan: &CameraPlan, pre: &[[
             }
             for ch in 0..4 {
                 rgba[o + ch] = c[ch] as u8;
+            }
+        }
+    }
+}
+
+fn draw_text(rgba: &mut [u8], canvas: SizePx, img: &RgbaImage, plan: &maths::TextPlan) {
+    let [w, h] = plan.size;
+    let texel = |x: i32, y: i32| -> [i32; 4] {
+        if x < 0 || y < 0 || x >= w || y >= h {
+            return [0; 4];
+        }
+        let o = y as usize * img.stride + x as usize * 4;
+        [
+            i32::from(img.data[o]),
+            i32::from(img.data[o + 1]),
+            i32::from(img.data[o + 2]),
+            i32::from(img.data[o + 3]),
+        ]
+    };
+    let [x0, y0, x1, y1] = plan.region;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let (tx, ty, wx, wy) = maths::text_sample(&plan.inv, x, y);
+            let (p00, p10, p01, p11) = (
+                texel(tx, ty),
+                texel(tx + 1, ty),
+                texel(tx, ty + 1),
+                texel(tx + 1, ty + 1),
+            );
+            let mut s = [0; 4];
+            for ch in 0..4 {
+                let v = maths::bilerp(p00[ch], p10[ch], p01[ch], p11[ch], wx, wy);
+                s[ch] = (v * plan.op256 + 128) >> 8;
+            }
+            if s[3] == 0 && s[0] == 0 && s[1] == 0 && s[2] == 0 {
+                continue;
+            }
+            let o = (y as usize * canvas.w as usize + x as usize) * 4;
+            let d = [
+                i32::from(rgba[o]),
+                i32::from(rgba[o + 1]),
+                i32::from(rgba[o + 2]),
+                i32::from(rgba[o + 3]),
+            ];
+            let c = maths::over(s, d);
+            for ch in 0..4 {
+                rgba[o + ch] = c[ch].clamp(0, 255) as u8;
             }
         }
     }

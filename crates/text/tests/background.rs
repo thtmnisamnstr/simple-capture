@@ -390,14 +390,6 @@ fn build_info_reports_the_freetype_build() {
     assert!(!info.webp_decode, "{info:?}");
 }
 
-#[test]
-fn layout_is_a_placeholder() {
-    assert!(matches!(
-        sc_text::layout::layout_placeholder(),
-        Err(Error::Unsupported(_))
-    ));
-}
-
 fn chunk_types(png: &[u8]) -> Vec<String> {
     let mut out = Vec::new();
     let mut pos = 8;

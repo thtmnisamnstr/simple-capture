@@ -12,8 +12,8 @@ use sc_core::project::ProjectV1;
 use sc_decode::{SegmentFrame, SegmentFrameSource, TrackFrameSource};
 use sc_geometry::{Ratio, RectF, RectPx, SizePx, camera_rects, contain_fit};
 use sc_platform::{Decoder, Error, FrameBuffer, Result};
-use sc_render::{FrameJob, ScreenLayer};
-use sc_text::BackgroundCache;
+use sc_render::{FrameJob, ScreenLayer, TextLayer};
+use sc_text::{BackgroundCache, TextEngine, TextFrame};
 
 pub struct TimelineVideo {
     source: SegmentFrameSource,
@@ -23,6 +23,8 @@ pub struct TimelineVideo {
     backgrounds: BackgroundCache,
     project_dir: PathBuf,
     segment_sizes: Vec<SizePx>,
+    text: Option<TextEngine>,
+    text_failed: bool,
 }
 
 pub struct Composed {
@@ -30,6 +32,7 @@ pub struct Composed {
     pub rec_ns: i64,
     pub screen: Option<SegmentFrame>,
     pub camera: Option<(FrameBuffer, CameraPlacement)>,
+    pub text: Vec<TextFrame>,
 }
 
 impl TimelineVideo {
@@ -61,6 +64,8 @@ impl TimelineVideo {
                     h: s.content_px.h,
                 })
                 .collect(),
+            text: None,
+            text_failed: false,
         })
     }
 
@@ -83,8 +88,8 @@ impl TimelineVideo {
         c.aspect.ratio().unwrap_or(Ratio::of(reference))
     }
 
-    /// The frame at `tl_ns`; past the end, the last frame.
-    pub fn compose(&mut self, tl_ns: i64) -> Result<Composed> {
+    /// The frame at `tl_ns` on a `canvas`; past the end, the last frame.
+    pub fn compose(&mut self, tl_ns: i64, canvas: SizePx) -> Result<Composed> {
         let end = self.duration();
         if end <= 0 {
             return Err(Error::Other("sc_player: the timeline is empty".into()));
@@ -107,12 +112,43 @@ impl TimelineVideo {
         {
             camera = Some((f, p));
         }
+        let text = self.text_at(tl_ns.clamp(0, end), canvas);
         Ok(Composed {
             tl_ns: tl,
             rec_ns: rec,
             screen,
             camera,
+            text,
         })
+    }
+
+    fn text_at(&mut self, tl: i64, canvas: SizePx) -> Vec<TextFrame> {
+        if self.doc.text.is_empty() || self.text_failed {
+            return Vec::new();
+        }
+        if self.text.is_none() {
+            match TextEngine::new() {
+                Ok(e) => self.text = Some(e),
+                Err(e) => {
+                    tracing::warn!("sc_player: no text engine, text is not drawn: {e}");
+                    self.text_failed = true;
+                    return Vec::new();
+                }
+            }
+        }
+        let Some(engine) = self.text.as_mut() else {
+            return Vec::new();
+        };
+        engine
+            .frames(&self.doc.text, tl, canvas)
+            .unwrap_or_else(|e| {
+                tracing::warn!("sc_player: text: {e}");
+                Vec::new()
+            })
+    }
+
+    pub fn text_engine(&mut self) -> Option<&mut TextEngine> {
+        self.text.as_mut()
     }
 
     pub fn background(&mut self, canvas: SizePx) -> Result<Arc<RgbaImage>> {
@@ -127,11 +163,24 @@ impl TimelineVideo {
 }
 
 impl Composed {
+    pub fn text_layers(&self) -> Vec<TextLayer<'_>> {
+        self.text
+            .iter()
+            .map(|t| TextLayer {
+                image: &t.image,
+                key: t.key,
+                to_canvas: t.to_canvas,
+                opacity: t.opacity,
+            })
+            .collect()
+    }
+
     pub fn job<'a>(
         &'a self,
         canvas: SizePx,
         background: &'a RgbaImage,
         background_key: Option<u64>,
+        text: &'a [TextLayer<'a>],
     ) -> FrameJob<'a> {
         let screen = self.screen_dst(canvas).and_then(|dst| {
             self.screen.as_ref().map(|f| ScreenLayer {
@@ -150,6 +199,7 @@ impl Composed {
             background_key,
             screen,
             camera,
+            text,
         }
     }
 

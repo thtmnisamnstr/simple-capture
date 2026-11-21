@@ -260,6 +260,87 @@ pub(crate) fn mix256(a: i32, b: i32, w: i32) -> i32 {
     (a * w + b * (256 - w) + 128) >> 8
 }
 
+/// A text layer as both renderers draw it: the canvas-to-image map, the image size, the opacity
+/// in 256ths and the canvas pixels it can touch (`x0, y0, x1, y1`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TextPlan {
+    pub inv: [f32; 6],
+    pub size: [i32; 2],
+    pub op256: i32,
+    pub region: [i32; 4],
+}
+
+pub(crate) fn plan_text(canvas: SizePx, layer: &crate::TextLayer<'_>) -> Option<TextPlan> {
+    let [a, b, c, d, e, f] = layer.to_canvas.map(f64::from);
+    let det = a * d - b * c;
+    let (w, h) = (layer.image.size.w, layer.image.size.h);
+    if det.abs() < 1e-9 || w == 0 || h == 0 || layer.opacity <= 0.0 {
+        return None;
+    }
+    let inv = [
+        d / det,
+        -b / det,
+        -c / det,
+        a / det,
+        (c * f - d * e) / det,
+        (b * e - a * f) / det,
+    ];
+    let corners = [
+        (0.0, 0.0),
+        (f64::from(w), 0.0),
+        (0.0, f64::from(h)),
+        (f64::from(w), f64::from(h)),
+    ]
+    .map(|(x, y)| (a * x + c * y + e, b * x + d * y + f));
+    let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for (x, y) in corners {
+        x0 = x0.min(x);
+        y0 = y0.min(y);
+        x1 = x1.max(x);
+        y1 = y1.max(y);
+    }
+    let clamp_x = |v: f64| (v as i64).clamp(0, i64::from(canvas.w)) as i32;
+    let clamp_y = |v: f64| (v as i64).clamp(0, i64::from(canvas.h)) as i32;
+    let region = [
+        clamp_x(x0.floor() - 1.0),
+        clamp_y(y0.floor() - 1.0),
+        clamp_x(x1.ceil() + 1.0),
+        clamp_y(y1.ceil() + 1.0),
+    ];
+    if region[0] >= region[2] || region[1] >= region[3] {
+        return None;
+    }
+    Some(TextPlan {
+        inv: inv.map(|v| v as f32),
+        size: [w as i32, h as i32],
+        op256: (f64::from(layer.opacity.clamp(0.0, 1.0)) * 256.0).round() as i32,
+        region,
+    })
+}
+
+/// Where canvas pixel `(x, y)` samples the image: the top-left texel and the 8-bit weights.
+#[inline]
+pub(crate) fn text_sample(inv: &[f32; 6], x: i32, y: i32) -> (i32, i32, i32, i32) {
+    let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+    let u = inv[0] * px + inv[2] * py + inv[4];
+    let v = inv[1] * px + inv[3] * py + inv[5];
+    let fx = (u * 256.0 + 0.5).floor() as i32 - 128;
+    let fy = (v * 256.0 + 0.5).floor() as i32 - 128;
+    (fx >> 8, fy >> 8, fx & 255, fy & 255)
+}
+
+/// Premultiplied `s` (after opacity) over `d`.
+#[inline]
+pub(crate) fn over(s: [i32; 4], d: [i32; 4]) -> [i32; 4] {
+    let ia = 255 - s[3];
+    [
+        s[0] + (d[0] * ia + 127) / 255,
+        s[1] + (d[1] * ia + 127) / 255,
+        s[2] + (d[2] * ia + 127) / 255,
+        s[3] + (d[3] * ia + 127) / 255,
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -200,6 +200,43 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
+const TEXT: &str = r#"
+struct Txt { inv0: vec4<f32>, inv1: vec4<f32>, size: vec4<i32> };
+@group(0) @binding(0) var<uniform> u: Txt;
+@group(0) @binding(1) var tt: texture_2d<u32>;
+@group(0) @binding(2) var under: texture_2d<f32>;
+
+fn texel(x: i32, y: i32) -> vec4<i32> {
+  if (x < 0 || y < 0 || x >= u.size.x || y >= u.size.y) {
+    return vec4<i32>(0);
+  }
+  return vec4<i32>(textureLoad(tt, vec2<i32>(x, y), 0));
+}
+
+@fragment
+fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  let x = i32(pos.x);
+  let y = i32(pos.y);
+  let px = f32(x) + 0.5;
+  let py = f32(y) + 0.5;
+  let uu = u.inv0.x * px + u.inv0.z * py + u.inv1.x;
+  let vv = u.inv0.y * px + u.inv0.w * py + u.inv1.y;
+  let fx = i32(floor(uu * 256.0 + 0.5)) - 128;
+  let fy = i32(floor(vv * 256.0 + 0.5)) - 128;
+  let tx = fx >> 8u;
+  let ty = fy >> 8u;
+  let wx = fx & 255;
+  let wy = fy & 255;
+  let top = texel(tx, ty) * (256 - wx) + texel(tx + 1, ty) * wx;
+  let bot = texel(tx, ty + 1) * (256 - wx) + texel(tx + 1, ty + 1) * wx;
+  let v = (top * (256 - wy) + bot * wy + vec4<i32>(32768)) >> vec4<u32>(16u);
+  let s = (v * u.size.z + vec4<i32>(128)) >> vec4<u32>(8u);
+  let d = vec4<i32>(round(textureLoad(under, vec2<i32>(x, y), 0) * 255.0));
+  let o = s + (d * (255 - s.a) + vec4<i32>(127)) / 255;
+  return vec4<f32>(clamp(vec4<f32>(o), vec4<f32>(0.0), vec4<f32>(255.0)) / 255.0);
+}
+"#;
+
 const BLIT: &str = r#"
 @group(0) @binding(0) var<uniform> origin: vec4<i32>;
 @group(0) @binding(1) var src: texture_2d<f32>;
@@ -234,6 +271,8 @@ pub(crate) struct Gpu {
     to_y: wgpu::RenderPipeline,
     to_uv: wgpu::RenderPipeline,
     camera: wgpu::RenderPipeline,
+    text: wgpu::RenderPipeline,
+    text_tex: std::collections::HashMap<u64, Tex>,
     pre_ubuf: wgpu::Buffer,
     comp_ubuf: wgpu::Buffer,
     cam_pre_ubuf: wgpu::Buffer,
@@ -611,6 +650,17 @@ impl Gpu {
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         );
+        let text = pipeline(
+            &device,
+            "sc_render text",
+            TEXT,
+            "fs",
+            &[Some(wgpu::ColorTargetState {
+                format: TARGET,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        );
         let ubuf = |label| {
             device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
@@ -645,6 +695,8 @@ impl Gpu {
             to_y,
             to_uv,
             camera,
+            text,
+            text_tex: std::collections::HashMap::new(),
             pre_ubuf,
             comp_ubuf,
             cam_pre_ubuf,
@@ -954,7 +1006,116 @@ impl Gpu {
         if let Some(plan) = &cam_plan {
             self.encode_camera(&mut enc, canvas, plan)?;
         }
+        self.encode_text(&mut enc, canvas, job.text)?;
         Ok(enc)
+    }
+
+    fn encode_text(
+        &mut self,
+        enc: &mut wgpu::CommandEncoder,
+        canvas: SizePx,
+        layers: &[crate::TextLayer<'_>],
+    ) -> Result<()> {
+        let keep: std::collections::HashSet<u64> = layers.iter().map(|l| l.key).collect();
+        self.text_tex.retain(|k, _| keep.contains(k));
+        if layers.is_empty() {
+            return Ok(());
+        }
+        ensure_tex(
+            &self.device,
+            &mut self.under,
+            "sc_render under camera",
+            (canvas.w, canvas.h),
+            TARGET,
+            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        );
+        for layer in layers {
+            let Some(plan) = maths::plan_text(canvas, layer) else {
+                continue;
+            };
+            let img = layer.image;
+            if !self.text_tex.contains_key(&layer.key) {
+                let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("sc_render text layer"),
+                    size: extent(img.size.w, img.size.h),
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Uint,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                });
+                self.queue.write_texture(
+                    tex.as_image_copy(),
+                    &img.data,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(img.stride as u32),
+                        rows_per_image: Some(img.size.h),
+                    },
+                    extent(img.size.w, img.size.h),
+                );
+                let view = tex.create_view(&Default::default());
+                self.text_tex.insert(layer.key, Tex { tex, view });
+            }
+            let mut uniforms = Vec::with_capacity(48);
+            for f in [
+                plan.inv[0],
+                plan.inv[1],
+                plan.inv[2],
+                plan.inv[3],
+                plan.inv[4],
+                plan.inv[5],
+                0.0,
+                0.0,
+            ] {
+                uniforms.extend_from_slice(&f.to_ne_bytes());
+            }
+            uniforms.extend_from_slice(&i32s(&[plan.size[0], plan.size[1], plan.op256, 0]));
+            let ubuf = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("sc_render text uniforms"),
+                size: uniforms.len() as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.queue.write_buffer(&ubuf, 0, &uniforms);
+            let tex = self
+                .text_tex
+                .get(&layer.key)
+                .ok_or_else(|| Error::Other("sc_render: text texture missing".into()))?;
+            let under = tex_of(&self.under)?;
+            let target = tex_of(&self.target)?;
+            let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
+                layout: &self.text.get_bind_group_layout(0),
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: ubuf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&tex.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(&under.view),
+                    },
+                ],
+            });
+            enc.copy_texture_to_texture(
+                target.tex.as_image_copy(),
+                under.tex.as_image_copy(),
+                extent(canvas.w, canvas.h),
+            );
+            let [x0, y0, x1, y1] = plan.region;
+            let mut p = pass(enc, &[&target.view], true);
+            p.set_pipeline(&self.text);
+            p.set_bind_group(0, &bind, &[]);
+            p.set_scissor_rect(x0 as u32, y0 as u32, (x1 - x0) as u32, (y1 - y0) as u32);
+            p.draw(0..3, 0..1);
+        }
+        Ok(())
     }
 
     fn upload_frame(

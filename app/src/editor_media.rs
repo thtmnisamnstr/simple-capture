@@ -239,6 +239,7 @@ fn thumbs(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
                 ),
             });
         let job = FrameJob {
+            text: &[],
             canvas: size,
             background: &black,
             background_key: Some(1),

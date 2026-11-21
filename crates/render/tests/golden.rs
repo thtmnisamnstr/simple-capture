@@ -186,6 +186,7 @@ fn gpu_matches_cpu_every_aspect_and_scale() {
             let dst = contain_fit(canvas, content);
             let bg = background(canvas);
             let job = FrameJob {
+                text: &[],
                 background_key: None,
                 camera: None,
                 canvas,
@@ -241,6 +242,7 @@ fn worked_examples_7680x2160() {
     for canvas in [sz(1920, 1080), sz(1080, 1920), sz(3840, 2160)] {
         let bg = background(canvas);
         let job = FrameJob {
+            text: &[],
             background_key: None,
             camera: None,
             canvas,
@@ -274,6 +276,7 @@ fn full_range_input_matches() {
     let canvas = sz(480, 270);
     let bg = background(canvas);
     let job = FrameJob {
+        text: &[],
         background_key: None,
         camera: None,
         canvas,
@@ -297,6 +300,7 @@ fn background_only_is_copied_exactly() {
     let canvas = sz(322, 180);
     let bg = background(canvas);
     let job = FrameJob {
+        text: &[],
         background_key: None,
         camera: None,
         canvas,
@@ -337,6 +341,7 @@ fn round_trip(r: &mut dyn FnMut(&FrameJob) -> RenderedFrame, label: &str) {
     let frame = buffer(src);
     let bg = background(size);
     let job = FrameJob {
+        text: &[],
         background_key: None,
         camera: None,
         canvas: size,
@@ -451,6 +456,7 @@ fn letterbox(r: &mut dyn FnMut(&FrameJob) -> RenderedFrame, label: &str) {
         let bg = background(canvas);
         let dst = contain_fit(canvas, content);
         let job = FrameJob {
+            text: &[],
             background_key: None,
             camera: None,
             canvas,
@@ -467,6 +473,7 @@ fn letterbox(r: &mut dyn FnMut(&FrameJob) -> RenderedFrame, label: &str) {
             }),
         };
         let one = FrameJob {
+            text: &[],
             background_key: None,
             camera: None,
             canvas: sz(2, 2),
@@ -525,6 +532,7 @@ fn cpu_only_backend_renders_the_reference() {
     let frame = buffer(pattern(sz(640, 400), false, 1));
     let bg = background(canvas);
     let job = FrameJob {
+        text: &[],
         background_key: None,
         camera: None,
         canvas,
@@ -551,6 +559,7 @@ fn cpu_only_backend_renders_the_reference() {
 fn invalid_jobs_are_errors() {
     let bg = background(sz(10, 10));
     let odd = FrameJob {
+        text: &[],
         background_key: None,
         camera: None,
         canvas: sz(11, 10),
@@ -563,6 +572,7 @@ fn invalid_jobs_are_errors() {
     );
     let bg = background(sz(11, 10));
     let odd = FrameJob {
+        text: &[],
         background_key: None,
         camera: None,
         canvas: sz(11, 10),
@@ -595,6 +605,7 @@ fn bench_render_readback() {
         let frame = buffer(pattern(content, false, 9));
         let bg = background(canvas);
         let job = FrameJob {
+            text: &[],
             background_key: None,
             camera: None,
             canvas,
@@ -644,6 +655,7 @@ fn integer_box_matches_float_average() {
     let canvas = sz(256, 128);
     let bg = background(canvas);
     let job = FrameJob {
+        text: &[],
         background_key: None,
         camera: None,
         canvas,

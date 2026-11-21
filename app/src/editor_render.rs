@@ -190,7 +190,7 @@ pub fn render_loop(core: Weak<Core>) {
             }
             continue;
         }
-        let composed = match v.compose(tl) {
+        let composed = match v.compose(tl, canvas) {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!("editor preview frame: {e}");
@@ -206,7 +206,8 @@ pub fn render_loop(core: Weak<Core>) {
                 continue;
             }
         };
-        let job = composed.job(canvas, &bg, Some(Arc::as_ptr(&bg) as u64));
+        let layers = composed.text_layers();
+        let job = composed.job(canvas, &bg, Some(Arc::as_ptr(&bg) as u64), &layers);
         match sink.show(&core, compositor, &job, drawable, Some(at), CLEAR) {
             Ok(true) => {
                 shown = Some(now_showing);
@@ -225,7 +226,19 @@ pub fn render_loop(core: Weak<Core>) {
                 let cam = composed
                     .camera_dst(canvas)
                     .map(|r| json!({ "x": r.x * s, "y": r.y * s, "w": r.w * s, "h": r.h * s }));
+                let text: Vec<serde_json::Value> = composed
+                    .text
+                    .iter()
+                    .map(|t| {
+                        json!({
+                            "id": t.id,
+                            "quad": t.quad.iter().map(|(x, y)| [f64::from(*x) * s, f64::from(*y) * s]).collect::<Vec<_>>(),
+                            "unresolved": t.unresolved,
+                        })
+                    })
+                    .collect();
                 let frame = json!({
+                    "text": text,
                     "native": sink.native(),
                     "canvas_px": { "w": canvas.w, "h": canvas.h },
                     "rect": {

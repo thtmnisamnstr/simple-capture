@@ -159,6 +159,7 @@ fn gpu_matches_cpu_for_every_camera_option() {
     for (name, cam_layer) in variants {
         for (bg_name, bg, with_screen) in [("canvas", &opaque, true), ("bubble", &clear, false)] {
             let job = FrameJob {
+                text: &[],
                 background_key: None,
                 canvas,
                 background: bg,
@@ -198,6 +199,7 @@ fn circle_shows_the_camera_inside_and_the_background_outside() {
     let red = frame(sz(64, 64), |_, _| (63, 102, 240));
     let bg = background(canvas, 0);
     let job = FrameJob {
+        text: &[],
         background_key: None,
         canvas,
         background: &bg,
@@ -236,6 +238,7 @@ fn mirror_flips_the_camera_horizontally() {
     let bg = background(canvas, 255);
     let draw = |mirror| {
         let job = FrameJob {
+            text: &[],
             background_key: None,
             canvas,
             background: &bg,
@@ -258,6 +261,7 @@ fn border_sits_inside_the_edge_and_shadow_falls_below() {
     let black = frame(sz(64, 64), |_, _| (16, 128, 128));
     let bg = background(canvas, 255);
     let job = FrameJob {
+        text: &[],
         background_key: None,
         canvas,
         background: &bg,
@@ -322,6 +326,7 @@ fn reused_background_and_screen_uploads_match_fresh_renders() {
     ];
     for (i, (bg, key, frame, dst)) in steps.into_iter().enumerate() {
         let job = FrameJob {
+            text: &[],
             canvas,
             background: bg,
             background_key: key,
@@ -428,6 +433,7 @@ fn iosurface_camera_frames_match_uploaded_copies() {
         for (name, l) in layers {
             for out in [OutputFormat::Rgba8, OutputFormat::I420Bt709Limited] {
                 let job = |f| FrameJob {
+                    text: &[],
                     canvas,
                     background: &bg,
                     background_key: Some(1),

@@ -299,9 +299,10 @@ impl FrameRenderer {
     /// only).
     pub fn render(&mut self, t_tl_ns: i64) -> Result<(RenderedFrame, Option<RectPx>)> {
         let bg = self.background()?;
-        let c = self.video.compose(t_tl_ns)?;
+        let c = self.video.compose(t_tl_ns, self.canvas)?;
         let dst = c.screen_dst(self.canvas);
-        let job = c.job(self.canvas, &bg, None);
+        let layers = c.text_layers();
+        let job = c.job(self.canvas, &bg, None, &layers);
         Ok((self.compositor.render(&job, self.format)?, dst))
     }
 }

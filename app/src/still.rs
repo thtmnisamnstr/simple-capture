@@ -103,6 +103,7 @@ pub fn compose_png(
         sc_render::camera_layer(p, f, rects.dst)
     });
     let job = FrameJob {
+        text: &[],
         background_key: None,
         camera,
         canvas,

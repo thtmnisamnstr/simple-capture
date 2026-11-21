@@ -193,6 +193,7 @@ pub fn render_loop(core: Weak<Core>) {
                 sc_render::camera_layer(p, &f.buffer, rects.dst)
             });
             let job = FrameJob {
+                text: &[],
                 background_key: Some(bg_key),
                 canvas,
                 background,

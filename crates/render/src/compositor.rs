@@ -135,6 +135,19 @@ pub struct FrameJob<'a> {
     pub background_key: Option<u64>,
     pub screen: Option<ScreenLayer<'a>>,
     pub camera: Option<CameraLayer<'a>>,
+    /// Drawn over the camera, in order.
+    pub text: &'a [TextLayer<'a>],
+}
+
+/// A premultiplied RGBA image (a text item) placed by an affine map, image pixel to canvas
+/// pixel: `x' = m0·x + m2·y + m4`, `y' = m1·x + m3·y + m5`, at `opacity` (0..=1).
+#[derive(Debug, Clone)]
+pub struct TextLayer<'a> {
+    pub image: &'a RgbaImage,
+    /// Same key as an earlier layer's ⇒ same pixels: the GPU reuses its upload.
+    pub key: u64,
+    pub to_canvas: [f32; 6],
+    pub opacity: f32,
 }
 
 /// BT.709 limited input.
