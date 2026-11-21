@@ -13,6 +13,7 @@ setup:
 helpers:
     third_party/fetch.sh
     third_party/ffmpeg/build-macos.sh arm64
+    test -x third_party/out/macos-arm64/gifski || third_party/gifski/build.sh arm64
     scripts/stage-helpers.sh
 
 build:

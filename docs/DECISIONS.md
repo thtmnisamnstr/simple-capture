@@ -1528,3 +1528,98 @@ they are not a substitute for an M1 run.
 - **Limits:** playback in Chrome, Firefox and VLC is still a manual check (MANUAL_TEST §10e);
   animated WebP/APNG (nice-to-have) are not offered; Windows and Linux helper builds come in M6.
 
+
+## ADR-048: M6 Windows and Linux backends, helper tracks, our own helpers, packaging, self-test
+- **Status:** Accepted by the agent on 2026-11-21 under the owner's "Build the rest of it out"
+  (no ★ stop). **Needs the owner's OK** on the two architecture changes marked ⚑ below, which
+  depart from the SPEC's media table.
+- **Decision:**
+  - ⚑ **Raw tracks on Windows and Linux go through the FFmpeg helper process**
+    (`crates/tracks`), not Media Foundation MFTs or the LGPL FFmpeg libraries in-process. Video
+    is written at a constant rate: a frame lands in the slot nearest its time and the previous
+    image fills skipped slots, so frame `k` is at `k / fps` and readers need no index. Matroska
+    with clusters of at most 1 s, flushed as written: a killed app leaves the helper to read EOF
+    and finish the file; a killed helper leaves a file readable up to its last cluster (tested).
+    The encoder is the first that opens on this machine: NVENC, QSV, AMF or Media Foundation
+    (hardware only) on Windows, VAAPI or NVENC on Linux, else x264 (`veryfast`, `ultrafast`
+    above 1440p). Audio is AAC. Reading back also goes through the helper (NV12 frames, f32 WAV),
+    with `-hwaccel auto` and input seeking. Why: one code path for both OSes that can be tested
+    on every OS (it passes on macOS with VideoToolbox and x264, on Linux in CI and Docker), no
+    LGPL libraries to ship and load, and the hardware encoders still used through the helper.
+    Cost: frames cross a pipe (NV12, about 370 MB/s at 4K30), and the same paths stay as
+    capture → NV12 copies on the CPU.
+  - **Windows** (`crates/capture-windows`): Windows.Graphics.Capture for displays, windows,
+    regions and app crops (the crop is copied out of the frame on the GPU, then mapped and
+    converted to NV12 on 4 threads; a resized window letterboxes into its first size), Media
+    Foundation source readers for cameras (NV12, decoding MJPEG through MF), WASAPI mic and
+    loopback system audio through cpal, `WDA_EXCLUDEFROMCAPTURE` on every app window, the QPC
+    clock, `IFileOpenDialog`, `CF_HDROP` copy and Recycle Bin. Permissions read the privacy
+    ConsentStore; Windows has no prompt API for desktop apps.
+  - ⚑ **Linux** (`crates/capture-linux`): screens and windows come only from the
+    xdg-desktop-portal ScreenCast picker (the app's System… button and a single "Choose Screen or
+    Window…" button in the panel); frames arrive over PipeWire (BGRx/RGBx shared memory). The app
+    hides its own windows while recording (exclusion `AutoHide`). Cameras through V4L2 (NV12 or
+    YUYV; MJPEG-only modes are not offered yet). Mic and system audio through cpal's PipeWire host
+    (system audio is a sink capture). The portal FileChooser and OpenDirectory, `gio`/freedesktop
+    Trash. Raw tracks use x264 until a VAAPI helper is safe (VAAPI would make the static helper
+    need libva to start at all).
+  - **Shared** (`crates/capture-common`): cpal audio for both OSes and a polling device watcher.
+  - **Helpers:** `third_party/ffmpeg/build-linux.sh` builds the Linux helper natively and the
+    Windows helper with mingw-w64, from the same pinned sources as macOS, `--disable-network`,
+    checking that only system libraries are linked (Linux: glibc family; Windows: KERNEL32,
+    USER32, ADVAPI32, SHELL32, ole32, bcrypt, msvcrt). This settles LICENSES §3.3's networking
+    question without BtbN builds. gifski is built for both. `scripts/stage-helpers.sh` stages
+    helpers and every license text for the bundle.
+  - **Packaging** (`.github/workflows/package.yml`): helpers per OS (cached), a source archive of
+    the GPL/AGPL helpers' pinned sources and build scripts, then `.dmg`, NSIS `.exe` + `.msi`, and
+    `.deb` + `.AppImage`, each with the helpers and the `licenses` resource folder. The Windows and
+    Linux jobs first run the helper-track round trip with the built helper.
+  - **Self-test** (`crates/diagnostics`, `simple-capture --self-test`, Diagnostics window): what
+    the machine offers (capture APIs, permissions, devices, helpers and their network status,
+    encoders, a recording-encoder benchmark), a synthetic record → cut + text → MP4 and GIF
+    export, and 2 s of the main display recorded, decoded and exported when the screen grant is
+    already there (it never asks; Linux skips it because the portal would ask). The report goes
+    to the app data folder with the home folder redacted and holds no recordings.
+- **Verified:** Windows code type-checks from macOS (cross `cargo clippy`) and builds and runs
+  its tests on GitHub's Windows runner; Linux builds and runs its tests on Ubuntu (CI) and in
+  `tools/linux-dev` (PipeWire consumer: 36 frames in 2 s from a GStreamer source, converted
+  correctly). The self-test passes 7/7 on this Mac from the CLI and from the app.
+- **Not verified:** any real Windows or Linux desktop (no machine here). The portal start never
+  reached frames in the headless test session (xdg-desktop-portal-wlr could not read a format
+  from wlr_screencopy on headless sway); the PipeWire side it hands over to is tested.
+
+## ADR-049: M7 hardening and polish as built
+- **Status:** Accepted by the agent on 2026-11-21 under the owner's "Build the rest of it out";
+  open to change at the owner's review.
+- **Decision:**
+  - **Pause and resume:** while paused, the recorder's sink drops every frame and buffer, so the
+    raw tracks hold the last frame and silence over the pause (the file clocks keep running).
+    Pauses are journaled; the finished project lists them and starts with clips that leave the
+    paused spans out, so the editor and every export skip them, and the person can still drag a
+    paused stretch back in. Recording time is host time minus start, pauses included: tracks,
+    segments, camera keys and the EDL share one clock (`ProjectV1::duration_ns` no longer
+    subtracts pauses; nothing recorded before had pauses). A pause's silence is not reported as
+    an audio gap. Recovery cuts pauses the same way.
+  - **Recording bar:** Pause/Resume, Restart (discard this take, start again with the same
+    request, after a confirmation), Stop, Discard; a 3-2-1 countdown before the start (setting:
+    none, 3, 5 or 10 s; Escape or Cancel); optional frame rate, drops and drift. The timer and
+    the tray title leave paused time out; the tray has Pause Recording.
+  - **Shortcuts** (global): ⌥⇧R start/stop, ⌥⇧P pause/resume, ⌥⇧S switch source, ⌥⇧C camera
+    on/off from now on, ⌥⇧O open the recorder. Not configurable yet.
+  - **Library window:** every recording newest first, with a poster (the composed first second,
+    rendered on demand and cached in the project's thumbs folder), date, length and size; Edit,
+    Export (opens the editor's export sheet), Show in Finder/Explorer/Files, Move to Trash after a
+    confirmation. Deleting always goes to the Trash or Recycle Bin, never straight to deletion.
+  - **When Recording Stops** can also export with the export sheet's last settings. An opt-in
+    setting (off by default, per the SPEC) moves the raw recording to the Trash after an export
+    made from the summary or right after recording; editor exports never do.
+  - **About window:** version, the no-network statement, and the license texts of the app, the
+    FFmpeg and gifski helpers (with every library inside them), the fonts and the Rust crates.
+    **Diagnostics window:** runs the self-test (ADR-048) and offers its report.
+  - **Microphone level** in the recorder panel while it is open and nothing records.
+- **Already in place from M1–M2 and kept:** crash recovery at launch with the recovered notice
+  in the panel (now also a Recovered/Damaged badge in the Library), the low-disk notice and the
+  automatic stop when the disk fills, device hot-plug notices and fallbacks.
+- **Not done:** customizable shortcuts; a separate performance pass beyond the M2 CPU work (the
+  30-minute soak numbers in STATUS stand); per-OS onboarding text for Windows and Linux beyond
+  what the permission screens already say.

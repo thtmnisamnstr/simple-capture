@@ -49,8 +49,15 @@ simple-capture/
 │  │                          SCStream (ADR-035), SCContentSharingPicker, AVCaptureSession camera
 │  │                          + mic, AVAssetWriter writers, AVAssetReader decoder,
 │  │                          IOSurface → Metal import
-│  ├─ capture-windows/        placeholder until M6 (compiles, returns Unsupported, tests pass)
-│  ├─ capture-linux/          placeholder until M6
+│  ├─ capture-windows/        Windows.Graphics.Capture screens/windows/regions/app crops, Media
+│  │                          Foundation cameras, WDA_EXCLUDEFROMCAPTURE, dialogs, Recycle Bin
+│  │                          (ADR-048); a stub elsewhere
+│  ├─ capture-linux/          xdg-desktop-portal ScreenCast picker + PipeWire frames, V4L2
+│  │                          cameras, portal file chooser, Trash (ADR-048); a stub elsewhere
+│  ├─ capture-common/         Windows + Linux: cpal mic and system audio, device watcher
+│  ├─ tracks/                 raw tracks through the FFmpeg helper (constant-rate Matroska
+│  │                          video, AAC audio) and reading them back; NV12 conversions
+│  ├─ diagnostics/            the self-test behind --self-test and the Diagnostics window
 │  ├─ record/                 session orchestration (OS-independent; drives platform traits):
 │  │                          start gate, queues, health, pause, stop; the switch controller and
 │  │                          frame router (segments, make-before-break); audio gap filler
@@ -71,7 +78,8 @@ simple-capture/
 │                             bar, switch-source popover, pick-mode and region overlays), tray,
 │                             hotkeys
 ├─ ui/                        Svelte 5 + TypeScript + Vite (ADR-005)
-├─ cli/                       simple-capture (--self-test, probe dump)
+├─ cli/                       simple-capture: record, recover, export, validate, probe,
+│                             --self-test
 ├─ third_party/               helper build scripts, versions.toml (pinned + SHA-256), licenses
 └─ tools/macos-dev-host/      the single permission host for dev binaries (ADR-002)
 ```

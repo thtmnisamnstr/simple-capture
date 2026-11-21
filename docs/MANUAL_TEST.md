@@ -752,6 +752,35 @@ In the editor with any recording, press ⌘E:
 | X14 | After an export: Show in Finder, Copy (paste into Finder or Messages), Open | Each works |
 | X15 | Output folder: choose another folder; name template `{title} {size}` | The file lands there with that name; a second export gets " 2" |
 
+## 10f. Recording controls (M7)
+
+| # | Step | Expected |
+|---|---|---|
+| R1 | Start a recording from the panel | The bar shows 3, 2, 1, then recording starts; nothing of the countdown is in the video |
+| R2 | Start again and press Escape (or Cancel) during the countdown | Nothing records |
+| R3 | While recording, press ⌥⇧P (or the pause button); wait 5 s; press it again | The bar says Paused and its timer stops; the tray title shows ❚❚; resuming continues the timer |
+| R4 | Stop; look at the editor | Two clips with the paused stretch cut out; playback jumps over it with no click |
+| R5 | ⌥⇧R from any app | Starts recording (the last source); ⌥⇧R again stops |
+| R6 | ⌥⇧C while recording with a camera | The camera disappears from the recording from then on; again brings it back |
+| R7 | Restart in the bar, confirm | The take is gone (not in the Library) and a new recording starts |
+| R8 | Settings → Show frame rate and drops; record | The bar shows fps, dropped frames and drift |
+| R9 | Panel open, a microphone chosen; speak | The level bar under the microphone moves; it turns orange near the top |
+| R10 | When Recording Stops → Export; record | The summary shows the export running with the format you exported last |
+| R11 | Turn on "Move the recording to the Trash after a quick export"; export from the summary | The project folder is in the Trash after the export finishes; the exported file is kept |
+
+## 10g. Library, About and Diagnostics (M6, M7)
+
+| # | Step | Expected |
+|---|---|---|
+| Y1 | Tray → Library… | Every recording, newest first, with a picture, date, length and size |
+| Y2 | Type in Search | The list narrows by title |
+| Y3 | Double-click a recording | The editor opens it |
+| Y4 | Select one → Export… | The editor opens with the export sheet showing |
+| Y5 | Select one → Move to Trash → confirm | It leaves the list and is in the Trash (restorable) |
+| Y6 | Tray → About Simple Capture | Version and licenses; each license opens as text; "Open notices" opens the Rust notices (release builds) |
+| Y7 | About → Diagnostics… → Run Self-Test | Lines stream in; "7 passed, 0 failed" on a Mac with the screen grant; Show in Finder finds the report |
+| Y8 | Terminal: `simple-capture --self-test` | The same report, printed and saved |
+
 ## 11. Results log
 
 Copy this table into the M1 review notes (or STATUS) with one line per step run.
@@ -779,12 +808,29 @@ Under the dev host (§1–§9) this table should stay empty.
 
 ## 13. Windows and Linux
 
-Placeholders until M6; CI only. M1 builds the Windows and Linux crates as stubs that compile and
-pass their tests on GitHub's Windows x64 and Ubuntu x64 runners (`just ci-local` runs the local
-equivalents). There is nothing to test by hand on these systems in M1.
+Installers come from the `package` workflow's artifacts (Actions → package → the run →
+`simple-capture-windows-x86_64` or `simple-capture-linux-x86_64`). Nothing here has been tried
+on a real Windows or Linux desktop yet (ADR-048).
 
-### Windows
-Placeholder until M6 (Windows Graphics Capture, WASAPI, Media Foundation). CI only.
+### Windows (10 2004 or later; 11 removes the yellow capture border)
+| # | Step | Expected |
+|---|---|---|
+| WN1 | Install the NSIS setup (per user) and start Simple Capture | A tray icon; the recorder panel opens from it |
+| WN2 | Run the self-test from About → Diagnostics | Encoders list `h264_mf` or a GPU encoder; the 2 s real capture passes |
+| WN3 | Record the main display 20 s with mic and system audio playing | The editor opens; picture and sound play in step |
+| WN4 | Record a window, resize it while recording | The recording letterboxes the window instead of stretching |
+| WN5 | Record a region, then an app | Only the region / the app's windows' area is in the video |
+| WN6 | Our panel and bar during a recording | Not in the video (excluded from capture) |
+| WN7 | Camera on | The camera records; unplugging it shows "Camera disconnected" and recording goes on |
+| WN8 | Export MP4, WebM and GIF | Each plays (Films & TV, a browser) |
+| WN9 | Settings → Privacy → Camera off for desktop apps, then reopen | The app shows the camera as denied and links to the setting |
 
-### Linux
-Placeholder until M6 (PipeWire portal, GStreamer). CI only.
+### Linux (Ubuntu 24.04 or similar with PipeWire and xdg-desktop-portal)
+| # | Step | Expected |
+|---|---|---|
+| LX1 | Install the .deb (or run the AppImage) | The app starts; a tray icon (needs an AppIndicator host on GNOME) |
+| LX2 | Panel → Choose Screen or Window… | The system's share dialog; after choosing, the panel says it will record your choice |
+| LX3 | Record 20 s with mic and system audio | Our windows hide while recording; the editor opens afterwards; sound in step |
+| LX4 | Camera (a webcam that offers YUYV) | Records; an MJPEG-only camera says so |
+| LX5 | Self-test | Encoders list `libx264`; the real-capture step says it is skipped on Linux |
+| LX6 | Export MP4 and GIF; Move to Trash from the Library | Files play; the project is in the Trash |

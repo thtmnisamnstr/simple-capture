@@ -1,9 +1,58 @@
 # Status
 
-**M2 ★ (camera on macOS): built on branch `m2`; owner's first hands-on pass addressed; waiting
-for the owner's ★ review.** M1 is merged to `main` (35b7d3e).
-**M1 ★ (macOS recording): accepted by the owner on 2026-11-20** after two hands-on passes (fixes
-below). Updated 2026-11-20. The M1 ★ review list is the last section of this file.
+**M3–M7 built on branch `m3` (2026-11-21) under the owner's "Build the rest of it out"; no ★
+stops were taken, so every milestone from M2 on waits for the owner's hands-on review.** M1 is
+merged to `main` (35b7d3e); M2 is on `m2` and also contained in `m3`.
+
+## M3–M7 build-out (2026-11-21)
+
+| Milestone | What is in it | ADR | Hands-on script |
+|---|---|---|---|
+| M3 editor | timeline, every edit with undo/redo, speed with kept pitch, playback across cuts, camera keyframes, audio mix, frame/background, autosave, export of the edit | 045 | MANUAL_TEST §10c |
+| M4 text | 13 bundled families + system fonts, colour emoji, styles, boxes, gradients, animations, on-preview editing | 046 | §10d |
+| M5 export | MP4/WebM/MOV/GIF, Best/Fast encoders, quality tiers and custom, fps per format, sizes, presets, estimates, Copy/Open | 047 | §10e |
+| M6 Windows/Linux | Windows and Linux backends, helper tracks, our own Windows/Linux helpers, package workflow, self-test and Diagnostics | 048 | §13, §10g |
+| M7 polish | pause/resume, Restart, countdown, global shortcuts, Library, Trash, About/licenses, mic meter, stats overlay, export-after-recording, delete-raw-after-export, README | 049 | §10f, §10g |
+
+**Verified here (macOS 26, M3 Pro):** the workspace tests and clippy; UI checks and 51 UI tests;
+live app-driver flows 01, 17 (editor, text, MP4/GIF/WebM exports from the sheet: 23/23), 18
+(self-test from the app: 7/7), 19 (Library posters) and 20 (pause: a 1.5 s pause cut into two
+clips); `simple-capture --self-test` 7/7 including a real 2 s capture; x264 Best beats
+VideoToolbox Fast on SSIM at a smaller size on a text-heavy clip (0.9365 at 134 KB vs 0.9341 at
+233 KB). Every recording the agent made was deleted after its checks.
+
+**Verified in CI and containers:** the Windows backend builds and runs its tests on GitHub's
+Windows runner; the Linux backend on Ubuntu and in `tools/linux-dev` (PipeWire frames from a
+test source). The Linux and Windows FFmpeg helpers build from the pinned sources with networking
+off and link only system libraries; the Linux helper passes the helper-track tests.
+
+**Not verified:** any real Windows or Linux desktop; the Linux portal dialog end to end (the
+headless test compositor could not hand frames to the portal backend); the mic level meter and
+the countdown by eye (driver mode turns both off); the installers from the package workflow
+(first run in progress at the time of writing).
+
+### Owner decisions needed
+1. ⚑ **Recording on Windows and Linux goes through the FFmpeg helper process** instead of Media
+   Foundation / the LGPL FFmpeg libraries in-process (ADR-048). Hardware encoders are still used
+   through the helper where the machine has them. Accept, or ask for the in-process path.
+2. ⚑ **Linux records only what the system's share dialog picks** (displays and windows; no app or
+   region sources), and hides our windows while recording (ADR-048).
+3. **Pause keeps the paused time in the raw tracks and cuts it in the starting timeline**
+   (ADR-049); recording time no longer subtracts pauses.
+4. **Linux raw tracks use x264** until a VAAPI-capable helper can be shipped without making the
+   helper need libva to start.
+5. **The package workflow also runs on `m*` branches** while M6 is reviewed; restrict it to tags
+   and `main` afterwards if CI minutes matter.
+
+### Open items
+- Pause edge: after resume the video shows the pre-pause frame until the screen next changes
+  (ScreenCaptureKit sends frames only on change, about 1 per second when idle).
+- Linux cameras that only offer MJPEG are not supported yet.
+- Shortcuts are fixed (⌥⇧R/P/S/C/O), not configurable.
+- Carried: the Windows CI flake `stop_before_the_duration_ends_there`; Preview at ~24 fps while
+  recording; camera A/V sync unmeasured (STATUS §3).
+- The owner's own hands-on recording `~/Movies/Simple Capture/2026-11-20 15.35.33 Recording.sc`
+  and its export `2026-11-20 15.35.33 Recording.mp4` were left in place.
 
 ## M2 ★ review (2026-11-20)
 
