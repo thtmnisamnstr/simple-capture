@@ -26,7 +26,9 @@ Windows runner; the Linux backend on Ubuntu and in `tools/linux-dev` (PipeWire f
 test source). The Linux and Windows FFmpeg helpers build from the pinned sources with networking
 off and link only system libraries; the Linux helper passes the helper-track tests.
 
-**Not verified:** any real Windows or Linux desktop; the Linux portal dialog end to end (the
+**Not verified:** the editor's open time on a 10-minute recording (the definition of done says
+under 2 s; measured 158 ms to the first frame on a 9 s recording, and nothing in the open path
+grows with length except the async thumbnails and waveform); any real Windows or Linux desktop; the Linux portal dialog end to end (the
 headless test compositor could not hand frames to the portal backend); the mic level meter and
 the countdown by eye (driver mode turns both off); the installers from the package workflow
 (first run in progress at the time of writing).
