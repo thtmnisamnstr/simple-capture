@@ -23,6 +23,7 @@ pub struct PreviewState {
     pub frames: u64,
     pub last: Option<StageFrame>,
     pub page: Option<StagePage>,
+    #[cfg(target_os = "macos")]
     pub view: Option<usize>,
 }
 
