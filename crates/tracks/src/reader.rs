@@ -88,9 +88,10 @@ pub fn parse_packets(text: &str) -> (u64, Option<i64>) {
         let line = line.trim();
         if let Some(rest) = line.strip_prefix("#tb 0:") {
             if let Some((n, d)) = rest.trim().split_once('/')
-                && let (Ok(n), Ok(d)) = (n.trim().parse(), d.trim().parse()) {
-                    tb = (n, d);
-                }
+                && let (Ok(n), Ok(d)) = (n.trim().parse(), d.trim().parse())
+            {
+                tb = (n, d);
+            }
             continue;
         }
         if line.starts_with('#') || line.is_empty() {

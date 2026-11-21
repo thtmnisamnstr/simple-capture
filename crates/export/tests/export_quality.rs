@@ -89,7 +89,11 @@ fn luma_frames(file: &Path) -> Vec<Vec<u8>> {
         .args(["-f", "rawvideo", "-pix_fmt", "gray", "-"])
         .output()
         .expect("decode");
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     out.stdout
         .chunks_exact((W * H) as usize)
         .map(<[u8]>::to_vec)
@@ -163,7 +167,9 @@ fn x264_best_beats_hardware_fast_at_the_same_size_on_text() {
         OutputFormat::Rgba8,
     )
     .expect("renderer");
-    let samples: Vec<usize> = (0..(LEN_MS as usize * FPS as usize / 1000)).step_by(12).collect();
+    let samples: Vec<usize> = (0..(LEN_MS as usize * FPS as usize / 1000))
+        .step_by(12)
+        .collect();
     let refs: Vec<Vec<u8>> = samples
         .iter()
         .map(|i| {
@@ -200,9 +206,7 @@ fn x264_best_beats_hardware_fast_at_the_same_size_on_text() {
         let _ = std::fs::remove_file(&best);
     };
     let (s_best, s_fast) = (score(&best), score(&fast));
-    eprintln!(
-        "x264 {best_size} B SSIM {s_best:.4}; VideoToolbox {fast_size} B SSIM {s_fast:.4}"
-    );
+    eprintln!("x264 {best_size} B SSIM {s_best:.4}; VideoToolbox {fast_size} B SSIM {s_fast:.4}");
     assert!(
         best_size as f64 <= fast_size as f64 * 1.05,
         "x264 {best_size} B vs VideoToolbox {fast_size} B"
