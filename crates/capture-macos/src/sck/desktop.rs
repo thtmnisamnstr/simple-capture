@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use objc2_app_kit::{NSModalResponseOK, NSOpenPanel, NSWorkspace};
+use objc2_app_kit::{
+    NSColor, NSColorSampler, NSColorSpace, NSModalResponseOK, NSOpenPanel, NSWorkspace,
+};
 use objc2_foundation::{NSArray, NSString, NSURL};
 use sc_platform::{Desktop, Error, Result};
 
@@ -58,6 +60,31 @@ impl Desktop for MacDesktop {
                 }
             });
             panel.beginWithCompletionHandler(&blk);
+        });
+    }
+
+    fn pick_color(&self, done: Box<dyn FnOnce(Option<[f64; 4]>) + Send>) {
+        main_async(move |_| {
+            let sampler = NSColorSampler::new();
+            let cell = std::sync::Mutex::new(Some(done));
+            let blk = block2::RcBlock::new(move |picked: *mut NSColor| {
+                // SAFETY: AppKit passes a valid colour or nil.
+                let rgba = unsafe { picked.as_ref() }
+                    .and_then(|c| c.colorUsingColorSpace(&NSColorSpace::sRGBColorSpace()))
+                    .map(|c| {
+                        [
+                            c.redComponent(),
+                            c.greenComponent(),
+                            c.blueComponent(),
+                            c.alphaComponent(),
+                        ]
+                    });
+                if let Some(d) = cell.lock().ok().and_then(|mut c| c.take()) {
+                    d(rgba);
+                }
+            });
+            // SAFETY: the block lives until AppKit calls it once.
+            unsafe { sampler.showSamplerWithSelectionHandler(&blk) };
         });
     }
 }

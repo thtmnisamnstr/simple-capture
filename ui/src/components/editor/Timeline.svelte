@@ -32,6 +32,8 @@
     ontrim,
     onmove,
     onselecttext,
+    ontextmove,
+    selectedText = null,
   }: {
     clips: Clip[];
     text: TextItem[];
@@ -49,6 +51,8 @@
     ontrim: (id: string, edge: 'start' | 'end', recNs: number) => void;
     onmove: (id: string, toIndex: number) => void;
     onselecttext?: (id: string) => void;
+    ontextmove?: (id: string, start: number, end: number) => void;
+    selectedText?: string | null;
   } = $props();
 
   const RULER_H = 24;
@@ -71,9 +75,21 @@
     | { kind: 'scrub' }
     | { kind: 'range'; from: number }
     | { kind: 'trim'; id: string; edge: 'start' | 'end'; startX: number; index: number }
-    | { kind: 'move'; id: string; startX: number; index: number; moved: boolean };
+    | { kind: 'move'; id: string; startX: number; index: number; moved: boolean }
+    | { kind: 'text'; id: string; part: 'body' | 'start' | 'end'; startX: number; s0: number; e0: number; moved: boolean };
   let drag = $state<Drag | null>(null);
   let ghost = $state<{ index: number; start: number; end: number } | null>(null);
+  let textGhost = $state<{ id: string; start: number; end: number } | null>(null);
+  const MIN_TEXT_NS = 100_000_000;
+
+  function onTextDown(e: PointerEvent, it: TextItem, part: 'body' | 'start' | 'end') {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    onselecttext?.(it.id);
+    drag = { kind: 'text', id: it.id, part, startX: e.clientX, s0: it.start_tl_ns, e0: it.end_tl_ns, moved: false };
+  }
   let dropAt = $state<number | null>(null);
   let pointerX = 0;
 
@@ -198,6 +214,19 @@
         drag.edge === 'start'
           ? { index: drag.index, start: st[drag.index], end: st[drag.index] + len(rec, c.src_out_rec_ns) }
           : { index: drag.index, start: st[drag.index], end: st[drag.index] + len(c.src_in_rec_ns, rec) };
+    } else if (drag.kind === 'text') {
+      if (!drag.moved && Math.abs(e.clientX - drag.startX) < 3) return;
+      drag.moved = true;
+      const dt = ((e.clientX - drag.startX) / pxPerSec) * NS;
+      let s = drag.s0;
+      let en = drag.e0;
+      if (drag.part === 'body') {
+        const len = drag.e0 - drag.s0;
+        s = Math.min(Math.max(snapped(drag.s0 + dt), 0), Math.max(0, duration - len));
+        en = s + len;
+      } else if (drag.part === 'start') s = Math.min(Math.max(snapped(drag.s0 + dt), 0), drag.e0 - MIN_TEXT_NS);
+      else en = Math.max(Math.min(snapped(drag.e0 + dt), duration), drag.s0 + MIN_TEXT_NS);
+      textGhost = { id: drag.id, start: s, end: en };
     } else if (drag.kind === 'move') {
       if (!drag.moved && Math.abs(e.clientX - drag.startX) < 5) return;
       drag.moved = true;
@@ -218,6 +247,12 @@
     if (!drag) return;
     const d = drag;
     drag = null;
+    if (d.kind === 'text') {
+      const g = textGhost;
+      textGhost = null;
+      if (d.moved && g) ontextmove?.(g.id, Math.round(g.start), Math.round(g.end));
+      return;
+    }
     if (d.kind === 'scrub') onseek(playhead, true);
     else if (d.kind === 'range' && range && Math.abs(range[1] - range[0]) < (3 / pxPerSec) * NS) onrange(null);
     else if (d.kind === 'trim') {
@@ -383,13 +418,21 @@
     <div class="track text" style:height="{TEXT_H}px" role="presentation" onpointerdown={onTrackDown}>
       {#if text.length === 0}<span class="lane-hint" style:left="{scrollX + 10}px">Text</span>{/if}
       {#each text as it (it.id)}
-        <button
+        {@const g = textGhost && textGhost.id === it.id ? textGhost : null}
+        <div
           class="titem"
-          style:left="{x(it.start_tl_ns)}px"
-          style:width="{Math.max(6, x(it.end_tl_ns) - x(it.start_tl_ns))}px"
-          onpointerdown={(e) => e.stopPropagation()}
-          onclick={() => onselecttext?.(it.id)}
-        >{it.content}</button>
+          class:sel={selectedText === it.id}
+          style:left="{x(g ? g.start : it.start_tl_ns)}px"
+          style:width="{Math.max(6, x(g ? g.end : it.end_tl_ns) - x(g ? g.start : it.start_tl_ns))}px"
+          role="button"
+          tabindex="-1"
+          aria-label="Text {it.content}"
+          onpointerdown={(e) => onTextDown(e, it, 'body')}
+        >
+          <span class="tlabel2">{it.content.split('\n')[0]}</span>
+          <span class="tedge l" role="presentation" onpointerdown={(e) => onTextDown(e, it, 'start')}></span>
+          <span class="tedge r" role="presentation" onpointerdown={(e) => onTextDown(e, it, 'end')}></span>
+        </div>
       {/each}
     </div>
     {#if range}
@@ -526,15 +569,37 @@
     position: absolute;
     top: 2px;
     bottom: 2px;
-    min-height: 0;
-    padding: 0 6px;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
     border-radius: 5px;
     background: color-mix(in srgb, var(--accent) 70%, transparent);
     color: #fff;
     font-size: 11px;
-    justify-content: flex-start;
+    overflow: hidden;
+    cursor: grab;
+  }
+  .titem.sel {
+    box-shadow: inset 0 0 0 2px var(--yellow);
+  }
+  .tlabel2 {
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .tedge {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 7px;
+    cursor: ew-resize;
+  }
+  .tedge.l {
+    left: 0;
+  }
+  .tedge.r {
+    right: 0;
   }
   .range {
     position: absolute;

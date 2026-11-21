@@ -6,6 +6,9 @@
   import type { CameraKey } from '../../lib/types.ts';
   import { api, errorText } from '../../lib/api.ts';
   import { editor } from '../../lib/editor.ts';
+  import TextInspector from './TextInspector.svelte';
+  import type { FontInfo, TextItemFull } from '../../lib/text.ts';
+  import type { Rgba } from '../../lib/types.ts';
 
   let {
     doc,
@@ -18,17 +21,37 @@
     onsplit,
     onduplicate,
     ondelete,
+    text = null,
+    fonts = [],
+    system = [],
+    unresolved = 0,
+    onaddtext,
+    onselecttext,
+    ontext,
+    ontextduplicate,
+    ontextdelete,
+    onpick,
   }: {
     doc: Doc;
     tracks: EditorTrack[];
     selected: string[];
     recNs: number;
     canvasPx: { w: number; h: number };
-    tab?: 'clip' | 'camera' | 'audio' | 'frame';
+    tab?: 'clip' | 'text' | 'camera' | 'audio' | 'frame';
     onedit: (op: EditOp, coalesce?: string) => void;
     onsplit: () => void;
     onduplicate: () => void;
     ondelete: () => void;
+    text?: TextItemFull | null;
+    fonts?: FontInfo[];
+    system?: string[];
+    unresolved?: number;
+    onaddtext: () => void;
+    onselecttext: (id: string) => void;
+    ontext: (item: TextItemFull, coalesce?: string) => void;
+    ontextduplicate: () => void;
+    ontextdelete: () => void;
+    onpick: () => Promise<Rgba | null>;
   } = $props();
 
   let error = $state<string | null>(null);
@@ -75,7 +98,7 @@
 
 <div class="inspector">
   <div class="segmented tabs" role="tablist" aria-label="Inspector">
-    {#each [['clip', 'Clip'], ['camera', 'Camera'], ['audio', 'Audio'], ['frame', 'Frame']] as [id, label] (id)}
+    {#each [['clip', 'Clip'], ['text', 'Text'], ['camera', 'Camera'], ['audio', 'Audio'], ['frame', 'Frame']] as [id, label] (id)}
       <button role="tab" aria-selected={tab === id} onclick={() => (tab = id as typeof tab)}>{label}</button>
     {/each}
   </div>
@@ -131,6 +154,23 @@
           <button onclick={onduplicate}>Duplicate</button>
           <button class="destructive" onclick={ondelete}>Delete</button>
         </div>
+      {/if}
+    {:else if tab === 'text'}
+      {#if text}
+        <TextInspector item={text} {fonts} {system} {unresolved} onchange={ontext} onduplicate={ontextduplicate} ondelete={ontextdelete} {onpick} />
+      {:else}
+        <button class="primary add" onclick={onaddtext}>Add Text at Playhead</button>
+        <p class="empty">Or press T. Double-click text in the preview to type on it.</p>
+        {#if doc.text.length}
+          <div class="group">
+            {#each [...doc.text].sort((a, b) => a.start_tl_ns - b.start_tl_ns) as t (t.id)}
+              <button class="grow listrow" onclick={() => onselecttext(t.id)}>
+                <span class="glabel ell">{t.content.split('\n')[0] || 'Text'}</span>
+                <span class="gcontrol muted tnum">{formatTime(t.start_tl_ns)}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
       {/if}
     {:else if tab === 'camera'}
       {#if !overlay || !key}
@@ -387,5 +427,21 @@
   .note {
     color: var(--label-2);
     padding: 0 4px;
+  }
+  .add {
+    align-self: flex-start;
+  }
+  .listrow {
+    width: 100%;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+    justify-content: space-between;
+  }
+  .ell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
   }
 </style>

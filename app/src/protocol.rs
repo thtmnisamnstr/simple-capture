@@ -23,6 +23,26 @@ fn respond(
         .unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..])))
 }
 
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        let hex = |c: u8| (c as char).to_digit(16);
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let (Some(h), Some(l)) = (hex(b[i + 1]), b.get(i + 2).and_then(|c| hex(*c)))
+        {
+            out.push((h * 16 + l) as u8);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// `sc://thumb/<step_ms>/<index>.png` and `sc://peaks/v1` of the project open in the editor.
 fn editor_file(
     core: &Core,
@@ -37,6 +57,26 @@ fn editor_file(
         }
         Some(h) => (h.to_string(), path.to_string()),
     };
+    if host == "font" {
+        let name = percent_decode(path.trim_start_matches('/'));
+        let name = name.as_str();
+        let ok = sc_text::fonts::BUNDLED
+            .iter()
+            .flat_map(|f| f.faces)
+            .any(|f| f.file == name);
+        let bytes = ok
+            .then(|| std::fs::read(sc_text::fonts::default_fonts_dir().join(name)).ok())
+            .flatten()?;
+        return Some(
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "font/ttf")
+                .header(header::CACHE_CONTROL, "max-age=86400")
+                .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .body(Cow::Owned(bytes))
+                .unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..]))),
+        );
+    }
     let dir = core.editor_dir()?;
     let (file, ctype) = match host.as_str() {
         "thumb" => {

@@ -343,13 +343,47 @@ const mockDoc = {
       { id: 'c3', src_in_rec_ns: 52 * S, src_out_rec_ns: 75 * S, speed: { num: 1, den: 1 }, muted: true },
     ],
   },
-  text: [],
+  text: [
+    {
+      id: 't1',
+      start_tl_ns: 2 * S,
+      end_tl_ns: 8 * S,
+      layer: 0,
+      content: 'Welcome to the demo',
+      style: {
+        font_family: 'Montserrat',
+        size_1080: 72,
+        weight: 900,
+        italic: false,
+        uppercase: false,
+        align: 'center',
+        line_height: 1.15,
+        letter_spacing: 0,
+        opacity: 1,
+        fill: { solid: [1, 1, 1, 1] },
+        outline: { width_1080: 6, color: [0, 0, 0, 1] },
+      },
+      transform: { center_norm: { x: 0.5, y: 0.78 }, scale: 1, rotation_deg: 0 },
+      anim: { in: { kind: 'pop', duration_s: 0.35, easing: 'ease_out' } },
+    },
+  ],
   camera_layout: { overlays: [{ id: 'cam', track_id: 'camera', keyframes: [{ ...settings.camera_key, t_rec_ns: 0 }, { ...settings.camera_key, t_rec_ns: 40 * S }] }] },
   audio_mix: { mic: { gain_db: -3, muted: false } },
   output: { canvas: { aspect: '16:9', ratio: { num: 16, den: 9 }, fit: 'contain', background: { kind: 'solid', color: [0.07, 0.07, 0.08, 1] } } },
 };
 
 function mockEditor(action: string): unknown {
+  if (action === 'fonts') {
+    const face = (file: string, lo: number, hi: number) => ({ file, italic: false, weights: [lo, hi] });
+    return {
+      bundled: [
+        { name: 'Inter', kind: 'Modern', default_weight: 700, weights: [100, 900], static_weights: [100, 900], italic: true, variable: true, faces: [face('Inter[opsz,wght].ttf', 100, 900)] },
+        { name: 'Montserrat', kind: 'Geometric', default_weight: 800, weights: [100, 900], static_weights: [100, 900], italic: true, variable: true, faces: [face('Montserrat[wght].ttf', 100, 900)] },
+        { name: 'Bebas Neue', kind: 'Poster', default_weight: 400, weights: [400, 400], static_weights: [400], italic: false, variable: false, faces: [face('BebasNeue-Regular.ttf', 400, 400)] },
+      ],
+      system: ['Helvetica Neue', 'Georgia'],
+    };
+  }
   if (action === 'state' || action === 'open') {
     return {
       project_dir: '/Users/me/Movies/Simple Capture/2026-11-21 10.00.00 Recording.sc',

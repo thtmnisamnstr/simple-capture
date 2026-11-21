@@ -66,6 +66,7 @@ export interface DocUpdate {
   clipboard_ns?: number;
 }
 export interface EditorFrame {
+  text?: { id: string; quad: [number, number][]; unresolved: number }[];
   native: boolean;
   canvas_px: { w: number; h: number };
   rect: { x: number; y: number; w: number; h: number };
@@ -112,6 +113,8 @@ export const editor = {
   rect: (rect: { x: number; y: number; w: number; h: number } | null) => call<void>('rect', { rect }),
   exportVideo: (size: string) => call<string>('export', { size }),
   backgroundImage: (path: string) => call<Background>('background_image', { path }),
+  fonts: () => call<{ bundled: import('./text.ts').FontInfo[]; system: string[] }>('fonts'),
+  pickColor: () => call<[number, number, number, number] | null>('pick_color'),
   close: () => call<void>('close'),
 };
 

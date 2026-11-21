@@ -113,7 +113,48 @@ fn track_json(p: &ProjectV1) -> Value {
     )
 }
 
+fn editor_fonts() -> Value {
+    let bundled: Vec<Value> = sc_text::fonts::BUNDLED
+        .iter()
+        .map(|f| {
+            let lo = f.faces.iter().map(|x| x.weights.0).min().unwrap_or(400);
+            let hi = f.faces.iter().map(|x| x.weights.1).max().unwrap_or(400);
+            let mut weights: Vec<u32> = f
+                .faces
+                .iter()
+                .flat_map(|x| [x.weights.0, x.weights.1])
+                .collect();
+            weights.sort_unstable();
+            weights.dedup();
+            json!({
+                "name": f.name,
+                "kind": f.kind,
+                "default_weight": f.default_weight,
+                "weights": [lo, hi],
+                "static_weights": weights,
+                "italic": f.faces.iter().any(|x| x.italic),
+                "faces": f.faces.iter().map(|x| json!({
+                    "file": x.file, "italic": x.italic, "weights": [x.weights.0, x.weights.1],
+                })).collect::<Vec<_>>(),
+                "variable": f.faces.iter().any(|x| x.weights.0 < x.weights.1),
+            })
+        })
+        .collect();
+    json!({ "bundled": bundled, "system": sc_text::fonts::system_families() })
+}
+
 impl Core {
+    pub fn pick_color(&self) -> Reply {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.platform.desktop().pick_color(Box::new(move |c| {
+            let _ = tx.send(c);
+        }));
+        let c = rx
+            .recv()
+            .map_err(|_| "the eyedropper went away".to_string())?;
+        Ok(c.map(|c| json!(c)).unwrap_or(Value::Null))
+    }
+
     pub fn editor(self: &Arc<Self>, action: &str, args: &Value) -> Reply {
         match action {
             "open" => self.editor_open(Path::new(&arg::<String>(args, "project_dir")?)),
@@ -140,6 +181,8 @@ impl Core {
             }
             "close" => self.editor_close(),
             "background_image" => self.editor_background_image(&arg::<String>(args, "path")?),
+            "fonts" => Ok(editor_fonts()),
+            "pick_color" => self.pick_color(),
             other => Err(format!("unknown editor action {other:?}")),
         }
     }

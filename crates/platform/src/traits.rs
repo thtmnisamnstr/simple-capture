@@ -201,6 +201,11 @@ pub trait Desktop: Send + Sync {
     fn reveal(&self, path: &Path) -> Result<()>;
     /// PNG/JPEG.
     fn choose_image(&self, done: Box<dyn FnOnce(Option<PathBuf>) + Send>);
+    /// The system eyedropper: a colour from anywhere on screen (sRGB, straight alpha), or `None`
+    /// when cancelled or not available.
+    fn pick_color(&self, done: Box<dyn FnOnce(Option<[f64; 4]>) + Send>) {
+        done(None);
+    }
 }
 
 /// M3; kept for ADR-007.

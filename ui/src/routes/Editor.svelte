@@ -18,10 +18,22 @@
   import { CAMERA_SIZE_MAX, CAMERA_SIZE_MIN, CAMERA_ZOOM_MAX, clampCenter, shapeSize, snapCenter } from '../lib/geometry.ts';
   import { shapeAspect } from '../lib/camera.ts';
   import { LiveView } from '../lib/live.ts';
+  import { hashParams } from '../lib/router.ts';
   import type { CameraKey, ExportProgressDto, ExportStateDto } from '../lib/types.ts';
   import Icon from '../components/Icon.svelte';
   import Timeline, { type Thumbs } from '../components/editor/Timeline.svelte';
   import Inspector from '../components/editor/Inspector.svelte';
+  import {
+    fontFaceCss,
+    newTextItem,
+    rememberStyle,
+    snapAngle,
+    snapPos,
+    type FontInfo,
+    type TextItemFull,
+    type TextStyle,
+  } from '../lib/text.ts';
+  import type { Rgba } from '../lib/types.ts';
 
   let st = $state<EditorState | null>(null);
   let doc = $state<Doc | null>(null);
@@ -38,7 +50,15 @@
   let peaks = $state<Uint8Array | null>(null);
   let pxPerSec = $state(40);
   let fitted = false;
-  let tab = $state<'clip' | 'camera' | 'audio' | 'frame'>('clip');
+  const initial = hashParams(window.location.hash);
+  let tab = $state<'clip' | 'text' | 'camera' | 'audio' | 'frame'>((initial.get('tab') as 'clip') ?? 'clip');
+  let selectedText = $state<string | null>(initial.get('text'));
+  let fonts = $state<FontInfo[]>([]);
+  let systemFonts = $state<string[]>([]);
+  let textClipboard: TextItemFull | null = null;
+  let lastStyle: TextStyle | undefined;
+  let guides = $state<{ x: number | null; y: number | null }>({ x: null, y: null });
+  let editingText = $state<string | null>(null);
   let error = $state<string | null>(null);
   let toast = $state<string | null>(null);
   let exportJob = $state<string | null>(null);
@@ -55,6 +75,9 @@
   const fps = $derived(st?.fps ?? 30);
   const overlay = $derived(doc?.camera_layout.overlays[0] ?? null);
   const recNs = $derived(frame?.rec_ns ?? locate(clips, st0, Math.min(playhead, duration - 1))?.rec_ns ?? 0);
+  const textItems = $derived((doc?.text ?? []) as unknown as TextItemFull[]);
+  const textSel = $derived(textItems.find((t) => t.id === selectedText) ?? null);
+  const textQuad = $derived(frame?.text?.find((t) => t.id === selectedText) ?? null);
   const exporting = $derived(!!exportJob && !!exportState && ['preparing', 'rendering', 'finalizing'].includes(exportState.state));
   const pct = $derived(exportProgress && exportProgress.frames_total > 0 ? Math.round((exportProgress.frames_done / exportProgress.frames_total) * 100) : 0);
 
@@ -160,6 +183,17 @@
       }),
     ];
     void load();
+    void editor
+      .fonts()
+      .then((f) => {
+        fonts = f.bundled;
+        systemFonts = f.system;
+        const base = /Windows|Android/.test(navigator.userAgent) ? 'http://sc.localhost/font' : 'sc://font';
+        const style = document.createElement('style');
+        style.textContent = fontFaceCss(f.bundled, base);
+        document.head.appendChild(style);
+      })
+      .catch(() => {});
     const ro = new ResizeObserver(() => sendRect());
     if (previewEl) ro.observe(previewEl);
     const onResize = () => sendRect();
@@ -275,6 +309,142 @@
     }
   }
 
+  function textChange(item: TextItemFull, coalesce?: string) {
+    void edit({ op: 'upsert_text', item: item as never }, coalesce);
+    lastStyle = item.style;
+  }
+
+  function addText() {
+    const id = crypto.randomUUID();
+    const at = Math.min(Math.max(0, playhead), Math.max(0, duration - 100_000_000));
+    const item = newTextItem(id, at, lastStyle);
+    item.end_tl_ns = Math.min(item.end_tl_ns, Math.max(duration, at + 100_000_000));
+    void edit({ op: 'upsert_text', item: item as never });
+    selectedText = id;
+    tab = 'text';
+    if (playing) void editor.pause();
+  }
+
+  function deleteText() {
+    if (!selectedText) return;
+    void edit({ op: 'delete_text', ids: [selectedText] });
+    selectedText = null;
+  }
+
+  function pasteText(src: TextItemFull) {
+    const len = src.end_tl_ns - src.start_tl_ns;
+    const item = { ...structuredClone(src), id: crypto.randomUUID(), start_tl_ns: Math.round(playhead), end_tl_ns: Math.round(playhead + len) };
+    void edit({ op: 'upsert_text', item: item as never });
+    selectedText = item.id;
+  }
+
+  function duplicateText() {
+    if (!textSel) return;
+    const len = textSel.end_tl_ns - textSel.start_tl_ns;
+    const item = { ...structuredClone($state.snapshot(textSel) as TextItemFull), id: crypto.randomUUID(), start_tl_ns: textSel.end_tl_ns, end_tl_ns: textSel.end_tl_ns + len };
+    void edit({ op: 'upsert_text', item: item as never });
+    selectedText = item.id;
+  }
+
+  async function pickColor(): Promise<Rgba | null> {
+    try {
+      return (await editor.pickColor()) as Rgba | null;
+    } catch {
+      return null;
+    }
+  }
+
+  function selectText(id: string) {
+    selectedText = id;
+    selected = [];
+    tab = 'text';
+    const it = textItems.find((t) => t.id === id);
+    if (it && (playhead < it.start_tl_ns || playhead >= it.end_tl_ns)) seek(it.start_tl_ns + Math.min(500_000_000, (it.end_tl_ns - it.start_tl_ns) / 2), true);
+  }
+
+  type Box = { cx: number; cy: number; w: number; h: number; angle: number };
+  function boxOf(q: [number, number][]): Box {
+    const [a, b, , d] = q;
+    const cx = (q[0][0] + q[2][0]) / 2;
+    const cy = (q[0][1] + q[2][1]) / 2;
+    return { cx, cy, w: Math.hypot(b[0] - a[0], b[1] - a[1]), h: Math.hypot(d[0] - a[0], d[1] - a[1]), angle: Math.atan2(b[1] - a[1], b[0] - a[0]) };
+  }
+
+  function inBox(bx: Box, x: number, y: number): boolean {
+    const dx = x - bx.cx;
+    const dy = y - bx.cy;
+    const c = Math.cos(-bx.angle);
+    const s = Math.sin(-bx.angle);
+    const lx = dx * c - dy * s;
+    const ly = dx * s + dy * c;
+    return Math.abs(lx) <= bx.w / 2 + 6 && Math.abs(ly) <= bx.h / 2 + 6;
+  }
+
+  type TDrag = { kind: 'move' | 'scale' | 'rotate'; x: number; y: number; start: TextItemFull; box: Box };
+  let tdrag: TDrag | null = null;
+
+  function previewPoint(e: PointerEvent | MouseEvent): { x: number; y: number } | null {
+    if (!frame) return null;
+    return { x: e.clientX - frame.rect.x, y: e.clientY - frame.rect.y };
+  }
+
+  function onPreviewDown(e: PointerEvent) {
+    if (e.button !== 0 || !frame?.text) return;
+    const p = previewPoint(e);
+    if (!p) return;
+    const hit = [...frame.text].reverse().find((t) => inBox(boxOf(t.quad), p.x, p.y));
+    if (hit) {
+      if (hit.id !== selectedText) selectText(hit.id);
+      startTextDrag(e, 'move', hit.id);
+    } else if (selectedText) {
+      selectedText = null;
+      editingText = null;
+    }
+  }
+
+  function startTextDrag(e: PointerEvent, kind: TDrag['kind'], id = selectedText) {
+    const it = textItems.find((t) => t.id === id);
+    const q = frame?.text?.find((t) => t.id === id);
+    const p = previewPoint(e);
+    if (!it || !q || !p || playing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    tdrag = { kind, x: p.x, y: p.y, start: $state.snapshot(it) as TextItemFull, box: boxOf(q.quad) };
+  }
+
+  function onTextMove(e: PointerEvent) {
+    if (!tdrag || !frame) return;
+    const p = previewPoint(e);
+    if (!p) return;
+    const s = tdrag.start;
+    const r = frame.rect;
+    if (tdrag.kind === 'move') {
+      const nx = snapPos(s.transform.center_norm.x + (p.x - tdrag.x) / r.w, 8 / r.w);
+      const ny = snapPos(s.transform.center_norm.y + (p.y - tdrag.y) / r.h, 8 / r.h);
+      guides = { x: nx.guide, y: ny.guide };
+      textChange({ ...s, transform: { ...s.transform, center_norm: { x: nx.v, y: ny.v } } }, 'text-move');
+    } else if (tdrag.kind === 'scale') {
+      const d0 = Math.hypot(tdrag.x - tdrag.box.cx, tdrag.y - tdrag.box.cy);
+      const d1 = Math.hypot(p.x - tdrag.box.cx, p.y - tdrag.box.cy);
+      const scale = Math.min(Math.max(s.transform.scale * (d1 / Math.max(d0, 1)), 0.2), 6);
+      textChange({ ...s, transform: { ...s.transform, scale: Math.round(scale * 100) / 100 } }, 'text-scale');
+    } else {
+      const a0 = Math.atan2(tdrag.y - tdrag.box.cy, tdrag.x - tdrag.box.cx);
+      const a1 = Math.atan2(p.y - tdrag.box.cy, p.x - tdrag.box.cx);
+      const deg = snapAngle(s.transform.rotation_deg + ((a1 - a0) * 180) / Math.PI);
+      textChange({ ...s, transform: { ...s.transform, rotation_deg: Math.round(deg * 10) / 10 } }, 'text-rot');
+    }
+  }
+
+  function onTextUp() {
+    if (!tdrag) return;
+    tdrag = null;
+    guides = { x: null, y: null };
+    if (textSel) rememberStyle($state.snapshot(textSel.style) as TextStyle);
+    void editor.seal();
+  }
+
   function typing(e: KeyboardEvent): boolean {
     const t = e.target as HTMLElement | null;
     return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
@@ -289,6 +459,10 @@
       e.stopPropagation();
     };
     if (mod && k === 'z') return handled(), e.shiftKey ? void redo() : void undo();
+    if (mod && k === 'c' && textSel) return handled(), (textClipboard = $state.snapshot(textSel) as TextItemFull);
+    if (mod && k === 'x' && textSel) return handled(), (textClipboard = $state.snapshot(textSel) as TextItemFull), deleteText();
+    if (mod && k === 'v' && textClipboard && !selected.length && !range) return handled(), pasteText(textClipboard);
+    if (mod && k === 'd' && textSel) return handled(), duplicateText();
     if (mod && k === 'x') return handled(), void copy(true);
     if (mod && k === 'c') return handled(), void copy(false);
     if (mod && k === 'v') return handled(), void paste();
@@ -354,12 +528,20 @@
       case 'Delete':
       case 'Backspace':
         handled();
-        void deleteSelection();
+        if (selectedText && !selected.length && !range) deleteText();
+        else void deleteSelection();
+        break;
+      case 't':
+      case 'T':
+        handled();
+        addText();
         break;
       case 'Escape':
         selected = [];
         range = null;
         exportMenu = false;
+        selectedText = null;
+        editingText = null;
         break;
       case 'Home':
         handled();
@@ -432,9 +614,24 @@
   }
 
   const camRect = $derived(frame?.camera && previewEl ? frame.camera : null);
+
+  function focusOnMount(node: HTMLTextAreaElement) {
+    node.focus();
+    node.select();
+  }
 </script>
 
-<svelte:window {onkeydown} onpointermove={camMove} onpointerup={camUp} />
+<svelte:window
+  {onkeydown}
+  onpointermove={(e) => {
+    camMove(e);
+    onTextMove(e);
+  }}
+  onpointerup={() => {
+    camUp();
+    onTextUp();
+  }}
+/>
 
 <div class="editor">
   <header class="toolbar" data-tauri-drag-region>
@@ -477,7 +674,7 @@
 
   <main class="middle">
     <div class="stagewrap">
-      <div class="preview" bind:this={previewEl} class:native={frame?.native ?? true}>
+      <div class="preview" bind:this={previewEl} class:native={frame?.native ?? true} role="presentation" onpointerdown={onPreviewDown}>
         {#if frame && !frame.native}
           <canvas
             bind:this={liveCanvas}
@@ -489,6 +686,66 @@
           ></canvas>
         {:else}
           <canvas bind:this={liveCanvas} class="live hidden"></canvas>
+        {/if}
+        {#if frame && previewEl && guides.x !== null}
+          {@const o = previewEl.getBoundingClientRect()}
+          <span class="guide v" style:left="{frame.rect.x - o.left + guides.x * frame.rect.w}px" style:top="{frame.rect.y - o.top}px" style:height="{frame.rect.h}px"></span>
+        {/if}
+        {#if frame && previewEl && guides.y !== null}
+          {@const o = previewEl.getBoundingClientRect()}
+          <span class="guide h" style:top="{frame.rect.y - o.top + guides.y * frame.rect.h}px" style:left="{frame.rect.x - o.left}px" style:width="{frame.rect.w}px"></span>
+        {/if}
+        {#if textQuad && textSel && !playing && previewEl && frame}
+          {@const o = previewEl.getBoundingClientRect()}
+          {@const bx = boxOf(textQuad.quad)}
+          <div
+            class="tbox"
+            style:left="{frame.rect.x - o.left + bx.cx}px"
+            style:top="{frame.rect.y - o.top + bx.cy}px"
+            style:width="{bx.w + 12}px"
+            style:height="{bx.h + 12}px"
+            style:transform="translate(-50%, -50%) rotate({bx.angle}rad)"
+            role="presentation"
+            onpointerdown={(e) => startTextDrag(e, 'move')}
+            ondblclick={() => (editingText = textSel.id)}
+          >
+            {#if editingText === textSel.id}
+              {@const short = Math.min(frame.rect.w, frame.rect.h)}
+              <textarea
+                class="inline"
+                value={textSel.content}
+                style:font-family="'{textSel.style.font_family}', system-ui"
+                style:font-weight={textSel.style.weight}
+                style:font-style={textSel.style.italic ? 'italic' : 'normal'}
+                style:font-size="{(textSel.style.size_1080 * short) / 1080 * textSel.transform.scale}px"
+                style:line-height={textSel.style.line_height}
+                style:text-align={textSel.style.align}
+                style:text-transform={textSel.style.uppercase ? 'uppercase' : 'none'}
+                oninput={(e) => textChange({ ...textSel, content: e.currentTarget.value }, `text-${textSel.id}`)}
+                onkeydown={(e) => {
+                  if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
+                    e.preventDefault();
+                    editingText = null;
+                  }
+                  e.stopPropagation();
+                }}
+                onblur={() => (editingText = null)}
+                onpointerdown={(e) => e.stopPropagation()}
+                use:focusOnMount
+              ></textarea>
+            {:else}
+              {#each [[-1, -1], [1, -1], [-1, 1], [1, 1]] as c (c.join())}
+                <span
+                  class="handle"
+                  style:left={c[0] < 0 ? '0' : '100%'}
+                  style:top={c[1] < 0 ? '0' : '100%'}
+                  role="presentation"
+                  onpointerdown={(e) => startTextDrag(e, 'scale')}
+                ></span>
+              {/each}
+              <span class="rot" role="presentation" title="Rotate" onpointerdown={(e) => startTextDrag(e, 'rotate')}></span>
+            {/if}
+          </div>
         {/if}
         {#if camRect && camKey?.visible && !playing && previewEl}
           {@const origin = previewEl.getBoundingClientRect()}
@@ -525,6 +782,16 @@
           {recNs}
           canvasPx={frame?.canvas_px ?? { w: 1920, h: 1080 }}
           bind:tab
+          text={textSel}
+          {fonts}
+          system={systemFonts}
+          unresolved={textQuad?.unresolved ?? 0}
+          onaddtext={addText}
+          onselecttext={selectText}
+          ontext={textChange}
+          ontextduplicate={duplicateText}
+          ontextdelete={deleteText}
+          onpick={pickColor}
           onedit={(op, c) => void edit(op, c)}
           onsplit={split}
           onduplicate={duplicate}
@@ -541,6 +808,7 @@
       <button class="plain" onclick={() => void copy(true)} disabled={!selected.length && !range} title="Cut (⌘X)">Cut</button>
       <button class="plain" onclick={() => void copy(false)} disabled={!selected.length && !range} title="Copy (⌘C)">Copy</button>
       <button class="plain" onclick={paste} disabled={clipboardNs <= 0} title="Paste at playhead (⌘V)">Paste</button>
+      <button class="plain" onclick={addText} title="Add text at the playhead (T)"><span class="tglyph">T</span> Text</button>
       <span class="spacer"></span>
       {#if range}<span class="badge">Range {formatTime(Math.abs(range[1] - range[0]))}</span>{/if}
       {#if selected.length}<span class="badge">{selected.length} selected</span>{/if}
@@ -573,6 +841,12 @@
           onrange={(r) => (range = r)}
           ontrim={(id, edge, rec) => void edit({ op: 'trim', clip_id: id, edge, rec_ns: rec })}
           onmove={(id, to) => void edit({ op: 'move_clip', id, to_index: to })}
+          {selectedText}
+          onselecttext={selectText}
+          ontextmove={(id, s, e) => {
+            const it = textItems.find((t) => t.id === id);
+            if (it) textChange({ ...($state.snapshot(it) as TextItemFull), start_tl_ns: s, end_tl_ns: e });
+          }}
         />
       {/if}
     </div>
@@ -735,6 +1009,62 @@
     background: #fff;
     border: 1px solid rgba(0, 0, 0, 0.4);
     cursor: nwse-resize;
+  }
+  .tbox {
+    position: absolute;
+    outline: 1.5px solid var(--yellow);
+    cursor: move;
+  }
+  .rot {
+    position: absolute;
+    left: 50%;
+    top: -26px;
+    width: 12px;
+    height: 12px;
+    margin-left: -6px;
+    border-radius: 50%;
+    background: var(--yellow);
+    cursor: grab;
+  }
+  .rot::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 12px;
+    width: 1.5px;
+    height: 14px;
+    background: var(--yellow);
+  }
+  .inline {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: none;
+    resize: none;
+    overflow: hidden;
+    background: transparent;
+    color: transparent;
+    caret-color: #fff;
+    outline: none;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  .guide {
+    position: absolute;
+    background: #ff2d92;
+    pointer-events: none;
+  }
+  .guide.v {
+    width: 1px;
+  }
+  .guide.h {
+    height: 1px;
+  }
+  .tglyph {
+    font-family: Georgia, serif;
+    font-weight: 700;
   }
   .side {
     background: var(--window);
