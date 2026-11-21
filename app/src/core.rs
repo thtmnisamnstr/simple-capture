@@ -1267,11 +1267,9 @@ impl Core {
         let recording = is_recording(&self.phase());
         let active = lock(&self.preview).panel_open || recording;
         let device = if active { s.camera.clone() } else { None };
-        if let Err(e) = self.camera.set_preview(device.clone()) {
-            if !recording {
-                return Err(format!("camera: {e}"));
-            }
-            tracing::warn!("camera preview while recording: {e}");
+        let camera_error = self.camera.set_preview(device.clone()).err();
+        if let Some(e) = &camera_error {
+            tracing::warn!("camera preview: {e}");
         }
         let show = active && s.preview_shown && s.source.is_some();
         let place = {
@@ -1293,7 +1291,10 @@ impl Core {
             self.hide_window("stage");
             self.live.clear("stage");
         }
-        Ok(json!({ "shown": show }))
+        match camera_error {
+            Some(e) if !recording => Err(format!("camera: {e}")),
+            _ => Ok(json!({ "shown": show })),
+        }
     }
 
     /// First showing: where it was last moved to, if still on a display; otherwise the bottom-right
@@ -1364,8 +1365,6 @@ impl Core {
             let (src, canvas) = b.stage.clone()?;
             (src, canvas, b.key.clone())
         };
-        let w = self.app.get_webview_window("stage")?;
-        let inner = w.inner_size().ok()?;
         let background = match &canvas.background_image {
             Some(p) => sc_core::project::Background::Image {
                 asset: p.clone(),
@@ -1380,10 +1379,17 @@ impl Core {
             aspect: canvas.aspect,
             background,
             key: key.filter(|k| k.visible),
-            inner: sc_geometry::SizePx {
-                w: inner.width.max(2),
-                h: inner.height.max(2),
-            },
+        })
+    }
+
+    /// The preview window's content size in points (the renderer draws at 1×).
+    pub fn stage_window_pt(&self) -> Option<sc_geometry::SizePx> {
+        let w = self.app.get_webview_window("stage")?;
+        let inner = w.inner_size().ok()?;
+        let l = inner.to_logical::<f64>(w.scale_factor().unwrap_or(1.0));
+        Some(sc_geometry::SizePx {
+            w: (l.width.round() as u32).max(2),
+            h: (l.height.round() as u32).max(2),
         })
     }
 

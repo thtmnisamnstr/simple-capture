@@ -1,13 +1,15 @@
 //! Live frames for the preview window (ADR-007 webview frames, spike 2 mode B): the
-//! renderer publishes the newest RGBA frame per stream, and `sc://live/<name>?after=<id>` waits
-//! for one newer than `id`. Body: a 16-byte header (id, width, height, 0 as little-endian u32)
-//! followed by tightly packed RGBA.
+//! renderer publishes the newest frame per stream, and `sc://live/<name>?after=<id>` waits
+//! for one newer than `id`. Body: a 16-byte header (id, width, height, format as little-endian
+//! u32) followed by the tightly packed pixels: premultiplied RGBA (format 0) or I420 planes, BT.709
+//! limited range ([`I420`]).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 pub const HEADER: usize = 16;
+pub const I420: u32 = 1;
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
@@ -26,14 +28,14 @@ pub struct LiveHub {
 }
 
 impl LiveHub {
-    pub fn publish(&self, name: &str, w: u32, h: u32, rgba: &[u8]) {
+    pub fn publish(&self, name: &str, w: u32, h: u32, format: u32, pixels: &[u8]) {
         let mut frames = lock(&self.frames);
         let id = frames.get(name).map_or(1, |f| f.id.wrapping_add(1).max(1));
-        let mut body = Vec::with_capacity(HEADER + rgba.len());
-        for v in [id, w, h, 0] {
+        let mut body = Vec::with_capacity(HEADER + pixels.len());
+        for v in [id, w, h, format] {
             body.extend_from_slice(&v.to_le_bytes());
         }
-        body.extend_from_slice(rgba);
+        body.extend_from_slice(pixels);
         frames.insert(
             name.to_string(),
             LiveFrame {
@@ -92,23 +94,28 @@ pub fn parse(host: Option<&str>, path: &str, query: Option<&str>) -> Option<(Str
 mod tests {
     use super::*;
 
+    const RGBA: u32 = 0;
+
     #[test]
     fn next_returns_newer_frames_and_times_out_otherwise() {
         let hub = LiveHub::default();
         assert!(hub.next("stage", 0, Duration::from_millis(5)).is_none());
-        hub.publish("stage", 2, 1, &[1, 2, 3, 4, 5, 6, 7, 8]);
+        hub.publish("stage", 2, 1, RGBA, &[1, 2, 3, 4, 5, 6, 7, 8]);
         let f = hub
             .next("stage", 0, Duration::from_millis(5))
             .expect("frame");
         assert_eq!(f.id, 1);
-        assert_eq!(&f.body[..12], &[1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0]);
+        assert_eq!(
+            &f.body[..16],
+            &[1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+        );
         assert_eq!(f.body.len(), HEADER + 8);
         assert!(hub.next("stage", 1, Duration::from_millis(5)).is_none());
         let hub = Arc::new(hub);
         let h = hub.clone();
         let t = std::thread::spawn(move || h.next("stage", 1, Duration::from_secs(2)));
         std::thread::sleep(Duration::from_millis(20));
-        hub.publish("stage", 1, 1, &[0; 4]);
+        hub.publish("stage", 2, 2, I420, &[0; 6]);
         assert_eq!(t.join().expect("join").expect("woken").id, 2);
     }
 

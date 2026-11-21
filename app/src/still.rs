@@ -33,47 +33,43 @@ pub fn still_canvas(aspect: Aspect, content: Option<SizePx>) -> SizePx {
     }
 }
 
-/// Premultiplied sRGB RGBA → NV12, BT.709 limited range. Odd sizes are cropped to even.
+/// Premultiplied sRGB RGBA → NV12, BT.709 limited range, in the integer maths of the renderer's
+/// I420 output. Odd sizes are cropped to even.
 pub fn rgba_to_nv12(img: &RgbaImage) -> CpuNv12Frame {
     let w = (img.size.w / 2 * 2).max(2);
     let h = (img.size.h / 2 * 2).max(2);
     let size = SizePx { w, h };
     let mut out = CpuNv12Frame::black(size, false);
-    let px = |x: u32, y: u32| -> (f64, f64, f64) {
-        let x = x.min(img.size.w.saturating_sub(1));
-        let y = y.min(img.size.h.saturating_sub(1));
-        let i = y as usize * img.stride + x as usize * 4;
-        match img.data.get(i..i + 4) {
-            // Premultiplied over black equals the premultiplied value.
-            Some(p) => (
-                f64::from(p[0]) / 255.0,
-                f64::from(p[1]) / 255.0,
-                f64::from(p[2]) / 255.0,
-            ),
-            None => (0.0, 0.0, 0.0),
-        }
-    };
-    let luma = |(r, g, b): (f64, f64, f64)| 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    for y in 0..h {
-        for x in 0..w {
-            let yv = 16.0 + 219.0 * luma(px(x, y));
-            out.y[(y * w + x) as usize] = yv.round().clamp(0.0, 255.0) as u8;
-        }
-    }
+    let (wu, hu) = (w as usize, h as usize);
+    let (iw, ih) = (img.size.w.max(1) as usize, img.size.h.max(1) as usize);
     let uv_stride = out.uv_stride();
-    for cy in 0..h / 2 {
-        for cx in 0..w / 2 {
-            let mut acc = (0.0, 0.0, 0.0);
-            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                let p = px(cx * 2 + dx, cy * 2 + dy);
-                acc = (acc.0 + p.0 / 4.0, acc.1 + p.1 / 4.0, acc.2 + p.2 / 4.0);
+    let mut cols = Vec::with_capacity(wu);
+    cols.extend((0..wu).map(|x| x.min(iw - 1) * 4));
+    for cy in 0..hu / 2 {
+        let rows = [
+            (2 * cy).min(ih - 1) * img.stride,
+            (2 * cy + 1).min(ih - 1) * img.stride,
+        ];
+        for cx in 0..wu / 2 {
+            let mut sum = [0i32; 3];
+            for (dy, row) in rows.iter().enumerate() {
+                for dx in 0..2 {
+                    let x = 2 * cx + dx;
+                    let i = row + cols[x];
+                    let (r, g, b) = match img.data.get(i..i + 3) {
+                        Some(p) => (i32::from(p[0]), i32::from(p[1]), i32::from(p[2])),
+                        None => (0, 0, 0),
+                    };
+                    let yv = (11_966 * r + 40_254 * g + 4_064 * b + 1_081_344) >> 16;
+                    out.y[(2 * cy + dy) * wu + x] = yv.clamp(0, 255) as u8;
+                    sum = [sum[0] + r, sum[1] + g, sum[2] + b];
+                }
             }
-            let yl = luma(acc);
-            let cb = (acc.2 - yl) / 1.8556;
-            let cr = (acc.0 - yl) / 1.5748;
-            let i = cy as usize * uv_stride + cx as usize * 2;
-            out.uv[i] = (128.0 + 224.0 * cb).round().clamp(0.0, 255.0) as u8;
-            out.uv[i + 1] = (128.0 + 224.0 * cr).round().clamp(0.0, 255.0) as u8;
+            let u = (-6_596 * sum[0] - 22_189 * sum[1] + 28_785 * sum[2] + 33_685_504) >> 18;
+            let v = (28_785 * sum[0] - 26_145 * sum[1] - 2_640 * sum[2] + 33_685_504) >> 18;
+            let i = cy * uv_stride + cx * 2;
+            out.uv[i] = u.clamp(0, 255) as u8;
+            out.uv[i + 1] = v.clamp(0, 255) as u8;
         }
     }
     out
@@ -107,6 +103,7 @@ pub fn compose_png(
         sc_render::camera_layer(p, f, rects.dst)
     });
     let job = FrameJob {
+        background_key: None,
         camera,
         canvas,
         background: &bg,

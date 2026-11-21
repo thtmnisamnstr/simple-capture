@@ -22,8 +22,12 @@
   let drag: { corner: [number, number] | null; x: number; y: number; start: CameraKey } | null = null;
   let queued = false;
 
-  const dpr = () => window.devicePixelRatio || 1;
-  const css = $derived({ w: frame.w / dpr(), h: frame.h / dpr() });
+  let view = $state({ w: window.innerWidth, h: window.innerHeight });
+  const css = $derived.by(() => {
+    if (frame.w === 0 || frame.h === 0) return { w: 0, h: 0 };
+    const k = Math.min(view.w / frame.w, view.h / frame.h);
+    return { w: frame.w * k, h: frame.h * k };
+  });
   const rect = $derived(
     key && css.w > 0 ? cameraRects(css, { w: 1, h: 1 }, shapeAspect(key.shape), poseOf(key)).dst : null,
   );
@@ -42,16 +46,19 @@
 
   $effect(() => {
     if (!canvas) return;
-    const view = new LiveView(canvas, 'stage', (w, h) => {
+    const stream = new LiveView(canvas, 'stage', (w, h) => {
       if (w !== frame.w || h !== frame.h) frame = { w, h };
     });
     load();
     const off = onEvent('settings-changed', isObject, (s) => {
       if (!drag) key = (s as unknown as RecorderSettings).camera_key;
     });
+    const onResize = () => (view = { w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize);
     return () => {
-      view.stop();
+      stream.stop();
       off();
+      window.removeEventListener('resize', onResize);
     };
   });
 
@@ -101,7 +108,7 @@
       return;
     }
     const c = { x: s.center_norm.x + dx / css.w, y: s.center_norm.y + dy / css.h };
-    live({ ...key, center_norm: snapCenter(canvasPx, aspect, s.size_norm, c, 12 * dpr()) });
+    live({ ...key, center_norm: snapCenter(canvasPx, aspect, s.size_norm, c, (12 * frame.w) / css.w) });
   }
 
   function up() {

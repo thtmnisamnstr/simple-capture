@@ -3,6 +3,8 @@
 #   app/driver/run.sh [FLOW_PREFIX...]   default: every flow
 #   env SC_KEEP_MEDIA=1                  keep recorded media (deleted after the checks otherwise)
 #   env SC_DRV_CAMERA=ID SC_DRV_MIC=ID   devices for the display run (default: the system defaults)
+#   env SC_DRV_PROFILE=release           drive an optimized build (with debug assertions, which the
+#                                        driver needs) instead of the debug build
 # Output: target/app-driver/<stamp>/ (logs, project metadata, report.json); exit 0 when every
 # check in check.py passed.
 #
@@ -28,12 +30,18 @@ mkdir -p "$RUN/projects" "$RUN/data" "$RUN/scripts" "$RUN/bin" "$OUT"
 export SC_PROJECTS_DIR="$RUN/projects" SC_DATA_DIR="$RUN/data"
 echo "app-driver: run folder $RUN (copied to $OUT)" >&2
 
-(cd "$ROOT" && pnpm --dir ui build >/dev/null && cargo build --locked -q -p simple-capture-app) || {
+PROFILE="${SC_DRV_PROFILE:-debug}"
+PROFILE_FLAG=""
+if [ "$PROFILE" = release ]; then
+  PROFILE_FLAG="--release"
+  export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
+fi
+(cd "$ROOT" && pnpm --dir ui build >/dev/null && cargo build --locked -q $PROFILE_FLAG -p simple-capture-app) || {
   echo "app-driver: build failed" >&2
   exit 1
 }
 live_devtools || exit 1
-cp "$CARGO_TARGET_DIR/debug/simple-capture-app" "$SC_DEVTOOLS" "$RUN/bin/" || exit 1
+cp "$CARGO_TARGET_DIR/$PROFILE/simple-capture-app" "$SC_DEVTOOLS" "$RUN/bin/" || exit 1
 APP="$RUN/bin/simple-capture-app"
 export SC_DEVTOOLS="$RUN/bin/sc-devtools"
 FFMPEG=""

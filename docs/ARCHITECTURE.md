@@ -843,8 +843,10 @@ Draw order per output frame: background → screen (src = `content_px`, dst = fi
   8-bit fixed-point bilinear step; pixel centres map to (rel+½)·s/(d·k)−½. The CPU reference shares
   the maths line for line, so GPU and CPU agree to the bit (ADR-022 M1 update). The CPU filter is
   within 1.25 code values of a float box average. Chroma is nearest 4:2:0 on input and the 2×2
-  average on I420 output. M1 uploads NV12 planes from mapped buffers (`R8Uint` + `Rg8Uint`); the
-  IOSurface import below is M3. Render time per frame on Metal (whole `render()` incl. background
+  average on I420 output. Screen frames are uploaded from mapped buffers (`R8Uint` + `Rg8Uint`).
+  Camera frames that are IOSurface-backed `CVPixelBuffer`s are read in place since M2
+  (`crates/render/src/iosurface.rs`, the same integer formats, bit-identical to the upload); the
+  screen import below is M3. Render time per frame on Metal (whole `render()` incl. background
   upload and readback): 1080p 6.3–9.7 ms, 2160p 17.4–18.7 ms.
 - **YUV import on macOS** [S3]:
   - CVMetalTextureCache wraps planes 0 and 1 of the IOSurface as R8 and RG8 Metal textures.
@@ -905,10 +907,11 @@ Draw order per output frame: background → screen (src = `content_px`, dst = fi
   composited with the canvas and background by the real compositor, served through the same URI
   protocol; since M2 it also includes the camera at the current placement.
 - **Preview window (M2, ADR-042/043).** `stage.rs` in the app runs a renderer thread that
-  composites the output (source snapshot twice a second, letterbox background, live camera) with
-  the same `camera_layer` as the export and publishes frames to `LiveHub`; the window pulls them
-  from `sc://live/stage` (long poll, latest wins, 16-byte header + premultiplied RGBA) and draws
-  them with WebGL2. Camera frames come from `SharedCamera` (one AVCaptureSession for preview and
+  composites the output (source snapshot once a second, letterbox background, live camera) with
+  the same `camera_layer` as the export, only when one of those or the window size changed, and
+  publishes I420 frames to `LiveHub`; the window pulls them from `sc://live/stage` (long poll,
+  latest wins, 16-byte header with a format code, then I420 planes) and converts them to RGB in a
+  WebGL2 shader. Camera frames come from `SharedCamera` (one AVCaptureSession for preview and
   recording).
 - **Native slots, off until hardware proof.** `PreviewSink` keeps one native implementation slot
   per OS. They are switched on only after hardware runs show Windows and at least Wayland working:

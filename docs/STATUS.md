@@ -38,23 +38,29 @@ at 1920×1080 30 fps):
 | Check | Result | Source |
 |---|---|---|
 | Camera layer GPU vs CPU reference, every shape/option, RGBA and I420 | max difference 0 | `crates/render/tests/camera.rs` |
+| Camera frames read in place from IOSurfaces vs uploaded, 420v and 420f | max difference 0 | `iosurface_camera_frames_match_uploaded_copies` |
 | Geometry Rust vs TS, shared case table | all cases equal | `crates/geometry/tests/camera_cases.json` |
-| Preview window: live frames, placement, camera edits, 9:16 (live, driver flow 12) | 22 fps; on screen in the bottom-right; edits arrive at once | `app/driver/flows/12-preview.txt` |
+| Preview window: live frames, placement, camera edits, 9:16 (live, driver flow 12) | 24 fps (FaceTime HD); on screen in the bottom-right; edits arrive at once; colours checked on a window screenshot | `app/driver/flows/12-preview.txt` |
 | Preview window absent from a display recording (live, flow 14) | 0 of 57 frames show it | `app/driver/flows/14-preview-capture.txt` |
 | Keyframes while recording (live, flow 14; synthetic + recovery test) | start key at 0 plus the drag; journaled; rebuilt by recovery | flow 14, `camera_keys_are_recorded_journaled_and_recovered` |
 | Export with the camera (unit + real CLI recording, 9:16) | camera drawn where the keys put it, hidden after a hide key; real export checked by eye | `export_camera.rs` |
-| CPU, Preview window + panel shown, **debug build** | app 24% + WebKit 7% = **31% of one core** (plan budget: 15%; the floating bubble was 38%) | `ps` sampling during a driver run |
+| CPU, Preview window + panel shown, camera on (FaceTime HD, about 25 fps), **release** | app 20.5% + its WebKit processes 9.0% = **29.5% of one core** (plan budget: 15%; 34.6% before the 2026-11-20 cuts) | CPU time over 15 s of a driver run, MacBook display |
+| Same, **debug build** (`just run`) | **31.7%** | same |
+| Same, camera off, release | **4.5%** (frames only when something changes) | same |
+| Same, camera on, release, Preview capped at 15 fps (experiment, not shipped) | 19.8% | same |
 | Local CI (`ci-local-fast`, helpers and GPU required) | 394 Rust + 40 UI tests, 0 failures | |
 
 **Not verified / open:**
-- The CPU budget is missed in the debug build (`just run` uses debug). Release-build cost is not
-  measured yet; if it is still over budget, the native CAMetalLayer preview slot (ADR-007) is the
-  fallback.
+- **The CPU budget is missed with the camera on** (29.5% release vs 15%). What is left is per
+  frame: WebKit's work for each frame (about 9% in its processes, 3.6% on the app's main thread),
+  wgpu encoding (about 6%), and about 5% that is macOS's camera pipeline (CoreMedia, Video
+  Effects), which any camera app pays. Reaching 15% needs the native CAMetalLayer slot
+  (ADR-007, conditional on Windows/Linux proof) or a Preview at about 10 fps.
 - Real mouse interaction (camera drag and resize in the Preview, the bar's grip) was driven
   through commands, not real clicks; MANUAL_TEST §10b M1–M7 covers it.
 - No 30-minute soak with the Preview window shown; no A/V sync measurement of the camera (M1 gap remains).
 - Keyframes are not editable until the M3 editor.
-- The stage refreshes the screen twice a second (the camera is live).
+- The Preview refreshes the screen once a second (the camera is live).
 
 M1 delivers (SPEC M1 line plus the 2026-11-19 additions): display, window, application, region and
 system-picker sources; permission onboarding that never prompts by itself; separate crash-safe

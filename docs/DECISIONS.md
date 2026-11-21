@@ -1300,6 +1300,18 @@ they are not a substitute for an M1 run.
     write `camera_layout`. The app sends drags at most 30 times a second plus the final position.
 - **Consequences:** a crash loses at most 0.2 s of camera motion. Keyframes are not editable until
   the M3 editor.
+- **Update 2026-11-20 (CPU cut before the M2 hands-on):**
+  - Live frames carry a format code in the header's fourth word: the Preview gets I420 (BT.709
+    limited, what the encoder gets, 3/8 of the RGBA bytes), converted in its WebGL2 shader.
+  - The renderer draws a frame only when the camera frame, camera key, background, source
+    snapshot or window size changed; the snapshot refreshes once a second.
+  - Camera frames that are IOSurface-backed `CVPixelBuffer`s (live camera, decoded camera track)
+    are read in place through `CVMetalTextureCache` as `R8Uint` + `Rg8Uint` textures, so the M3
+    import (SPEC "Frames into wgpu") is in use for the camera; output is bit-identical to the
+    upload.
+  - Measured (release, camera at about 25 fps): 29.5% of one core for the app plus its WebKit
+    processes, against the 15% budget; 4.5% without a camera. About 5 points of that is macOS's own
+    camera pipeline inside the app's process.
 
 ## ADR-043: The Preview window replaces the floating camera bubble
 

@@ -79,6 +79,11 @@ impl Compositor {
         self.gpu.as_ref().map(|g| g.summary().clone())
     }
 
+    /// Camera frames the GPU read in place (macOS IOSurfaces) instead of uploading.
+    pub fn camera_frames_read_in_place(&self) -> u64 {
+        self.gpu.as_ref().map_or(0, |g| g.camera_in_place)
+    }
+
     pub fn render(&mut self, job: &FrameJob, out: OutputFormat) -> Result<RenderedFrame> {
         match &mut self.gpu {
             Some(gpu) => gpu.render(job, out),
@@ -91,6 +96,9 @@ impl Compositor {
 pub struct FrameJob<'a> {
     pub canvas: SizePx,
     pub background: &'a RgbaImage,
+    /// Same key as the previous job's ⇒ same background pixels: the GPU reuses its copy instead
+    /// of uploading again. `None` always uploads.
+    pub background_key: Option<u64>,
     pub screen: Option<ScreenLayer<'a>>,
     pub camera: Option<CameraLayer<'a>>,
 }

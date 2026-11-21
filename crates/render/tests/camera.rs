@@ -141,10 +141,25 @@ fn gpu_matches_cpu_for_every_camera_option() {
             },
         ),
         ("off the edge", layer(&cam, rect(1150, 640, 300, 300), 150)),
+        (
+            "odd crop",
+            CameraLayer {
+                src: rect(401, 203, 321, 181),
+                ..layer(&cam, dst, 30)
+            },
+        ),
+        (
+            "crop at the frame edge",
+            CameraLayer {
+                src: rect(1101, 541, 179, 179),
+                ..layer(&cam, dst, 30)
+            },
+        ),
     ];
     for (name, cam_layer) in variants {
         for (bg_name, bg, with_screen) in [("canvas", &opaque, true), ("bubble", &clear, false)] {
             let job = FrameJob {
+                background_key: None,
                 canvas,
                 background: bg,
                 screen: with_screen.then(|| sc_render::ScreenLayer {
@@ -183,6 +198,7 @@ fn circle_shows_the_camera_inside_and_the_background_outside() {
     let red = frame(sz(64, 64), |_, _| (63, 102, 240));
     let bg = background(canvas, 0);
     let job = FrameJob {
+        background_key: None,
         canvas,
         background: &bg,
         screen: None,
@@ -220,6 +236,7 @@ fn mirror_flips_the_camera_horizontally() {
     let bg = background(canvas, 255);
     let draw = |mirror| {
         let job = FrameJob {
+            background_key: None,
             canvas,
             background: &bg,
             screen: None,
@@ -241,6 +258,7 @@ fn border_sits_inside_the_edge_and_shadow_falls_below() {
     let black = frame(sz(64, 64), |_, _| (16, 128, 128));
     let bg = background(canvas, 255);
     let job = FrameJob {
+        background_key: None,
         canvas,
         background: &bg,
         screen: None,
@@ -276,4 +294,151 @@ fn border_sits_inside_the_edge_and_shadow_falls_below() {
         bg.data[(390 * 400 + 200) * 4],
         "far from the shape: untouched"
     );
+}
+
+#[test]
+fn reused_background_and_screen_uploads_match_fresh_renders() {
+    let Some(mut g) = gpu() else { return };
+    let canvas = sz(640, 360);
+    let (bg1, bg2) = (background(canvas, 255), background(canvas, 128));
+    let (a, b) = (noise(sz(800, 450), 1), noise(sz(800, 450), 2));
+    let cam = noise(sz(640, 480), 3);
+    let screen = |f| sc_render::ScreenLayer {
+        frame: f,
+        src: rect(0, 0, 800, 450),
+        dst: rect(0, 0, 640, 360),
+    };
+    let steps: [(&RgbaImage, Option<u64>, &FrameBuffer); 6] = [
+        (&bg1, Some(1), &a),
+        (&bg1, Some(1), &a),
+        (&bg2, Some(2), &a),
+        (&bg2, Some(2), &b),
+        (&bg1, None, &b),
+        (&bg2, Some(2), &a),
+    ];
+    for (i, (bg, key, frame)) in steps.into_iter().enumerate() {
+        let job = FrameJob {
+            canvas,
+            background: bg,
+            background_key: key,
+            screen: Some(screen(frame)),
+            camera: Some(layer(&cam, rect(400, 150, 180, 180), 90)),
+        };
+        let s = diff(
+            &g.render(&job, OutputFormat::Rgba8).expect("gpu"),
+            &cpu::render_cpu(&job, OutputFormat::Rgba8).expect("cpu"),
+        );
+        assert_eq!(s.max, 0, "step {i}: reuse changed the output");
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn iosurface_copy(src: &FrameBuffer, full_range: bool) -> (FrameBuffer, FrameBuffer) {
+    use std::ptr::NonNull;
+
+    use objc2_core_foundation::{CFDictionary, CFRetained, CFString, CFType};
+    use objc2_core_video::{
+        CVPixelBuffer, CVPixelBufferCreate, CVPixelBufferGetBaseAddressOfPlane,
+        CVPixelBufferGetBytesPerRowOfPlane, CVPixelBufferLockBaseAddress, CVPixelBufferLockFlags,
+        CVPixelBufferUnlockBaseAddress, kCVPixelBufferIOSurfacePropertiesKey,
+    };
+    use sc_capture_macos::av::{MacPixelFrame, PIX_420F, PIX_420V};
+
+    let cpu = src
+        .0
+        .as_any()
+        .downcast_ref::<CpuNv12Frame>()
+        .expect("cpu frame");
+    let reference = CpuNv12Frame {
+        full_range,
+        ..cpu.clone()
+    };
+    let size = cpu.size;
+    let empty = CFDictionary::<CFString, CFType>::empty();
+    // SAFETY: a constant CFString from CoreVideo.
+    let key = unsafe { kCVPixelBufferIOSurfacePropertiesKey };
+    let attrs = CFDictionary::<CFString, CFDictionary>::from_slices(&[key], &[empty.as_opaque()]);
+    let mut out: *mut CVPixelBuffer = std::ptr::null_mut();
+    let fmt = if full_range { PIX_420F } else { PIX_420V };
+    // SAFETY: valid attributes; `out` receives a +1 reference on success.
+    let rc = unsafe {
+        CVPixelBufferCreate(
+            None,
+            size.w as usize,
+            size.h as usize,
+            fmt,
+            Some(attrs.as_opaque()),
+            NonNull::from(&mut out),
+        )
+    };
+    assert_eq!(rc, 0, "CVPixelBufferCreate");
+    // SAFETY: success returned an owned buffer.
+    let pb = unsafe { CFRetained::from_raw(NonNull::new(out).expect("buffer")) };
+    // SAFETY: valid buffer, unlocked below.
+    assert_eq!(
+        unsafe { CVPixelBufferLockBaseAddress(&pb, CVPixelBufferLockFlags(0)) },
+        0
+    );
+    let (w, h) = (size.w as usize, size.h as usize);
+    for (plane, data, row, rows) in [
+        (0, &cpu.y, w, h),
+        (1, &cpu.uv, cpu.uv_stride(), h.div_ceil(2)),
+    ] {
+        let dst = CVPixelBufferGetBaseAddressOfPlane(&pb, plane).cast::<u8>();
+        let stride = CVPixelBufferGetBytesPerRowOfPlane(&pb, plane);
+        for r in 0..rows {
+            // SAFETY: row `r` of the locked plane has `stride >= row` writable bytes.
+            let line = unsafe { std::slice::from_raw_parts_mut(dst.add(r * stride), row) };
+            line.copy_from_slice(&data[r * row..(r + 1) * row]);
+        }
+    }
+    // SAFETY: locked above.
+    unsafe { CVPixelBufferUnlockBaseAddress(&pb, CVPixelBufferLockFlags(0)) };
+    (
+        FrameBuffer(Arc::new(MacPixelFrame::from_pixel_buffer(pb))),
+        FrameBuffer(Arc::new(reference)),
+    )
+}
+
+#[cfg(target_os = "macos")]
+type LayerOf = fn(&FrameBuffer) -> CameraLayer<'_>;
+
+#[cfg(target_os = "macos")]
+#[test]
+fn iosurface_camera_frames_match_uploaded_copies() {
+    let Some(mut g) = gpu() else { return };
+    let canvas = sz(640, 360);
+    let bg = background(canvas, 255);
+    let src = noise(sz(640, 480), 9);
+    for full_range in [false, true] {
+        let (surface, copy) = iosurface_copy(&src, full_range);
+        assert!(surface.0.cv_pixel_buffer().is_some());
+        let layers: [(&str, LayerOf); 2] = [
+            ("whole frame", |f| layer(f, rect(380, 120, 200, 200), 100)),
+            ("crop", |f| CameraLayer {
+                src: rect(101, 37, 301, 301),
+                mirror: true,
+                ..layer(f, rect(40, 40, 150, 150), 20)
+            }),
+        ];
+        for (name, l) in layers {
+            for out in [OutputFormat::Rgba8, OutputFormat::I420Bt709Limited] {
+                let job = |f| FrameJob {
+                    canvas,
+                    background: &bg,
+                    background_key: Some(1),
+                    screen: None,
+                    camera: Some(l(f)),
+                };
+                let before = g.camera_frames_read_in_place();
+                let a = g.render(&job(&surface), out).expect("iosurface");
+                assert_eq!(g.camera_frames_read_in_place(), before + 1, "read in place");
+                let b = g.render(&job(&copy), out).expect("upload");
+                assert_eq!(g.camera_frames_read_in_place(), before + 1, "uploaded");
+                let s = diff(&a, &b);
+                println!("{name} full_range={full_range} {out:?}: max {}", s.max);
+                assert_eq!(s.max, 0, "{name} full_range={full_range} {out:?}");
+            }
+        }
+    }
 }

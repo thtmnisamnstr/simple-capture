@@ -349,6 +349,7 @@ impl FrameRenderer {
             _ => None,
         };
         let job = FrameJob {
+            background_key: None,
             camera,
             canvas: self.canvas,
             background: &bg,

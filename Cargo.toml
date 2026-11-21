@@ -57,6 +57,7 @@ objc2-core-media = { version = "0.3.2", features = ["objc2-core-video", "objc2-c
 objc2-core-video = { version = "0.3.2", features = ["objc2-io-surface", "objc2-core-graphics"] }
 objc2-core-audio-types = "0.3.2"
 objc2-io-surface = "0.3.2"
+objc2-metal = "0.3.2"
 objc2-screen-capture-kit = { version = "0.3.2", features = ["objc2-core-media", "objc2-core-graphics", "objc2-core-foundation", "block2", "dispatch2", "libc"] }
 objc2-av-foundation = { version = "0.3.2", features = ["objc2-core-media", "objc2-core-video", "objc2-core-audio-types", "objc2-core-foundation", "objc2-core-graphics", "block2", "dispatch2"] }
 objc2-avf-audio = { version = "0.3.2", default-features = false, features = ["std", "AVAudioPlayer"] }
@@ -90,6 +91,7 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = [
 
 # Rendering and text
 wgpu = "30.0.2"
+wgpu-hal = "30.0.2"
 skia-safe = { version = "=0.157.0", features = ["textlayout", "embed-freetype"] }
 pollster = "1.0.3"
 bytemuck = { version = "1.25.2", features = ["derive"] }

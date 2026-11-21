@@ -4,6 +4,8 @@
 mod compositor;
 mod diff;
 mod gpu;
+#[cfg(target_os = "macos")]
+mod iosurface;
 mod maths;
 
 pub mod cpu;

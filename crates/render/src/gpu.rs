@@ -229,6 +229,13 @@ pub(crate) struct Gpu {
     cam_pre: Option<Tex>,
     under: Option<Tex>,
     target: Option<Tex>,
+    bg: Option<Tex>,
+    bg_key: Option<u64>,
+    last_screen: Option<(sc_platform::FrameBuffer, bool)>,
+    cam_imported: Option<(Tex, Tex)>,
+    pub(crate) camera_in_place: u64,
+    #[cfg(target_os = "macos")]
+    cv_cache: Option<crate::iosurface::TextureCache>,
     out_y: Option<Tex>,
     out_u: Option<Tex>,
     out_v: Option<Tex>,
@@ -440,6 +447,38 @@ fn upload_nv12(
     Ok(())
 }
 
+/// The part of `view` that `layer.src` reads, on even pixels so chroma stays aligned, and the
+/// layer with `src` relative to it: only that part is uploaded.
+fn crop_to_source<'v, 'l>(
+    view: &Nv12View<'v>,
+    layer: &crate::CameraLayer<'l>,
+) -> (Nv12View<'v>, crate::CameraLayer<'l>) {
+    let (fw, fh) = (view.size.w as i64, view.size.h as i64);
+    let s = layer.src;
+    let x0 = (i64::from(s.x).clamp(0, fw) & !1) as usize;
+    let y0 = (i64::from(s.y).clamp(0, fh) & !1) as usize;
+    let x1 = ((i64::from(s.x) + i64::from(s.w) + 1) & !1).clamp(x0 as i64, fw) as usize;
+    let y1 = ((i64::from(s.y) + i64::from(s.h) + 1) & !1).clamp(y0 as i64, fh) as usize;
+    if x1 <= x0 || y1 <= y0 {
+        return (*view, layer.clone());
+    }
+    let sub = Nv12View {
+        size: SizePx {
+            w: (x1 - x0) as u32,
+            h: (y1 - y0) as u32,
+        },
+        y: &view.y[y0 * view.y_stride + x0..],
+        y_stride: view.y_stride,
+        uv: &view.uv[(y0 / 2) * view.uv_stride + x0..],
+        uv_stride: view.uv_stride,
+        full_range: view.full_range,
+    };
+    let mut local = layer.clone();
+    local.src.x -= x0 as i32;
+    local.src.y -= y0 as i32;
+    (sub, local)
+}
+
 fn i32s(v: &[i32]) -> Vec<u8> {
     v.iter().flat_map(|x| x.to_ne_bytes()).collect()
 }
@@ -556,6 +595,8 @@ impl Gpu {
         if let Some(e) = pollster::block_on(scope.pop()) {
             return Err(other("pipeline setup", e));
         }
+        #[cfg(target_os = "macos")]
+        let cv_cache = crate::iosurface::TextureCache::new(&device);
         Ok(Gpu {
             summary: summarize(&adapter.get_info()),
             max_dim: limits.max_texture_dimension_2d,
@@ -578,6 +619,13 @@ impl Gpu {
             cam_pre: None,
             under: None,
             target: None,
+            bg: None,
+            bg_key: None,
+            last_screen: None,
+            cam_imported: None,
+            camera_in_place: 0,
+            #[cfg(target_os = "macos")]
+            cv_cache,
             out_y: None,
             out_u: None,
             out_v: None,
@@ -624,36 +672,90 @@ impl Gpu {
             rw,
         );
         let bg = job.background;
-        self.queue.write_texture(
-            tex_of(&self.target)?.tex.as_image_copy(),
-            &bg.data,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(bg.stride as u32),
-                rows_per_image: Some(canvas.h),
-            },
-            extent(canvas.w, canvas.h),
-        );
+        let layout = wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(bg.stride as u32),
+            rows_per_image: Some(canvas.h),
+        };
+        let mut bg_copy = false;
+        match job.background_key {
+            Some(key) => {
+                let same = self.bg_key == Some(key)
+                    && self
+                        .bg
+                        .as_ref()
+                        .is_some_and(|t| (t.tex.width(), t.tex.height()) == (canvas.w, canvas.h));
+                if !same {
+                    ensure_tex(
+                        &self.device,
+                        &mut self.bg,
+                        "sc_render background",
+                        (canvas.w, canvas.h),
+                        TARGET,
+                        wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+                    );
+                    self.queue.write_texture(
+                        tex_of(&self.bg)?.tex.as_image_copy(),
+                        &bg.data,
+                        layout,
+                        extent(canvas.w, canvas.h),
+                    );
+                    self.bg_key = Some(key);
+                }
+                bg_copy = true;
+            }
+            None => {
+                self.bg_key = None;
+                self.queue.write_texture(
+                    tex_of(&self.target)?.tex.as_image_copy(),
+                    &bg.data,
+                    layout,
+                    extent(canvas.w, canvas.h),
+                );
+            }
+        }
 
         let mut plan = None;
         if let Some(layer) = &job.screen {
-            let mut result = Ok(None);
-            layer.frame.0.with_nv12(&mut |view| {
-                result = self.upload_frame(canvas, layer.src, layer.dst, &view);
-            })?;
-            plan = result?;
+            let reused = self
+                .last_screen
+                .as_ref()
+                .filter(|(f, _)| Arc::ptr_eq(&f.0, &layer.frame.0) && self.frame_y.is_some())
+                .map(|(_, full)| *full);
+            if let Some(full_range) = reused {
+                plan = maths::plan_screen(
+                    canvas,
+                    layer.frame.0.size(),
+                    full_range,
+                    layer.src,
+                    layer.dst,
+                )?;
+            } else {
+                let mut result = Ok(None);
+                let mut full_range = false;
+                layer.frame.0.with_nv12(&mut |view| {
+                    full_range = view.full_range;
+                    result = self.upload_frame(canvas, layer.src, layer.dst, &view);
+                })?;
+                plan = result?;
+                self.last_screen = Some((layer.frame.clone(), full_range));
+            }
         }
 
-        let mut cam_plan = None;
-        if let Some(layer) = &job.camera {
-            let mut result = Ok(None);
-            layer.frame.0.with_nv12(&mut |view| {
-                result = self.upload_camera(canvas, layer, &view);
-            })?;
-            cam_plan = result?;
-        }
+        self.cam_imported = None;
+        let cam_plan = match &job.camera {
+            Some(layer) => self.camera_plan(canvas, layer)?,
+            None => None,
+        };
 
         let mut enc = self.device.create_command_encoder(&Default::default());
+        if bg_copy {
+            enc.copy_texture_to_texture(
+                tex_of(&self.bg)?.tex.as_image_copy(),
+                tex_of(&self.target)?.tex.as_image_copy(),
+                extent(canvas.w, canvas.h),
+            );
+        }
         if let Some(plan) = &plan {
             self.encode_screen(&mut enc, plan)?;
         }
@@ -662,7 +764,14 @@ impl Gpu {
         }
         let (copies, total) = self.encode_output(&mut enc, canvas, out)?;
         self.queue.submit([enc.finish()]);
-        let data = self.read(&copies, total)?;
+        let data = self.read(&copies, total);
+        if self.cam_imported.take().is_some() {
+            #[cfg(target_os = "macos")]
+            if let Some(cache) = &self.cv_cache {
+                cache.flush();
+            }
+        }
+        let data = data?;
         Ok(RenderedFrame {
             size: canvas,
             format: out,
@@ -774,6 +883,53 @@ impl Gpu {
         Ok(())
     }
 
+    fn camera_plan(
+        &mut self,
+        canvas: SizePx,
+        layer: &crate::CameraLayer<'_>,
+    ) -> Result<Option<CameraPlan>> {
+        #[cfg(target_os = "macos")]
+        if let Some(planned) = self.import_camera(canvas, layer)? {
+            return Ok(planned);
+        }
+        let mut result = Ok(None);
+        layer.frame.0.with_nv12(&mut |view| {
+            result = self.upload_camera(canvas, layer, &view);
+        })?;
+        result
+    }
+
+    /// `None` when the frame has no IOSurface to read in place; it is uploaded instead.
+    #[cfg(target_os = "macos")]
+    fn import_camera(
+        &mut self,
+        canvas: SizePx,
+        layer: &crate::CameraLayer<'_>,
+    ) -> Result<Option<Option<CameraPlan>>> {
+        let (Some(cache), Some(pb)) = (&self.cv_cache, layer.frame.0.cv_pixel_buffer()) else {
+            return Ok(None);
+        };
+        let size = layer.frame.0.size();
+        if size.w > self.max_dim || size.h > self.max_dim {
+            return Ok(None);
+        }
+        maths::check_size("camera frame", size)?;
+        // SAFETY: `layer.frame` owns the pixel buffer and outlives this render.
+        let Some(planes) = (unsafe { cache.import(&self.device, pb, size) }) else {
+            return Ok(None);
+        };
+        let plan = maths::plan_camera(canvas, size, planes.full_range, layer)?;
+        let tex = |tex: wgpu::Texture| Tex {
+            view: tex.create_view(&Default::default()),
+            tex,
+        };
+        if plan.is_some() {
+            self.cam_imported = Some((tex(planes.y), tex(planes.uv)));
+            self.camera_in_place += 1;
+        }
+        Ok(Some(plan))
+    }
+
     fn upload_camera(
         &mut self,
         canvas: SizePx,
@@ -788,7 +944,8 @@ impl Gpu {
                 view.size.w, view.size.h, self.max_dim
             )));
         }
-        let Some(plan) = maths::plan_camera(canvas, view.size, view.full_range, layer)? else {
+        let (sub, local) = crop_to_source(view, layer);
+        let Some(plan) = maths::plan_camera(canvas, sub.size, sub.full_range, &local)? else {
             return Ok(None);
         };
         upload_nv12(
@@ -796,7 +953,7 @@ impl Gpu {
             &self.queue,
             (&mut self.cam_y, &mut self.cam_uv),
             "sc_render camera",
-            view,
+            &sub,
         )?;
         Ok(Some(plan))
     }
@@ -866,6 +1023,10 @@ impl Gpu {
         let cam_pre = tex_of(&self.cam_pre)?;
         let under = tex_of(&self.under)?;
         let target = tex_of(&self.target)?;
+        let (cam_y, cam_uv) = match &self.cam_imported {
+            Some((y, uv)) => (y, uv),
+            None => (tex_of(&self.cam_y)?, tex_of(&self.cam_uv)?),
+        };
         let pre_bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.prefilter.get_bind_group_layout(0),
@@ -876,11 +1037,11 @@ impl Gpu {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&tex_of(&self.cam_y)?.view),
+                    resource: wgpu::BindingResource::TextureView(&cam_y.view),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&tex_of(&self.cam_uv)?.view),
+                    resource: wgpu::BindingResource::TextureView(&cam_uv.view),
                 },
             ],
         });

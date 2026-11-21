@@ -13,6 +13,12 @@ pub trait NativeFrame: Send + Sync + 'static {
     fn as_any(&self) -> &dyn Any;
     fn size(&self) -> SizePx;
     fn with_nv12(&self, f: &mut dyn FnMut(Nv12View<'_>)) -> Result<()>;
+
+    /// The `CVPixelBufferRef` behind a macOS frame, valid while `self` lives, so the GPU can read
+    /// its IOSurface without a copy.
+    fn cv_pixel_buffer(&self) -> Option<std::ptr::NonNull<std::ffi::c_void>> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
