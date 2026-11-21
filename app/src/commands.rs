@@ -10,7 +10,7 @@ use tauri::State;
 use crate::core::{Core, Reply};
 
 #[cfg(test)]
-const COMMANDS: [&str; 29] = [
+const COMMANDS: [&str; 28] = [
     "get_permissions",
     "request_permission",
     "open_permission_settings",
@@ -35,8 +35,7 @@ const COMMANDS: [&str; 29] = [
     "reveal",
     "recovery_report",
     "camera_preview",
-    "bubble_state",
-    "bubble_drag",
+    "preview_state",
     "camera_key_live",
     "show_video_effects",
     "bar_drag",
@@ -108,19 +107,13 @@ pub fn dispatch(core: &Arc<Core>, name: &str, args: &Value) -> Reply {
         "reveal" => core.reveal(&arg::<String>(args, "path")?),
         "recovery_report" => core.recovery_report(),
         "camera_preview" => core.camera_preview(arg(args, "active")?),
-        "bubble_state" => core.bubble_state(),
+        "preview_state" => core.preview_state(),
         "camera_key_live" => core.camera_key_live(arg(args, "key")?),
         "show_video_effects" => core.show_video_effects(),
         "bar_drag" => core.bar_drag(
             &arg::<String>(args, "phase")?,
             arg(args, "x")?,
             arg(args, "y")?,
-        ),
-        "bubble_drag" => core.bubble_drag(
-            &arg::<String>(args, "phase")?,
-            arg(args, "x")?,
-            arg(args, "y")?,
-            opt_arg::<(f64, f64)>(args, "corner")?,
         ),
         other => Err(format!("unknown command {other:?}")),
     }
@@ -271,24 +264,8 @@ pub async fn camera_preview(core: State<'_, Arc<Core>>, active: bool) -> Reply {
 }
 
 #[tauri::command]
-pub async fn bubble_state(core: State<'_, Arc<Core>>) -> Reply {
-    run(core, "bubble_state", Value::Null).await
-}
-
-#[tauri::command]
-pub async fn bubble_drag(
-    core: State<'_, Arc<Core>>,
-    phase: String,
-    x: f64,
-    y: f64,
-    corner: Option<(f64, f64)>,
-) -> Reply {
-    run(
-        core,
-        "bubble_drag",
-        json!({ "phase": phase, "x": x, "y": y, "corner": corner }),
-    )
-    .await
+pub async fn preview_state(core: State<'_, Arc<Core>>) -> Reply {
+    run(core, "preview_state", Value::Null).await
 }
 
 #[tauri::command]

@@ -183,7 +183,7 @@ flowchart LR
 
 - Only the screen is segmented. Camera, mic and system audio are one continuous file each for the
   whole recording (ADR-034).
-- Thumbnails, the recorder panel's still mini preview and the live camera bubble use the same
+- Thumbnails, the recorder panel's still mini preview and the Preview window use the same
   compositor, so the preview always matches the output.
 
 ---
@@ -904,13 +904,12 @@ Draw order per output frame: background → screen (src = `content_px`, dst = fi
 - The recorder panel's mini stage preview (M1) is a still: a screenshot of the selected source
   composited with the canvas and background by the real compositor, served through the same URI
   protocol; since M2 it also includes the camera at the current placement.
-- **Camera bubble and stage preview (M2, ADR-041/042).** `bubble.rs` and `stage.rs` in the app
-  each run a renderer thread that composites with the same `camera_layer` as the export and
-  publishes frames to `LiveHub`; the windows pull them from `sc://live/bubble` and
-  `sc://live/stage` (long poll, latest wins, 16-byte header + premultiplied RGBA) and draw them
-  with WebGL2. Camera frames come from `SharedCamera` (one AVCaptureSession for preview and
-  recording). Measured on the build Mac with the OBSBOT at 1080p30: bubble 27–28 fps, stage
-  22–24 fps (driver flow 12).
+- **Preview window (M2, ADR-042/043).** `stage.rs` in the app runs a renderer thread that
+  composites the output (source snapshot twice a second, letterbox background, live camera) with
+  the same `camera_layer` as the export and publishes frames to `LiveHub`; the window pulls them
+  from `sc://live/stage` (long poll, latest wins, 16-byte header + premultiplied RGBA) and draws
+  them with WebGL2. Camera frames come from `SharedCamera` (one AVCaptureSession for preview and
+  recording).
 - **Native slots, off until hardware proof.** `PreviewSink` keeps one native implementation slot
   per OS. They are switched on only after hardware runs show Windows and at least Wayland working:
   - macOS: CAMetalLayer under a transparent WKWebView (**verified [S2]**: 60.1 fps, about 20% CPU,
@@ -952,7 +951,8 @@ sequenceDiagram
 
 - **What it renders.** The whole recording (M1 has no editor; the EDL is one clip covering
   `[0, duration)`), composited on the canvas: background, then each screen segment contain-fit
-  (§8). No camera bubble (M2) and no text (M4).
+  (§8), then the camera from its track where `camera_layout` puts it (M2), and the mic and system
+  audio mixed. No text until M4.
 - **Size.** The reference canvas size (§8). Fixed aspects are at most 3840 px on the long side.
   The quick export caps the long side at 3840 (Q6), never upscales, and falls back to the
   reference when a size class is at least as large; the full-size Original export comes with M5's

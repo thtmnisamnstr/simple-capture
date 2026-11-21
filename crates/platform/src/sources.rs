@@ -207,7 +207,6 @@ pub enum OverlayRole {
     PickOverlay,
     Saved,
     Onboarding,
-    Bubble,
     Stage,
 }
 

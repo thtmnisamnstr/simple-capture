@@ -108,7 +108,7 @@ These are the defaults. Validate them with the M0 spikes (small throwaway protot
 - Moving, resizing, or hiding the camera during recording is saved as timestamped keyframes, reproduced in the output, and editable later.
 - What you see is what you get: the bubble on screen matches the output exactly.
 - Single-window capture: position the camera in a live "stage preview" of the composed output.
-- Placement (ADR-041, owner 2026-11-20): for a whole-display source with the Original frame the floating bubble sits exactly where the camera lands in the video, and dragging it is the placement. For window, app and region sources and letterboxed frames the bubble still floats on screen so you can see yourself, and the stage preview is where the camera is placed. The camera runs while the recorder panel is open or a recording is on. Not mirrored by default; mirroring is a toggle.
+- Placement (ADR-043, owner 2026-11-20, replaces the floating bubble of ADR-041): one Preview window shows the composed output (the source in its frame, the letterbox background and the live camera) for every source and frame shape; the camera is placed, sized and reframed there. It is open while the recorder panel is open or a recording runs (it can be turned off), and it never appears in recordings. The camera runs while the recorder panel is open or a recording is on. Not mirrored by default; mirroring is a toggle.
 - The data model allows multiple overlays; 2+ cameras at once is a stretch goal.
 
 ### Audio

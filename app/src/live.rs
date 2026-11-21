@@ -1,4 +1,4 @@
-//! Live frames for the bubble and stage windows (ADR-007 webview frames, spike 2 mode B): the
+//! Live frames for the preview window (ADR-007 webview frames, spike 2 mode B): the
 //! renderer publishes the newest RGBA frame per stream, and `sc://live/<name>?after=<id>` waits
 //! for one newer than `id`. Body: a 16-byte header (id, width, height, 0 as little-endian u32)
 //! followed by tightly packed RGBA.
@@ -95,28 +95,28 @@ mod tests {
     #[test]
     fn next_returns_newer_frames_and_times_out_otherwise() {
         let hub = LiveHub::default();
-        assert!(hub.next("bubble", 0, Duration::from_millis(5)).is_none());
-        hub.publish("bubble", 2, 1, &[1, 2, 3, 4, 5, 6, 7, 8]);
+        assert!(hub.next("stage", 0, Duration::from_millis(5)).is_none());
+        hub.publish("stage", 2, 1, &[1, 2, 3, 4, 5, 6, 7, 8]);
         let f = hub
-            .next("bubble", 0, Duration::from_millis(5))
+            .next("stage", 0, Duration::from_millis(5))
             .expect("frame");
         assert_eq!(f.id, 1);
         assert_eq!(&f.body[..12], &[1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0]);
         assert_eq!(f.body.len(), HEADER + 8);
-        assert!(hub.next("bubble", 1, Duration::from_millis(5)).is_none());
+        assert!(hub.next("stage", 1, Duration::from_millis(5)).is_none());
         let hub = Arc::new(hub);
         let h = hub.clone();
-        let t = std::thread::spawn(move || h.next("bubble", 1, Duration::from_secs(2)));
+        let t = std::thread::spawn(move || h.next("stage", 1, Duration::from_secs(2)));
         std::thread::sleep(Duration::from_millis(20));
-        hub.publish("bubble", 1, 1, &[0; 4]);
+        hub.publish("stage", 1, 1, &[0; 4]);
         assert_eq!(t.join().expect("join").expect("woken").id, 2);
     }
 
     #[test]
     fn parses_live_uris() {
         assert_eq!(
-            parse(Some("live"), "/bubble", Some("after=7")),
-            Some(("bubble".into(), 7))
+            parse(Some("live"), "/stage", Some("after=7")),
+            Some(("stage".into(), 7))
         );
         assert_eq!(
             parse(Some("localhost"), "/live/stage", None),

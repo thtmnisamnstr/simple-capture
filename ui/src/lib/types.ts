@@ -89,7 +89,8 @@ export interface RecorderSettings {
   cursor: boolean;
   click_highlight: boolean;
   camera_key: CameraKey;
-  bubble_shown: boolean;
+  preview_shown: boolean;
+  preview_at?: PointF | null;
   bar_at?: PointF | null;
 }
 
@@ -181,5 +182,4 @@ export const EVENTS = {
   exportState: 'export-state',
 } as const;
 
-export interface BubbleGeom { window: RectPt; shape: RectPt; scale: number; maps_output: boolean }
-export interface BubbleStateDto { geom: BubbleGeom | null; key: CameraKey | null; shown: boolean }
+export interface PreviewStateDto { shown: boolean; key: CameraKey | null; frame: number; camera_open: string | null }

@@ -168,8 +168,8 @@ if basic("01-onboarding", log):
     DISPLAYS = steps(log, "cmd list_displays")[0]["result"]
     rects = steps(log, "log-window-rects")[0]["result"]
     vis = {r["label"]: r["visible"] for r in rects}
-    check("01-onboarding", "nine windows, IDs > 0, onboarding shown",
-          len(rects) == 9 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
+    check("01-onboarding", "eight windows, IDs > 0, onboarding shown",
+          len(rects) == 8 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
     ui = ui_lines(steps(log, "ui-log")[0])
     text = next((l for l in ui if "onboarding " in l), "")
     check("01-onboarding", "onboarding renders the three statuses",
@@ -367,64 +367,66 @@ if basic("11-quit-export", log):
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)
 failed = [r for r in results if not r["ok"]]
-log = lines("12-bubble")
-if basic("12-bubble", log):
-    st = [s["result"] for s in steps(log, "cmd bubble_state")]
-    rects = [{r["label"]: r for r in s["result"]} for s in steps(log, "log-window-rects")]
-    if len(st) >= 3 and len(rects) >= 2:
-        a, b, c = st[0], st[1], st[2]
-        check("12-bubble", "camera opened for the bubble", bool(a.get("camera_open")), a.get("camera_open"))
-        check("12-bubble", "bubble shown with live frames", a.get("shown") and a.get("frame", 0) > 0, a)
+log = lines("12-preview")
+if basic("12-preview", log):
+    st = [x["result"] for x in steps(log, "cmd preview_state")]
+    rects = [{r["label"]: r for r in x["result"]} for x in steps(log, "log-window-rects")]
+    if len(st) >= 4 and len(rects) >= 2:
+        a, b, c, d = st[0], st[1], st[2], st[3]
+        win = rects[0].get("stage")
+        check("12-preview", "camera opened for the preview", bool(a.get("camera_open")), a.get("camera_open"))
+        check("12-preview", "preview window shown with live frames", a.get("shown") and a.get("frame", 0) > 0
+              and bool(win and win["visible"]), {"state": a, "window": win})
         fps = b.get("frame", 0) - a.get("frame", 0)
-        check("12-bubble", "bubble frames keep coming (>= 15 in 1 s)", fps >= 15, fps)
-        win, g = rects[0].get("bubble"), (a.get("geom") or {}).get("window")
-        check("12-bubble", "bubble window placed at its geometry",
-              bool(win and win["visible"] and g) and all(abs(win["rect_pt"][k] - g[k]) <= 1 for k in "xywh"),
-              {"window": win, "geom": g})
-        k0, k1 = (a.get("key") or {}).get("center_norm"), (c.get("key") or {}).get("center_norm")
-        check("12-bubble", "drag moved the camera left and up", bool(k0 and k1) and k1["x"] < k0["x"] and k1["y"] < k0["y"],
-              {"before": k0, "after": k1})
-        win2, g2 = rects[1].get("bubble"), (c.get("geom") or {}).get("window")
-        check("12-bubble", "bubble window followed the drag",
-              bool(win2 and g2) and all(abs(win2["rect_pt"][k] - g2[k]) <= 1 for k in "xy"), {"window": win2, "geom": g2})
-        if len(st) >= 5 and len(rects) >= 3:
-            d, e = st[3], st[4]
-            stage = rects[2].get("stage")
-            check("12-bubble", "9:16 frame: stage shown, bubble floats", bool(d.get("stage")) and bool(stage and stage["visible"])
-                  and not ((d.get("geom") or {}).get("maps_output", True)), {"state": d.get("stage"), "window": stage, "geom": d.get("geom")})
-            sfps = e.get("stage_frame", 0) - d.get("stage_frame", 0)
-            check("12-bubble", "stage frames keep coming (>= 15 in 1 s)", d.get("stage_frame", 0) > 0 and sfps >= 15, sfps)
+        check("12-preview", "preview frames keep coming (>= 15 in 1 s)", fps >= 15, fps)
+        frames = [x["frame_pt"] for x in DISPLAYS]
+        r = (win or {}).get("rect_pt") or {}
+        check("12-preview", "preview window placed on a display", bool(r) and any(
+            r["x"] >= f["x"] and r["y"] >= f["y"] and r["x"] + r["w"] <= f["x"] + f["w"] and r["y"] + r["h"] <= f["y"] + f["h"]
+            for f in frames), {"rect": r, "displays": frames})
+        k = (c.get("key") or {}).get("center_norm")
+        check("12-preview", "a live camera edit reaches the preview", k == {"x": 0.3, "y": 0.3}, k)
+        win2 = rects[1].get("stage")
+        check("12-preview", "9:16 frame: preview still shown", bool(d.get("shown")) and bool(win2 and win2["visible"]), d)
     else:
-        check("12-bubble", "bubble steps logged", False, {"states": len(st), "rects": len(rects)})
+        check("12-preview", "preview steps logged", False, {"states": len(st), "rects": len(rects)})
 
-log = lines("14-bubble-capture")
-if basic("14-bubble-capture", log):
-    pr = P.get("drv bubble capture")
-    finalized("14-bubble-capture", pr, "drv bubble capture", reason="user")
+log = lines("14-preview-capture")
+if basic("14-preview-capture", log):
+    pr = P.get("drv preview capture")
+    finalized("14-preview-capture", pr, "drv preview capture", reason="user")
     if pr:
         keys = [k for o in pr["project"].get("camera_layout", {}).get("overlays", []) for k in o.get("keyframes", [])]
-        check("14-bubble-capture", "keyframes: the start plus the drag", len(keys) >= 3 and keys[0]["t_rec_ns"] == 0
-              and keys[-1]["center_norm"]["x"] < keys[0]["center_norm"]["x"], [(k["t_rec_ns"], k["center_norm"]) for k in keys])
+        check("14-preview-capture", "keyframes: the start plus the moves", len(keys) >= 3 and keys[0]["t_rec_ns"] == 0
+              and keys[-1]["center_norm"] == {"x": 0.2, "y": 0.3}, [(k["t_rec_ns"], k["center_norm"]) for k in keys])
         tracks = {t["kind"] for t in pr["project"]["recording"]["tracks"]}
-        check("14-bubble-capture", "camera track recorded", "camera" in tracks, sorted(tracks))
+        check("14-preview-capture", "camera track recorded", "camera" in tracks, sorted(tracks))
     rects = steps(log, "log-window-rects")
     shown_t = steps(log, "cmd set_settings")[1]["rec_ns"] / 1e9
-    drag_t = steps(log, "cmd bubble_drag")[0]["rec_ns"] / 1e9
+    move_t = steps(log, "cmd camera_key_live")[0]["rec_ns"] / 1e9
+    if len(rects) >= 2 and DISPLAYS:
+        b0 = {r["label"]: r for r in rects[0]["result"]}.get("bar", {}).get("rect_pt") or {}
+        b1 = {r["label"]: r for r in rects[1]["result"]}.get("bar", {}).get("rect_pt") or {}
+        f = DISPLAYS[0]["frame_pt"]
+        check("14-preview-capture", "control bar at the bottom centre", bool(b0) and abs(b0["x"] + b0["w"] / 2 - (f["x"] + f["w"] / 2)) <= 2
+              and abs(b0["y"] - (f["y"] + f["h"] - b0["h"] - 96)) <= 2, {"bar": b0, "display": f})
+        check("14-preview-capture", "control bar moves by its grip", bool(b0 and b1) and abs(b1["x"] - (b0["x"] - 40)) <= 1
+              and abs(b1["y"] - (b0["y"] - 20)) <= 1, {"before": b0, "after": b1})
     if FFMPEG and DISPLAYS and pr and segments(pr) and rects:
-        bub = {r["label"]: r for r in rects[0]["result"]}.get("bubble")
-        check("14-bubble-capture", "bubble visible during the recording", bool(bub and bub["visible"]), bub)
-        if bub and bub["visible"]:
+        win = {r["label"]: r for r in rects[0]["result"]}.get("stage")
+        check("14-preview-capture", "preview visible during the recording", bool(win and win["visible"]), win)
+        if win and win["visible"]:
             seg = segments(pr)[0]
             path = os.path.join(pr["dir"], [e["file"] for e in pr["journal"] if e.get("ev") == "segment_open"][0])
-            disp = next((d for d in DISPLAYS if d["id"] == seg["source"].get("display_id")), DISPLAYS[0])
-            rp = bub["rect_pt"]
+            disp = next((x for x in DISPLAYS if x["id"] == seg["source"].get("display_id")), DISPLAYS[0])
+            rp = win["rect_pt"]
             crop = crop_for([rp["x"], rp["y"], rp["w"], rp["h"]], disp, seg)
             fps = pr["project"]["recording"]["screen"]["fps_requested"]
             if crop:
-                compare("14-bubble-capture", "bubble", gray_frames(path, crop, fps),
-                        (0.6, shown_t - 0.2), (shown_t + 0.4, drag_t - 0.2), fps)
+                compare("14-preview-capture", "preview window", gray_frames(path, crop, fps),
+                        (0.6, shown_t - 0.2), (shown_t + 0.6, move_t - 0.2), fps)
             else:
-                check("14-bubble-capture", "bubble rect inside the frame", False, rp)
+                check("14-preview-capture", "preview rect inside the frame", False, rp)
 
 print(f"\n{len(results) - len(failed)}/{len(results)} checks passed")
 sys.exit(1 if failed else 0)

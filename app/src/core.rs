@@ -26,7 +26,7 @@ use crate::settings::{CanvasDto, RecorderSettings, SettingsStore};
 use crate::state::{Input, Phase};
 use crate::still::{self, StillCache};
 
-pub const WINDOWS: [(&str, OverlayRole); 9] = [
+pub const WINDOWS: [(&str, OverlayRole); 8] = [
     ("panel", OverlayRole::Panel),
     ("onboarding", OverlayRole::Onboarding),
     ("bar", OverlayRole::FloatingBar),
@@ -34,7 +34,6 @@ pub const WINDOWS: [(&str, OverlayRole); 9] = [
     ("region", OverlayRole::RegionOverlay),
     ("pick", OverlayRole::PickOverlay),
     ("saved", OverlayRole::Saved),
-    ("bubble", OverlayRole::Bubble),
     ("stage", OverlayRole::Stage),
 ];
 
@@ -52,7 +51,7 @@ pub struct Core {
     pub platform: Arc<dyn Platform>,
     pub camera: Arc<SharedCamera>,
     pub live: crate::live::LiveHub,
-    pub bubble: Mutex<crate::bubble::BubbleState>,
+    pub preview: Mutex<crate::preview::PreviewState>,
     bar_drag: Mutex<Option<BarDrag>>,
     pub data_dir: PathBuf,
     projects_dir: PathBuf,
@@ -94,7 +93,7 @@ impl Core {
             platform,
             camera,
             live: crate::live::LiveHub::default(),
-            bubble: Mutex::new(crate::bubble::BubbleState::default()),
+            preview: Mutex::new(crate::preview::PreviewState::default()),
             bar_drag: Mutex::new(None),
             data_dir,
             projects_dir,
@@ -1255,18 +1254,18 @@ impl Core {
         self.exiting.load(Ordering::SeqCst)
     }
 
-    /// The recorder panel opened (`true`) or closed. The camera runs while the panel is open or a
-    /// recording is on (ADR-041).
+    /// The recorder panel opened (`true`) or closed. The camera and the preview window run while
+    /// the panel is open or a recording is on (ADR-041, ADR-043).
     pub fn camera_preview(&self, active: bool) -> Reply {
-        lock(&self.bubble).preview_active = active;
+        lock(&self.preview).panel_open = active;
         self.refresh_camera()
     }
 
-    /// Opens or releases the camera and shows, moves or hides the bubble to match the settings.
+    /// Opens or releases the camera and shows or hides the preview window to match the settings.
     pub fn refresh_camera(&self) -> Reply {
         let s = self.settings.load();
         let recording = is_recording(&self.phase());
-        let active = lock(&self.bubble).preview_active || recording;
+        let active = lock(&self.preview).panel_open || recording;
         let device = if active { s.camera.clone() } else { None };
         if let Err(e) = self.camera.set_preview(device.clone()) {
             if !recording {
@@ -1274,30 +1273,94 @@ impl Core {
             }
             tracing::warn!("camera preview while recording: {e}");
         }
-        let stage = device.is_some() && !crate::bubble::maps_output(&s);
-        {
-            let mut b = lock(&self.bubble);
-            b.key = Some(s.camera_key.clone());
-            b.shown = device.is_some() && s.bubble_shown && s.camera_key.visible;
-            b.stage = s
+        let show = active && s.preview_shown && s.source.is_some();
+        let place = {
+            let mut p = lock(&self.preview);
+            p.key = Some(s.camera_key.clone());
+            p.stage = s
                 .source
                 .clone()
-                .filter(|_| stage)
+                .filter(|_| show)
                 .map(|src| (src, s.canvas.clone()));
-        }
-        if stage {
+            show && !std::mem::replace(&mut p.placed, true)
+        };
+        if show {
+            if place {
+                self.place_preview(&s);
+            }
             self.show_window("stage", false)?;
         } else {
             self.hide_window("stage");
             self.live.clear("stage");
         }
-        self.place_bubble(&s)
+        Ok(json!({ "shown": show }))
+    }
+
+    /// First showing: where it was last moved to, if still on a display; otherwise the bottom-right
+    /// corner of the recorded display.
+    fn place_preview(&self, s: &RecorderSettings) {
+        let Some(w) = self.app.get_webview_window("stage") else {
+            return;
+        };
+        let displays = self.platform.screen().displays().unwrap_or_default();
+        let size = w
+            .outer_size()
+            .ok()
+            .map(|p| p.to_logical::<f64>(w.scale_factor().unwrap_or(1.0)))
+            .map_or((560.0, 360.0), |l| (l.width, l.height));
+        let fits = |p: &sc_geometry::PointF| {
+            displays.iter().any(|d| {
+                let f = d.frame_pt;
+                p.x >= f.x && p.y >= f.y && p.x + size.0 <= f.x + f.w && p.y + size.1 <= f.y + f.h
+            })
+        };
+        let at = s.preview_at.filter(fits).or_else(|| {
+            crate::preview::display_for(s, &displays).map(|d| {
+                let f = d.frame_pt;
+                sc_geometry::PointF {
+                    x: f.x + f.w - size.0 - 24.0,
+                    y: f.y + f.h - size.1 - 96.0,
+                }
+            })
+        });
+        if let Some(at) = at
+            && let Err(e) = w.set_position(LogicalPosition::new(at.x, at.y))
+        {
+            tracing::warn!("place preview: {e}");
+        }
+    }
+
+    /// The preview window's close button turns the preview off (the panel's "Show preview").
+    pub fn preview_closed(&self) {
+        let mut s = self.settings.load();
+        if s.preview_shown {
+            s.preview_shown = false;
+            match self.settings.save(&s) {
+                Ok(()) => self.emit("settings-changed", json!(s)),
+                Err(e) => tracing::warn!("preview off: {e}"),
+            }
+        }
+        if let Err(e) = self.refresh_camera() {
+            tracing::warn!("preview off: {e}");
+        }
+    }
+
+    /// The preview window was moved: remembered for next time.
+    pub fn preview_moved(&self, x: f64, y: f64) {
+        let mut s = self.settings.load();
+        let at = sc_geometry::PointF { x, y };
+        if s.preview_at != Some(at) {
+            s.preview_at = Some(at);
+            if let Err(e) = self.settings.save(&s) {
+                tracing::warn!("remember preview position: {e}");
+            }
+        }
     }
 
     /// What the stage renderer draws, or `None` while the stage is hidden.
     pub fn stage_inputs(&self) -> Option<crate::stage::StageInputs> {
         let (src, canvas, key) = {
-            let b = lock(&self.bubble);
+            let b = lock(&self.preview);
             let (src, canvas) = b.stage.clone()?;
             (src, canvas, b.key.clone())
         };
@@ -1324,55 +1387,12 @@ impl Core {
         })
     }
 
-    /// A camera placement while it is being dragged in the stage: shown at once (and a keyframe
-    /// while recording) but not saved; the stage saves the settings when the drag ends.
+    /// A camera placement while it is being dragged in the preview: shown at once (and a keyframe
+    /// while recording) but not saved; the preview saves the settings when the drag ends.
     pub fn camera_key_live(&self, key: sc_core::project::CameraKey) -> Reply {
-        {
-            let mut b = lock(&self.bubble);
-            b.key = Some(key.clone());
-            b.version += 1;
-        }
+        lock(&self.preview).key = Some(key.clone());
         self.send_camera_key(&key, false);
         Ok(Value::Null)
-    }
-
-    fn place_bubble(&self, s: &RecorderSettings) -> Reply {
-        let displays = self
-            .platform
-            .screen()
-            .displays()
-            .map_err(|e| e.to_string())?;
-        let maps = crate::bubble::maps_output(s);
-        let placed = crate::bubble::display_for(s, &displays).and_then(|d| {
-            let mut b = lock(&self.bubble);
-            let key = b.key.clone()?;
-            let g = crate::bubble::geometry(&key, d, maps, b.floating_at);
-            b.geom = Some(g);
-            b.version += 1;
-            Some((g, b.shown))
-        });
-        match placed {
-            Some((g, true)) => {
-                self.move_bubble(&g);
-                self.show_window("bubble", false)?;
-                Ok(json!(g))
-            }
-            other => {
-                self.hide_window("bubble");
-                self.live.clear("bubble");
-                Ok(json!(other.map(|p| p.0)))
-            }
-        }
-    }
-
-    fn move_bubble(&self, g: &crate::bubble::Geom) {
-        if let Some(w) = self.app.get_webview_window("bubble")
-            && let Err(e) = w
-                .set_size(LogicalSize::new(g.window.w, g.window.h))
-                .and_then(|_| w.set_position(LogicalPosition::new(g.window.x, g.window.y)))
-        {
-            tracing::warn!("move bubble: {e}");
-        }
     }
 
     /// During a recording, `key` becomes a camera keyframe now. Drags send at most 30 a second
@@ -1382,7 +1402,7 @@ impl Core {
             return;
         }
         {
-            let mut b = lock(&self.bubble);
+            let mut b = lock(&self.preview);
             let now = Instant::now();
             if !force
                 && b.last_key_sent
@@ -1419,7 +1439,7 @@ impl Core {
             })
         };
         let at = s.bar_at.filter(on_screen).or_else(|| {
-            crate::bubble::display_for(&s, &displays).map(|d| {
+            crate::preview::display_for(&s, &displays).map(|d| {
                 let f = d.frame_pt;
                 sc_geometry::PointF {
                     x: f.x + (f.w - size.0) / 2.0,
@@ -1465,72 +1485,13 @@ impl Core {
         Ok(Value::Null)
     }
 
-    pub fn bubble_state(&self) -> Reply {
-        let b = lock(&self.bubble);
+    pub fn preview_state(&self) -> Reply {
+        let p = lock(&self.preview);
         Ok(json!({
-            "geom": b.geom,
-            "key": b.key,
-            "shown": b.shown,
-            "frame": self.live.latest_id("bubble"),
-            "stage_frame": self.live.latest_id("stage"),
-            "stage": b.stage.is_some(),
+            "shown": p.stage.is_some(),
+            "key": p.key,
+            "frame": self.live.latest_id("stage"),
             "camera_open": self.camera.open_device(),
         }))
-    }
-
-    /// A drag on the bubble: `phase` is `begin`, `move` or `end`; `x`, `y` are global points;
-    /// `corner` is the resize handle's direction, `None` to move.
-    pub fn bubble_drag(&self, phase: &str, x: f64, y: f64, corner: Option<(f64, f64)>) -> Reply {
-        let at = sc_geometry::PointF { x, y };
-        match phase {
-            "begin" => {
-                lock(&self.bubble).drag_begin(corner, at);
-                Ok(Value::Null)
-            }
-            "move" => {
-                let s = self.settings.load();
-                let displays = self
-                    .platform
-                    .screen()
-                    .displays()
-                    .map_err(|e| e.to_string())?;
-                let Some(d) = crate::bubble::display_for(&s, &displays) else {
-                    return Ok(Value::Null);
-                };
-                let maps = crate::bubble::maps_output(&s);
-                let (g, moved) = {
-                    let mut b = lock(&self.bubble);
-                    let moved = b.drag_to(at, d, maps);
-                    let key = b.key.clone().ok_or("no camera key")?;
-                    let g = crate::bubble::geometry(&key, d, maps, b.floating_at);
-                    b.geom = Some(g);
-                    b.version += 1;
-                    (g, moved.then_some(key))
-                };
-                self.move_bubble(&g);
-                if let Some(key) = moved {
-                    self.send_camera_key(&key, false);
-                }
-                Ok(json!(g))
-            }
-            "end" => {
-                let key = {
-                    let mut b = lock(&self.bubble);
-                    b.drag_end();
-                    b.key.clone()
-                };
-                if let Some(key) = key {
-                    self.send_camera_key(&key, true);
-                    let mut s = self.settings.load();
-                    if s.camera_key != key {
-                        s.camera_key = key;
-                        self.settings.save(&s)?;
-                        self.emit("settings-changed", json!(s));
-                    }
-                }
-                Ok(Value::Null)
-            }
-            other => Err(format!("bubble_drag: unknown phase {other:?}")),
-        }
     }
 }

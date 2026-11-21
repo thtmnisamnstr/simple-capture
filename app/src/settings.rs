@@ -60,7 +60,10 @@ pub struct RecorderSettings {
     pub cursor: bool,
     pub click_highlight: bool,
     pub camera_key: CameraKey,
-    pub bubble_shown: bool,
+    #[serde(alias = "bubble_shown")]
+    pub preview_shown: bool,
+    /// Where the preview window was last moved to (global points, top-left).
+    pub preview_at: Option<sc_geometry::PointF>,
     /// Where the recording control bar was last moved to (global points, top-left).
     pub bar_at: Option<sc_geometry::PointF>,
 }
@@ -82,7 +85,8 @@ impl Default for RecorderSettings {
             cursor: true,
             click_highlight: false,
             camera_key: default_camera_key(),
-            bubble_shown: true,
+            preview_shown: true,
+            preview_at: None,
             bar_at: None,
         }
     }
@@ -212,7 +216,8 @@ mod tests {
                 zoom: 1.5,
                 ..default_camera_key()
             },
-            bubble_shown: false,
+            preview_shown: false,
+            preview_at: None,
             bar_at: Some(sc_geometry::PointF { x: 10.0, y: 20.0 }),
         };
         store.save(&s).expect("save");

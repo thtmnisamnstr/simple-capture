@@ -1255,7 +1255,7 @@ they are not a substitute for an M1 run.
 
 ## ADR-041: M2 camera bubble: placement, defaults and build approach
 
-- **Status:** Accepted by the owner (2026-11-20).
+- **Status:** Accepted by the owner (2026-11-20); the placement part is superseded by ADR-043.
 - **Context:** M2 adds the live camera bubble (SPEC Camera overlay). The camera position is stored
   in the output frame (canvas-normalized `CameraKey`), but the screen shows that frame truthfully
   only for a whole-display source with the Original frame.
@@ -1300,3 +1300,16 @@ they are not a substitute for an M1 run.
     write `camera_layout`. The app sends drags at most 30 times a second plus the final position.
 - **Consequences:** a crash loses at most 0.2 s of camera motion. Keyframes are not editable until
   the M3 editor.
+
+## ADR-043: The Preview window replaces the floating camera bubble
+
+- **Status:** Accepted (owner's M2 hands-on, 2026-11-20: "Having the camera bubble as its own
+  preview and the preview window w/ camera placement is confusing. The preview window is better.")
+- **Decision:** there is no floating camera bubble on screen. One Preview window (the former stage)
+  shows the composed output for every source and frame shape and is where the camera is placed,
+  sized and reframed. It opens with the recorder panel and stays during a recording, with or
+  without a camera; "Show the Preview window" in the panel (or its close button) turns it off; it
+  remembers where it was moved. It is excluded from capture like every app window.
+- **Consequences:** "the bubble matches the output" (SPEC) is met by showing the output itself.
+  The bubble window, its renderer, `bubble_drag`/`bubble_state` and `OverlayRole::Bubble` are
+  removed; `bubble_shown` in settings is read as `preview_shown`.

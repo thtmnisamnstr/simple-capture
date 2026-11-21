@@ -1,0 +1,24 @@
+# Preview window during a display recording (M2): never in the screen track; camera moves made in
+# it while recording become keyframes. The control bar starts at the bottom centre and moves by its grip.
+cmd set_settings {"settings":{"source":{"kind":"display","display_id":"@DISPLAY@"},"camera":"@CAMERA@","mic":null,"preview_shown":false}}
+show panel
+wait 1500
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv preview capture","settings":{"camera":"@CAMERA@","preview_shown":false}}}
+wait 2500
+cmd set_settings {"settings":{"source":{"kind":"display","display_id":"@DISPLAY@"},"camera":"@CAMERA@","mic":null,"preview_shown":true}}
+wait 700
+log-window-rects
+cmd preview_state
+cmd bar_drag {"phase":"begin","x":100,"y":100}
+cmd bar_drag {"phase":"move","x":60,"y":80}
+cmd bar_drag {"phase":"end","x":0,"y":0}
+log-window-rects
+wait 2000
+cmd camera_key_live {"key":{"t_rec_ns":0,"visible":true,"shape":"circle","corner_radius":0,"size_norm":0.26,"zoom":1,"pan_norm":{"x":0,"y":0},"mirror":false,"easing":"linear","center_norm":{"x":0.5,"y":0.5}}}
+wait 100
+cmd camera_key_live {"key":{"t_rec_ns":0,"visible":true,"shape":"circle","corner_radius":0,"size_norm":0.26,"zoom":1,"pan_norm":{"x":0,"y":0},"mirror":false,"easing":"linear","center_norm":{"x":0.2,"y":0.3}}}
+cmd set_settings {"settings":{"source":{"kind":"display","display_id":"@DISPLAY@"},"camera":"@CAMERA@","mic":null,"preview_shown":true,"camera_key":{"t_rec_ns":0,"visible":true,"shape":"circle","corner_radius":0,"size_norm":0.26,"zoom":1,"pan_norm":{"x":0,"y":0},"mirror":false,"easing":"linear","center_norm":{"x":0.2,"y":0.3}}}}
+wait 1500
+cmd stop_recording
+wait-phase saved 30000
+quit

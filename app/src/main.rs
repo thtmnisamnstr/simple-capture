@@ -1,6 +1,5 @@
 //! Simple Capture desktop app: Tauri 2 shell (M1 plan §5.2–§5.4).
 
-mod bubble;
 mod commands;
 mod core;
 #[cfg(debug_assertions)]
@@ -9,6 +8,7 @@ mod dto;
 mod live;
 #[cfg(target_os = "macos")]
 mod objc;
+mod preview;
 mod protocol;
 mod settings;
 mod signals;
@@ -174,7 +174,6 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     core.configure_windows()?;
-    bubble::spawn(&core);
     stage::spawn(&core);
     let tray = tray::Tray::build(app.handle(), core.clone())?;
     let _ = core.tray.set(tray);
@@ -210,10 +209,27 @@ fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
             {
                 tracing::warn!("camera preview: {e}");
             }
+            if label == "stage"
+                && let Some(core) = app.try_state::<Arc<Core>>()
+            {
+                core.preview_closed();
+            }
             if let Some(w) = app.get_webview_window(&label)
                 && let Err(e) = w.hide()
             {
                 tracing::warn!(label, "hide on close: {e}");
+            }
+        }
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Moved(pos),
+            ..
+        } if label == "stage" => {
+            if let (Some(core), Some(w)) =
+                (app.try_state::<Arc<Core>>(), app.get_webview_window(&label))
+            {
+                let p = pos.to_logical::<f64>(w.scale_factor().unwrap_or(1.0));
+                core.preview_moved(p.x, p.y);
             }
         }
         RunEvent::ExitRequested { api, code, .. } => {
@@ -267,8 +283,7 @@ fn main() {
             commands::reveal,
             commands::recovery_report,
             commands::camera_preview,
-            commands::bubble_state,
-            commands::bubble_drag,
+            commands::preview_state,
             commands::camera_key_live,
             commands::show_video_effects,
             commands::bar_drag,

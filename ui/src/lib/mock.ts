@@ -99,7 +99,7 @@ let settings: RecorderSettings = {
     shadow: null,
     easing: 'linear',
   },
-  bubble_shown: true,
+  preview_shown: true,
 };
 
 const permissions: PermissionsDto = {
@@ -327,8 +327,7 @@ const handlers: Record<string, Handler> = {
   reveal: () => null,
   recovery_report: () => recovery,
   camera_preview: () => null,
-  bubble_state: () => ({ geom: null, key: settings.camera_key, shown: false }),
-  bubble_drag: () => null,
+  preview_state: () => ({ shown: false, key: settings.camera_key, frame: 0, camera_open: null }),
   camera_key_live: () => null,
   show_video_effects: () => null,
   bar_drag: () => null,
