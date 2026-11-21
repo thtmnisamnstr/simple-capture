@@ -24,14 +24,16 @@ VideoToolbox Fast on SSIM at a smaller size on a text-heavy clip (0.9365 at 134 
 **Verified in CI and containers:** the Windows backend builds and runs its tests on GitHub's
 Windows runner; the Linux backend on Ubuntu and in `tools/linux-dev` (PipeWire frames from a
 test source). The Linux and Windows FFmpeg helpers build from the pinned sources with networking
-off and link only system libraries; the Linux helper passes the helper-track tests.
+off and link only system libraries; both pass the helper-track round trip on GitHub's Ubuntu and
+Windows runners. The first `package` run (44939780618) built every installer: `Simple
+Capture_0.1.0_aarch64.dmg` (37 MB), `…_x64-setup.exe` (32 MB), `…_x64_en-US.msi` (43 MB),
+`…_amd64.deb` and `…_amd64.AppImage`, plus the helper source archive.
 
 **Not verified:** the editor's open time on a 10-minute recording (the definition of done says
 under 2 s; measured 158 ms to the first frame on a 9 s recording, and nothing in the open path
 grows with length except the async thumbnails and waveform); any real Windows or Linux desktop; the Linux portal dialog end to end (the
 headless test compositor could not hand frames to the portal backend); the mic level meter and
-the countdown by eye (driver mode turns both off); the installers from the package workflow
-(first run in progress at the time of writing).
+the countdown by eye (driver mode turns both off); installing and running the built installers.
 
 ### Owner decisions needed
 1. ⚑ **Recording on Windows and Linux goes through the FFmpeg helper process** instead of Media
