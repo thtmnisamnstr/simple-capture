@@ -14,9 +14,10 @@ use tauri::{AppHandle, LogicalPosition, Manager};
 use crate::core::{Core, Reply};
 use crate::state::Phase;
 
-pub const ITEMS: [(&str, &str); 8] = [
+pub const ITEMS: [(&str, &str); 9] = [
     ("open", "Open Recorder"),
     ("start-stop", "Start Recording"),
+    ("pause", "Pause Recording"),
     ("switch", "Switch Source…"),
     ("edit", "Edit Last Recording"),
     ("library", "Library…"),
@@ -28,6 +29,7 @@ pub const ITEMS: [(&str, &str); 8] = [
 pub struct Tray {
     icon: TrayIcon,
     start_stop: MenuItem<tauri::Wry>,
+    pause: MenuItem<tauri::Wry>,
 }
 
 pub fn format_elapsed(ns: i64) -> String {
@@ -86,12 +88,30 @@ impl Tray {
             .build(app)
             .map_err(e)?;
         let start_stop = items[1].clone();
-        Ok(Tray { icon, start_stop })
+        let pause = items[2].clone();
+        let _ = pause.set_enabled(false);
+        Ok(Tray {
+            icon,
+            start_stop,
+            pause,
+        })
     }
 
-    pub fn refresh(&self, phase: &Phase, elapsed_ns: i64) {
+    pub fn refresh(&self, phase: &Phase, elapsed_ns: i64, paused: bool) {
         let recording = phase.is_recording();
-        let title = recording.then(|| format_elapsed(elapsed_ns));
+        let title = recording.then(|| {
+            if paused {
+                format!("❚❚ {}", format_elapsed(elapsed_ns))
+            } else {
+                format_elapsed(elapsed_ns)
+            }
+        });
+        let _ = self.pause.set_enabled(recording);
+        let _ = self.pause.set_text(if paused {
+            "Resume Recording"
+        } else {
+            "Pause Recording"
+        });
         if let Err(e) = self.icon.set_title(title) {
             tracing::debug!("tray title: {e}");
         }
@@ -179,6 +199,7 @@ pub fn on_item(core: &Arc<Core>, id: &str) -> Reply {
             }
             core.show_window("switcher", true).map(|_| Value::Null)
         }
+        "pause" => core.toggle_pause(),
         "edit" => core.edit_last(),
         "library" | "diagnostics" | "about" => core.show_window(id, true).map(|_| Value::Null),
         "quit" => {

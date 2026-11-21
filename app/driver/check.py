@@ -609,6 +609,21 @@ if basic("19-library", log):
     check("19-library", "posters rendered for the visible recordings", posters and len(made) == len(posters),
           {"posters": len(posters), "made": len(made)})
 
+log = lines("20-pause")
+if basic("20-pause", log):
+    pr = P.get("drv pause")
+    proj = pr["project"] if pr else {}
+    pauses = proj.get("recording", {}).get("pauses", [])
+    clips = proj.get("edl", {}).get("clips", [])
+    span = (pauses[0]["end_host_ns"] - pauses[0]["start_host_ns"]) / 1e9 if pauses else 0
+    check("20-pause", "one pause of about 1.5 s, cut from the timeline (two clips)",
+          len(pauses) == 1 and 1.3 <= span <= 1.9 and len(clips) == 2, {"pauses": pauses, "clips": clips})
+    st = [s["result"] for s in steps(log, 'cmd app {"action":"rec_status"}')]
+    check("20-pause", "status says paused and the timer stopped",
+          bool(st) and st[0].get("paused") is True and 1.8e9 <= st[0].get("elapsed_ns", 0) <= 3.5e9, st)
+    ev = events(log, "recording-paused")
+    check("20-pause", "paused and resumed events", [e.get("paused") for e in ev] == [True, False], ev)
+
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)
 failed = [r for r in results if not r["ok"]]

@@ -121,32 +121,55 @@ fn driver_active() -> bool {
     false
 }
 
+/// ⌥⇧S switch source (or pick one), ⌥⇧R start or stop, ⌥⇧P pause or resume, ⌥⇧C camera on
+/// or off, ⌥⇧O open the recorder.
 fn register_hotkey(core: &Arc<Core>) {
     use tauri_plugin_global_shortcut::{
         Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
     };
-    let shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyS);
-    let c = core.clone();
-    let r = core
-        .app
-        .global_shortcut()
-        .on_shortcut(shortcut, move |_app, _sc, ev| {
-            if ev.state == ShortcutState::Pressed {
-                let c = c.clone();
-                std::thread::spawn(move || {
-                    if let Err(e) = c.hotkey_switch() {
-                        tracing::warn!("hotkey switch: {e}");
-                    }
-                });
+    type Action = fn(&Arc<Core>) -> core::Reply;
+    let keys: [(Code, &str, Action); 5] = [
+        (Code::KeyS, "⌥⇧S", |c| c.hotkey_switch()),
+        (Code::KeyR, "⌥⇧R", |c| {
+            if c.phase().is_recording() {
+                c.stop_recording()
+            } else {
+                c.tray_start()
             }
-        });
-    match r {
-        Ok(()) => tracing::info!("hotkey ⌥⇧S registered"),
-        Err(e) => {
-            let error = e.to_string();
-            tracing::warn!("hotkey ⌥⇧S: {error}");
-            core.emit("notice", dto::hotkey_unavailable(&error));
+        }),
+        (Code::KeyP, "⌥⇧P", |c| c.toggle_pause()),
+        (Code::KeyC, "⌥⇧C", |c| c.toggle_camera()),
+        (Code::KeyO, "⌥⇧O", |c| {
+            c.show_window("panel", true)
+                .map(|_| serde_json::Value::Null)
+        }),
+    ];
+    let mut failed = Vec::new();
+    for (code, name, action) in keys {
+        let shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), code);
+        let c = core.clone();
+        let r = core
+            .app
+            .global_shortcut()
+            .on_shortcut(shortcut, move |_app, _sc, ev| {
+                if ev.state == ShortcutState::Pressed {
+                    let c = c.clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = action(&c) {
+                            tracing::warn!("hotkey {name}: {e}");
+                        }
+                    });
+                }
+            });
+        match r {
+            Ok(()) => tracing::info!("hotkey {name} registered"),
+            Err(e) => failed.push(format!("{name}: {e}")),
         }
+    }
+    if !failed.is_empty() {
+        let error = failed.join("; ");
+        tracing::warn!("hotkeys: {error}");
+        core.emit("notice", dto::hotkey_unavailable(&error));
     }
 }
 

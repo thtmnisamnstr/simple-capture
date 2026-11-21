@@ -54,6 +54,8 @@ pub enum AfterRecording {
     #[default]
     Editor,
     Saved,
+    /// Export with the settings the export sheet used last, then show the Saved window.
+    QuickExport,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -76,6 +78,13 @@ pub struct RecorderSettings {
     /// Where the recording control bar was last moved to (global points, top-left).
     pub bar_at: Option<sc_geometry::PointF>,
     pub after_recording: AfterRecording,
+    /// Seconds of 3-2-1 before recording starts (0 = none).
+    pub countdown_s: u32,
+    /// After an export made from the Saved window (or right after recording), move the
+    /// recording's raw files to the Trash.
+    pub delete_raw_after_export: bool,
+    /// Frame rate, drops and drift in the recording bar.
+    pub debug_overlay: bool,
 }
 
 pub fn default_camera_key() -> CameraKey {
@@ -99,6 +108,9 @@ impl Default for RecorderSettings {
             preview_at: None,
             bar_at: None,
             after_recording: AfterRecording::Editor,
+            countdown_s: 3,
+            delete_raw_after_export: false,
+            debug_overlay: false,
         }
     }
 }
@@ -108,6 +120,12 @@ impl RecorderSettings {
     pub fn validate(&self) -> Result<(), String> {
         if self.fps != 30 && self.fps != 60 {
             return Err(format!("fps must be 30 or 60, got {}", self.fps));
+        }
+        if self.countdown_s > 10 {
+            return Err(format!(
+                "countdown_s must be 0 to 10, got {}",
+                self.countdown_s
+            ));
         }
         let k = &self.camera_key;
         let finite = [
@@ -230,7 +248,10 @@ mod tests {
             preview_shown: false,
             preview_at: None,
             bar_at: Some(sc_geometry::PointF { x: 10.0, y: 20.0 }),
-            after_recording: AfterRecording::Saved,
+            after_recording: AfterRecording::QuickExport,
+            countdown_s: 5,
+            delete_raw_after_export: true,
+            debug_overlay: true,
         };
         store.save(&s).expect("save");
         assert_eq!(store.load(), s);

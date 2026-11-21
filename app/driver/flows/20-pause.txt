@@ -1,0 +1,10 @@
+# Pause and resume (M7): 2 s, a 1.5 s pause, 2 s more; the paused span is cut from the timeline.
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv pause","settings":{"mic":"@MIC@"}}}
+wait 2500
+cmd app {"action":"pause"}
+wait 1500
+cmd app {"action":"rec_status"}
+cmd app {"action":"resume"}
+wait 2000
+cmd stop_recording
+wait-phase saved 30000

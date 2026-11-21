@@ -151,6 +151,16 @@ impl Core {
                     .map_err(|e| e.to_string())
             }
             "diagnostics_run" => self.diagnostics_run(),
+            "pause" => self.pause_recording(),
+            "resume" => self.resume_recording(),
+            "toggle_pause" => self.toggle_pause(),
+            "restart" => self.restart_recording(),
+            "cancel_countdown" => self.cancel_countdown(),
+            "toggle_camera" => self.toggle_camera(),
+            "rec_status" => Ok(json!({
+                "paused": self.is_paused(),
+                "elapsed_ns": self.elapsed_ns(),
+            })),
             "library" => {
                 let root = self.projects_dir();
                 let items = crate::library::list(&root);

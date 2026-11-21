@@ -67,6 +67,11 @@ pub struct Core {
     phase: Mutex<Phase>,
     session: Mutex<Option<Session>>,
     rec_started: Mutex<Option<Instant>>,
+    paused_total: Mutex<std::time::Duration>,
+    paused_since: Mutex<Option<Instant>>,
+    countdown_cancel: std::sync::atomic::AtomicBool,
+    last_request: Mutex<Option<RecordRequestDto>>,
+    raw_after_export: Mutex<HashMap<String, PathBuf>>,
     window_ids: Mutex<Vec<(String, WindowId)>>,
     picks: Mutex<HashMap<String, PickedSource>>,
     stills: Mutex<StillCache>,
@@ -111,6 +116,11 @@ impl Core {
             phase: Mutex::new(Phase::Idle),
             session: Mutex::new(None),
             rec_started: Mutex::new(None),
+            paused_total: Mutex::new(std::time::Duration::ZERO),
+            paused_since: Mutex::new(None),
+            countdown_cancel: std::sync::atomic::AtomicBool::new(false),
+            last_request: Mutex::new(None),
+            raw_after_export: Mutex::new(HashMap::new()),
             window_ids: Mutex::new(Vec::new()),
             picks: Mutex::new(HashMap::new()),
             stills: Mutex::new(StillCache::default()),
@@ -196,10 +206,87 @@ impl Core {
         std::mem::take(&mut *lock(&self.ui_log))
     }
 
+    /// Recorded time so far, paused time left out (what the bar and tray show).
     pub fn elapsed_ns(&self) -> i64 {
-        lock(&self.rec_started)
-            .map(|t| i64::try_from(t.elapsed().as_nanos()).unwrap_or(i64::MAX))
-            .unwrap_or(0)
+        let Some(t) = *lock(&self.rec_started) else {
+            return 0;
+        };
+        let paused = *lock(&self.paused_total)
+            + lock(&self.paused_since).map_or(std::time::Duration::ZERO, |p| p.elapsed());
+        i64::try_from(t.elapsed().saturating_sub(paused).as_nanos()).unwrap_or(i64::MAX)
+    }
+
+    pub fn is_paused(&self) -> bool {
+        lock(&self.paused_since).is_some()
+    }
+
+    pub fn pause_recording(&self) -> Reply {
+        let guard = lock(&self.session);
+        let s = guard.as_ref().ok_or("not recording")?;
+        s.pause().map_err(|e| e.to_string())?;
+        lock(&self.paused_since).get_or_insert_with(Instant::now);
+        drop(guard);
+        self.emit(
+            "recording-paused",
+            json!({ "paused": true, "elapsed_ns": self.elapsed_ns() }),
+        );
+        self.refresh_tray();
+        Ok(Value::Null)
+    }
+
+    pub fn resume_recording(&self) -> Reply {
+        let guard = lock(&self.session);
+        let s = guard.as_ref().ok_or("not recording")?;
+        s.resume().map_err(|e| e.to_string())?;
+        if let Some(p) = lock(&self.paused_since).take() {
+            *lock(&self.paused_total) += p.elapsed();
+        }
+        drop(guard);
+        self.emit(
+            "recording-paused",
+            json!({ "paused": false, "elapsed_ns": self.elapsed_ns() }),
+        );
+        self.refresh_tray();
+        Ok(Value::Null)
+    }
+
+    pub fn toggle_pause(&self) -> Reply {
+        if self.is_paused() {
+            self.resume_recording()
+        } else {
+            self.pause_recording()
+        }
+    }
+
+    /// Throws the current recording away and starts a new one with the same request.
+    pub fn restart_recording(self: &Arc<Self>) -> Reply {
+        let req = lock(&self.last_request)
+            .clone()
+            .ok_or("nothing to restart")?;
+        self.discard_recording()?;
+        self.start_recording_now(req)
+    }
+
+    pub fn cancel_countdown(&self) -> Reply {
+        self.countdown_cancel
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        Ok(Value::Null)
+    }
+
+    /// Hotkey: hide or show the camera in the recording from now on.
+    pub fn toggle_camera(&self) -> Reply {
+        let mut settings = self.settings.load();
+        settings.camera_key.visible = !settings.camera_key.visible;
+        let key = settings.camera_key.clone();
+        self.settings.save(&settings)?;
+        self.emit(
+            "settings-changed",
+            serde_json::to_value(&settings).unwrap_or(Value::Null),
+        );
+        if let Some(s) = lock(&self.session).as_ref() {
+            s.camera_key(key).map_err(|e| e.to_string())?;
+        }
+        Ok(Value::Null)
     }
 
     /// Main thread: swaps every window to our non-activating panel and records its ID.
@@ -742,6 +829,45 @@ impl Core {
     }
 
     pub fn start_recording(self: &Arc<Self>, req: RecordRequestDto) -> Reply {
+        if self.phase().is_recording() {
+            return Err("already recording".into());
+        }
+        let n = if self.no_key_windows {
+            0
+        } else {
+            req.settings.countdown_s
+        };
+        if n > 0 {
+            self.countdown_cancel
+                .store(false, std::sync::atomic::Ordering::SeqCst);
+            if self.platform.capabilities().exclusion != sc_platform::ExclusionKind::AutoHide {
+                self.hide_window("panel");
+            }
+            self.place_bar();
+            if let Err(e) = self.show_window("bar", false) {
+                tracing::warn!("{e}");
+            }
+            for left in (1..=n).rev() {
+                self.emit("countdown", json!({ "left": left }));
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                if self
+                    .countdown_cancel
+                    .swap(false, std::sync::atomic::Ordering::SeqCst)
+                {
+                    self.emit("countdown", json!({ "left": 0, "cancelled": true }));
+                    self.hide_window("bar");
+                    return Ok(json!({ "cancelled": true }));
+                }
+            }
+            self.emit("countdown", json!({ "left": 0 }));
+        }
+        self.start_recording_now(req)
+    }
+
+    fn start_recording_now(self: &Arc<Self>, req: RecordRequestDto) -> Reply {
+        *lock(&self.last_request) = Some(req.clone());
+        *lock(&self.paused_total) = std::time::Duration::ZERO;
+        *lock(&self.paused_since) = None;
         let spec = req.source.to_spec(|id| self.picked(id))?;
         std::fs::create_dir_all(&self.projects_dir)
             .map_err(|e| format!("create {}: {e}", self.projects_dir.display()))?;
@@ -931,11 +1057,26 @@ impl Core {
         let Some(core) = self.app.try_state::<Arc<Core>>().map(|c| c.inner().clone()) else {
             return;
         };
-        if self.settings.load().after_recording == crate::settings::AfterRecording::Saved {
-            if let Err(e) = self.show_window("saved", false) {
-                tracing::warn!("{e}");
+        match self.settings.load().after_recording {
+            crate::settings::AfterRecording::Saved => {
+                if let Err(e) = self.show_window("saved", false) {
+                    tracing::warn!("{e}");
+                }
+                return;
             }
-            return;
+            crate::settings::AfterRecording::QuickExport => {
+                if let Err(e) = self.show_window("saved", false) {
+                    tracing::warn!("{e}");
+                }
+                std::thread::spawn(move || {
+                    if let Err(e) = core.export_with_last_settings(&project_dir) {
+                        tracing::warn!("export after recording: {e}");
+                        core.emit("notice", json!({ "kind": "export_failed", "error": e }));
+                    }
+                });
+                return;
+            }
+            crate::settings::AfterRecording::Editor => {}
         }
         std::thread::spawn(move || {
             if let Err(e) = core.editor_open(&project_dir) {
@@ -966,7 +1107,7 @@ impl Core {
 
     pub fn refresh_tray(&self) {
         if let Some(t) = self.tray.get() {
-            t.refresh(&self.phase(), self.elapsed_ns());
+            t.refresh(&self.phase(), self.elapsed_ns(), self.is_paused());
         }
     }
 
@@ -1021,6 +1162,42 @@ impl Core {
         }
     }
 
+    /// The export sheet's last format and its remembered settings, without the sheet.
+    pub fn export_with_last_settings(self: &Arc<Self>, project_dir: &Path) -> Reply {
+        let store = crate::exports::load(&self.data_dir);
+        let format = store
+            .last_format
+            .unwrap_or(sc_export::settings::Format::Mp4);
+        let key = serde_json::to_value(format)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        let settings = store
+            .per_format
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| sc_export::settings::ExportSettings::for_format(format))
+            .normalized();
+        let platform = self.platform.clone();
+        let d = project_dir.to_path_buf();
+        let r = self.run_export(&project_dir.to_string_lossy(), move |obs| {
+            ExportJob::start_with(
+                platform,
+                sc_export::plan::ExportRequest {
+                    project_dir: d,
+                    settings,
+                    out_path: None,
+                    canvas: None,
+                },
+                obs,
+            )
+        })?;
+        if let Some(id) = r.as_str() {
+            lock(&self.raw_after_export).insert(id.to_string(), project_dir.to_path_buf());
+        }
+        Ok(r)
+    }
+
     pub fn quick_export(self: &Arc<Self>, project_dir: &str, size: &str) -> Reply {
         let size = dto::export_size(size)?;
         let job_id = sc_core::ids::new_id();
@@ -1043,6 +1220,7 @@ impl Core {
             Ok(job) => {
                 lock(&self.exports).insert(job_id.clone(), job);
                 *lock(&self.last_export) = Some(job_id.clone());
+                lock(&self.raw_after_export).insert(job_id.clone(), PathBuf::from(project_dir));
                 Ok(json!(job_id))
             }
             Err(e) => {
@@ -1073,6 +1251,19 @@ impl Core {
                 });
             }
             let _ = self.advance(Input::ExportEnd);
+            let dir = lock(&self.raw_after_export).remove(id);
+            if let (ExportState::Done { .. }, Some(dir)) = (s, dir)
+                && self.settings.load().delete_raw_after_export
+                && self.editor_dir().as_deref() != Some(dir.as_path())
+            {
+                match self.platform.desktop().trash(&dir) {
+                    Ok(()) => {
+                        tracing::info!(dir = %dir.display(), "raw files moved to the Trash after export");
+                        self.emit("library-changed", json!({}));
+                    }
+                    Err(e) => tracing::warn!("delete raw files after export: {e}"),
+                }
+            }
         }
     }
 
@@ -1375,7 +1566,12 @@ impl SessionObserver for Observer {
     fn on_health(&self, h: &HealthSnapshot) {
         if let Some(c) = self.core.upgrade() {
             *lock(&c.last_health) = Some((Instant::now(), h.rec_ns));
-            c.emit("health", dto::health(h));
+            let mut v = dto::health(h);
+            if let Some(o) = v.as_object_mut() {
+                o.insert("elapsed_ns".into(), json!(c.elapsed_ns()));
+                o.insert("paused".into(), json!(c.is_paused()));
+            }
+            c.emit("health", v);
             c.refresh_tray();
         }
     }
@@ -1676,7 +1872,7 @@ impl Core {
             .outer_size()
             .ok()
             .map(|p| p.to_logical::<f64>(w.scale_factor().unwrap_or(1.0)))
-            .map_or((420.0, 56.0), |l| (l.width, l.height));
+            .map_or((520.0, 56.0), |l| (l.width, l.height));
         let on_screen = |p: &sc_geometry::PointF| {
             displays.iter().any(|d| {
                 let f = d.frame_pt;

@@ -100,6 +100,9 @@ let settings: RecorderSettings = {
     easing: 'linear',
   },
   preview_shown: true,
+  countdown_s: 3,
+  delete_raw_after_export: false,
+  debug_overlay: false,
 };
 
 const permissions: PermissionsDto = {

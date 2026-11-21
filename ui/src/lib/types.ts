@@ -92,7 +92,10 @@ export interface RecorderSettings {
   preview_shown: boolean;
   preview_at?: PointF | null;
   bar_at?: PointF | null;
-  after_recording?: 'editor' | 'saved';
+  after_recording?: 'editor' | 'saved' | 'quick_export';
+  countdown_s?: number;
+  delete_raw_after_export?: boolean;
+  debug_overlay?: boolean;
 }
 
 export type CameraShape = 'circle' | 'square' | 'rect_4_3' | 'rect_16_9' | 'rect_3_4' | 'rect_9_16' | 'rounded';
@@ -138,7 +141,7 @@ export interface TrackHealthDto {
   fps: number;
   drift_ns: number;
 }
-export interface HealthDto { rec_ns: number; tracks: TrackHealthDto[]; free_disk_bytes: number }
+export interface HealthDto { rec_ns: number; tracks: TrackHealthDto[]; free_disk_bytes: number; elapsed_ns?: number; paused?: boolean }
 
 export type NoticeDto =
   | { kind: 'switch_failed'; error: string; restored: boolean }
@@ -149,7 +152,9 @@ export type NoticeDto =
   | { kind: 'frames_dropping'; track: string; pct: number }
   | { kind: 'stopped_for_sleep' }
   | { kind: 'stopped_for_disk' }
-  | { kind: 'hotkey_unavailable'; error: string };
+  | { kind: 'hotkey_unavailable'; error: string }
+  | { kind: 'paused'; paused: boolean }
+  | { kind: 'export_failed'; error: string };
 
 export type ExportSizeDto = 'reference' | '2160' | '1440' | '1080' | '720' | '480';
 export interface ExportProgressDto { id: string; frames_done: number; frames_total: number; fps: number; eta_s: number | null }

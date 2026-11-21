@@ -624,10 +624,44 @@
               <div class="segmented" role="radiogroup" aria-label="When recording stops">
                 <button role="radio" aria-checked={(settings.after_recording ?? 'editor') === 'editor'} onclick={() => (settings!.after_recording = 'editor')}>Open Editor</button>
                 <button role="radio" aria-checked={settings.after_recording === 'saved'} onclick={() => (settings!.after_recording = 'saved')}>Show Summary</button>
+                <button role="radio" aria-checked={settings.after_recording === 'quick_export'} onclick={() => (settings!.after_recording = 'quick_export')} title="Export with the settings you used last">Export</button>
               </div>
             </div>
           </div>
+          <div class="grow">
+            <label class="glabel" for="delete-raw">Move the recording to the Trash after a quick export</label>
+            <div class="gcontrol"><input id="delete-raw" type="checkbox" class="switch" bind:checked={settings.delete_raw_after_export} /></div>
+          </div>
         </div>
+        <p class="caption note">The editor keeps its recording; only exports from the summary or right after recording move it.</p>
+      </section>
+
+      <section aria-labelledby="start-h">
+        <h2 id="start-h">Starting and Shortcuts</h2>
+        <div class="group">
+          <div class="grow">
+            <label class="glabel" for="countdown">Countdown</label>
+            <div class="gcontrol">
+              <select id="countdown" bind:value={settings.countdown_s}>
+                <option value={0}>None</option>
+                <option value={3}>3 seconds</option>
+                <option value={5}>5 seconds</option>
+                <option value={10}>10 seconds</option>
+              </select>
+            </div>
+          </div>
+          <div class="grow">
+            <label class="glabel" for="debug-overlay">Show frame rate and drops while recording</label>
+            <div class="gcontrol"><input id="debug-overlay" type="checkbox" class="switch" bind:checked={settings.debug_overlay} /></div>
+          </div>
+        </div>
+        <dl class="keys caption">
+          <dt>⌥⇧R</dt><dd>Start or stop recording</dd>
+          <dt>⌥⇧P</dt><dd>Pause or resume</dd>
+          <dt>⌥⇧S</dt><dd>Switch source</dd>
+          <dt>⌥⇧C</dt><dd>Show or hide the camera</dd>
+          <dt>⌥⇧O</dt><dd>Open the recorder</dd>
+        </dl>
       </section>
     {/if}
 
@@ -977,5 +1011,18 @@
     border-radius: 50%;
     background: #fff;
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+  }
+  .keys {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 12px;
+    margin: 8px 10px 0;
+  }
+  .keys dt {
+    font-variant-numeric: tabular-nums;
+    color: var(--label-1, inherit);
+  }
+  .keys dd {
+    margin: 0;
   }
 </style>

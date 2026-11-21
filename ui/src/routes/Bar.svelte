@@ -5,6 +5,9 @@
   import type { NoticeDto, RecordingState } from '../lib/types.ts';
   import { formatBytes, formatElapsed } from '../lib/format.ts';
   import { beginPick, showWindow } from '../lib/windows.ts';
+  import { call as appCall } from '../lib/appinfo.ts';
+  import { isObject } from '../lib/guards.ts';
+  import type { HealthDto } from '../lib/types.ts';
   import Icon from '../components/Icon.svelte';
 
   let rec = $state<RecordingState>({ state: 'idle' });
@@ -38,6 +41,11 @@
     dragging = false;
     api.barDrag('end', 0, 0).catch((err) => (error = errorText(err)));
   }
+  let paused = $state(false);
+  let countdown = $state(0);
+  let restarting = $state(false);
+  let debug = $state(false);
+  let lastHealth = $state<HealthDto | null>(null);
   let notice = $state<NoticeDto | null>(null);
   let sourceLost = $state(false);
   let confirming = $state(false);
@@ -53,7 +61,9 @@
           ? 'Saving…'
           : rec.state === 'failed'
             ? 'Recording failed'
-            : 'Recording',
+            : paused
+              ? 'Paused'
+              : 'Recording',
   );
   const live = $derived(rec.state === 'recording' || rec.state === 'switching');
 
@@ -64,7 +74,9 @@
       case 'device_lost': return `${n.device === 'camera' ? 'Camera' : 'Microphone'} “${n.name}” disconnected`;
       case 'disk_low': return `Disk almost full: ${formatBytes(n.bytes_left)} left`;
       case 'audio_gap': return `${n.track === 'mic' ? 'Microphone' : 'System audio'} dropped out for ${(n.dur_ns / 1e9).toFixed(1)} s`;
-      case 'hotkey_unavailable': return `⌥⇧S is unavailable: ${n.error}`;
+      case 'hotkey_unavailable': return `Some shortcuts are unavailable: ${n.error}`;
+      case 'paused': return n.paused ? 'Paused' : 'Recording';
+      case 'export_failed': return `Export failed: ${n.error}`;
       case 'stopped_for_sleep': return 'Stopped because the Mac went to sleep';
       case 'stopped_for_disk': return 'Stopped because the disk is full';
       case 'source_lost': return 'Source closed';
@@ -82,6 +94,9 @@
         }
         if (s.state === 'preparing') {
           elapsed = 0;
+          paused = false;
+          countdown = 0;
+          restarting = false;
           sourceLost = false;
           notice = null;
           confirming = false;
@@ -89,7 +104,20 @@
         if (s.state === 'switching') sourceLost = false;
       }),
       onEvent('health', isHealth, (h) => {
-        if (base.running) base = { ns: h.rec_ns, at: performance.now(), running: true };
+        lastHealth = h;
+        if (base.running && !paused) base = { ns: h.elapsed_ns ?? h.rec_ns, at: performance.now(), running: true };
+      }),
+      onEvent('recording-paused', isObject, (p) => {
+        paused = p.paused === true;
+        const ns = typeof p.elapsed_ns === 'number' ? p.elapsed_ns : elapsed;
+        elapsed = ns;
+        base = { ns, at: performance.now(), running: true };
+      }),
+      onEvent('countdown', isObject, (c) => {
+        countdown = typeof c.left === 'number' ? c.left : 0;
+      }),
+      onEvent('settings-changed', isObject, (st) => {
+        debug = st.debug_overlay === true;
       }),
       onEvent('notice', isNotice, (n) => {
         if (n.kind === 'source_lost') {
@@ -101,8 +129,12 @@
         dismissTimer = setTimeout(() => (notice = null), 8000);
       }),
     ];
+    api
+      .getSettings()
+      .then((st) => (debug = st.debug_overlay === true))
+      .catch(() => {});
     const tick = setInterval(() => {
-      if (base.running) elapsed = base.ns + (performance.now() - base.at) * 1e6;
+      if (base.running && !paused) elapsed = base.ns + (performance.now() - base.at) * 1e6;
     }, 250);
     return () => {
       offs.forEach((off) => off());
@@ -126,7 +158,19 @@
 
   function onkeydown(e: KeyboardEvent) {
     if (e.key === 'Escape' && confirming) confirming = false;
+    if (e.key === 'Escape' && restarting) restarting = false;
+    if (e.key === 'Escape' && countdown > 0) act(() => appCall('cancel_countdown'));
   }
+
+  const debugText = $derived.by(() => {
+    const h = lastHealth;
+    if (!debug || !h) return '';
+    const screen = h.tracks.find((t) => t.track_id.startsWith('screen')) ?? h.tracks[0];
+    if (!screen) return '';
+    const dropped = h.tracks.reduce((n, t) => n + t.dropped, 0);
+    const drift = Math.max(...h.tracks.map((t) => Math.abs(t.drift_ns))) / 1e6;
+    return `${screen.fps.toFixed(1)} fps · ${dropped} dropped · ${drift.toFixed(0)} ms drift`;
+  });
 </script>
 
 <svelte:window {onkeydown} onpointermove={gripMove} onpointerup={gripUp} />
@@ -137,15 +181,26 @@
       >{#each [3, 9, 15] as y (y)}<circle cx="2" cy={y} r="1.1" /><circle cx="6" cy={y} r="1.1" />{/each}</svg
     >
   </span>
-  <span class="rec" class:live aria-hidden="true"></span>
+  <span class="rec" class:live={live && !paused} aria-hidden="true"></span>
   <span class="timer" role="timer" aria-label="Elapsed">{formatElapsed(elapsed)}</span>
 
-  {#if confirming}
+  {#if countdown > 0}
+    <div class="msg count" role="timer" aria-live="assertive">
+      <span class="big tnum">{countdown}</span><span class="state">Recording starts…</span>
+    </div>
+    <button class="hud" onclick={() => act(() => appCall('cancel_countdown'))}>Cancel</button>
+  {:else if confirming}
     <div class="msg" role="alertdialog" aria-labelledby="discard-q">
       <span id="discard-q">Discard this recording?</span>
     </div>
     <button class="hud" onclick={() => (confirming = false)}>Keep</button>
     <button class="hud danger" onclick={() => act(async () => { confirming = false; await api.discardRecording(); })}>Discard</button>
+  {:else if restarting}
+    <div class="msg" role="alertdialog" aria-labelledby="restart-q">
+      <span id="restart-q">Start over? This take is discarded.</span>
+    </div>
+    <button class="hud" onclick={() => (restarting = false)}>Keep</button>
+    <button class="hud danger" onclick={() => act(async () => { restarting = false; await appCall('restart'); })}>Restart</button>
   {:else}
     <div class="msg" aria-live="polite">
       {#if sourceLost}
@@ -156,7 +211,8 @@
       {:else if notice}
         <span class="notice" title={noticeText(notice)}>{noticeText(notice)}</span>
       {:else}
-        <span class="state">{label}</span>
+        <span class="state" class:paused>{label}</span>
+        {#if debugText}<span class="debug tnum">{debugText}</span>{/if}
       {/if}
     </div>
     {#if !sourceLost}
@@ -164,8 +220,20 @@
         <Icon name="switch" size={16} />
       </button>
     {/if}
+    <button
+      class="hud round"
+      onclick={() => act(() => appCall(paused ? 'resume' : 'pause'))}
+      disabled={!live}
+      title={paused ? 'Resume (⌥⇧P)' : 'Pause (⌥⇧P)'}
+      aria-label={paused ? 'Resume recording' : 'Pause recording'}
+    >
+      {#if paused}<Icon name="play" size={14} />{:else}<Icon name="pause" size={14} />{/if}
+    </button>
     <button class="stop" onclick={() => act(() => api.stopRecording())} disabled={!live && !sourceLost} aria-label="Stop recording" title="Stop">
       <span class="square" aria-hidden="true"></span>
+    </button>
+    <button class="hud round" onclick={() => (restarting = true)} disabled={!live} aria-label="Restart recording" title="Restart">
+      <Icon name="undo" size={14} />
     </button>
     <button class="hud round" onclick={() => (confirming = true)} disabled={!live && rec.state !== 'failed'} aria-label="Discard recording" title="Discard">
       <Icon name="close" size={14} />
@@ -244,6 +312,18 @@
   }
   .state {
     color: rgba(255, 255, 255, 0.55);
+  }
+  .state.paused {
+    color: #ffd60a;
+  }
+  .debug {
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+  }
+  .count .big {
+    font-size: 22px;
+    font-weight: 700;
+    min-width: 18px;
   }
   .notice,
   .err {
