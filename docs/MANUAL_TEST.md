@@ -783,6 +783,10 @@ In the editor with any recording, press ⌘E:
 | Y6 | Tray → About Simple Capture | Version and licenses; each license opens as text; "Open notices" opens the Rust notices (release builds) |
 | Y7 | About → Diagnostics… → Run Self-Test | Lines stream in; "7 passed, 0 failed" on a Mac with the screen grant; Show in Finder finds the report |
 | Y8 | Terminal: `simple-capture --self-test` | The same report, printed and saved |
+| Y9 | Library: select a recording, click its name, type a new one, Return | The name changes; in Finder the folder is now "<date> <new name>.sc" |
+| Y10 | Rename a recording that is open in the editor (from the editor's title) | The title changes at once; the folder follows when the editor closes |
+| Y11 | After recording, type a name in the summary's Name field | The Library and the editor show that name; exports use it |
+| Y12 | Library: sort by Longest, Largest, Name; ⌘-click and ⇧-click several; ⌘A | Order changes and is remembered; the footer shows the count and size; Move N to Trash asks once |
 
 ## 11. Results log
 

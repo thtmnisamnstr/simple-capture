@@ -443,7 +443,7 @@ mod tests {
         assert_eq!(t.bytes, 18_000_000);
         assert_eq!(t.audio_kbps, 128);
         let total = f64::from(t.video_kbps + t.audio_kbps) * 1000.0 / 8.0 * 60.0;
-        assert!(total <= 18e6 * 0.95 && total >= 18e6 * 0.9, "{total}");
+        assert!((18e6 * 0.9..=18e6 * 0.95).contains(&total), "{total}");
         let tiny = target_bitrate(1.0, 300_000_000_000, true);
         assert_eq!(tiny.audio_kbps, 48);
         assert_eq!(tiny.video_kbps, 60, "floor");

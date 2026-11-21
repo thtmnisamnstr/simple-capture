@@ -651,6 +651,53 @@ impl Core {
         Ok(json!(still::still_url(&id)))
     }
 
+    /// Gives a recording a new title. Its folder follows the title, except while the editor has
+    /// it open (the editor moves it when it closes) or it is exporting.
+    pub fn rename_recording(&self, dir: &Path, title: &str) -> Result<PathBuf, String> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err("A recording needs a name.".into());
+        }
+        if self.editor_dir().as_deref() == Some(dir) {
+            self.editor_retitle(title)?;
+            self.renamed(dir, dir, title);
+            return Ok(dir.to_path_buf());
+        }
+        let mut p = ProjectV1::load(dir).map_err(|e| e.to_string())?;
+        p.title = title.to_string();
+        p.save(dir).map_err(|e| e.to_string())?;
+        let exporting = matches!(&*lock(&self.phase), Phase::Exporting { project_dir, .. } if project_dir == dir);
+        let to = if exporting {
+            dir.to_path_buf()
+        } else {
+            sc_core::folder::rename_project_dir(dir, title).map_err(|e| e.to_string())?
+        };
+        self.renamed(dir, &to, title);
+        Ok(to)
+    }
+
+    /// The recording in `from` is now titled `title` and lives in `to`.
+    pub fn renamed(&self, from: &Path, to: &Path, title: &str) {
+        if from != to {
+            {
+                let mut last = lock(&self.last_project);
+                if last.as_deref() == Some(from) {
+                    *last = Some(to.to_path_buf());
+                }
+            }
+            if let Phase::Saved { project_dir } = &mut *lock(&self.phase)
+                && project_dir == from
+            {
+                *project_dir = to.to_path_buf();
+            }
+        }
+        self.emit(
+            "project-renamed",
+            json!({ "from": from, "to": to, "title": title }),
+        );
+        self.emit("library-changed", json!({}));
+    }
+
     pub fn still_png(&self, id: &str) -> Option<Arc<Vec<u8>>> {
         lock(&self.stills).get(id)
     }
@@ -1431,6 +1478,11 @@ impl Core {
             if let Err(e) = job.wait() {
                 tracing::info!(id, "export cancelled on exit: {e}");
             }
+        }
+        if self.editor_dir().is_some()
+            && let Err(e) = self.editor_close()
+        {
+            tracing::warn!("editor on exit: {e}");
         }
         if let Some(w) = lock(&self.watcher).take()
             && let Err(e) = w.stop()

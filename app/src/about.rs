@@ -183,6 +183,19 @@ impl Core {
                 self.emit("library-changed", json!({}));
                 Ok(Value::Null)
             }
+            "library_item" => {
+                let dir = self.library_dir(args)?;
+                serde_json::to_value(crate::library::summarize(&dir)).map_err(|e| e.to_string())
+            }
+            "library_rename" => {
+                let dir = self.library_dir(args)?;
+                let title = args
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .ok_or("missing argument \"title\"")?;
+                let to = self.rename_recording(&dir, title)?;
+                Ok(json!({ "dir": to }))
+            }
             "library_export" => {
                 let dir = self.library_dir(args)?;
                 self.editor_open(&dir)?;

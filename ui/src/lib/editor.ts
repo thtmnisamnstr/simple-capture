@@ -124,6 +124,7 @@ export const editor = {
   copyFile: (path: string) => call<void>('copy_file', { path }),
   openFile: (path: string) => call<void>('open_file', { path }),
   close: () => call<void>('close'),
+  rename: (title: string) => call<string>('rename', { title }),
 };
 
 export const SPEEDS: { speed: Speed; label: string }[] = [

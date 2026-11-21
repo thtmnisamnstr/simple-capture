@@ -47,6 +47,7 @@ pub struct Session {
     pub fps: u32,
     pub opened_at: Instant,
     pub first_frame_ms: Option<u64>,
+    pub retitled: bool,
 }
 
 impl Session {
@@ -180,6 +181,13 @@ impl Core {
                 self.editor_export(&opt::<String>(args, "size")?.unwrap_or("reference".into()))
             }
             "close" => self.editor_close(),
+            "rename" => {
+                let dir = self
+                    .editor_dir()
+                    .ok_or("no project is open in the editor")?;
+                let title = arg::<String>(args, "title")?;
+                self.rename_recording(&dir, &title).map(|d| json!(d))
+            }
             "background_image" => self.editor_background_image(&arg::<String>(args, "path")?),
             "fonts" => Ok(editor_fonts()),
             "pick_color" => self.pick_color(),
@@ -228,6 +236,15 @@ impl Core {
             doc.clone(),
         ));
         let id = self.editor.next_id.fetch_add(1, Ordering::SeqCst) + 1;
+        let before = lock(&self.editor.session).take();
+        let retitled = match before {
+            Some(old) if old.dir == dir => old.retitled,
+            Some(old) => {
+                self.settle_folder(old);
+                false
+            }
+            None => false,
+        };
         *lock(&self.editor.session) = Some(Session {
             id,
             dir: dir.to_path_buf(),
@@ -245,6 +262,7 @@ impl Core {
             fps,
             opened_at: Instant::now(),
             first_frame_ms: None,
+            retitled,
         });
         self.editor.poke();
         self.emit("editor-open", json!({ "project_dir": dir }));
@@ -459,9 +477,13 @@ impl Core {
     }
 
     pub fn editor_save_now(&self) {
+        self.editor_save(false);
+    }
+
+    fn editor_save(&self, force: bool) {
         let mut guard = lock(&self.editor.session);
         let Some(s) = guard.as_mut() else { return };
-        if s.history.revision() == s.saved_rev {
+        if !force && s.history.revision() == s.saved_rev {
             return;
         }
         let mut p = (*s.project).clone();
@@ -506,7 +528,10 @@ impl Core {
         if let Some(p) = lock(&self.editor.playback).take() {
             p.pause();
         }
-        *lock(&self.editor.session) = None;
+        let closed = lock(&self.editor.session).take();
+        if let Some(s) = closed {
+            self.settle_folder(s);
+        }
         self.editor.poke();
         self.hide_window("editor");
         #[cfg(target_os = "macos")]
@@ -516,6 +541,31 @@ impl Core {
                 .set_activation_policy(tauri::ActivationPolicy::Accessory);
         }
         Ok(Value::Null)
+    }
+
+    pub fn editor_retitle(&self, title: &str) -> Result<(), String> {
+        self.with_session(|s| {
+            let mut p = (*s.project).clone();
+            p.title = title.to_string();
+            s.project = Arc::new(p);
+            s.retitled = true;
+            Ok(())
+        })?;
+        self.editor_save(true);
+        Ok(())
+    }
+
+    /// A project leaving the editor after a rename: its folder now follows the title.
+    fn settle_folder(&self, s: Session) {
+        if !s.retitled {
+            return;
+        }
+        let title = s.project.title.clone();
+        match sc_core::folder::rename_project_dir(&s.dir, &title) {
+            Ok(to) if to != s.dir => self.renamed(&s.dir, &to, &title),
+            Ok(_) => {}
+            Err(e) => tracing::warn!(dir = %s.dir.display(), "rename folder: {e}"),
+        }
     }
 
     pub fn edit_last(self: &Arc<Self>) -> Reply {

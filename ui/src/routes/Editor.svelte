@@ -62,6 +62,24 @@
   let guides = $state<{ x: number | null; y: number | null }>({ x: null, y: null });
   let editingText = $state<string | null>(null);
   let error = $state<string | null>(null);
+  let titleDraft = $state<string | null>(null);
+
+  function focusSelect(el: HTMLInputElement) {
+    el.focus();
+    el.select();
+  }
+
+  function commitTitle() {
+    const t = titleDraft?.trim();
+    titleDraft = null;
+    if (!st || !t || t === st.title) return;
+    const prev = st.title;
+    st.title = t;
+    editor.rename(t).catch((e) => {
+      if (st) st.title = prev;
+      error = errorText(e);
+    });
+  }
   let toast = $state<string | null>(null);
   let exportJob = $state<string | null>(null);
   let exportProgress = $state<ExportProgressDto | null>(null);
@@ -174,6 +192,9 @@
         }
       }),
       onEvent('editor-open', isObject, () => void load()),
+      onEvent('project-renamed', isObject, (r) => {
+        if (st && (r.from === st.project_dir || r.to === st.project_dir) && typeof r.title === 'string') st.title = r.title;
+      }),
       onEvent('editor-export-sheet', isObject, () => (exportSheet = true)),
       onEvent('export-progress', isExportProgress, (p) => {
         if (p.id === exportJob) exportProgress = p;
@@ -641,7 +662,22 @@
 <div class="editor">
   <header class="toolbar" data-tauri-drag-region>
     <div class="title" data-tauri-drag-region>
-      <span class="name">{st?.title ?? 'Editor'}</span>
+      {#if titleDraft !== null}
+        <input
+          class="name-input"
+          aria-label="Name"
+          maxlength="100"
+          bind:value={titleDraft}
+          use:focusSelect
+          onkeydown={(e) => {
+            if (e.key === 'Enter') commitTitle();
+            if (e.key === 'Escape') titleDraft = null;
+          }}
+          onblur={commitTitle}
+        />
+      {:else}
+        <button class="plain name" title="Rename" disabled={!st} onclick={() => (titleDraft = st?.title ?? '')}>{st?.title ?? 'Editor'}</button>
+      {/if}
       <span class="muted tnum small">{formatTime(duration)}</span>
     </div>
     <div class="transport">
@@ -894,6 +930,17 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
+    max-width: 320px;
+    padding: 1px 4px;
+    font-size: inherit;
+    justify-content: flex-start;
+  }
+  .name-input {
+    font-weight: 600;
+    width: 260px;
+    min-height: 20px;
+    padding: 0 4px;
   }
   .transport {
     display: flex;

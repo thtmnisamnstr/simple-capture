@@ -334,11 +334,32 @@ const handlers: Record<string, Handler> = {
   camera_key_live: () => null,
   show_video_effects: () => null,
   bar_drag: () => null,
-  editor: (a) => mockEditor(String(a.action ?? 'state')),
-  app: (a) => mockApp(String(a.action ?? 'about')),
+  editor: (a) => mockEditor(String(a.action ?? 'state'), a),
+  app: (a) => mockApp(String(a.action ?? 'about'), a),
 };
 
-function mockApp(action: string): unknown {
+const S = 1_000_000_000;
+const LIB_ROOT = '/Users/me/Movies/Simple Capture';
+const libItem = (stamp: string, title: string, mins: number, mb: number, camera: boolean, state = 'finalized') => ({
+  dir: `${LIB_ROOT}/${stamp} ${title}.sc`,
+  title,
+  created_at: `${stamp.slice(0, 10)}T${stamp.slice(11).replace(/\./g, ':')}-08:00`,
+  state,
+  duration_ns: mins * 60 * S,
+  edited_ns: 0,
+  bytes: mb * 1_000_000,
+  has_camera: camera,
+  modified_s: 0,
+});
+const library = [
+  libItem('2026-11-21 10.00.00', 'Recording', 1.25, 182, true),
+  libItem('2026-11-20 16.12.40', 'Q4 roadmap walkthrough', 7.5, 911, true),
+  libItem('2026-11-19 09.03.11', 'Bug repro: export stalls', 0.6, 64, false),
+  libItem('2026-11-12 14.44.02', 'Onboarding demo', 3.2, 402, true, 'recovered'),
+];
+const folderOf = (a: Record<string, unknown>) => library.find((i) => i.dir.endsWith(`/${String(a.name)}`));
+
+function mockApp(action: string, a: Record<string, unknown> = {}): unknown {
   switch (action) {
     case 'about':
       return {
@@ -352,13 +373,28 @@ function mockApp(action: string): unknown {
     case 'license_text':
       return 'MIT License';
     case 'library':
-      return [];
+      return { root: LIB_ROOT, free_bytes: 212_000_000_000, items: library.map((i) => ({ ...i })) };
+    case 'library_item':
+      return folderOf(a) ?? null;
+    case 'library_rename': {
+      const it = folderOf(a);
+      const title = String(a.title ?? '').trim();
+      if (!it) throw new Error('no such recording in the library');
+      if (!title) throw new Error('A recording needs a name.');
+      it.title = title;
+      it.dir = `${LIB_ROOT}/${it.dir.split('/').pop()!.slice(0, 19)} ${title}.sc`;
+      return { dir: it.dir };
+    }
+    case 'library_trash': {
+      const i = library.findIndex((x) => x.dir.endsWith(`/${String(a.name)}`));
+      if (i >= 0) library.splice(i, 1);
+      return null;
+    }
     default:
       return null;
   }
 }
 
-const S = 1_000_000_000;
 const mockDoc = {
   edl: {
     clips: [
@@ -396,7 +432,15 @@ const mockDoc = {
   output: { canvas: { aspect: '16:9', ratio: { num: 16, den: 9 }, fit: 'contain', background: { kind: 'solid', color: [0.07, 0.07, 0.08, 1] } } },
 };
 
-function mockEditor(action: string): unknown {
+let editorTitle = 'Recording';
+
+function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
+  if (action === 'rename') {
+    const t = String(a.title ?? '').trim();
+    if (!t) throw new Error('A recording needs a name.');
+    editorTitle = t;
+    return '/Users/me/Movies/Simple Capture/2026-11-21 10.00.00 Recording.sc';
+  }
   if (action === 'export_options') {
     const ok = { best: true, fast: true };
     return {
@@ -437,7 +481,7 @@ function mockEditor(action: string): unknown {
   if (action === 'state' || action === 'open') {
     return {
       project_dir: '/Users/me/Movies/Simple Capture/2026-11-21 10.00.00 Recording.sc',
-      title: '2026-11-21 10.00.00 Recording',
+      title: editorTitle,
       rec_len_ns: 75 * S,
       fps: 30,
       tracks: [

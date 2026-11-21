@@ -39,6 +39,8 @@ export const appApi = {
   runDiagnostics: () => call<null>('diagnostics_run'),
   library: () => call<Library>('library'),
   trash: (name: string) => call<null>('library_trash', { name }),
+  item: (name: string) => call<LibraryItem | null>('library_item', { name }),
+  rename: (name: string, title: string) => call<{ dir: string }>('library_rename', { name, title }),
   exportFrom: (name: string) => call<null>('library_export', { name }),
 };
 
@@ -72,4 +74,49 @@ export function whenLabel(rfc3339: string, now: Date = new Date()): string {
   if (diff === 0) return `Today ${time}`;
   if (diff === 1) return `Yesterday ${time}`;
   return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} ${time}`;
+}
+
+export type LibrarySort = 'newest' | 'oldest' | 'longest' | 'largest' | 'name';
+
+export const LIBRARY_SORTS: { value: LibrarySort; label: string }[] = [
+  { value: 'newest', label: 'Newest First' },
+  { value: 'oldest', label: 'Oldest First' },
+  { value: 'longest', label: 'Longest First' },
+  { value: 'largest', label: 'Largest First' },
+  { value: 'name', label: 'Name' },
+];
+
+export const itemLength = (i: LibraryItem): number => (i.edited_ns > 0 ? i.edited_ns : (i.duration_ns ?? 0));
+
+export function sortItems(items: LibraryItem[], by: LibrarySort): LibraryItem[] {
+  const newest = (a: LibraryItem, b: LibraryItem) => b.created_at.localeCompare(a.created_at);
+  const cmp: Record<LibrarySort, (a: LibraryItem, b: LibraryItem) => number> = {
+    newest,
+    oldest: (a, b) => -newest(a, b),
+    longest: (a, b) => itemLength(b) - itemLength(a) || newest(a, b),
+    largest: (a, b) => b.bytes - a.bytes || newest(a, b),
+    name: (a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }) || newest(a, b),
+  };
+  return [...items].sort(cmp[by]);
+}
+
+/** Finder-style selection: a plain click picks one, ⌘ toggles one, ⇧ extends from the anchor. */
+export function clickSelect(
+  order: string[],
+  selected: string[],
+  anchor: string | null,
+  target: string,
+  mods: { toggle: boolean; extend: boolean },
+): { selected: string[]; anchor: string } {
+  if (mods.extend && anchor && order.includes(anchor)) {
+    const [a, b] = [order.indexOf(anchor), order.indexOf(target)].sort((x, y) => x - y);
+    const range = order.slice(a, b + 1);
+    const base = mods.toggle ? selected.filter((d) => !range.includes(d)) : [];
+    return { selected: [...base, ...range], anchor };
+  }
+  if (mods.toggle) {
+    const on = selected.includes(target);
+    return { selected: on ? selected.filter((d) => d !== target) : [...selected, target], anchor: target };
+  }
+  return { selected: [target], anchor: target };
 }

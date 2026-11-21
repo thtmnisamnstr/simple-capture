@@ -1,13 +1,14 @@
 <script lang="ts">
   import { api, errorText } from '../lib/api.ts';
   import { onEvent } from '../lib/events.ts';
-  import { isExportProgress, isExportState, isNotice, isRecordingState } from '../lib/guards.ts';
+  import { isExportProgress, isExportState, isNotice, isObject, isRecordingState } from '../lib/guards.ts';
   import type { DisplayInfo, ExportProgressDto, ExportSizeDto, ExportStateDto, RecorderSettings, SourceList } from '../lib/types.ts';
   import { basename, formatElapsed, revealLabel } from '../lib/format.ts';
   import { aspectRatio, ratioOf, referenceCanvasSize, type Size } from '../lib/geometry.ts';
   import { sourceSizePx } from '../lib/sources.ts';
   import Icon from '../components/Icon.svelte';
   import { editor } from '../lib/editor.ts';
+  import { appApi, folderName } from '../lib/appinfo.ts';
 
   let projectDir = $state<string | null>(null);
   let duration = $state(0);
@@ -23,6 +24,31 @@
   let exportState = $state<ExportStateDto | null>(null);
   let error = $state<string | null>(null);
   let lastElapsed = 0;
+  let title = $state('');
+  let titleSaved = '';
+
+  function loadTitle(dir: string) {
+    appApi
+      .item(folderName(dir))
+      .then((i) => {
+        if (i && projectDir === dir) title = titleSaved = i.title;
+      })
+      .catch(() => undefined);
+  }
+
+  function commitTitle() {
+    const dir = projectDir;
+    const t = title.trim();
+    if (!dir || !t || t === titleSaved) {
+      title = titleSaved;
+      return;
+    }
+    run(async () => {
+      const r = await appApi.rename(folderName(dir), t);
+      titleSaved = title = t;
+      projectDir = r.dir;
+    });
+  }
 
   const SIZES: { value: ExportSizeDto; label: string }[] = [
     { value: 'reference', label: 'Full size (long side up to 3840)' },
@@ -69,9 +95,17 @@
           progress = null;
           exportState = null;
           error = null;
+          title = titleSaved = '';
+          loadTitle(s.project_dir);
           measure();
         }
         if (s.state === 'failed') failed = s.error;
+      }),
+      onEvent('project-renamed', isObject, (r) => {
+        if (projectDir && r.from === projectDir && typeof r.to === 'string' && typeof r.title === 'string') {
+          projectDir = r.to;
+          title = titleSaved = r.title;
+        }
       }),
       onEvent('notice', isNotice, (n) => {
         if (n.kind === 'stopped_for_sleep') stoppedFor = 'sleep';
@@ -146,9 +180,24 @@
         <div class="grow"><span class="glabel muted">Recorded</span><span class="gcontrol value">{contents}</span></div>
       {/if}
       <div class="grow">
-        <span class="glabel muted">Project</span>
+        <label class="glabel muted" for="rec-name">Name</label>
         <span class="gcontrol value">
-          <span class="path" title={projectDir}>{basename(projectDir)}</span>
+          <input
+            id="rec-name"
+            class="name-field"
+            maxlength="100"
+            placeholder="Recording"
+            title={basename(projectDir)}
+            bind:value={title}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') {
+                title = titleSaved;
+                e.currentTarget.blur();
+              }
+            }}
+            onblur={commitTitle}
+          />
           <button class="plain icon-btn" title={revealLabel()} aria-label={revealLabel()} onclick={() => run(() => api.reveal(projectDir!))}
             ><Icon name="folder" size={14} /></button
           >
@@ -197,6 +246,9 @@
 </div>
 
 <style>
+  .name-field {
+    width: 190px;
+  }
   .saved {
     padding: 16px 18px 14px;
     display: flex;
