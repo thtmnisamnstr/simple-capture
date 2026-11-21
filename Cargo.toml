@@ -93,6 +93,7 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = [
     "NSVisualEffectView",
     "NSAppearance",
     "NSColorSampler",
+    "NSPasteboard",
     "NSColorSpace",
     "objc2-quartz-core",
 ] }

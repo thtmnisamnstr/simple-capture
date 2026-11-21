@@ -14,7 +14,10 @@ use sc_platform::{Error, Platform, Result};
 use sc_render::{Backend, OutputFormat};
 
 use crate::audio::mix_to_wav_cancelable;
-use crate::recipe::{FrameRenderer, QuickPlan, quick_plan, x264_quick};
+use crate::encode;
+use crate::plan::{ExportRequest, Plan};
+use crate::recipe::{FrameRenderer, quick_canvas};
+use crate::settings::{ExportSettings, Format, GifMode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExportSize {
@@ -82,10 +85,42 @@ impl std::fmt::Debug for ExportJob {
 }
 
 impl ExportJob {
-    /// Loads and plans synchronously (errors come back here), then renders on a worker thread.
+    /// The quick export (MP4, H.264, Balanced) at `req.size`.
     pub fn start(
         platform: Arc<dyn Platform>,
         req: QuickExportRequest,
+        obs: Arc<dyn ExportObserver>,
+    ) -> Result<ExportJob> {
+        let project = ProjectV1::load(&req.project_dir).map_err(|e| {
+            Error::Other(format!(
+                "sc_export: load {}: {e}",
+                req.project_dir.display()
+            ))
+        })?;
+        let mut settings = ExportSettings::for_format(Format::Mp4);
+        if let Some(f) = req.fps {
+            settings.fps = f;
+        }
+        let out_path = match req.out_path {
+            Some(p) => p,
+            None => crate::recipe::default_out_path(&req.project_dir)?,
+        };
+        ExportJob::start_with(
+            platform,
+            ExportRequest {
+                canvas: Some(quick_canvas(&project, req.size)),
+                project_dir: req.project_dir,
+                settings,
+                out_path: Some(out_path),
+            },
+            obs,
+        )
+    }
+
+    /// Loads and plans synchronously (errors come back here), then renders on a worker thread.
+    pub fn start_with(
+        platform: Arc<dyn Platform>,
+        req: ExportRequest,
         obs: Arc<dyn ExportObserver>,
     ) -> Result<ExportJob> {
         obs.on_state(&ExportState::Preparing);
@@ -95,7 +130,11 @@ impl ExportJob {
                 req.project_dir.display()
             ))
         })?;
-        let plan = quick_plan(&project, &req.project_dir, &req)?;
+        let plan = crate::plan::plan(&project, &req, platform.local_now())?;
+        if let Some(parent) = plan.out_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| Error::Other(format!("sc_export: {}: {e}", parent.display())))?;
+        }
         let part = PartFile::create(&plan.out_path)?;
         let control = Arc::new(Control::default());
         let c = control.clone();
@@ -104,11 +143,13 @@ impl ExportJob {
             .spawn(move || {
                 let w = Worker {
                     platform,
-                    req,
+                    dir: req.project_dir,
                     project,
                     plan,
                     control: c,
                     obs: obs.clone(),
+                    t0: Instant::now(),
+                    last: Mutex::new(None),
                 };
                 let r = w.run(part);
                 match &r {
@@ -147,11 +188,13 @@ impl ExportJob {
 
 struct Worker {
     platform: Arc<dyn Platform>,
-    req: QuickExportRequest,
+    dir: PathBuf,
     project: ProjectV1,
-    plan: QuickPlan,
+    plan: Plan,
     control: Arc<Control>,
     obs: Arc<dyn ExportObserver>,
+    t0: Instant,
+    last: Mutex<Option<Instant>>,
 }
 
 impl Worker {
@@ -164,27 +207,25 @@ impl Worker {
 
     fn run(&self, part: PartFile) -> Result<PathBuf> {
         let plan = &self.plan;
-        let dir = &self.req.project_dir;
-        let wav_final = {
-            let mut s = plan.out_path.as_os_str().to_owned();
-            s.push(".wav");
-            PathBuf::from(s)
-        };
+        let st = &plan.settings;
         let mut wav_part = None;
-        if !plan.audio_tracks.is_empty() {
+        if plan.audio {
+            let wav_final = {
+                let mut s = plan.out_path.as_os_str().to_owned();
+                s.push(".wav");
+                PathBuf::from(s)
+            };
             let wp = PartFile::create(&wav_final)?;
             let wrote = mix_to_wav_cancelable(
                 &self.project,
-                dir,
+                &self.dir,
                 self.platform.decoder(),
                 plan.fps,
                 plan.frames,
                 wp.path(),
                 &self.control.cancel,
             );
-            if self.control.canceled() {
-                return Err(Error::Other(CANCELED.into()));
-            }
+            self.check_cancel()?;
             if wrote? {
                 wav_part = Some(wp);
             }
@@ -192,17 +233,72 @@ impl Worker {
         self.check_cancel()?;
         let mut renderer = FrameRenderer::new(
             &self.project,
-            dir,
+            &self.dir,
             self.platform.decoder(),
             plan.canvas,
             Backend::Auto,
             OutputFormat::I420Bt709Limited,
         )?;
-        let ffmpeg = sc_helpers::locate(HelperKind::Ffmpeg)?;
+        let passes: u64 = if st.format == Format::Gif && st.gif.mode == GifMode::Palette {
+            2
+        } else {
+            1
+        };
+        if st.format == Format::Gif {
+            if st.gif.mode == GifMode::Gifski {
+                let gifski = sc_helpers::locate(HelperKind::Gifski)?;
+                let args = encode::gifski_args(st, plan.fps, part.path());
+                self.encode(gifski, args, &mut renderer, 0, passes)?;
+            } else {
+                let ffmpeg = sc_helpers::locate(HelperKind::Ffmpeg)?;
+                let palette = PartFile::create(&{
+                    let mut s = plan.out_path.as_os_str().to_owned();
+                    s.push(".palette");
+                    PathBuf::from(s)
+                })?;
+                let gen_args = encode::palette_gen_args(st, palette.path());
+                self.encode(ffmpeg.clone(), gen_args, &mut renderer, 0, passes)?;
+                renderer = FrameRenderer::new(
+                    &self.project,
+                    &self.dir,
+                    self.platform.decoder(),
+                    plan.canvas,
+                    Backend::Auto,
+                    OutputFormat::I420Bt709Limited,
+                )?;
+                let use_args = encode::palette_use_args(st, palette.path(), part.path());
+                self.encode(ffmpeg, use_args, &mut renderer, 1, passes)?;
+                drop(palette);
+            }
+        } else {
+            let ffmpeg = sc_helpers::locate(HelperKind::Ffmpeg)?;
+            let args = encode::video_args(st, wav_part.as_ref().map(|w| w.path()), part.path())
+                .ok_or_else(|| {
+                    Error::Other(format!(
+                        "sc_export: no encoder for {:?} {:?} here",
+                        st.video, st.encoder
+                    ))
+                })?;
+            self.encode(ffmpeg, args, &mut renderer, 0, passes)?;
+        }
+        self.check_cancel()?;
+        drop(wav_part);
+        Ok(part.commit()?)
+    }
+
+    fn encode(
+        &self,
+        program: PathBuf,
+        args: Vec<String>,
+        renderer: &mut FrameRenderer,
+        pass: u64,
+        passes: u64,
+    ) -> Result<()> {
+        let plan = &self.plan;
         let frame_bytes = y4m::FRAME.len() + y4m::i420_frame_bytes(plan.canvas);
         let helper = HelperProcess::spawn(SpawnSpec {
-            program: ffmpeg,
-            args: x264_quick(plan.canvas, plan.fps, wav_part.is_some(), part.path()),
+            program,
+            args,
             frame_bytes,
             queue_frames: sc_helpers::DEFAULT_QUEUE_FRAMES,
         })?;
@@ -211,23 +307,22 @@ impl Worker {
             .interrupter
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = Some(helper.interrupter());
-        match self.feed(&helper, &mut renderer) {
-            Ok(()) => {}
-            Err(e) => {
-                let r = helper.cancel();
-                tracing::info!(?r, "export helper stopped");
-                return Err(if self.control.canceled() {
-                    Error::Other(CANCELED.into())
-                } else {
-                    e
-                });
-            }
+        if let Err(e) = self.feed(&helper, renderer, pass, passes) {
+            let r = helper.cancel();
+            tracing::info!(?r, "export helper stopped");
+            return Err(if self.control.canceled() {
+                Error::Other(CANCELED.into())
+            } else {
+                e
+            });
         }
-        self.obs.on_state(&ExportState::Finalizing);
+        if pass + 1 == passes {
+            self.obs.on_state(&ExportState::Finalizing);
+        }
         let report = helper.finish()?;
         if !report.success() {
             return Err(Error::Other(format!(
-                "sc_export: ffmpeg exited with {:?}: {}",
+                "sc_export: helper exited with {:?}: {}",
                 report.code,
                 report.stderr_tail.join(" | ")
             )));
@@ -238,12 +333,16 @@ impl Worker {
                 report.frames_written, plan.frames
             )));
         }
-        self.check_cancel()?;
-        drop(wav_part);
-        Ok(part.commit()?)
+        Ok(())
     }
 
-    fn feed(&self, helper: &HelperProcess, renderer: &mut FrameRenderer) -> Result<()> {
+    fn feed(
+        &self,
+        helper: &HelperProcess,
+        renderer: &mut FrameRenderer,
+        pass: u64,
+        passes: u64,
+    ) -> Result<()> {
         let plan = &self.plan;
         helper.write_bytes(
             y4m::header(&Y4mHeader {
@@ -254,23 +353,23 @@ impl Worker {
             .as_bytes(),
         )?;
         self.obs.on_state(&ExportState::Rendering);
-        let t0 = Instant::now();
-        let mut last = None::<Instant>;
-        let mut done = 0u64;
+        let total = plan.frames * passes;
+        let mut done = plan.frames * pass;
         for t in cfr_frame_times(plan.duration_ns, plan.fps) {
             self.check_cancel()?;
             let (frame, _) = renderer.render(t)?;
             helper.write_frame_parts(&[y4m::FRAME, &frame.data])?;
             done += 1;
-            if done == plan.frames || last.is_none_or(|l| l.elapsed() >= PROGRESS_EVERY) {
-                last = Some(Instant::now());
-                let secs = t0.elapsed().as_secs_f64().max(1e-9);
+            let mut last = self.last.lock().unwrap_or_else(PoisonError::into_inner);
+            if done == total || last.is_none_or(|l| l.elapsed() >= PROGRESS_EVERY) {
+                *last = Some(Instant::now());
+                let secs = self.t0.elapsed().as_secs_f64().max(1e-9);
                 let fps = done as f64 / secs;
                 self.obs.on_progress(&ExportProgress {
                     frames_done: done,
-                    frames_total: plan.frames,
+                    frames_total: total,
                     fps,
-                    eta_s: (fps > 0.0).then(|| (plan.frames - done) as f64 / fps),
+                    eta_s: (fps > 0.0).then(|| (total - done) as f64 / fps),
                 });
             }
         }

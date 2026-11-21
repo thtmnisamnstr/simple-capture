@@ -977,6 +977,39 @@ impl Core {
         }
     }
 
+    pub fn probe_snapshot(&self) -> Option<ProbeV1> {
+        lock(&self.probe).clone()
+    }
+
+    /// Starts an export of `project_dir` through `start`; returns the job id.
+    pub fn run_export(
+        self: &Arc<Self>,
+        project_dir: &str,
+        start: impl FnOnce(Arc<dyn ExportObserver>) -> sc_export::Result<ExportJob>,
+    ) -> Reply {
+        let job_id = sc_core::ids::new_id();
+        let before = self.phase();
+        self.advance(Input::ExportStart {
+            project_dir: PathBuf::from(project_dir),
+            job: job_id.clone(),
+        })?;
+        let obs: Arc<dyn ExportObserver> = Arc::new(ExportObs {
+            core: Arc::downgrade(self),
+            id: job_id.clone(),
+        });
+        match start(obs) {
+            Ok(job) => {
+                lock(&self.exports).insert(job_id.clone(), job);
+                *lock(&self.last_export) = Some(job_id.clone());
+                Ok(json!(job_id))
+            }
+            Err(e) => {
+                *lock(&self.phase) = before;
+                Err(format!("export: {e}"))
+            }
+        }
+    }
+
     pub fn quick_export(self: &Arc<Self>, project_dir: &str, size: &str) -> Reply {
         let size = dto::export_size(size)?;
         let job_id = sc_core::ids::new_id();
@@ -1240,6 +1273,10 @@ fn show_without_key(w: &tauri::WebviewWindow) -> Result<(), String> {
 #[cfg(not(target_os = "macos"))]
 fn show_without_key(w: &tauri::WebviewWindow) -> Result<(), String> {
     w.show().map_err(|e| e.to_string())
+}
+
+pub fn open_path(path: &str) -> Result<(), String> {
+    open_url(path)
 }
 
 fn open_url(url: &str) -> Result<(), String> {

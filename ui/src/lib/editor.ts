@@ -115,6 +115,14 @@ export const editor = {
   backgroundImage: (path: string) => call<Background>('background_image', { path }),
   fonts: () => call<{ bundled: import('./text.ts').FontInfo[]; system: string[] }>('fonts'),
   pickColor: () => call<[number, number, number, number] | null>('pick_color'),
+  exportOptions: () => call<unknown>('export_options'),
+  exportEstimate: (settings: unknown) => call<unknown>('export_estimate', { settings }),
+  exportStart: (settings: unknown) => call<string>('export_start', { settings }),
+  exportPresetSave: (name: string, settings: unknown) => call<unknown>('export_preset_save', { name, settings }),
+  exportPresetDelete: (name: string) => call<unknown>('export_preset_delete', { name }),
+  chooseFolder: () => call<string | null>('choose_folder'),
+  copyFile: (path: string) => call<void>('copy_file', { path }),
+  openFile: (path: string) => call<void>('open_file', { path }),
   close: () => call<void>('close'),
 };
 

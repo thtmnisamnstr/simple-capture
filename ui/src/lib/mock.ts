@@ -373,6 +373,32 @@ const mockDoc = {
 };
 
 function mockEditor(action: string): unknown {
+  if (action === 'export_options') {
+    const ok = { best: true, fast: true };
+    return {
+      store: { last_format: 'mp4', per_format: {}, presets: [{ name: 'Web 720p', settings: { format: 'mp4' } }] },
+      available: { video: { h264: ok, hevc: ok, av1: { best: true, fast: false }, vp9: { best: true, fast: false }, vp8: { best: true, fast: false }, prores: ok }, gifski: true },
+      recording_fps: 30,
+      reference: { w: 3024, h: 1964 },
+      ratio: [16, 9],
+      default_dir: '/Users/me/Movies/Simple Capture',
+    };
+  }
+  if (action === 'export_estimate') {
+    return {
+      canvas: { w: 3492, h: 1964 },
+      fps: 30,
+      frames: 1710,
+      duration_ns: 57 * S,
+      file: '/Users/me/Movies/Simple Capture/2026-11-21 10.00.00 Recording.mp4',
+      bytes_low: 48_000_000,
+      bytes_high: 172_000_000,
+      seconds: 26,
+      audio: true,
+      less_compatible: null,
+      too_large_for_fast: false,
+    };
+  }
   if (action === 'fonts') {
     const face = (file: string, lo: number, hi: number) => ({ file, italic: false, weights: [lo, hi] });
     return {

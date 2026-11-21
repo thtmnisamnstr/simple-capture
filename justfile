@@ -16,6 +16,7 @@ helpers:
     mkdir -p app/binaries
     cp third_party/out/macos-arm64/ffmpeg app/binaries/ffmpeg-aarch64-apple-darwin
     cp third_party/out/macos-arm64/ffprobe app/binaries/ffprobe-aarch64-apple-darwin
+    cp third_party/out/macos-arm64/gifski app/binaries/gifski-aarch64-apple-darwin
 
 build:
     pnpm --dir ui build

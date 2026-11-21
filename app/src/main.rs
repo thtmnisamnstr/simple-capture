@@ -8,6 +8,7 @@ mod dto;
 mod editor;
 mod editor_media;
 mod editor_render;
+mod exports;
 mod library;
 mod live;
 #[cfg(target_os = "macos")]

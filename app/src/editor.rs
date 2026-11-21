@@ -183,6 +183,11 @@ impl Core {
             "background_image" => self.editor_background_image(&arg::<String>(args, "path")?),
             "fonts" => Ok(editor_fonts()),
             "pick_color" => self.pick_color(),
+            a if a.starts_with("export_")
+                || matches!(a, "choose_folder" | "copy_file" | "open_file") =>
+            {
+                self.export_action(a, args)
+            }
             other => Err(format!("unknown editor action {other:?}")),
         }
     }

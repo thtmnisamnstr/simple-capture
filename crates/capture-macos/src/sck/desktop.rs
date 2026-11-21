@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
+use objc2::runtime::ProtocolObject;
 use objc2_app_kit::{
-    NSColor, NSColorSampler, NSColorSpace, NSModalResponseOK, NSOpenPanel, NSWorkspace,
+    NSColor, NSColorSampler, NSColorSpace, NSModalResponseOK, NSOpenPanel, NSPasteboard,
+    NSPasteboardWriting, NSWorkspace,
 };
 use objc2_foundation::{NSArray, NSString, NSURL};
 use sc_platform::{Desktop, Error, Result};
@@ -61,6 +63,46 @@ impl Desktop for MacDesktop {
             });
             panel.beginWithCompletionHandler(&blk);
         });
+    }
+
+    fn choose_folder(&self, done: Box<dyn FnOnce(Option<PathBuf>) + Send>) {
+        main_async(move |mtm| {
+            let panel = NSOpenPanel::openPanel(mtm);
+            panel.setCanChooseFiles(false);
+            panel.setCanChooseDirectories(true);
+            panel.setCanCreateDirectories(true);
+            panel.setAllowsMultipleSelection(false);
+            let cell = std::sync::Mutex::new(Some(done));
+            let p2 = panel.clone();
+            let blk = block2::RcBlock::new(move |resp: isize| {
+                let path = (resp == NSModalResponseOK)
+                    .then(|| {
+                        p2.URL()
+                            .and_then(|u| u.path())
+                            .map(|s| PathBuf::from(s.to_string()))
+                    })
+                    .flatten();
+                if let Some(d) = cell.lock().ok().and_then(|mut c| c.take()) {
+                    d(path);
+                }
+            });
+            panel.beginWithCompletionHandler(&blk);
+        });
+    }
+
+    fn copy_file(&self, path: &Path) -> Result<()> {
+        if !path.exists() {
+            return Err(Error::NotFound(path.display().to_string()));
+        }
+        let p = path.to_string_lossy().into_owned();
+        main_async(move |_| {
+            let url = NSURL::fileURLWithPath(&NSString::from_str(&p));
+            let pb = NSPasteboard::generalPasteboard();
+            pb.clearContents();
+            let item: &ProtocolObject<dyn NSPasteboardWriting> = ProtocolObject::from_ref(&*url);
+            pb.writeObjects(&NSArray::from_slice(&[item]));
+        });
+        Ok(())
     }
 
     fn pick_color(&self, done: Box<dyn FnOnce(Option<[f64; 4]>) + Send>) {

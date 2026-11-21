@@ -23,6 +23,7 @@
   import Icon from '../components/Icon.svelte';
   import Timeline, { type Thumbs } from '../components/editor/Timeline.svelte';
   import Inspector from '../components/editor/Inspector.svelte';
+  import ExportSheet from '../components/editor/ExportSheet.svelte';
   import {
     fontFaceCss,
     newTextItem,
@@ -64,7 +65,7 @@
   let exportJob = $state<string | null>(null);
   let exportProgress = $state<ExportProgressDto | null>(null);
   let exportState = $state<ExportStateDto | null>(null);
-  let exportMenu = $state(false);
+  let exportSheet = $state(initial.get('export') === '1');
   let previewEl: HTMLDivElement | undefined = $state();
   let liveCanvas: HTMLCanvasElement | undefined = $state();
   let timelineEl: HTMLDivElement | undefined = $state();
@@ -297,18 +298,6 @@
     if (selected.length) void edit({ op: 'duplicate', ids: selected });
   }
 
-  async function startExport(size: string) {
-    exportMenu = false;
-    exportProgress = null;
-    exportState = null;
-    toast = null;
-    const id = await run(editor.exportVideo(size));
-    if (id) {
-      exportJob = id;
-      exportState = { id, state: 'preparing' };
-    }
-  }
-
   function textChange(item: TextItemFull, coalesce?: string) {
     void edit({ op: 'upsert_text', item: item as never }, coalesce);
     lastStyle = item.style;
@@ -468,6 +457,7 @@
     if (mod && k === 'v') return handled(), void paste();
     if (mod && k === 'd') return handled(), duplicate();
     if (mod && k === 'a') return handled(), (selected = clips.map((c) => c.id));
+    if (mod && k === 'e') return handled(), (exportSheet = true);
     if (mod && (k === '=' || k === '+')) return handled(), (pxPerSec = Math.min(pxPerSec * 1.4, 600));
     if (mod && k === '-') return handled(), (pxPerSec = Math.max(pxPerSec / 1.4, 2));
     if (mod) return;
@@ -539,7 +529,6 @@
       case 'Escape':
         selected = [];
         range = null;
-        exportMenu = false;
         selectedText = null;
         editingText = null;
         break;
@@ -633,6 +622,18 @@
   }}
 />
 
+{#if exportSheet}
+  <ExportSheet
+    onclose={() => (exportSheet = false)}
+    onstarted={(job) => {
+      exportProgress = null;
+      toast = null;
+      exportJob = job;
+      exportState = { id: job, state: 'preparing' };
+    }}
+  />
+{/if}
+
 <div class="editor">
   <header class="toolbar" data-tauri-drag-region>
     <div class="title" data-tauri-drag-region>
@@ -656,18 +657,9 @@
           <button class="plain small" onclick={() => exportJob && api.cancelExport(exportJob)}>Cancel</button>
         </div>
       {:else}
-        <div class="menu-anchor">
-          <button class="primary" onclick={() => (exportMenu = !exportMenu)} disabled={!doc}>
-            <Icon name="export" size={14} /> Export
-          </button>
-          {#if exportMenu}
-            <div class="menu" role="menu">
-              {#each [['reference', 'Full Size (MP4)'], ['1080', '1080p (MP4)'], ['720', '720p (MP4)']] as [v, label] (v)}
-                <button role="menuitem" class="plain" onclick={() => startExport(v)}>{label}</button>
-              {/each}
-            </div>
-          {/if}
-        </div>
+        <button class="primary" onclick={() => (exportSheet = true)} disabled={!doc} title="Export (⌘E)">
+          <Icon name="export" size={14} /> Export…
+        </button>
       {/if}
     </div>
   </header>
@@ -855,8 +847,10 @@
         {#if error}<span class="err"><Icon name="warning" size={13} /> {error}</span>{/if}
         {#if toast && !error}
           {#if toast.startsWith('/') || /^[A-Z]:\\/.test(toast)}
-            <span>Exported.</span>
+            <span>Exported {toast.split('/').pop()}.</span>
             <button class="link" onclick={() => api.reveal(toast!)}>Show in Finder</button>
+            <button class="link" onclick={() => editor.copyFile(toast!)}>Copy</button>
+            <button class="link" onclick={() => editor.openFile(toast!)}>Open</button>
           {:else}
             <span>{toast}</span>
           {/if}
@@ -922,30 +916,6 @@
     justify-content: flex-end;
     align-items: center;
     gap: 6px;
-  }
-  .menu-anchor {
-    position: relative;
-  }
-  .menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 4px);
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    min-width: 170px;
-    padding: 5px;
-    border-radius: 8px;
-    background: var(--window);
-    box-shadow: var(--shadow-pop);
-  }
-  .menu button {
-    justify-content: flex-start;
-    padding: 4px 8px;
-  }
-  .menu button:hover {
-    background: var(--accent);
-    color: var(--on-accent);
   }
   .progress {
     display: flex;

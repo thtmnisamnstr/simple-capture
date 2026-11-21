@@ -206,6 +206,14 @@ pub trait Desktop: Send + Sync {
     fn pick_color(&self, done: Box<dyn FnOnce(Option<[f64; 4]>) + Send>) {
         done(None);
     }
+    fn choose_folder(&self, done: Box<dyn FnOnce(Option<PathBuf>) + Send>) {
+        done(None);
+    }
+    /// Puts the file on the clipboard, as a file (paste into Finder, Mail or a chat app).
+    fn copy_file(&self, path: &Path) -> Result<()> {
+        let _ = path;
+        Err(crate::Error::Unsupported("copy a file to the clipboard"))
+    }
 }
 
 /// M3; kept for ADR-007.
