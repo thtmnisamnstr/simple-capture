@@ -90,6 +90,7 @@ export const COMMANDS = [
   'show_video_effects',
   'bar_drag',
   'editor',
+  'app',
 ] as const;
 
 export function errorText(err: unknown): string {

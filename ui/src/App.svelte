@@ -9,6 +9,9 @@
   import Saved from './routes/Saved.svelte';
   import Stage from './routes/Stage.svelte';
   import Editor from './routes/Editor.svelte';
+  import Library from './routes/Library.svelte';
+  import Diagnostics from './routes/Diagnostics.svelte';
+  import About from './routes/About.svelte';
 
   let route: Route = $state(routeFromHash(window.location.hash));
 
@@ -36,6 +39,12 @@
     <Stage />
   {:else if route === 'editor'}
     <Editor />
+  {:else if route === 'library'}
+    <Library />
+  {:else if route === 'diagnostics'}
+    <Diagnostics />
+  {:else if route === 'about'}
+    <About />
   {:else}
     <Saved />
   {/if}

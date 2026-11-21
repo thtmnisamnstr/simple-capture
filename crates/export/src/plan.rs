@@ -358,7 +358,11 @@ mod tests {
         );
         assert_eq!(up, SizePx { w: 3840, h: 2160 });
         let gif = output_size(&p, &st(Format::Gif, SizeChoice::Class(240)));
-        assert_eq!(gif, SizePx { w: 426, h: 240 }, "GIF is even too (I420 frames)");
+        assert_eq!(
+            gif,
+            SizePx { w: 426, h: 240 },
+            "GIF is even too (I420 frames)"
+        );
         let tall = project(1080, 1920, Aspect::Original);
         assert_eq!(
             output_size(&tall, &st(Format::Gif, SizeChoice::Long(960))),

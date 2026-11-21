@@ -121,6 +121,48 @@
         "hiddenTitle": true,
         "titleBarStyle": "Overlay",
         "backgroundColor": "#000000"
+      },
+      {
+        "label": "library",
+        "url": "index.html#/library",
+        "title": "Simple Capture Library",
+        "width": 900,
+        "height": 620,
+        "minWidth": 620,
+        "minHeight": 420,
+        "resizable": true,
+        "visible": false,
+        "focus": false,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay"
+      },
+      {
+        "label": "diagnostics",
+        "url": "index.html#/diagnostics",
+        "title": "Simple Capture Diagnostics",
+        "width": 760,
+        "height": 640,
+        "minWidth": 560,
+        "minHeight": 420,
+        "resizable": true,
+        "visible": false,
+        "focus": false,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay"
+      },
+      {
+        "label": "about",
+        "url": "index.html#/about",
+        "title": "About Simple Capture",
+        "width": 560,
+        "height": 620,
+        "minWidth": 480,
+        "minHeight": 480,
+        "resizable": true,
+        "visible": false,
+        "focus": false,
+        "hiddenTitle": true,
+        "titleBarStyle": "Overlay"
       }
     ],
     "security": {

@@ -27,7 +27,7 @@ use crate::settings::{CanvasDto, RecorderSettings, SettingsStore};
 use crate::state::{Input, Phase};
 use crate::still::{self, StillCache};
 
-pub const WINDOWS: [(&str, OverlayRole); 9] = [
+pub const WINDOWS: [(&str, OverlayRole); 12] = [
     ("panel", OverlayRole::Panel),
     ("onboarding", OverlayRole::Onboarding),
     ("bar", OverlayRole::FloatingBar),
@@ -37,6 +37,9 @@ pub const WINDOWS: [(&str, OverlayRole); 9] = [
     ("saved", OverlayRole::Saved),
     ("stage", OverlayRole::Stage),
     ("editor", OverlayRole::Editor),
+    ("library", OverlayRole::Editor),
+    ("diagnostics", OverlayRole::Editor),
+    ("about", OverlayRole::Editor),
 ];
 
 pub type Reply = Result<Value, String>;
@@ -57,6 +60,7 @@ pub struct Core {
     pub editor: crate::editor::EditorHost,
     bar_drag: Mutex<Option<BarDrag>>,
     pub data_dir: PathBuf,
+    pub diagnostics_busy: std::sync::atomic::AtomicBool,
     projects_dir: PathBuf,
     settings: SettingsStore,
     settings_write: Mutex<()>,
@@ -102,6 +106,7 @@ impl Core {
             editor: crate::editor::EditorHost::default(),
             bar_drag: Mutex::new(None),
             data_dir,
+            diagnostics_busy: std::sync::atomic::AtomicBool::new(false),
             projects_dir,
             phase: Mutex::new(Phase::Idle),
             session: Mutex::new(None),

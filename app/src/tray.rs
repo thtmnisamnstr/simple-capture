@@ -14,11 +14,14 @@ use tauri::{AppHandle, LogicalPosition, Manager};
 use crate::core::{Core, Reply};
 use crate::state::Phase;
 
-pub const ITEMS: [(&str, &str); 5] = [
+pub const ITEMS: [(&str, &str); 8] = [
     ("open", "Open Recorder"),
     ("start-stop", "Start Recording"),
     ("switch", "Switch Source…"),
     ("edit", "Edit Last Recording"),
+    ("library", "Library…"),
+    ("diagnostics", "Diagnostics…"),
+    ("about", "About Simple Capture"),
     ("quit", "Quit"),
 ];
 
@@ -177,6 +180,7 @@ pub fn on_item(core: &Arc<Core>, id: &str) -> Reply {
             core.show_window("switcher", true).map(|_| Value::Null)
         }
         "edit" => core.edit_last(),
+        "library" | "diagnostics" | "about" => core.show_window(id, true).map(|_| Value::Null),
         "quit" => {
             core.shutdown(StopReason::Quit, 0);
             Ok(Value::Null)

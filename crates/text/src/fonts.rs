@@ -140,9 +140,20 @@ pub fn bundled(name: &str) -> Option<&'static BundledFamily> {
 
 /// `SC_FONTS_DIR`, the app bundle's `Resources/fonts`, `fonts` next to the executable, or the
 /// repository's `assets/fonts`.
+static RESOURCE_FONTS: OnceLock<PathBuf> = OnceLock::new();
+
+/// The app's resource folder for fonts, as the bundle laid it out (Linux packages put resources
+/// under /usr/lib, away from the executable).
+pub fn set_resource_fonts_dir(dir: PathBuf) {
+    let _ = RESOURCE_FONTS.set(dir);
+}
+
 pub fn default_fonts_dir() -> PathBuf {
     if let Some(d) = std::env::var_os("SC_FONTS_DIR") {
         return PathBuf::from(d);
+    }
+    if let Some(d) = RESOURCE_FONTS.get().filter(|d| d.join(EMOJI_FILE).exists()) {
+        return d.clone();
     }
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/fonts");
     let exe = std::env::current_exe().ok();

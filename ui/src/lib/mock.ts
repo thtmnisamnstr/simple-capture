@@ -332,7 +332,28 @@ const handlers: Record<string, Handler> = {
   show_video_effects: () => null,
   bar_drag: () => null,
   editor: (a) => mockEditor(String(a.action ?? 'state')),
+  app: (a) => mockApp(String(a.action ?? 'about')),
 };
+
+function mockApp(action: string): unknown {
+  switch (action) {
+    case 'about':
+      return {
+        version: '0.1.0',
+        os: 'macos',
+        arch: 'aarch64',
+        licenses: [
+          { title: 'Simple Capture', license: 'MIT', note: 'This app.', files: [{ name: 'LICENSE', path: '/LICENSE', html: false }] },
+        ],
+      };
+    case 'license_text':
+      return 'MIT License';
+    case 'library':
+      return [];
+    default:
+      return null;
+  }
+}
 
 const S = 1_000_000_000;
 const mockDoc = {

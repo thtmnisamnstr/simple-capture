@@ -1,5 +1,6 @@
 //! Simple Capture desktop app: Tauri 2 shell (M1 plan §5.2–§5.4).
 
+mod about;
 mod commands;
 mod core;
 #[cfg(debug_assertions)]
@@ -150,6 +151,9 @@ fn register_hotkey(core: &Arc<Core>) {
 }
 
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    if let Ok(r) = app.path().resource_dir() {
+        sc_text::fonts::set_resource_fonts_dir(r.join("fonts"));
+    }
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     let platform = platform();
@@ -322,6 +326,7 @@ fn main() {
             commands::show_video_effects,
             commands::bar_drag,
             commands::editor,
+            commands::app,
         ])
         .setup(setup)
         .build(tauri::generate_context!());

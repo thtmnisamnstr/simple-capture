@@ -17,7 +17,23 @@
       "minimumSystemVersion": "14.0"
     },
     "resources": {
-      "../assets/fonts/": "fonts/"
+      "../assets/fonts/": "fonts/",
+      "gen/licenses/": "licenses/"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libpipewire-0.3-0",
+          "xdg-desktop-portal"
+        ]
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
     }
   }
 }

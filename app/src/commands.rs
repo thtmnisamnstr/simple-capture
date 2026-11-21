@@ -10,7 +10,7 @@ use tauri::State;
 use crate::core::{Core, Reply};
 
 #[cfg(test)]
-const COMMANDS: [&str; 29] = [
+const COMMANDS: [&str; 30] = [
     "get_permissions",
     "request_permission",
     "open_permission_settings",
@@ -40,6 +40,7 @@ const COMMANDS: [&str; 29] = [
     "show_video_effects",
     "bar_drag",
     "editor",
+    "app",
 ];
 
 fn snake_to_camel(s: &str) -> String {
@@ -123,6 +124,7 @@ pub fn dispatch(core: &Arc<Core>, name: &str, args: &Value) -> Reply {
             arg(args, "y")?,
         ),
         "editor" => core.editor(&arg::<String>(args, "action")?, args),
+        "app" => core.app_action(&arg::<String>(args, "action")?, args),
         other => Err(format!("unknown command {other:?}")),
     }
 }
@@ -303,6 +305,15 @@ pub async fn editor(core: State<'_, Arc<Core>>, action: String, args: Option<Val
         o.insert("action".into(), Value::String(action));
     }
     run(core, "editor", a).await
+}
+
+#[tauri::command]
+pub async fn app(core: State<'_, Arc<Core>>, action: String, args: Option<Value>) -> Reply {
+    let mut a = args.unwrap_or_else(|| json!({}));
+    if let Some(o) = a.as_object_mut() {
+        o.insert("action".into(), Value::String(action));
+    }
+    run(core, "app", a).await
 }
 
 #[cfg(test)]

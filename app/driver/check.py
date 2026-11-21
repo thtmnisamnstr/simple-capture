@@ -168,8 +168,8 @@ if basic("01-onboarding", log):
     DISPLAYS = steps(log, "cmd list_displays")[0]["result"]
     rects = steps(log, "log-window-rects")[0]["result"]
     vis = {r["label"]: r["visible"] for r in rects}
-    check("01-onboarding", "nine windows, IDs > 0, onboarding shown",
-          len(rects) == 9 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
+    check("01-onboarding", "twelve windows, IDs > 0, onboarding shown",
+          len(rects) == 12 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
     ui = ui_lines(steps(log, "ui-log")[0])
     text = next((l for l in ui if "onboarding " in l), "")
     check("01-onboarding", "onboarding renders the three statuses",
@@ -573,6 +573,28 @@ if basic("17-editor", log):
         ui = [l for l in log if l.get("event") == "editor-frame"]
         check("17-editor", "editor-frame says native on macOS", sys.platform != "darwin" or (ui and ui[-1]["payload"].get("native")),
               ui[-1]["payload"] if ui else None)
+
+log = lines("18-diagnostics")
+if basic("18-diagnostics", log):
+    done = events(log, "diagnostics-done")
+    d = done[-1] if done else {}
+    check("18-diagnostics", "self-test from the app: no failures, report written",
+          bool(done) and d.get("failed") == 0 and d.get("passed", 0) >= 6 and bool(d.get("report")),
+          {k: d.get(k) for k in ("passed", "failed", "skipped", "report")})
+    lines_seen = events(log, "diagnostics-line")
+    check("18-diagnostics", "self-test lines streamed to the window", len(lines_seen) >= 15, len(lines_seen))
+    about = [s["result"] for s in steps(log, 'cmd app {"action":"about"}')]
+    lic = (about[0] or {}).get("licenses", []) if about else []
+    check("18-diagnostics", "About lists the app, helpers, fonts and libraries",
+          len(lic) >= 5 and any(e.get("files") for e in lic if e.get("title") == "Simple Capture"),
+          [(e.get("title"), len(e.get("files", []))) for e in lic])
+    rep = d.get("report")
+    if rep:
+        for ext in (".txt", ".json"):
+            try:
+                os.remove(os.path.splitext(rep)[0] + ext)
+            except OSError:
+                pass
 
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)

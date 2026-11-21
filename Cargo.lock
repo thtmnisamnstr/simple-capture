@@ -4267,6 +4267,7 @@ dependencies = [
  "simple-capture-capture-windows",
  "simple-capture-core",
  "simple-capture-decode",
+ "simple-capture-diagnostics",
  "simple-capture-export",
  "simple-capture-geometry",
  "simple-capture-helpers",

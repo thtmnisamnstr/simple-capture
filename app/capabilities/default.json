@@ -10,7 +10,10 @@
     "pick",
     "saved",
     "stage",
-    "editor"
+    "editor",
+    "library",
+    "diagnostics",
+    "about"
   ],
   "permissions": [
     "core:default",
