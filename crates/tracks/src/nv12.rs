@@ -56,6 +56,108 @@ pub fn packed_to_nv12(src: &[u8], stride: usize, size: SizePx, order: PackedOrde
     out
 }
 
+/// [`packed_to_nv12`] over horizontal bands on up to four threads (bands are whole chroma rows).
+pub fn packed_to_nv12_par(
+    src: &[u8],
+    stride: usize,
+    size: SizePx,
+    order: PackedOrder,
+) -> CpuNv12Frame {
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get().min(4))
+        .unwrap_or(1);
+    if threads < 2 || size.h < 64 {
+        return packed_to_nv12(src, stride, size, order);
+    }
+    let rows = (size.h as usize).div_ceil(threads).div_ceil(2) * 2;
+    let bands: Vec<(usize, usize)> = (0..size.h as usize)
+        .step_by(rows)
+        .map(|y0| (y0, (y0 + rows).min(size.h as usize)))
+        .collect();
+    let parts: Vec<CpuNv12Frame> = std::thread::scope(|s| {
+        let handles: Vec<_> = bands
+            .iter()
+            .map(|(y0, y1)| {
+                s.spawn(move || {
+                    packed_to_nv12(
+                        &src[y0 * stride..],
+                        stride,
+                        SizePx {
+                            w: size.w,
+                            h: (y1 - y0) as u32,
+                        },
+                        order,
+                    )
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|h| {
+                h.join()
+                    .unwrap_or_else(|_| CpuNv12Frame::black(size, false))
+            })
+            .collect()
+    });
+    let mut out = CpuNv12Frame::black(size, false);
+    let (w, uv_stride) = (size.w as usize, out.uv_stride());
+    for ((y0, _), part) in bands.iter().zip(parts) {
+        out.y[y0 * w..y0 * w + part.y.len()].copy_from_slice(&part.y);
+        let c0 = y0 / 2 * uv_stride;
+        out.uv[c0..c0 + part.uv.len()].copy_from_slice(&part.uv);
+    }
+    out
+}
+
+/// Nearest-neighbour fit of packed pixels into `out`, aspect kept, centred, black around.
+/// Returns the packed BGRA/RGBA buffer (`out.w * 4` stride) and where the content landed.
+pub fn fit_packed(
+    src: &[u8],
+    stride: usize,
+    size: SizePx,
+    out: SizePx,
+) -> (Vec<u8>, sc_geometry::RectPx) {
+    let sx = f64::from(out.w) / f64::from(size.w.max(1));
+    let sy = f64::from(out.h) / f64::from(size.h.max(1));
+    let s = sx.min(sy);
+    let dw = ((f64::from(size.w) * s).round() as u32).clamp(1, out.w);
+    let dh = ((f64::from(size.h) * s).round() as u32).clamp(1, out.h);
+    let dx = (out.w - dw) / 2;
+    let dy = (out.h - dh) / 2;
+    let mut buf = vec![0u8; out.w as usize * out.h as usize * 4];
+    for alpha in buf.chunks_exact_mut(4) {
+        alpha[3] = 255;
+    }
+    let xs: Vec<usize> = (0..dw)
+        .map(|x| {
+            ((u64::from(x) * u64::from(size.w) / u64::from(dw)) as usize).min(size.w as usize - 1)
+        })
+        .collect();
+    for y in 0..dh {
+        let sy =
+            ((u64::from(y) * u64::from(size.h) / u64::from(dh)) as usize).min(size.h as usize - 1);
+        let srow = &src[sy * stride..];
+        let o = ((y + dy) * out.w + dx) as usize * 4;
+        let drow = &mut buf[o..o + dw as usize * 4];
+        if dw == size.w {
+            drow.copy_from_slice(&srow[..dw as usize * 4]);
+        } else {
+            for (d, x) in drow.chunks_exact_mut(4).zip(&xs) {
+                d.copy_from_slice(&srow[x * 4..x * 4 + 4]);
+            }
+        }
+    }
+    (
+        buf,
+        sc_geometry::RectPx {
+            x: dx as i32,
+            y: dy as i32,
+            w: dw,
+            h: dh,
+        },
+    )
+}
+
 /// Tightly packed limited-range NV12 at `size` (even), nearest-neighbour resampled when the
 /// frame is another size, as rawvideo `nv12` expects it.
 pub fn pack_nv12(frame: &dyn NativeFrame, size: SizePx, out: &mut Vec<u8>) -> Result<()> {
@@ -160,6 +262,34 @@ mod tests {
         assert_eq!(f.y[1], 16);
         assert_eq!(f.y[2], 63);
         assert_eq!((f.uv[2], f.uv[3]), (102, 240));
+    }
+
+    #[test]
+    fn banded_conversion_matches_the_single_pass() {
+        let size = SizePx { w: 96, h: 130 };
+        let px: Vec<u8> = (0..size.w * size.h * 4)
+            .map(|i| (i * 37 % 251) as u8)
+            .collect();
+        let a = packed_to_nv12(&px, 96 * 4, size, PackedOrder::Bgra);
+        let b = packed_to_nv12_par(&px, 96 * 4, size, PackedOrder::Bgra);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn fit_letterboxes_a_wide_source() {
+        let src = vec![200u8; 8 * 2 * 4];
+        let (buf, r) = fit_packed(&src, 32, SizePx { w: 8, h: 2 }, SizePx { w: 4, h: 4 });
+        assert_eq!(
+            r,
+            sc_geometry::RectPx {
+                x: 0,
+                y: 1,
+                w: 4,
+                h: 1
+            }
+        );
+        assert_eq!(buf[0], 0);
+        assert_eq!(buf[4 * 4], 200);
     }
 
     #[test]

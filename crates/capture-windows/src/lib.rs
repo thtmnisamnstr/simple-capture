@@ -1,18 +1,22 @@
-//! windows backend placeholder: every call returns `Unsupported` until M6, and every
-//! capability is off.
+//! Windows capture backend (ADR-048): Windows.Graphics.Capture for screens and windows, Media
+//! Foundation for cameras, WASAPI through cpal for the microphone and system audio, raw tracks
+//! through the FFmpeg helper. Elsewhere it builds as an unsupported stub so the workspace
+//! compiles on every OS.
 
 use std::sync::Arc;
 
-use sc_core::ClockKind;
 use sc_platform::Platform;
-use sc_platform::unsupported::UnsupportedPlatform;
 
-pub const UNSUPPORTED: &str = "windows capture arrives in M6";
+#[cfg(windows)]
+mod imp;
 
 pub fn platform() -> Arc<dyn Platform> {
-    Arc::new(UnsupportedPlatform::new(
+    #[cfg(windows)]
+    return imp::platform();
+    #[cfg(not(windows))]
+    Arc::new(sc_platform::unsupported::UnsupportedPlatform::new(
         "windows",
-        ClockKind::Qpc,
-        UNSUPPORTED,
+        sc_core::ClockKind::Qpc,
+        "the Windows backend runs on Windows",
     ))
 }

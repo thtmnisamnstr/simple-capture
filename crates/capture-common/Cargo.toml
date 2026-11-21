@@ -1,0 +1,23 @@
+[package]
+name = "simple-capture-capture-common"
+description = "Capture pieces the Windows and Linux backends share: cpal audio, device watching"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "sc_capture_common"
+
+[dependencies]
+simple-capture-core.workspace = true
+simple-capture-platform.workspace = true
+cpal.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+cpal = { workspace = true, features = ["pipewire"] }
+
+[lints]
+workspace = true

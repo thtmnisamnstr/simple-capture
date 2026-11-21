@@ -140,6 +140,8 @@ fn check_permission(p: &dyn Platform, k: PermissionKind) -> Result<()> {
 fn container_codec(ext: &str, video: bool) -> (String, String) {
     if ext == "sctrk" {
         ("sctrk".into(), "sctrk".into())
+    } else if ext == "mkv" {
+        ("matroska".into(), if video { "hevc_or_h264" } else { "aac" }.into())
     } else if video {
         ("mov_fragmented".into(), "hevc".into())
     } else {

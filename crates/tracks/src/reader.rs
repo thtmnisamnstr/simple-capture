@@ -78,37 +78,39 @@ pub fn parse_info(stderr: &str) -> StreamInfo {
     info
 }
 
-/// `time=HH:MM:SS.cc` of the last stats line, and `frame=` from it.
-pub fn parse_stats(stderr: &str) -> (Option<i64>, Option<u64>) {
-    let mut time = None;
-    let mut frames = None;
-    for seg in stderr.split(['\r', '\n']) {
-        if let Some(t) = seg
-            .split("time=")
-            .nth(1)
-            .and_then(|r| r.split_whitespace().next())
-            && let Some(ns) = hms_ns(t)
-        {
-            time = Some(ns);
+/// Packet count and end time from `framemd5` lines (`stream, dts, pts, duration, size, hash`)
+/// under a `#tb 0: num/den` header; works the same on every FFmpeg version.
+pub fn parse_packets(text: &str) -> (u64, Option<i64>) {
+    let mut tb = (1i64, 1000i64);
+    let mut packets = 0u64;
+    let mut end: Option<i64> = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("#tb 0:") {
+            if let Some((n, d)) = rest.trim().split_once('/')
+                && let (Ok(n), Ok(d)) = (n.trim().parse(), d.trim().parse()) {
+                    tb = (n, d);
+                }
+            continue;
         }
-        if let Some(f) = seg
-            .split("frame=")
-            .nth(1)
-            .and_then(|r| r.split_whitespace().next())
-            .and_then(|f| f.parse().ok())
-        {
-            frames = Some(f);
+        if line.starts_with('#') || line.is_empty() {
+            continue;
         }
+        let f: Vec<&str> = line.split(',').map(str::trim).collect();
+        if f.len() < 5 {
+            continue;
+        }
+        let (Ok(pts), Ok(dur)) = (f[2].parse::<i64>(), f[3].parse::<i64>()) else {
+            continue;
+        };
+        packets += 1;
+        let e = pts + dur.max(0);
+        end = Some(end.map_or(e, |x: i64| x.max(e)));
     }
-    (time, frames)
-}
-
-fn hms_ns(t: &str) -> Option<i64> {
-    let mut parts = t.split(':');
-    let h: f64 = parts.next()?.parse().ok()?;
-    let m: f64 = parts.next()?.parse().ok()?;
-    let s: f64 = parts.next()?.parse().ok()?;
-    Some(((h * 3600.0 + m * 60.0 + s) * NS).round() as i64)
+    let ns = end.map(|e| {
+        (i128::from(e) * i128::from(tb.0) * 1_000_000_000 / i128::from(tb.1.max(1))) as i64
+    });
+    (packets, ns)
 }
 
 type InfoCache = Mutex<HashMap<PathBuf, (SystemTime, u64, StreamInfo)>>;
@@ -364,41 +366,38 @@ impl Decoder for HelperDecoder {
     }
 
     fn probe(&self, path: &Path) -> Result<TrackProbe> {
+        let info = self.info(path)?;
+        let stream = if info.size.is_some() {
+            "0:v:0"
+        } else {
+            "0:a:0"
+        };
         let out = command(&self.ffmpeg)
-            .args(["-hide_banner", "-stats", "-i"])
+            .args(["-hide_banner", "-loglevel", "error", "-i"])
             .arg(path)
-            .args(["-map", "0", "-c", "copy", "-f", "null", "-"])
-            .stdout(Stdio::null())
+            .args(["-map", stream, "-c", "copy", "-f", "framemd5", "-"])
+            .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()?;
-        let text = String::from_utf8_lossy(&out.stderr);
-        let info = parse_info(&text);
-        let (time, frames) = parse_stats(&text);
-        let readable = out.status.success() && time.is_some_and(|t| t > 0);
-        let duration_ns = match (info.size, info.fps, frames) {
-            (Some(_), Some(fps), Some(n)) if fps > 0.0 => Some((n as f64 * NS / fps) as i64),
-            _ => time,
+        let (packets, end_ns) = parse_packets(&String::from_utf8_lossy(&out.stdout));
+        let readable = packets > 0 && end_ns.is_some_and(|e| e > 0);
+        let duration_ns = match (info.size, info.fps) {
+            (Some(_), Some(fps)) if fps > 0.0 => Some((packets as f64 * NS / fps) as i64),
+            _ => end_ns,
         };
         Ok(TrackProbe {
             readable,
             duration_ns: if readable { duration_ns } else { None },
-            samples: if info.size.is_some() {
-                frames.unwrap_or(0)
-            } else {
-                0
-            },
+            samples: if info.size.is_some() { packets } else { 0 },
             size: info.size,
-            error: if readable {
-                None
-            } else {
-                Some(
-                    text.lines()
-                        .rev()
-                        .find(|l| !l.trim().is_empty())
-                        .unwrap_or("not readable")
-                        .to_string(),
-                )
-            },
+            error: (!readable).then(|| {
+                String::from_utf8_lossy(&out.stderr)
+                    .lines()
+                    .rev()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("not readable")
+                    .to_string()
+            }),
         })
     }
 }
@@ -417,8 +416,8 @@ mod tests {
     }
 
     #[test]
-    fn stats_give_the_last_time_and_frame() {
-        let err = "frame=   10 fps=0.0 q=-1.0 size=N/A time=00:00:00.33 bitrate=N/A\rframe=  150 fps=0.0 q=-1.0 Lsize=N/A time=00:00:04.96 bitrate=N/A speed= 900x\n";
-        assert_eq!(parse_stats(err), (Some(4_960_000_000), Some(150)));
+    fn framemd5_lines_give_packets_and_the_end() {
+        let out = "#format: frame checksums\n#version: 2\n#hash: MD5\n#tb 0: 1/1000\n#media_type 0: video\n#stream#, dts, pts, duration, size, hash\n0, -33, 0, 33, 1234, aa\n0, 0, 67, 33, 99, bb\n0, 33, 33, 33, 88, cc\n";
+        assert_eq!(parse_packets(out), (3, Some(100_000_000)));
     }
 }

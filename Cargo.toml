@@ -7,6 +7,7 @@ members = [
     "crates/capture-macos",
     "crates/capture-windows",
     "crates/capture-linux",
+    "crates/capture-common",
     "crates/record",
     "crates/decode",
     "crates/render",
@@ -36,6 +37,7 @@ simple-capture-platform = { path = "crates/platform" }
 simple-capture-capture-macos = { path = "crates/capture-macos" }
 simple-capture-capture-windows = { path = "crates/capture-windows" }
 simple-capture-capture-linux = { path = "crates/capture-linux" }
+simple-capture-capture-common = { path = "crates/capture-common" }
 simple-capture-record = { path = "crates/record" }
 simple-capture-decode = { path = "crates/decode" }
 simple-capture-render = { path = "crates/render" }

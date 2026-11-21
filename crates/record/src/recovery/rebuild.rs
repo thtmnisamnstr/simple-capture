@@ -426,6 +426,12 @@ fn screen_track(template: Option<&Track>, seg: &ScreenSegment, file: &str, fps: 
     let (container, codec) = match template {
         Some(t) => (t.container.clone(), t.codec.clone()),
         None if sctrk => ("sctrk".to_string(), "sctrk".to_string()),
+        None if Path::new(file)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("mkv")) =>
+        {
+            ("matroska".to_string(), "hevc_or_h264".to_string())
+        }
         None => ("mov_fragmented".to_string(), "hevc".to_string()),
     };
     let video = match template.and_then(|t| t.video.clone()) {
