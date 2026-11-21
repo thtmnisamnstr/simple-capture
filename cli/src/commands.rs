@@ -113,8 +113,11 @@ fn dispatch(inv: Invocation) -> CliResult {
             println!("{USAGE}");
             Ok(EXIT_OK)
         }
+        #[cfg(feature = "export")]
+        Command::SelfTest => on_platform(choice, move |p| crate::selftest::run(p, json)),
+        #[cfg(not(feature = "export"))]
         Command::SelfTest => {
-            eprintln!("simple-capture --self-test: not implemented until M6");
+            eprintln!("simple-capture --self-test needs the export feature");
             Ok(EXIT_UNSUPPORTED)
         }
         Command::Record(r) => crate::record::run(json, choice, *r),

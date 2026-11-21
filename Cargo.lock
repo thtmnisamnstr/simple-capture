@@ -4361,6 +4361,7 @@ dependencies = [
  "simple-capture-capture-macos",
  "simple-capture-capture-windows",
  "simple-capture-core",
+ "simple-capture-diagnostics",
  "simple-capture-export",
  "simple-capture-geometry",
  "simple-capture-helpers",
@@ -4390,6 +4391,21 @@ dependencies = [
  "simple-capture-geometry",
  "simple-capture-platform",
  "tracing",
+]
+
+[[package]]
+name = "simple-capture-diagnostics"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "simple-capture-core",
+ "simple-capture-export",
+ "simple-capture-geometry",
+ "simple-capture-helpers",
+ "simple-capture-platform",
+ "simple-capture-player",
+ "simple-capture-record",
+ "simple-capture-tracks",
 ]
 
 [[package]]

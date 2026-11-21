@@ -15,6 +15,7 @@ members = [
     "crates/player",
     "crates/helpers",
     "crates/tracks",
+    "crates/diagnostics",
     "crates/export",
     "app",
     "cli",
@@ -44,6 +45,7 @@ simple-capture-render = { path = "crates/render" }
 simple-capture-text = { path = "crates/text" }
 simple-capture-helpers = { path = "crates/helpers" }
 simple-capture-tracks = { path = "crates/tracks" }
+simple-capture-diagnostics = { path = "crates/diagnostics" }
 simple-capture-export = { path = "crates/export" }
 simple-capture-player = { path = "crates/player", default-features = false }
 

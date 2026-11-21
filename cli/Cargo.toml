@@ -13,7 +13,7 @@ path = "src/main.rs"
 
 [features]
 default = ["export"]
-export = ["dep:simple-capture-export"]
+export = ["dep:simple-capture-export", "dep:simple-capture-diagnostics"]
 test-hooks = ["simple-capture-record/test-hooks"]
 
 [dependencies]
@@ -23,6 +23,7 @@ simple-capture-platform.workspace = true
 simple-capture-record.workspace = true
 simple-capture-helpers.workspace = true
 simple-capture-export = { workspace = true, optional = true }
+simple-capture-diagnostics = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true

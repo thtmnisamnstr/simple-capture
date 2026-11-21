@@ -275,12 +275,16 @@ fn gifs_from_gifski_and_the_palette_play_at_the_chosen_rate() {
     }
     let t = TempDir::new("gifs");
     let dir = project(&t);
-    for (mode, fps) in [
-        (GifMode::Gifski, 15u32),
-        (GifMode::Palette, 10),
-        (GifMode::Gifski, 25),
+    for (mode, fps, size) in [
+        (GifMode::Gifski, 15u32, None),
+        (GifMode::Palette, 10, None),
+        (GifMode::Gifski, 25, None),
+        (GifMode::Gifski, 10, Some(240)),
     ] {
         let mut st = ExportSettings::for_format(Format::Gif);
+        if let Some(c) = size {
+            st.size = SizeChoice::Class(c);
+        }
         st.gif.mode = mode;
         st.fps = fps;
         st.gif.repeat = Loop::Times(2);
@@ -288,10 +292,14 @@ fn gifs_from_gifski_and_the_palette_play_at_the_chosen_rate() {
         let v = probe(&path);
         let vs = stream(&v, "video").expect("gif stream");
         assert_eq!(vs["codec_name"], "gif");
+        let want = match size {
+            Some(240) => (Some(426), Some(240)),
+            _ => (Some(640), Some(360)),
+        };
         assert_eq!(
-            vs["height"].as_u64(),
-            Some(360),
-            "{mode:?}: no upscale past 640x360"
+            (vs["width"].as_u64(), vs["height"].as_u64()),
+            want,
+            "{mode:?} {size:?}: even, never upscaled"
         );
         assert!(stream(&v, "audio").is_none());
         let delays = gif_delays(&path);

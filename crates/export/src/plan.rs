@@ -80,6 +80,7 @@ fn round_side(v: f64, gif: bool) -> u32 {
     }
 }
 
+/// Even on both sides for every format: frames reach the encoders, gifski included, as I420.
 pub fn output_size(project: &ProjectV1, st: &ExportSettings) -> SizePx {
     let gif = st.format == Format::Gif;
     let (reference, ratio) = reference(project);
@@ -106,13 +107,9 @@ pub fn output_size(project: &ProjectV1, st: &ExportSettings) -> SizePx {
     } else {
         want
     };
-    if gif {
-        size
-    } else {
-        SizePx {
-            w: (size.w & !1).max(2),
-            h: (size.h & !1).max(2),
-        }
+    SizePx {
+        w: (size.w & !1).max(2),
+        h: (size.h & !1).max(2),
     }
 }
 
@@ -361,7 +358,7 @@ mod tests {
         );
         assert_eq!(up, SizePx { w: 3840, h: 2160 });
         let gif = output_size(&p, &st(Format::Gif, SizeChoice::Class(240)));
-        assert_eq!(gif, SizePx { w: 427, h: 240 }, "GIF is not rounded to even");
+        assert_eq!(gif, SizePx { w: 426, h: 240 }, "GIF is even too (I420 frames)");
         let tall = project(1080, 1920, Aspect::Original);
         assert_eq!(
             output_size(&tall, &st(Format::Gif, SizeChoice::Long(960))),
