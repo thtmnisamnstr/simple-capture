@@ -15,9 +15,18 @@ use sc_tracks::{HelperDecoder, HelperWriters};
 const MS: i64 = 1_000_000;
 const SIZE: SizePx = SizePx { w: 1280, h: 720 };
 
+/// The bundled helper, else an `ffmpeg` on PATH (CI's Linux runner).
 fn ffmpeg() -> Option<PathBuf> {
+    let on_path = || {
+        std::env::var_os("PATH").and_then(|paths| {
+            std::env::split_paths(&paths)
+                .map(|d| d.join(format!("ffmpeg{}", std::env::consts::EXE_SUFFIX)))
+                .find(|p| p.is_file())
+        })
+    };
     match sc_helpers::locate(sc_helpers::HelperKind::Ffmpeg) {
         Ok(p) => Some(p),
+        Err(_) if on_path().is_some() => on_path(),
         Err(e) => {
             assert!(
                 std::env::var("SC_REQUIRE_HELPERS").as_deref() != Ok("1"),

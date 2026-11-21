@@ -348,7 +348,7 @@ fn run_steps(platform: &dyn Platform, displays: &[DisplayInfo], st: &Steps) -> R
 
 fn matches_cache(p: &ProbeV1, displays: &[DisplayInfo], sha: Option<&str>, os: &str) -> bool {
     p.schema == 1
-        && !p.encoders.is_empty()
+        && (p.helper.is_none() || !p.encoders.is_empty())
         && p.os_version == os
         && p.helper.as_ref().map(|h| h.sha256.as_str()) == sha
         && p.displays.len() == displays.len()

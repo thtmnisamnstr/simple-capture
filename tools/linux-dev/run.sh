@@ -13,6 +13,5 @@ exec docker run --rm -i \
   -v sc-linux-target:/target \
   -v sc-linux-cargo:/root/.cargo/registry \
   -e CARGO_TARGET_DIR=/target \
-  -e SC_FFMPEG=/usr/bin/ffmpeg \
   --cpus 4 \
   "$IMAGE" bash -lc "$*"

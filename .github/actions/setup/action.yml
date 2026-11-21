@@ -41,7 +41,7 @@ runs:
       shell: bash
       run: |
         # PipeWire, ALSA and libclang: the Linux backend (cpal's PipeWire host, screen capture);
-        # ffmpeg: a test-only stand-in for the helper (SC_FFMPEG), never shipped.
+        # ffmpeg: the helper-track tests fall back to it on PATH; never shipped.
         pkgs=(mesa-vulkan-drivers libvulkan1 pkg-config clang libclang-dev libasound2-dev
               libpipewire-0.3-dev libspa-0.2-dev ffmpeg)
         if [ "${{ inputs.full }}" = true ]; then
@@ -52,7 +52,6 @@ runs:
         sudo apt-get install -y --no-install-recommends "${pkgs[@]}"
         # lavapipe gives wgpu a software Vulkan adapter, so GPU tests must run here.
         echo "SC_REQUIRE_GPU=1" >> "$GITHUB_ENV"
-        echo "SC_FFMPEG=/usr/bin/ffmpeg" >> "$GITHUB_ENV"
 
     - name: Windows tools (LLVM, ninja, python)
       if: runner.os == 'Windows' && inputs.full == 'true'
