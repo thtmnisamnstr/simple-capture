@@ -29,6 +29,7 @@ simple-capture-render.workspace = true
 simple-capture-text.workspace = true
 simple-capture-helpers.workspace = true
 simple-capture-export.workspace = true
+simple-capture-player = { workspace = true, features = ["output"] }
 tauri.workspace = true
 tauri-plugin-global-shortcut.workspace = true
 serde.workspace = true

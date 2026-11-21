@@ -47,6 +47,7 @@ export SC_DEVTOOLS="$RUN/bin/sc-devtools"
 FFMPEG=""
 if [ -x "$MAIN/third_party/out/macos-arm64/ffmpeg" ]; then
   cp "$MAIN/third_party/out/macos-arm64/ffmpeg" "$RUN/bin/ffmpeg" && FFMPEG="$RUN/bin/ffmpeg"
+  cp "$MAIN/third_party/out/macos-arm64/ffprobe" "$RUN/bin/ffprobe" 2>/dev/null
   export SC_FFMPEG="$FFMPEG"
 fi
 cd "$RUN" || exit 1
@@ -115,7 +116,7 @@ CAMERA="${SC_DRV_CAMERA:-$(pick_dev cameras)}"
 MIC="${SC_DRV_MIC:-$(pick_dev mics)}"
 echo "app-driver: camera=${CAMERA:-none} mic=${MIC:-none}" >&2
 
-for f in 02-still-csp 03-sources 04-switch 05-exclusion 06-export 07-sleep 12-preview 14-preview-capture 08-quit-recording; do
+for f in 02-still-csp 03-sources 04-switch 05-exclusion 06-export 17-editor 07-sleep 12-preview 14-preview-capture 08-quit-recording; do
   flow "$f"
 done
 if wanted 08-quit-recording; then
@@ -143,8 +144,9 @@ python3 -I "$HERE/check.py" "$RUN"
 rc=$?
 if [ "${SC_KEEP_MEDIA:-0}" != 1 ]; then
   find "$RUN/projects" -type f \( -name '*.mov' -o -name '*.mp4' -o -name '*.m4a' -o -name '*.wav' -o -name '*.part' \) -delete
-  rm -f "$RUN/bin/simple-capture-app" "$RUN/bin/sc-devtools" "$RUN/bin/ffmpeg"
+  find "$RUN/projects" -type d -name thumbs -prune -exec rm -rf {} +
+  rm -f "$RUN/bin/simple-capture-app" "$RUN/bin/sc-devtools" "$RUN/bin/ffmpeg" "$RUN/bin/ffprobe"
 fi
-rsync -a --exclude bin --exclude '*.mov' --exclude '*.mp4' --exclude '*.m4a' --exclude '*.wav' "$RUN/" "$OUT/"
+rsync -a --exclude bin --exclude thumbs --exclude '*.mov' --exclude '*.mp4' --exclude '*.m4a' --exclude '*.wav' "$RUN/" "$OUT/"
 echo "app-driver: report $OUT/report.json (exit $rc)" >&2
 exit "$rc"

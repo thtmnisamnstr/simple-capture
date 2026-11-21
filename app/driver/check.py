@@ -168,8 +168,8 @@ if basic("01-onboarding", log):
     DISPLAYS = steps(log, "cmd list_displays")[0]["result"]
     rects = steps(log, "log-window-rects")[0]["result"]
     vis = {r["label"]: r["visible"] for r in rects}
-    check("01-onboarding", "eight windows, IDs > 0, onboarding shown",
-          len(rects) == 8 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
+    check("01-onboarding", "nine windows, IDs > 0, onboarding shown",
+          len(rects) == 9 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
     ui = ui_lines(steps(log, "ui-log")[0])
     text = next((l for l in ui if "onboarding " in l), "")
     check("01-onboarding", "onboarding renders the three statuses",
@@ -483,6 +483,54 @@ if log is not None and basic("16-soak", log):
                   {"camera_fps": round(cam_fps, 1), "preview_fps": [round(r, 1) for r in rates]})
             check("16-soak", "drawn natively throughout", all(x.get("native") for x in st) or sys.platform != "darwin",
                   [x.get("native") for x in st])
+
+log = lines("17-editor")
+if basic("17-editor", log):
+    pr = P.get("drv editor")
+    finalized("17-editor", pr, "drv editor", reason="user")
+    states = [x["result"] for x in steps(log, 'cmd editor {"action":"state"}')]
+    check("17-editor", "the editor opened the new recording", bool(states) and pr is not None
+          and os.path.basename(states[0].get("project_dir", "")) == os.path.basename(pr["dir"]),
+          states[0].get("project_dir") if states else None)
+    if states and pr:
+        rec_len = states[0]["rec_len_ns"]
+        doc = pr["project"].get("edl", {})
+        clips = doc.get("clips", [])
+        def tl(c):
+            return (c["src_out_rec_ns"] - c["src_in_rec_ns"]) * c["speed"]["den"] // c["speed"]["num"]
+        total = sum(tl(c) for c in clips)
+        want = rec_len - 2_500_000_000
+        check("17-editor", "edits autosaved to project.json (3 clips, 2x, muted, mic -6 dB)",
+              len(clips) == 3 and clips[1]["speed"] == {"num": 2, "den": 1} and clips[2]["muted"]
+              and pr["project"].get("audio_mix", {}).get("mic", {}).get("gain_db") == -6,
+              {"clips": [(c["src_in_rec_ns"], c["src_out_rec_ns"], c["speed"], c["muted"]) for c in clips],
+               "audio_mix": pr["project"].get("audio_mix")})
+        check("17-editor", "timeline length = recording - 2.5 s", abs(total - want) <= 2_000_000,
+              {"timeline_s": total / 1e9, "want_s": want / 1e9})
+        last = states[-1]
+        check("17-editor", "playback moved the playhead about 2.5 s", 3.0e9 <= last["playhead_tl_ns"] <= 4.6e9,
+              {"playhead_s": last["playhead_tl_ns"] / 1e9})
+        check("17-editor", "the preview drew frames", last.get("frames_presented", 0) >= 20,
+              last.get("frames_presented"))
+        ex = [x for x in events(log, "export-state") if x.get("state") == "done"]
+        check("17-editor", "export done", bool(ex), [x.get("state") for x in events(log, "export-state")])
+        if ex and FFMPEG:
+            probe = os.path.join(os.path.dirname(FFMPEG), "ffprobe")
+            out = ex[0].get("path", "")
+            dur = None
+            if os.path.exists(probe) and os.path.exists(out):
+                r = subprocess.run([probe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", out],
+                                   capture_output=True, text=True)
+                try:
+                    dur = float(r.stdout.strip())
+                except ValueError:
+                    dur = None
+            check("17-editor", "exported length matches the edit (within 2 frames)",
+                  dur is not None and abs(dur - total / 1e9) <= 2 / 30 + 0.03,
+                  {"export_s": dur, "timeline_s": total / 1e9})
+        ui = [l for l in log if l.get("event") == "editor-frame"]
+        check("17-editor", "editor-frame says native on macOS", sys.platform != "darwin" or (ui and ui[-1]["payload"].get("native")),
+              ui[-1]["payload"] if ui else None)
 
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)

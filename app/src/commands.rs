@@ -10,7 +10,7 @@ use tauri::State;
 use crate::core::{Core, Reply};
 
 #[cfg(test)]
-const COMMANDS: [&str; 28] = [
+const COMMANDS: [&str; 29] = [
     "get_permissions",
     "request_permission",
     "open_permission_settings",
@@ -39,6 +39,7 @@ const COMMANDS: [&str; 28] = [
     "camera_key_live",
     "show_video_effects",
     "bar_drag",
+    "editor",
 ];
 
 fn snake_to_camel(s: &str) -> String {
@@ -121,6 +122,7 @@ pub fn dispatch(core: &Arc<Core>, name: &str, args: &Value) -> Reply {
             arg(args, "x")?,
             arg(args, "y")?,
         ),
+        "editor" => core.editor(&arg::<String>(args, "action")?, args),
         other => Err(format!("unknown command {other:?}")),
     }
 }
@@ -292,6 +294,15 @@ pub async fn show_video_effects(core: State<'_, Arc<Core>>) -> Reply {
 #[tauri::command]
 pub async fn camera_key_live(core: State<'_, Arc<Core>>, key: Value, last: Option<bool>) -> Reply {
     run(core, "camera_key_live", json!({ "key": key, "last": last })).await
+}
+
+#[tauri::command]
+pub async fn editor(core: State<'_, Arc<Core>>, action: String, args: Option<Value>) -> Reply {
+    let mut a = args.unwrap_or_else(|| json!({}));
+    if let Some(o) = a.as_object_mut() {
+        o.insert("action".into(), Value::String(action));
+    }
+    run(core, "editor", a).await
 }
 
 #[cfg(test)]

@@ -27,7 +27,7 @@ use crate::settings::{CanvasDto, RecorderSettings, SettingsStore};
 use crate::state::{Input, Phase};
 use crate::still::{self, StillCache};
 
-pub const WINDOWS: [(&str, OverlayRole); 8] = [
+pub const WINDOWS: [(&str, OverlayRole); 9] = [
     ("panel", OverlayRole::Panel),
     ("onboarding", OverlayRole::Onboarding),
     ("bar", OverlayRole::FloatingBar),
@@ -36,6 +36,7 @@ pub const WINDOWS: [(&str, OverlayRole); 8] = [
     ("pick", OverlayRole::PickOverlay),
     ("saved", OverlayRole::Saved),
     ("stage", OverlayRole::Stage),
+    ("editor", OverlayRole::Editor),
 ];
 
 pub type Reply = Result<Value, String>;
@@ -53,6 +54,7 @@ pub struct Core {
     pub camera: Arc<SharedCamera>,
     pub live: crate::live::LiveHub,
     pub preview: Mutex<crate::preview::PreviewState>,
+    pub editor: crate::editor::EditorHost,
     bar_drag: Mutex<Option<BarDrag>>,
     pub data_dir: PathBuf,
     projects_dir: PathBuf,
@@ -97,6 +99,7 @@ impl Core {
             camera,
             live: crate::live::LiveHub::default(),
             preview: Mutex::new(crate::preview::PreviewState::default()),
+            editor: crate::editor::EditorHost::default(),
             bar_drag: Mutex::new(None),
             data_dir,
             projects_dir,
@@ -883,6 +886,7 @@ impl Core {
         *lock(&self.rec_started) = None;
         *lock(&self.last_health) = None;
         *lock(&self.last_project) = Some(project_dir.clone());
+        let project_dir_for_editor = project_dir.clone();
         let project = sc_core::project::ProjectV1::load(&project_dir).ok();
         let duration = project.as_ref().and_then(|p| p.duration_ns());
         let mut kinds: Vec<&str> = Vec::new();
@@ -902,10 +906,30 @@ impl Core {
         state["tracks"] = json!(kinds);
         self.emit("recording-state", state);
         self.hide_window("bar");
-        if let Err(e) = self.show_window("saved", false) {
-            tracing::warn!("{e}");
-        }
+        self.after_recording(project_dir_for_editor);
         self.refresh_tray();
+    }
+
+    /// What happens when a recording is saved: the editor opens with it, unless the
+    /// settings ask for the Saved window.
+    fn after_recording(&self, project_dir: PathBuf) {
+        let Some(core) = self.app.try_state::<Arc<Core>>().map(|c| c.inner().clone()) else {
+            return;
+        };
+        if self.settings.load().after_recording == crate::settings::AfterRecording::Saved {
+            if let Err(e) = self.show_window("saved", false) {
+                tracing::warn!("{e}");
+            }
+            return;
+        }
+        std::thread::spawn(move || {
+            if let Err(e) = core.editor_open(&project_dir) {
+                tracing::warn!("editor after recording: {e}");
+                if let Err(e) = core.show_window("saved", false) {
+                    tracing::warn!("{e}");
+                }
+            }
+        });
     }
 
     fn on_failed(&self, error: &str) {
@@ -1524,15 +1548,7 @@ impl Core {
     /// Main thread: refits the native preview view, if there is one, and returns the page.
     #[cfg(target_os = "macos")]
     fn fit_stage_view(&self) -> Option<StagePage> {
-        let view = lock(&self.preview).view?;
-        let view = std::ptr::NonNull::new(view as *mut std::ffi::c_void)?;
-        // SAFETY: the view lives as long as the preview window, and this is the main thread.
-        let p = unsafe { sc_capture_macos::preview::fit_to_page(view) }?;
-        Some(StagePage {
-            w: p.w,
-            h: p.h,
-            scale: p.scale,
-        })
+        crate::sink::refit(lock(&self.preview).view?)
     }
 
     pub fn stage_presented(&self, frame: crate::preview::StageFrame) {
@@ -1544,34 +1560,11 @@ impl Core {
     /// A `CAMetalLayer` under the preview window's page (ADR-007), valid while that window lives.
     #[cfg(target_os = "macos")]
     pub fn stage_layer(&self) -> Result<std::ptr::NonNull<std::ffi::c_void>, String> {
-        let w = self
-            .app
-            .get_webview_window("stage")
-            .ok_or("no preview window")?;
-        let (tx, rx) = std::sync::mpsc::channel();
-        w.with_webview(move |pw| {
-            let made = std::ptr::NonNull::new(pw.inner())
-                .ok_or_else(|| "no webview".to_string())
-                .and_then(|wk| {
-                    // SAFETY: Tauri runs this on the main thread with the live WKWebView.
-                    unsafe { sc_capture_macos::preview::metal_layer_under(wk) }
-                        .map_err(|e| e.to_string())
-                });
-            let _ = tx
-                .send(made.map(|m| (m.layer.as_ptr() as usize, m.view.as_ptr() as usize, m.page)));
-        })
-        .map_err(|e| e.to_string())?;
-        let (layer, view, page) = rx
-            .recv_timeout(Duration::from_secs(5))
-            .map_err(|e| format!("main thread: {e}"))??;
+        let (layer, view, page) = crate::sink::attach_layer(&self.app, "stage")?;
         {
             let mut p = lock(&self.preview);
             p.view = Some(view);
-            p.page = Some(StagePage {
-                w: page.w,
-                h: page.h,
-                scale: page.scale,
-            });
+            p.page = Some(page);
         }
         std::ptr::NonNull::new(layer as *mut std::ffi::c_void).ok_or_else(|| "null layer".into())
     }

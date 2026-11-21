@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ROUTES, routeFromHash } from '../src/lib/router.ts';
 
 test('every window label has a route', () => {
-  assert.deepEqual([...ROUTES], ['panel', 'onboarding', 'bar', 'switcher', 'region', 'pick', 'saved', 'stage']);
+  assert.deepEqual([...ROUTES], ['panel', 'onboarding', 'bar', 'switcher', 'region', 'pick', 'saved', 'stage', 'editor']);
   for (const r of ROUTES) assert.equal(routeFromHash(`#/${r}`), r);
 });
 

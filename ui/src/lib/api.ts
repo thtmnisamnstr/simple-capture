@@ -89,6 +89,7 @@ export const COMMANDS = [
   'camera_key_live',
   'show_video_effects',
   'bar_drag',
+  'editor',
 ] as const;
 
 export function errorText(err: unknown): string {

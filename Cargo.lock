@@ -4006,6 +4006,7 @@ dependencies = [
  "simple-capture-geometry",
  "simple-capture-helpers",
  "simple-capture-platform",
+ "simple-capture-player",
  "simple-capture-record",
  "simple-capture-render",
  "simple-capture-text",

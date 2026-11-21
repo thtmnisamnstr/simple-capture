@@ -243,6 +243,7 @@ pub enum OverlayRole {
     Saved,
     Onboarding,
     Stage,
+    Editor,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

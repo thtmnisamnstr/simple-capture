@@ -169,7 +169,10 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
             let project = core
                 .last_project()
                 .map(|p| p.to_string_lossy().into_owned());
-            let json = substitute(&json, project.as_deref(), core.last_export().as_deref())?;
+            let mut json = substitute(&json, project.as_deref(), core.last_export().as_deref())?;
+            for (i, id) in core.editor_clip_ids().iter().enumerate().rev() {
+                json = json.replace(&format!("$CLIP{i}"), id);
+            }
             let args: Value = serde_json::from_str(&json)
                 .map_err(|e| format!("cmd {name}: bad JSON {json:?}: {e}"))?;
             crate::commands::dispatch(core, &name, &args)

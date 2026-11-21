@@ -23,6 +23,53 @@ fn respond(
         .unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..])))
 }
 
+/// `sc://thumb/<step_ms>/<index>.png` and `sc://peaks/v1` of the project open in the editor.
+fn editor_file(
+    core: &Core,
+    host: Option<&str>,
+    path: &str,
+) -> Option<Response<Cow<'static, [u8]>>> {
+    let (host, path) = match host {
+        Some("localhost") | None => {
+            let p = path.trim_start_matches('/');
+            let (h, rest) = p.split_once('/').unwrap_or((p, ""));
+            (h.to_string(), format!("/{rest}"))
+        }
+        Some(h) => (h.to_string(), path.to_string()),
+    };
+    let dir = core.editor_dir()?;
+    let (file, ctype) = match host.as_str() {
+        "thumb" => {
+            let mut parts = path.trim_start_matches('/').split('/');
+            let step: i64 = parts.next()?.parse().ok()?;
+            let index: i64 = parts.next()?.strip_suffix(".png")?.parse().ok()?;
+            (
+                crate::editor_media::thumb_path(&dir, step, index),
+                "image/png",
+            )
+        }
+        "peaks" => (
+            crate::editor_media::peaks_path(&dir),
+            "application/octet-stream",
+        ),
+        _ => return None,
+    };
+    Some(match std::fs::read(&file) {
+        Ok(bytes) => Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, ctype)
+            .header(header::CACHE_CONTROL, "max-age=3600")
+            .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+            .body(Cow::Owned(bytes))
+            .unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..]))),
+        Err(_) => respond(
+            StatusCode::NOT_FOUND,
+            "text/plain",
+            Cow::Borrowed(&b"not found"[..]),
+        ),
+    })
+}
+
 pub fn handle<R: Runtime>(
     ctx: UriSchemeContext<'_, R>,
     req: Request<Vec<u8>>,
@@ -53,6 +100,13 @@ pub fn handle<R: Runtime>(
                     .body(Cow::Borrowed(&b""[..]))
                     .unwrap_or_else(|_| Response::new(Cow::Borrowed(&b""[..]))),
             };
+            responder.respond(resp);
+            return;
+        }
+        if let Some(resp) = core
+            .as_ref()
+            .and_then(|c| editor_file(c, uri.host(), uri.path()))
+        {
             responder.respond(resp);
             return;
         }

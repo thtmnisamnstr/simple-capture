@@ -8,6 +8,7 @@
   import Pick from './routes/Pick.svelte';
   import Saved from './routes/Saved.svelte';
   import Stage from './routes/Stage.svelte';
+  import Editor from './routes/Editor.svelte';
 
   let route: Route = $state(routeFromHash(window.location.hash));
 
@@ -33,6 +34,8 @@
     <Pick />
   {:else if route === 'stage'}
     <Stage />
+  {:else if route === 'editor'}
+    <Editor />
   {:else}
     <Saved />
   {/if}

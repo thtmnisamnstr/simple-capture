@@ -47,6 +47,15 @@ pub enum ResolutionDto {
     OneX,
 }
 
+/// What opens when a recording is saved (SPEC Recording flow).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AfterRecording {
+    #[default]
+    Editor,
+    Saved,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RecorderSettings {
@@ -66,6 +75,7 @@ pub struct RecorderSettings {
     pub preview_at: Option<sc_geometry::PointF>,
     /// Where the recording control bar was last moved to (global points, top-left).
     pub bar_at: Option<sc_geometry::PointF>,
+    pub after_recording: AfterRecording,
 }
 
 pub fn default_camera_key() -> CameraKey {
@@ -88,6 +98,7 @@ impl Default for RecorderSettings {
             preview_shown: true,
             preview_at: None,
             bar_at: None,
+            after_recording: AfterRecording::Editor,
         }
     }
 }
@@ -219,6 +230,7 @@ mod tests {
             preview_shown: false,
             preview_at: None,
             bar_at: Some(sc_geometry::PointF { x: 10.0, y: 20.0 }),
+            after_recording: AfterRecording::Saved,
         };
         store.save(&s).expect("save");
         assert_eq!(store.load(), s);

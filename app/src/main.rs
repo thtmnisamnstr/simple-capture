@@ -5,6 +5,9 @@ mod core;
 #[cfg(debug_assertions)]
 mod driver;
 mod dto;
+mod editor;
+mod editor_media;
+mod editor_render;
 mod live;
 #[cfg(target_os = "macos")]
 mod objc;
@@ -12,6 +15,7 @@ mod preview;
 mod protocol;
 mod settings;
 mod signals;
+mod sink;
 mod stage;
 mod state;
 mod still;
@@ -175,6 +179,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     core.configure_windows()?;
     stage::spawn(&core);
+    editor_render::spawn(&core);
     let tray = tray::Tray::build(app.handle(), core.clone())?;
     let _ = core.tray.set(tray);
     tracing::info!("tray ready");
@@ -218,6 +223,16 @@ fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
             {
                 core.preview_closed();
             }
+            if label == "editor"
+                && let Some(core) = app.try_state::<Arc<Core>>()
+            {
+                let core = core.inner().clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = core.editor_close() {
+                        tracing::warn!("editor close: {e}");
+                    }
+                });
+            }
             if let Some(w) = app.get_webview_window(&label)
                 && let Err(e) = w.hide()
             {
@@ -240,9 +255,13 @@ fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
             label,
             event: WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. },
             ..
-        } if label == "stage" => {
+        } if label == "stage" || label == "editor" => {
             if let Some(core) = app.try_state::<Arc<Core>>() {
-                core.stage_window_changed();
+                if label == "stage" {
+                    core.stage_window_changed();
+                } else {
+                    core.editor_window_changed();
+                }
             }
         }
         RunEvent::ExitRequested { api, code, .. } => {
@@ -300,6 +319,7 @@ fn main() {
             commands::camera_key_live,
             commands::show_video_effects,
             commands::bar_drag,
+            commands::editor,
         ])
         .setup(setup)
         .build(tauri::generate_context!());

@@ -331,7 +331,50 @@ const handlers: Record<string, Handler> = {
   camera_key_live: () => null,
   show_video_effects: () => null,
   bar_drag: () => null,
+  editor: (a) => mockEditor(String(a.action ?? 'state')),
 };
+
+const S = 1_000_000_000;
+const mockDoc = {
+  edl: {
+    clips: [
+      { id: 'c1', src_in_rec_ns: 0, src_out_rec_ns: 24 * S, speed: { num: 1, den: 1 }, muted: false },
+      { id: 'c2', src_in_rec_ns: 30 * S, src_out_rec_ns: 50 * S, speed: { num: 2, den: 1 }, muted: false },
+      { id: 'c3', src_in_rec_ns: 52 * S, src_out_rec_ns: 75 * S, speed: { num: 1, den: 1 }, muted: true },
+    ],
+  },
+  text: [],
+  camera_layout: { overlays: [{ id: 'cam', track_id: 'camera', keyframes: [{ ...settings.camera_key, t_rec_ns: 0 }, { ...settings.camera_key, t_rec_ns: 40 * S }] }] },
+  audio_mix: { mic: { gain_db: -3, muted: false } },
+  output: { canvas: { aspect: '16:9', ratio: { num: 16, den: 9 }, fit: 'contain', background: { kind: 'solid', color: [0.07, 0.07, 0.08, 1] } } },
+};
+
+function mockEditor(action: string): unknown {
+  if (action === 'state' || action === 'open') {
+    return {
+      project_dir: '/Users/me/Movies/Simple Capture/2026-11-21 10.00.00 Recording.sc',
+      title: '2026-11-21 10.00.00 Recording',
+      rec_len_ns: 75 * S,
+      fps: 30,
+      tracks: [
+        { id: 'screen', kind: 'screen' },
+        { id: 'camera', kind: 'camera' },
+        { id: 'mic', kind: 'mic' },
+        { id: 'system_audio', kind: 'system_audio' },
+      ],
+      segments: [{ id: 's1', start_rec_ns: 0, end_rec_ns: 75 * S }],
+      doc: mockDoc,
+      revision: 3,
+      can_undo: true,
+      can_redo: false,
+      playhead_tl_ns: 12 * S,
+      playing: false,
+      clipboard_ns: 0,
+    };
+  }
+  if (action === 'play' || action === 'pause') return { playhead_tl_ns: 12 * S, playing: action === 'play' };
+  return { revision: 3 };
+}
 
 export const MOCK_COMMANDS = Object.keys(handlers);
 

@@ -68,6 +68,7 @@ pub(crate) fn registered_windows() -> Vec<WindowId> {
     REGISTERED.lock().map(|r| r.clone()).unwrap_or_default()
 }
 
+const LEVEL_NORMAL: isize = 0;
 const LEVEL_FLOATING: isize = 3;
 const LEVEL_STATUS: isize = 25;
 const LEVEL_SCREEN_SAVER: isize = 1000;
@@ -79,6 +80,7 @@ pub(crate) fn level_for(role: OverlayRole) -> isize {
         OverlayRole::Panel | OverlayRole::Saved | OverlayRole::Onboarding | OverlayRole::Stage => {
             LEVEL_FLOATING
         }
+        OverlayRole::Editor => LEVEL_NORMAL,
     }
 }
 
@@ -126,6 +128,22 @@ fn force_window_device(win: &NSWindow) {
     win.setAlphaValue(alpha);
 }
 
+fn register(win: &NSWindow) -> Result<WindowId> {
+    let n = win.windowNumber();
+    if n <= 0 {
+        return Err(Error::Other(format!(
+            "overlays: windowNumber {n} after forcing the device"
+        )));
+    }
+    let id = WindowId(n as u32);
+    if let Ok(mut r) = REGISTERED.lock()
+        && !r.contains(&id)
+    {
+        r.push(id);
+    }
+    Ok(id)
+}
+
 impl OverlayWindows for MacOverlays {
     unsafe fn configure(&self, raw_window: *mut c_void, role: OverlayRole) -> Result<WindowId> {
         if MainThreadMarker::new().is_none() {
@@ -143,6 +161,12 @@ impl OverlayWindows for MacOverlays {
                 obj.class().name().to_string_lossy()
             )));
         }
+        let win: &NSWindow = unsafe { &*(obj as *const AnyObject as *const NSWindow) };
+        if role == OverlayRole::Editor {
+            win.setLevel(level_for(role));
+            force_window_device(win);
+            return register(win);
+        }
         if !is_kind(obj, NSPanel::class()) {
             let orig: &'static AnyClass =
                 unsafe { AnyObject::set_class(obj, OverlayPanel::class()) };
@@ -150,7 +174,6 @@ impl OverlayWindows for MacOverlays {
                 v.push((obj as *const AnyObject as usize, orig));
             }
         }
-        let win: &NSWindow = unsafe { &*(obj as *const AnyObject as *const NSWindow) };
         win.setStyleMask(win.styleMask() | NSWindowStyleMask::NonactivatingPanel);
         if super::content::responds(obj, sel!(_setPreventsActivation:)) {
             let _: () = unsafe { objc2::msg_send![obj, _setPreventsActivation: true] };
@@ -167,19 +190,7 @@ impl OverlayWindows for MacOverlays {
         );
         win.setLevel(level_for(role));
         force_window_device(win);
-        let n = win.windowNumber();
-        if n <= 0 {
-            return Err(Error::Other(format!(
-                "overlays: windowNumber {n} after forcing the device"
-            )));
-        }
-        let id = WindowId(n as u32);
-        if let Ok(mut r) = REGISTERED.lock()
-            && !r.contains(&id)
-        {
-            r.push(id);
-        }
-        Ok(id)
+        register(win)
     }
 
     fn registered(&self) -> Vec<WindowId> {

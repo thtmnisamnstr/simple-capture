@@ -20,7 +20,14 @@
     | 'lock'
     | 'film'
     | 'frame'
-    | 'chevron';
+    | 'chevron'
+    | 'undo'
+    | 'redo'
+    | 'play'
+    | 'pause'
+    | 'start'
+    | 'scissors'
+    | 'trash';
 
   const PATHS: Record<IconName, string> = {
     display: 'M2.5 3.5h11a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1ZM6 14.5h4M8 12v2.5',
@@ -44,9 +51,16 @@
     film: 'M2.5 2.5h11v11h-11zM5 2.5v11M11 2.5v11M2.5 6h2.5M2.5 10h2.5M11 6h2.5M11 10h2.5',
     frame: 'M2.5 3.5h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1ZM5 6h6v4H5z',
     chevron: 'm6 3.5 4.5 4.5L6 12.5',
+    undo: 'M5.5 3.5 2.5 6.5l3 3M2.8 6.5h6.7a3.8 3.8 0 0 1 0 7.6H7',
+    redo: 'm10.5 3.5 3 3-3 3M13.2 6.5H6.5a3.8 3.8 0 0 0 0 7.6H9',
+    play: 'M5 3.2v9.6L12.8 8Z',
+    pause: 'M4.5 3h2.6v10H4.5zM8.9 3h2.6v10H8.9z',
+    start: 'M4 3.5v9M12.5 3.8 6.5 8l6 4.2Z',
+    scissors: 'M5.4 5a1.9 1.9 0 1 1-3.8 0 1.9 1.9 0 0 1 3.8 0ZM5.4 11a1.9 1.9 0 1 1-3.8 0 1.9 1.9 0 0 1 3.8 0ZM5 6.2l9 6M5 9.8l9-6',
+    trash: 'M2.8 4.5h10.4M6.4 4.5V2.8h3.2v1.7M4.4 4.5l.6 8.6a1 1 0 0 0 1 .9h4a1 1 0 0 0 1-.9l.6-8.6',
   };
 
-  const FILLED: Partial<Record<IconName, true>> = { stop: true };
+  const FILLED: Partial<Record<IconName, true>> = { stop: true, play: true, pause: true };
 </script>
 
 <script lang="ts">

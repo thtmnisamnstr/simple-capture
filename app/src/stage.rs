@@ -15,17 +15,17 @@ use sc_core::image::RgbaImage;
 use sc_core::project::Background;
 use sc_geometry::{Ratio, RectPx, SizePx, camera_rects, contain_fit, even_round};
 use sc_platform::FrameBuffer;
-use sc_render::{Backend, Compositor, FrameJob, OutputFormat, ScreenLayer};
+use sc_render::{Backend, Compositor, FrameJob, ScreenLayer};
 
 use crate::core::Core;
-use crate::preview::{StageFrame, StagePage};
+use crate::preview::StageFrame;
+use crate::sink::Sink;
 use crate::still::rgba_to_nv12;
 
 const FRAME_INTERVAL: Duration = Duration::from_millis(33);
 const IDLE_WAIT: Duration = Duration::from_millis(30);
 const SNAPSHOT_EVERY: Duration = Duration::from_millis(1000);
 const OFFSCREEN_POLL: Duration = Duration::from_millis(100);
-#[cfg(target_os = "macos")]
 const CLEAR: [u8; 3] = [0x11, 0x11, 0x11];
 
 /// The largest even-sized `ratio` rectangle inside `inner`.
@@ -63,90 +63,6 @@ struct Shown {
     drawable: SizePx,
 }
 
-enum Sink {
-    Webview,
-    #[cfg(target_os = "macos")]
-    Native {
-        surface: sc_render::NativeSurface,
-        told: Option<SizePx>,
-    },
-}
-
-impl Sink {
-    fn open(core: &Core, compositor: &Compositor) -> Sink {
-        #[cfg(target_os = "macos")]
-        if std::env::var("SC_PREVIEW").as_deref() != Ok("webview") {
-            let surface = core.stage_layer().and_then(|layer| {
-                // SAFETY: the layer lives as long as the preview window, which is never destroyed.
-                unsafe { compositor.metal_layer_surface(layer) }.map_err(|e| e.to_string())
-            });
-            match surface {
-                Ok(surface) => {
-                    return Sink::Native {
-                        surface,
-                        told: None,
-                    };
-                }
-                Err(e) => tracing::warn!("stage: no native layer, using webview frames: {e}"),
-            }
-        }
-        let _ = (core, compositor);
-        Sink::Webview
-    }
-
-    fn native(&self) -> bool {
-        !matches!(self, Sink::Webview)
-    }
-
-    /// Native layers draw at the display's pixel size, webview frames at the page's point size.
-    fn drawable(&self, page: StagePage) -> SizePx {
-        let scale = if self.native() { page.scale } else { 1.0 };
-        let px = |v: f64| ((v * scale).round() as u32).max(2);
-        SizePx {
-            w: px(page.w),
-            h: px(page.h),
-        }
-    }
-
-    fn forget_page(&mut self) {
-        #[cfg(target_os = "macos")]
-        if let Sink::Native { told, .. } = self {
-            *told = None;
-        }
-    }
-
-    /// `Ok(false)`: not on screen, nothing drawn.
-    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
-    fn show(
-        &mut self,
-        core: &Core,
-        compositor: &mut Compositor,
-        job: &FrameJob,
-        drawable: SizePx,
-    ) -> sc_render::Result<bool> {
-        let canvas = job.canvas;
-        match self {
-            Sink::Webview => {
-                let out = compositor.render(job, OutputFormat::I420Bt709Limited)?;
-                core.live
-                    .publish("stage", canvas.w, canvas.h, crate::live::I420, &out.data);
-                Ok(true)
-            }
-            #[cfg(target_os = "macos")]
-            Sink::Native { surface, told, .. } => {
-                let at = ((drawable.w - canvas.w) / 2, (drawable.h - canvas.h) / 2);
-                let shown = compositor.present(job, surface, drawable, at, CLEAR)?;
-                if shown && *told != Some(canvas) {
-                    core.live
-                        .publish("stage", canvas.w, canvas.h, crate::live::NATIVE, &[]);
-                    *told = Some(canvas);
-                }
-                Ok(shown)
-            }
-        }
-    }
-}
-
 pub fn render_loop(core: Weak<Core>) {
     let mut compositor = match Compositor::new(Backend::Auto) {
         Ok(c) => c,
@@ -176,7 +92,14 @@ pub fn render_loop(core: Weak<Core>) {
             std::thread::sleep(Duration::from_millis(200));
             continue;
         };
-        let sink = sink.get_or_insert_with(|| Sink::open(&core, &compositor));
+        let sink = sink.get_or_insert_with(|| {
+            Sink::open(&compositor, "stage", || {
+                #[cfg(target_os = "macos")]
+                return core.stage_layer();
+                #[cfg(not(target_os = "macos"))]
+                Err("no native layer".into())
+            })
+        });
         let Some(page) = core.stage_page() else {
             drop(core);
             std::thread::sleep(Duration::from_millis(100));
@@ -276,7 +199,7 @@ pub fn render_loop(core: Weak<Core>) {
                 screen,
                 camera,
             };
-            match sink.show(&core, &mut compositor, &job, drawable) {
+            match sink.show(&core, &mut compositor, &job, drawable, None, CLEAR) {
                 Ok(true) => {
                     shown = Some(now_showing);
                     core.stage_presented(StageFrame {
