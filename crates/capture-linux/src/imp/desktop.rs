@@ -81,6 +81,10 @@ fn xdg_trash(path: &Path) -> Result<()> {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
         .ok_or(Error::NotFound("home folder".into()))?;
+    xdg_trash_in(&data, path)
+}
+
+fn xdg_trash_in(data: &Path, path: &Path) -> Result<()> {
     let trash = data.join("Trash");
     std::fs::create_dir_all(trash.join("files"))?;
     std::fs::create_dir_all(trash.join("info"))?;
@@ -183,5 +187,34 @@ impl Desktop for LinuxDesktop {
             let _ = child.wait();
         });
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn freedesktop_trash_moves_the_folder_and_records_where_it_was() {
+        let root = std::env::temp_dir().join(format!("sc-trash-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let item = root.join("Recording one.sc");
+        std::fs::create_dir_all(item.join("tracks")).expect("item");
+        std::fs::write(item.join("project.json"), "{}").expect("file");
+        let data = root.join("share");
+        xdg_trash_in(&data, &item).expect("trash");
+        assert!(!item.exists());
+        assert!(
+            data.join("Trash/files/Recording one.sc/project.json")
+                .exists()
+        );
+        let info = std::fs::read_to_string(data.join("Trash/info/Recording one.sc.trashinfo"))
+            .expect("info");
+        assert!(info.starts_with("[Trash Info]\nPath=/"));
+        assert!(info.contains("Recording%20one.sc"));
+        std::fs::create_dir_all(&item).expect("again");
+        xdg_trash_in(&data, &item).expect("second");
+        assert!(data.join("Trash/files/Recording one.sc 2").exists());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
