@@ -643,6 +643,27 @@ if basic("21-camera", log):
         failed = [e for e in pr["journal"] if e.get("ev") == "switch_failed"]
         check("21-camera", "both switches worked", not failed, failed)
 
+log = lines("22-silence")
+if basic("22-silence", log):
+    pr = P.get("drv silence")
+    finalized("22-silence", pr, "drv silence", reason="user")
+    st = [x["result"] for x in steps(log, 'cmd editor {"action":"state"}')]
+    found = [x["result"] for x in steps(log) if x["line"].startswith('cmd editor {"action":"silences"')]
+    if st and len(found) == 2 and pr:
+        rec = st[0]["rec_len_ns"]
+        loud, auto = found
+        check("22-silence", "a -5 dB threshold finds the whole quiet take as one silence",
+              loud["ranges"] == [[0, loud["duration_ns"]]] and loud["removed_ns"] == loud["duration_ns"],
+              {k: loud[k] for k in ("ranges", "removed_ns", "duration_ns")})
+        check("22-silence", "the suggested threshold sits in -60..-20 dB and is used without one",
+              -60 <= auto["suggested_db"] <= -20 and auto["threshold_db"] == auto["suggested_db"],
+              {k: auto[k] for k in ("suggested_db", "threshold_db")})
+        clips = pr["project"].get("edl", {}).get("clips", [])
+        total = sum((c["src_out_rec_ns"] - c["src_in_rec_ns"]) * c["speed"]["den"] // c["speed"]["num"] for c in clips)
+        check("22-silence", "one delete_ranges edit cut two seconds in two places",
+              len(clips) == 2 and abs(total - (rec - 2_000_000_000)) <= 2_000_000,
+              {"clips": [(c["src_in_rec_ns"], c["src_out_rec_ns"]) for c in clips], "rec": rec})
+
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)
 failed = [r for r in results if not r["ok"]]

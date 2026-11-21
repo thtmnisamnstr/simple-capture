@@ -553,3 +553,28 @@ fn pauses_become_cuts() {
     assert_eq!(duration(&edl), 8 * s - 5_000_000);
     assert_eq!(edl_between_pauses(4 * s, &[]).clips.len(), 1);
 }
+
+#[test]
+fn delete_ranges_removes_several_spans_as_one_edit() {
+    let mut d = doc(vec![clip(0, 10 * S)]);
+    d.text = vec![TextItem::new(8 * S, 9 * S, "late")];
+    let op = EditOp::DeleteRanges {
+        ranges: vec![
+            (6 * S, 7 * S),
+            (S, 2 * S),
+            (3 * S, 5 * S),
+            (4 * S, 5 * S + S / 2),
+        ],
+    };
+    let d1 = apply(&d, &op, LIM).expect("delete");
+    assert_eq!(
+        ranges(&d1),
+        vec![(0, S), (2 * S, 3 * S), (11 * S / 2, 6 * S), (7 * S, 10 * S)]
+    );
+    assert_eq!(d1.duration(), 5 * S + S / 2);
+    assert_eq!(spans(&d1), vec![(7 * S / 2, 9 * S / 2)]);
+    let all = EditOp::DeleteRanges {
+        ranges: vec![(0, 5 * S), (5 * S, 10 * S)],
+    };
+    assert!(apply(&d, &all, LIM).is_err());
+}

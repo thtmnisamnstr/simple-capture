@@ -79,6 +79,7 @@ export type EditOp =
   | { op: 'trim'; clip_id: string; edge: 'start' | 'end'; rec_ns: number }
   | { op: 'delete_range'; a_tl_ns: number; b_tl_ns: number }
   | { op: 'delete_clips'; ids: string[] }
+  | { op: 'delete_ranges'; ranges: [number, number][] }
   | { op: 'duplicate'; ids: string[] }
   | { op: 'move_clip'; id: string; to_index: number }
   | { op: 'set_speed'; ids: string[]; speed: Speed }
@@ -125,7 +126,17 @@ export const editor = {
   openFile: (path: string) => call<void>('open_file', { path }),
   close: () => call<void>('close'),
   rename: (title: string) => call<string>('rename', { title }),
+  silences: (thresholdDb: number | null, minMs: number) =>
+    call<Silences>('silences', { threshold_db: thresholdDb, min_ms: minMs }),
 };
+
+export interface Silences {
+  ranges: [number, number][];
+  removed_ns: number;
+  duration_ns: number;
+  threshold_db: number;
+  suggested_db: number;
+}
 
 export const SPEEDS: { speed: Speed; label: string }[] = [
   { speed: { num: 1, den: 2 }, label: '0.5×' },

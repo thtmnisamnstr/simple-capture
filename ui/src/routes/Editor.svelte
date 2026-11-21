@@ -25,6 +25,7 @@
   import Timeline, { type Thumbs } from '../components/editor/Timeline.svelte';
   import Inspector from '../components/editor/Inspector.svelte';
   import ExportSheet from '../components/editor/ExportSheet.svelte';
+  import SilencePanel from '../components/editor/SilencePanel.svelte';
   import {
     fontFaceCss,
     newTextItem,
@@ -63,6 +64,8 @@
   let editingText = $state<string | null>(null);
   let error = $state<string | null>(null);
   let titleDraft = $state<string | null>(null);
+  let silencePanel = $state(false);
+  let silenceMarks = $state<[number, number][]>([]);
 
   function focusSelect(el: HTMLInputElement) {
     el.focus();
@@ -834,6 +837,20 @@
   </main>
 
   <section class="bottom">
+    {#if silencePanel}
+      <SilencePanel
+        onpreview={(r) => (silenceMarks = r)}
+        onremove={async (ranges) => {
+          const u = await editor.edit({ op: 'delete_ranges', ranges });
+          absorb(u);
+          range = null;
+        }}
+        onclose={() => {
+          silencePanel = false;
+          silenceMarks = [];
+        }}
+      />
+    {/if}
     <div class="tlbar">
       <button class="plain" onclick={split} title="Split at playhead (S)"><Icon name="scissors" size={14} /> Split</button>
       <button class="plain" onclick={() => void deleteSelection()} disabled={!selected.length && !range} title="Delete selection (⌫)"><Icon name="trash" size={14} /> Delete</button>
@@ -841,6 +858,7 @@
       <button class="plain" onclick={() => void copy(false)} disabled={!selected.length && !range} title="Copy (⌘C)">Copy</button>
       <button class="plain" onclick={paste} disabled={clipboardNs <= 0} title="Paste at playhead (⌘V)">Paste</button>
       <button class="plain" onclick={addText} title="Add text at the playhead (T)"><span class="tglyph">T</span> Text</button>
+      <button class="plain" onclick={() => (silencePanel = !silencePanel)} aria-expanded={silencePanel} disabled={!doc} title="Find the pauses and cut them out">Remove Silences…</button>
       <span class="spacer"></span>
       {#if range}<span class="badge">Range {formatTime(Math.abs(range[1] - range[0]))}</span>{/if}
       {#if selected.length}<span class="badge">{selected.length} selected</span>{/if}
@@ -862,6 +880,7 @@
           {playhead}
           {selected}
           {range}
+          marks={silencePanel ? silenceMarks : []}
           {thumbs}
           {peaks}
           bind:pxPerSec
@@ -1093,6 +1112,7 @@
     min-height: 0;
   }
   .bottom {
+    position: relative;
     min-width: 0;
     background: var(--window);
     border-top: 1px solid var(--separator);

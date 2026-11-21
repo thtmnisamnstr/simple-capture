@@ -95,7 +95,7 @@ impl Clip {
     }
 }
 
-fn tl_of(src_len: i64, speed: Speed) -> i64 {
+pub(crate) fn tl_of(src_len: i64, speed: Speed) -> i64 {
     (i128::from(src_len) * i128::from(speed.den) / i128::from(speed.num.max(1))) as i64
 }
 
@@ -220,6 +220,10 @@ pub enum EditOp {
         a_tl_ns: i64,
         b_tl_ns: i64,
     },
+    /// Ripple-deletes every `(start, end)` timeline range at once, as one edit.
+    DeleteRanges {
+        ranges: Vec<(i64, i64)>,
+    },
     DeleteClips {
         ids: Vec<String>,
     },
@@ -291,6 +295,7 @@ pub fn apply(doc: &Doc, op: &EditOp, lim: Limits) -> Result<Doc> {
         EditOp::DeleteRange { a_tl_ns, b_tl_ns } => {
             delete_range(&mut d, (*a_tl_ns).min(*b_tl_ns), (*a_tl_ns).max(*b_tl_ns));
         }
+        EditOp::DeleteRanges { ranges } => delete_ranges(&mut d, ranges)?,
         EditOp::DeleteClips { ids } => delete_clips(&mut d, ids)?,
         EditOp::Paste {
             at_tl_ns,
@@ -450,6 +455,27 @@ fn delete_range(d: &mut Doc, a: i64, b: i64) {
     d.edl.clips.drain(i..j);
     let new_a = starts(&d.edl)[i];
     ripple_remove(&mut d.text, new_a, new_a + removed);
+}
+
+fn delete_ranges(d: &mut Doc, ranges: &[(i64, i64)]) -> Result<()> {
+    let mut r: Vec<(i64, i64)> = ranges.iter().map(|&(a, b)| (a.min(b), a.max(b))).collect();
+    r.sort_unstable();
+    let mut merged: Vec<(i64, i64)> = Vec::with_capacity(r.len());
+    for (a, b) in r {
+        match merged.last_mut() {
+            Some(last) if a <= last.1 => last.1 = last.1.max(b),
+            _ => merged.push((a, b)),
+        }
+    }
+    for &(a, b) in merged.iter().rev() {
+        delete_range(d, a, b);
+    }
+    if d.edl.clips.is_empty() {
+        return Err(Error::Invalid(
+            "that would remove the whole recording".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn delete_clips(d: &mut Doc, ids: &[String]) -> Result<()> {

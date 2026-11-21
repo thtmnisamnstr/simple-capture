@@ -48,6 +48,13 @@ pub struct Session {
     pub opened_at: Instant,
     pub first_frame_ms: Option<u64>,
     pub retitled: bool,
+    pub loudness: Option<Arc<Loudness>>,
+}
+
+/// Per-10 ms loudness of the tracks that are heard, kept while the editor has the project open.
+pub struct Loudness {
+    tracks: Vec<String>,
+    db: Vec<f32>,
 }
 
 impl Session {
@@ -181,6 +188,11 @@ impl Core {
                 self.editor_export(&opt::<String>(args, "size")?.unwrap_or("reference".into()))
             }
             "close" => self.editor_close(),
+            "silences" => self.editor_silences(
+                opt(args, "threshold_db")?,
+                opt(args, "min_ms")?.unwrap_or(750),
+                opt(args, "pad_ms")?.unwrap_or(150),
+            ),
             "rename" => {
                 let dir = self
                     .editor_dir()
@@ -263,6 +275,7 @@ impl Core {
             opened_at: Instant::now(),
             first_frame_ms: None,
             retitled,
+            loudness: None,
         });
         self.editor.poke();
         self.emit("editor-open", json!({ "project_dir": dir }));
@@ -541,6 +554,54 @@ impl Core {
                 .set_activation_policy(tauri::ActivationPolicy::Accessory);
         }
         Ok(Value::Null)
+    }
+
+    /// The pauses the current threshold finds, as timeline ranges, without changing anything.
+    fn editor_silences(&self, threshold_db: Option<f32>, min_ms: i64, pad_ms: i64) -> Reply {
+        let (id, dir, project, doc, cached) = self.with_session(|s| {
+            Ok((
+                s.id,
+                s.dir.clone(),
+                s.project.clone(),
+                s.history.doc().clone(),
+                s.loudness.clone(),
+            ))
+        })?;
+        let tracks: Vec<String> = sc_player::audio::audio_track_ids(&project)
+            .into_iter()
+            .filter(|t| !doc.audio_mix.get(t).is_some_and(|m| m.muted))
+            .collect();
+        if tracks.is_empty() {
+            return Err("This recording has no sound to find pauses in.".into());
+        }
+        let loud = match cached.filter(|l| l.tracks == tracks) {
+            Some(l) => l,
+            None => {
+                let db = crate::editor_media::loudness_db(self, &dir, &project, &tracks)?;
+                let l = Arc::new(Loudness { tracks, db });
+                if let Some(s) = lock(&self.editor.session).as_mut().filter(|s| s.id == id) {
+                    s.loudness = Some(l.clone());
+                }
+                l
+            }
+        };
+        let suggested = sc_core::silence::suggested_threshold(&loud.db);
+        let rule = sc_core::silence::QuietRule {
+            threshold_db: threshold_db.unwrap_or(suggested).clamp(-80.0, -5.0),
+            min_ns: min_ms.clamp(100, 10_000) * 1_000_000,
+            pad_ns: pad_ms.clamp(0, 1_000) * 1_000_000,
+        };
+        let window = 1_000_000_000 / i64::from(crate::editor_media::PEAKS_PER_S);
+        let spans = sc_core::silence::quiet_spans(&loud.db, window, rule);
+        let ranges = sc_core::silence::on_timeline(&doc.edl, &spans);
+        let removed: i64 = ranges.iter().map(|(a, b)| b - a).sum();
+        Ok(json!({
+            "ranges": ranges,
+            "removed_ns": removed,
+            "duration_ns": doc.duration(),
+            "threshold_db": rule.threshold_db,
+            "suggested_db": suggested,
+        }))
     }
 
     pub fn editor_retitle(&self, title: &str) -> Result<(), String> {

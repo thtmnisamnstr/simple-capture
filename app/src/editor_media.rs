@@ -121,11 +121,37 @@ fn peaks(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
 /// One byte per 10 ms of recording time: the loudest sample over all audio tracks, on a
 /// square-root scale so quiet speech still shows.
 fn compute_peaks(core: &Core, dir: &Path, project: &ProjectV1) -> Result<Vec<u8>, String> {
+    let ids = sc_player::audio::audio_track_ids(project);
+    Ok(window_peaks(core, dir, project, &ids)?
+        .into_iter()
+        .map(|p| (p.clamp(0.0, 1.0).sqrt() * 255.0).round() as u8)
+        .collect())
+}
+
+/// The loudest sample of `tracks` in each 10 ms of recording time, in dBFS.
+pub fn loudness_db(
+    core: &Core,
+    dir: &Path,
+    project: &ProjectV1,
+    tracks: &[String],
+) -> Result<Vec<f32>, String> {
+    Ok(window_peaks(core, dir, project, tracks)?
+        .into_iter()
+        .map(|p| 20.0 * p.max(1e-6).log10())
+        .collect())
+}
+
+fn window_peaks(
+    core: &Core,
+    dir: &Path,
+    project: &ProjectV1,
+    tracks: &[String],
+) -> Result<Vec<f32>, String> {
     let len = project.duration_ns().unwrap_or(0).max(0);
     let bins = (i128::from(len) * i128::from(PEAKS_PER_S) / 1_000_000_000) as usize;
     let per_bin = (PEAK_RATE / PEAKS_PER_S) as usize;
     let mut peaks = vec![0f32; bins];
-    for id in sc_player::audio::audio_track_ids(project).iter() {
+    for id in tracks {
         let mut a = TrackAudio::open(project, dir, id, core.platform.decoder(), PEAK_RATE, 1)
             .map_err(|e| e.to_string())?;
         let mut buf = vec![0f32; per_bin * 100];
@@ -142,10 +168,7 @@ fn compute_peaks(core: &Core, dir: &Path, project: &ProjectV1) -> Result<Vec<u8>
             }
         }
     }
-    Ok(peaks
-        .into_iter()
-        .map(|p| (p.clamp(0.0, 1.0).sqrt() * 255.0).round() as u8)
-        .collect())
+    Ok(peaks)
 }
 
 fn thumbs(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {

@@ -34,6 +34,7 @@
     onselecttext,
     ontextmove,
     selectedText = null,
+    marks = [],
   }: {
     clips: Clip[];
     text: TextItem[];
@@ -41,6 +42,7 @@
     playhead: number;
     selected: string[];
     range: [number, number] | null;
+    marks?: [number, number][];
     thumbs: Thumbs | null;
     peaks: Uint8Array | null;
     snapping?: boolean;
@@ -435,6 +437,9 @@
         </div>
       {/each}
     </div>
+    {#each marks as m (m[0])}
+      <div class="mark" style:left="{x(m[0])}px" style:width="{Math.max(1, x(m[1]) - x(m[0]))}px"></div>
+    {/each}
     {#if range}
       <div class="range" style:left="{x(Math.min(...range))}px" style:width="{Math.abs(x(range[1]) - x(range[0]))}px"></div>
     {/if}
@@ -600,6 +605,13 @@
   }
   .tedge.r {
     right: 0;
+  }
+  .mark {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--red, #d93025) 28%, transparent);
+    pointer-events: none;
   }
   .range {
     position: absolute;

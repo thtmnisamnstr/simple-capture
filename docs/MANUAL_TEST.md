@@ -710,6 +710,9 @@ stop. The editor opens by itself. Check, in order:
 | E15 | Close the editor, tray → Edit Last Recording | The editor opens with the edits kept (autosaved) |
 | E16 | Recorder panel → When Recording Stops → Show Summary; record again | The Saved window appears instead; its Edit… button opens the editor |
 | E17 | Light and dark appearance | Both look right |
+| E18 | Record 30 s talking with a few long pauses; editor → Remove Silences… | The pauses are marked red on the timeline; the count and total update as you move the level or pick 0.5 s / 1 s / 2 s |
+| E19 | Remove | The marked pauses are gone in one step; speech keeps a short breath at each cut; ⌘Z brings them all back |
+| E20 | Mute the system audio track in Audio, open Remove Silences again | Only the microphone counts: music in the muted track no longer hides the pauses |
 
 ## 10d. Text (M4)
 

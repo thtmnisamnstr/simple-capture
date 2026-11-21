@@ -435,6 +435,19 @@ const mockDoc = {
 let editorTitle = 'Recording';
 
 function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
+  if (action === 'silences') {
+    const t = typeof a.threshold_db === 'number' ? a.threshold_db : -44;
+    const min = typeof a.min_ms === 'number' ? a.min_ms : 1000;
+    const all: [number, number][] = [
+      [0, 1.4 * S],
+      [9.2 * S, 10.6 * S],
+      [21 * S, 23.5 * S],
+      [31 * S, 31.8 * S],
+      [44 * S, 47 * S],
+    ];
+    const ranges = all.filter(([x, y]) => y - x >= (min / 1000) * S * (1 + (t + 44) / 30));
+    return { ranges, removed_ns: ranges.reduce((n, [x, y]) => n + y - x, 0), duration_ns: 57 * S, threshold_db: t, suggested_db: -44 };
+  }
   if (action === 'rename') {
     const t = String(a.title ?? '').trim();
     if (!t) throw new Error('A recording needs a name.');

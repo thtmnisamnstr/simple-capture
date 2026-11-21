@@ -11,6 +11,7 @@ pub mod journal;
 pub mod project;
 pub mod sessionlog;
 pub mod sha;
+pub mod silence;
 pub mod text;
 pub mod time;
 
