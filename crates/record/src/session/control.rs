@@ -804,6 +804,7 @@ impl Control {
                         self.sh
                             .paused
                             .store(false, std::sync::atomic::Ordering::SeqCst);
+                        self.sink.resume_held(now);
                         self.sh.obs.on_notice(&Notice::Paused { paused: false });
                         Ok(())
                     }

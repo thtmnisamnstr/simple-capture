@@ -42,6 +42,7 @@ pub(crate) struct SessionSink {
     firsts: Mutex<Firsts>,
     cv: Condvar,
     levels: Mutex<[(std::time::Instant, f32); 2]>,
+    held: Mutex<Option<VideoFrame>>,
 }
 
 impl SessionSink {
@@ -67,6 +68,15 @@ impl SessionSink {
         }
     }
 
+    /// The screen sends frames only when it changes: the last one seen while paused is recorded
+    /// at `now`, so an idle screen does not show the picture from before the pause.
+    pub(crate) fn resume_held(&self, now: i64) {
+        if let Some(mut f) = lock(&self.held).take() {
+            f.pts = sc_platform::HostTime(now.max(f.pts.0));
+            let _ = self.router.try_send(RouterIn::Frame(f));
+        }
+    }
+
     fn paused(&self) -> bool {
         self.sh.paused.load(std::sync::atomic::Ordering::SeqCst)
     }
@@ -81,6 +91,7 @@ impl SessionSink {
             seen: Default::default(),
             firsts: Mutex::new(Firsts::default()),
             cv: Condvar::new(),
+            held: Mutex::new(None),
             levels: Mutex::new([(std::time::Instant::now(), 0.0); 2]),
         })
     }
@@ -133,6 +144,7 @@ impl FrameSink for SessionSink {
     fn on_screen(&self, f: VideoFrame) {
         self.first(0, |x| x.screen = true);
         if self.paused() {
+            *lock(&self.held) = Some(f);
             return;
         }
         if let Err(TrySendError::Full(_)) = self.router.try_send(RouterIn::Frame(f))

@@ -18,7 +18,7 @@ merged to `main` (35b7d3e); M2 is on `m2` and also contained in `m3`.
 | Customizable shortcuts | R15–R17 | driver flow 23 (registration, clash, bare key refused, clear) |
 | Windows: Media Foundation tracks (beta) | TESTING_ON_WINDOWS_LINUX.md | round trips on GitHub's Windows runner |
 | Linux: GStreamer screen track (beta) | TESTING_ON_WINDOWS_LINUX.md | round trip in tools/linux-dev and on GitHub's Ubuntu runner |
-| NVENC in the Linux and Windows helpers | — | builds in the `package` workflow; no NVIDIA GPU to run it on |
+| NVENC in the Linux and Windows helpers | — | `package` run 44958418772 built every installer with it; the Linux helper lists h264_nvenc/hevc_nvenc and links only system libraries; no NVIDIA GPU here to run it |
 
 Independent reviews of the new code ran before handing over; their verified findings were fixed
 (see the commits after "Guide for testing").
@@ -69,8 +69,6 @@ the countdown by eye (driver mode turns both off); installing and running the bu
 5. **The package workflow runs on pull requests, version tags and manual runs** (owner, ok).
 
 ### Open items
-- Pause edge: after resume the video shows the pre-pause frame until the screen next changes
-  (ScreenCaptureKit sends frames only on change, about 1 per second when idle).
 - Linux cameras that only offer MJPEG are not supported yet.
 - Carried: the Windows CI flake `stop_before_the_duration_ends_there`; Preview at ~24 fps while
   recording; camera A/V sync unmeasured (STATUS §3).
