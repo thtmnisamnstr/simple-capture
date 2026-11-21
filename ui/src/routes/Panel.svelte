@@ -1,5 +1,6 @@
 <script lang="ts">
   import { revealLabel } from '../lib/format.ts';
+  import { editor } from '../lib/editor.ts';
   import { api, errorText } from '../lib/api.ts';
   import { onEvent } from '../lib/events.ts';
   import { isObject, isPicked, isRecordingState, isRegionSelected } from '../lib/guards.ts';
@@ -318,7 +319,9 @@
         <Icon name="warning" size={14} />
         <span>
           {recovery.length === 1 ? 'A recording from a previous session was recovered.' : `${recovery.length} recordings from a previous session were recovered.`}
+          <button class="link" onclick={() => run(() => editor.open(recovery[0].dir).then(() => undefined))}>Edit</button>
           <button class="link" onclick={() => run(() => api.reveal(recovery[0].dir))}>{revealLabel()}</button>
+          {#if recovery.length > 1}<button class="link" onclick={() => showWindow('library')}>Library…</button>{/if}
         </span>
       </p>
     {/if}
