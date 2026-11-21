@@ -289,6 +289,12 @@ impl HelperProcess {
         ))
     }
 
+    /// Whether a `write_frame` now would return without waiting.
+    pub fn has_room(&self) -> bool {
+        let q = lock(&self.shared.q);
+        q.items.len() + q.reserved < self.shared.depth
+    }
+
     pub fn progress(&self) -> Option<Progress> {
         lock(&self.shared.progress).clone()
     }
