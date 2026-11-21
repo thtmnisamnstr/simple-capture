@@ -711,6 +711,25 @@ stop. The editor opens by itself. Check, in order:
 | E16 | Recorder panel → When Recording Stops → Show Summary; record again | The Saved window appears instead; its Edit… button opens the editor |
 | E17 | Light and dark appearance | Both look right |
 
+## 10d. Text (M4)
+
+In the editor with any recording:
+
+| # | Step | Expected |
+|---|---|---|
+| T1 | Press T | "Your text" appears near the bottom for 3 s from the playhead, selected (yellow box); the Text tab opens |
+| T2 | Double-click the text in the preview, type "Hello 👋 world" | The video updates as you type; the emoji is in colour |
+| T3 | Try each style preset | Each looks like its button; Box and Inverted put a rounded box behind the lines; Merged joins the boxes of several lines |
+| T4 | Change font, weight, italic, size, alignment, line height, spacing | The preview follows; heavy weights are real weights, not smeared |
+| T5 | Gradient on; eyedropper; pick a colour from anywhere on screen | The fill uses it |
+| T6 | Drag the text; watch the pink guides at the centre and thirds | Snaps to them |
+| T7 | Drag a corner handle; drag the round handle above the box | Scales; rotates and snaps at 0°, 15° and 90° |
+| T8 | Set In: Typewriter, Out: Slide down, Loop: Pulse; play | Letters appear one by one, the text pulses, then slides away |
+| T9 | Drag the text item and its edges on the timeline | It moves and retimes |
+| T10 | Delete a range that covers the text; undo | The text goes with it; undo brings both back |
+| T11 | ⌘C, move the playhead, ⌘V | A copy appears at the playhead |
+| T12 | Export 1080p and 720p | The text looks identical in both and in the preview |
+
 ## 11. Results log
 
 Copy this table into the M1 review notes (or STATUS) with one line per step run.

@@ -1459,3 +1459,35 @@ they are not a substitute for an M1 run.
 - **Not built / limits:** reverse shuttle (J jumps back); trimming shows the new length while
   dragging but the preview frame only after release; the waveform is one combined lane, not one
   per track; editor open time was measured only on short recordings.
+
+## ADR-046: M4 text overlays as built
+- **Status:** Accepted by the agent on 2026-11-21 under the owner's "Build the rest of it out"
+  (no ★ stop); open to change at the owner's review.
+- **Decision:**
+  - **Fonts:** the ADR-020 final list (13 families, 20 files, Noto Color Emoji COLRv1) is
+    committed in `assets/fonts` with license files (11 MB) and bundled in `Resources/fonts`.
+    Weights are variable-font instances; static families pick the nearest face; an italic falls
+    back to upright when a family has none. Installed families come through fontdb. Font fallback
+    is off (deterministic output); missing characters are counted and the Text tab warns.
+  - **Layout:** Skia paragraphs in 1080 units (1080 = the canvas's short side), wrapped at 90% of
+    the canvas width, rasterized at the output scale times the item's scale, so text is crisp at
+    any export size. The box layer and the text layer are separate images; reveals copy text tiles
+    over the full box.
+  - **Styles:** solid or two-stop linear gradient fill, outline, drop shadow, glow (two blurred
+    strokes), per-line or merged (TikTok) boxes, inverted (box in the text colour, text in the box
+    colour), uppercase, opacity, alignment, line height, letter spacing (1080 units).
+  - **Animations** (pure functions of the time into the item, so every fps samples the same
+    curve): in fade, pop, slide ×4, typewriter, word by word, bounce; out fade, pop, slide ×4;
+    loops pulse, wiggle, float; durations capped at half the item; easings linear, ease in/out,
+    ease in and out, overshoot.
+  - **Compositing:** `TextLayer` (premultiplied image + affine + opacity) in the compositor, drawn
+    after the camera by a WGSL pass with integer bilinear sampling and blending, mirrored by the
+    CPU reference. GPU vs CPU max difference 2 (f32 coordinate maths may differ by one 1/256 step).
+  - **UI:** Text tab, ten presets (Classic, Outline, Box, Inverted, Neon, Headline, Typewriter,
+    Handwritten, Elegant, Marker), six recent styles (per-viewer local storage), the macOS
+    eyedropper (`NSColorSampler`; elsewhere hidden), direct manipulation on the preview with
+    centre/thirds/5% margin guides and 0/±15/±90° rotation snaps, and typing on the preview through
+    a transparent text area that uses the bundled fonts served as `sc://font/<file>`.
+- **Limits:** RTL and complex scripts untested; inline typing shows the browser's caret over
+  Skia's glyphs, so the caret can sit a little off on fonts the page has to substitute (system
+  fonts); per-character colours are not supported.

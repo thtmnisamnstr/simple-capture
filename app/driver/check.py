@@ -530,6 +530,22 @@ if basic("17-editor", log):
             check("17-editor", "exported length matches the edit (within 2 frames)",
                   dur is not None and abs(dur - total / 1e9) <= 2 / 30 + 0.03,
                   {"export_s": dur, "timeline_s": total / 1e9})
+        if ex and FFMPEG:
+            out = ex[0].get("path", "")
+
+            def yellow_at(t_s):
+                r = subprocess.run([FFMPEG, "-v", "error", "-ss", str(t_s), "-i", out, "-frames:v", "1",
+                                    "-vf", "scale=320:-2", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                                   capture_output=True)
+                px = r.stdout
+                return sum(1 for i in range(0, len(px) - 2, 3) if px[i] > 200 and px[i + 1] > 190 and px[i + 2] < 90)
+
+            during, after = yellow_at(2.0), yellow_at(5.0)
+            check("17-editor", "the text item is in the export (2.0 s) and gone after it (5.0 s)",
+                  during > 150 and after < during / 10, {"yellow_px_2s": during, "yellow_px_5s": after})
+            pj = pr["project"].get("text", [])
+            check("17-editor", "text item autosaved", len(pj) == 1 and pj[0].get("content") == "DRIVER TEXT",
+                  [t.get("content") for t in pj])
         ui = [l for l in log if l.get("event") == "editor-frame"]
         check("17-editor", "editor-frame says native on macOS", sys.platform != "darwin" or (ui and ui[-1]["payload"].get("native")),
               ui[-1]["payload"] if ui else None)
