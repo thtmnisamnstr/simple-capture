@@ -867,6 +867,7 @@ fn locked<T>(sample: &IMFSample, f: impl FnOnce(&[u8]) -> T) -> Result<T> {
 /// time by a frame or so, which would put video behind audio.
 struct MfVideoReader {
     reader: IMFSourceReader,
+    native: SizePx,
     size: SizePx,
     stride: Option<usize>,
     stream: u32,
@@ -883,14 +884,15 @@ impl MfVideoReader {
         let stream = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
         unsafe {
             let native = reader.GetNativeMediaType(stream, 0).map_err(os)?;
-            let (w, h) = unpack(native.GetUINT64(&MF_MT_FRAME_SIZE).map_err(os)?);
+            let (nw, nh) = visible_size(&native)?;
             let want = media_type(&MFMediaType_Video, &MFVideoFormat_NV12)?;
-            want.SetUINT64(&MF_MT_FRAME_SIZE, pack(w, h)).map_err(os)?;
+            want.SetUINT64(&MF_MT_FRAME_SIZE, pack(nw, nh))
+                .map_err(os)?;
             reader
                 .SetCurrentMediaType(stream, None, &want)
                 .map_err(os)?;
             let cur = reader.GetCurrentMediaType(stream).map_err(os)?;
-            let (w, h) = unpack(cur.GetUINT64(&MF_MT_FRAME_SIZE).map_err(os)?);
+            let (w, h) = padding_free(visible_size(&cur)?, SizePx { w: nw, h: nh });
             let stride = cur
                 .GetUINT32(&MF_MT_DEFAULT_STRIDE)
                 .ok()
@@ -898,6 +900,7 @@ impl MfVideoReader {
                 .filter(|s| *s >= w as usize);
             let mut r = MfVideoReader {
                 reader,
+                native: SizePx { w: nw, h: nh },
                 size: SizePx { w, h },
                 stride,
                 stream,
@@ -918,6 +921,34 @@ impl MfVideoReader {
             }
             Ok(r)
         }
+    }
+}
+
+/// The picture's visible size: decoders report frames padded to whole 16-pixel blocks
+/// (640×368 for 640×360) and put the real size in the display aperture.
+fn visible_size(t: &IMFMediaType) -> Result<(u32, u32)> {
+    let (w, h) = unsafe { unpack(t.GetUINT64(&MF_MT_FRAME_SIZE).map_err(os)?) };
+    let mut area = [0u8; 16];
+    let mut len = 0u32;
+    if unsafe { t.GetBlob(&MF_MT_MINIMUM_DISPLAY_APERTURE, &mut area, Some(&mut len)) }.is_ok()
+        && len == 16
+    {
+        let cx = i32::from_le_bytes([area[8], area[9], area[10], area[11]]);
+        let cy = i32::from_le_bytes([area[12], area[13], area[14], area[15]]);
+        if cx > 0 && cy > 0 && cx as u32 <= w && cy as u32 <= h {
+            return Ok((cx as u32, cy as u32));
+        }
+    }
+    Ok((w, h))
+}
+
+/// The file's own size when `got` only adds block padding to it.
+fn padding_free(got: (u32, u32), native: SizePx) -> (u32, u32) {
+    let pad = |g: u32, n: u32| g >= n && g < n + 16;
+    if pad(got.0, native.w) && pad(got.1, native.h) {
+        (native.w, native.h)
+    } else {
+        got
     }
 }
 
@@ -998,7 +1029,7 @@ impl MfVideoReader {
     fn refresh_format(&mut self) -> Result<()> {
         unsafe {
             let cur = self.reader.GetCurrentMediaType(self.stream).map_err(os)?;
-            let (w, h) = unpack(cur.GetUINT64(&MF_MT_FRAME_SIZE).map_err(os)?);
+            let (w, h) = padding_free(visible_size(&cur)?, self.native);
             self.size = SizePx { w, h };
             self.stride = cur
                 .GetUINT32(&MF_MT_DEFAULT_STRIDE)
