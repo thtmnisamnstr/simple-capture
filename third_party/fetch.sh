@@ -2,7 +2,7 @@
 set -euo pipefail
 . "$(dirname -- "$0")/lib.sh"
 
-for sec in ffmpeg x264 x265 svt-av1 libvpx opus libogg libvorbis gifski; do
+for sec in ffmpeg x264 x265 svt-av1 libvpx opus libogg libvorbis nv-codec-headers gifski; do
     fetch "$sec" >/dev/null
 done
 fetch gifski license_url license_file license_sha256 >/dev/null

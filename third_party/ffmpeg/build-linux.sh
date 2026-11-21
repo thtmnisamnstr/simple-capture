@@ -6,8 +6,9 @@
 #
 # The Linux and Windows twins of build-macos.sh: the same pinned, checksum-verified sources and
 # the same GPL (never nonfree) feature set with networking disabled. Windows adds Media
-# Foundation encoders and D3D11 decoding; neither adds a link-time dependency. Linux has no
-# hardware encoder yet (VAAPI would make the helper need libva to start at all).
+# Foundation encoders and D3D11 decoding; both add NVENC, which loads the NVIDIA driver at run
+# time. None adds a link-time dependency. Linux has no VAAPI (the helper would need libva to start
+# at all); the app's GStreamer path covers VAAPI there.
 set -euo pipefail
 . "$(dirname -- "$0")/../lib.sh"
 
@@ -133,6 +134,13 @@ build_x265() {
     stamp_set x265
 }
 
+build_nvheaders() {
+    stamp_ok nv-codec-headers && return 0
+    prepare nv-codec-headers
+    make install PREFIX="$PREFIX"
+    stamp_set nv-codec-headers
+}
+
 build_svtav1() {
     stamp_ok svt-av1 && return 0
     prepare svt-av1
@@ -156,11 +164,13 @@ FFMPEG_CONFIGURE=(
     --enable-pthreads
     --enable-libx264 --enable-libx265 --enable-libsvtav1 --enable-libvpx
     --enable-libopus --enable-libvorbis
+    --enable-ffnvcodec --enable-nvenc
     --disable-everything
     --enable-protocol=file,pipe
     --enable-encoder=libx264,libx265,libsvtav1,libvpx_vp8,libvpx_vp9,prores_ks
     --enable-encoder=aac,libopus,libvorbis,flac,alac,pcm_s16le,pcm_s24le,pcm_f32le
     --enable-encoder=gif,rawvideo,wrapped_avframe
+    --enable-encoder=h264_nvenc,hevc_nvenc
     --enable-decoder=rawvideo,wrapped_avframe,h264,hevc,vp8,vp9,prores,gif,png
     --enable-decoder=aac,opus,vorbis,flac,alac,pcm_s16le,pcm_s24le,pcm_f32le
     --enable-muxer=mov,mp4,webm,matroska,gif,wav,yuv4mpegpipe,rawvideo,null,framemd5
@@ -212,6 +222,7 @@ collect_licenses() {
     cp "$SRC/opus/COPYING" "$d/opus-COPYING"
     cp "$SRC/libogg/COPYING" "$d/libogg-COPYING"
     cp "$SRC/libvorbis/COPYING" "$d/libvorbis-COPYING"
+    sed -n '1,/\*\//p' "$SRC/nv-codec-headers/include/ffnvcodec/nvEncodeAPI.h" > "$d/nv-codec-headers-LICENSE"
 }
 
 verify_linkage() {
@@ -249,6 +260,7 @@ build_libvpx
 build_x264
 build_x265
 build_svtav1
+build_nvheaders
 build_ffmpeg
 collect_licenses
 verify_linkage

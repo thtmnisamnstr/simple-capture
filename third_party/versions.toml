@@ -79,6 +79,14 @@ sha256 = "b33cc4934322bcbf6efcbacf49e3ca01aadbea4114ec9589d1b1e9d20f72954b"
 license = "BSD-3-Clause"
 cross_check = "Upstream https://downloads.xiph.org/releases/vorbis/SHA256SUMS and Homebrew libvorbis 1.3.7 match."
 
+[nv-codec-headers]
+version = "11.1.5.3"
+url = "https://github.com/FFmpeg/nv-codec-headers/releases/download/n11.1.5.3/nv-codec-headers-11.1.5.3.tar.gz"
+file = "nv-codec-headers-11.1.5.3.tar.gz"
+sha256 = "2974b91062197e0527dffa3aadd8fe3bfa6681ae45f5ff9181bc0ca6479abd59"
+license = "MIT"
+cross_check = "Downloaded 2026-11-21; tarball contents compared file-by-file (diff -r) with a git clone of tag n11.1.5.3: identical. Header only: FFmpeg loads the NVIDIA driver at run time. The oldest version FFmpeg 9.0 accepts, so the widest range of drivers (470+) works."
+
 [gifski]
 version = "1.34.0"
 git_commit = "1060eab4500a20f27e2fa3ab7e85473d0e921cbd"

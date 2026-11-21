@@ -1656,4 +1656,8 @@ they are not a substitute for an M1 run.
   runtime dependency): VA-API, NVENC or OpenH264 into the same Matroska the helper writes, so
   reading, probing, recovery and audio stay with the helper. x264enc is never picked by the app
   (GPL stays in the helper); with no such encoder, or `SC_MEDIA=helper`, the helper records as
-  before. The helper itself still has no hardware encoder on Linux.
+  before.
+- **NVENC in the helpers:** the Linux and Windows FFmpeg helpers gain `h264_nvenc` and
+  `hevc_nvenc` (nv-codec-headers 11.1.5.3, MIT, header only; the driver loads at run time, so
+  no new link dependency and drivers 470+ work). The helper's encoder probe already tries them
+  first, so Fast exports and helper-written tracks use an NVIDIA GPU when there is one.
