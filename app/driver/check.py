@@ -506,7 +506,9 @@ if log is not None and basic("16-soak", log):
             rows = rows[: int(dur_s // 15)]
             rss = [int(r[0]) / 1024 for r in rows]
             cpu = [float(r[1]) for r in rows]
-            if len(rss) > 10:
+            check("16-soak", "the app's memory and CPU were sampled", len(rss) > 10 and min(rss) > 30,
+                  {"samples": len(rss), "min_mb": round(min(rss), 1) if rss else None})
+            if len(rss) > 10 and min(rss) > 30:
                 q = len(rss) // 4
                 early, late = sum(rss[q:2 * q]) / q, sum(rss[-q:]) / q
                 check("16-soak", "memory steady while recording (last quarter within 150 MB of the second)",
@@ -738,6 +740,19 @@ if basic("24-long", log):
         check("24-long", "a seek near the end drew new frames",
               after.get("frames_presented", 0) > opened.get("frames_presented", 0),
               {"before": opened.get("frames_presented"), "after": after.get("frames_presented")})
+
+log = lines("25-preview-rate")
+if basic("25-preview-rate", log):
+    ps = steps(log, "cmd preview_state")
+    pr = P.get("drv preview rate")
+    cam = next((t for t in (pr or {}).get("project", {}).get("recording", {}).get("tracks", []) if t["kind"] == "camera"), None)
+    if len(ps) == 2 and cam:
+        dt = (ps[1]["rec_ns"] - ps[0]["rec_ns"]) / 1e9
+        rate = (ps[1]["result"].get("frame", 0) - ps[0]["result"].get("frame", 0)) / dt
+        rec = pr["project"]["recording"]
+        cam_fps = cam["health"]["frames"] / ((rec["stop_host_ns"] - rec["start_host_ns"]) / 1e9)
+        check("25-preview-rate", "the Preview shows at least 90% of the camera's frames while recording",
+              rate >= 0.9 * cam_fps, {"preview_fps": round(rate, 1), "camera_fps": round(cam_fps, 1)})
 
 json.dump({"run": RUN, "projects": {k: os.path.basename(v["dir"]) for k, v in P.items()}, "results": results},
           open(os.path.join(RUN, "report.json"), "w"), indent=2)

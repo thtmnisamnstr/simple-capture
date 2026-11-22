@@ -1,0 +1,12 @@
+# The Preview window keeps up with the camera while recording (it showed ~24 of 30 fps before).
+cmd set_settings {"settings":{"source":{"kind":"display","display_id":"@DISPLAY@"},"camera":"@CAMERA@","mic":"@MIC@","preview_shown":true}}
+show panel
+wait 3000
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv preview rate","settings":{"camera":"@CAMERA@","mic":"@MIC@","preview_shown":true}}}
+wait 4000
+cmd preview_state
+wait 20000
+cmd preview_state
+cmd stop_recording
+wait-phase saved 60000
+quit

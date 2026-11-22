@@ -22,7 +22,9 @@ use crate::preview::StageFrame;
 use crate::sink::Sink;
 use crate::still::rgba_to_nv12;
 
-const FRAME_INTERVAL: Duration = Duration::from_millis(33);
+/// At most 60 draws a second: a 30 fps cap beat against the camera's own 30 fps and skipped
+/// about one frame in five; between new frames the loop waits on the camera instead.
+const FRAME_INTERVAL: Duration = Duration::from_millis(16);
 const IDLE_WAIT: Duration = Duration::from_millis(30);
 const SNAPSHOT_EVERY: Duration = Duration::from_millis(1000);
 const OFFSCREEN_POLL: Duration = Duration::from_millis(100);

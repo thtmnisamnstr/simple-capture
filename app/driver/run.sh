@@ -72,7 +72,7 @@ render() {
 
 drive() {
   echo "app-driver: flow $1" >&2
-  SC_APP_SCRIPT="$RUN/scripts/$1.txt" "$ROOT/scripts/lib/live.sh" \
+  SC_DEV_PID_FILE="$RUN/$1.pid" SC_APP_SCRIPT="$RUN/scripts/$1.txt" "$ROOT/scripts/lib/live.sh" \
     "$ROOT/tools/macos-dev-host/run.sh" "$APP" > "$RUN/$1.log" 2>&1
   echo "$?" > "$RUN/$1.rc"
 }
@@ -116,7 +116,7 @@ CAMERA="${SC_DRV_CAMERA:-$(pick_dev cameras)}"
 MIC="${SC_DRV_MIC:-$(pick_dev mics)}"
 echo "app-driver: camera=${CAMERA:-none} mic=${MIC:-none}" >&2
 
-for f in 02-still-csp 03-sources 04-switch 05-exclusion 06-export 17-editor 18-diagnostics 19-library 20-pause 21-camera 22-silence 23-shortcuts 07-sleep 12-preview 14-preview-capture 08-quit-recording; do
+for f in 02-still-csp 03-sources 04-switch 05-exclusion 06-export 17-editor 18-diagnostics 19-library 20-pause 21-camera 22-silence 23-shortcuts 25-preview-rate 07-sleep 12-preview 14-preview-capture 08-quit-recording; do
   flow "$f"
 done
 if wanted 08-quit-recording; then
@@ -135,7 +135,7 @@ if wanted 10-kill; then
 fi
 flow 11-quit-export
 if [ ${#FILTERS[@]} -gt 0 ] && wanted 16-soak; then
-  ( while sleep 15; do P=$(pgrep -f "$RUN/bin/simple-capture-app" | head -1); [ -n "$P" ] && ps -o rss=,%cpu= -p "$P"; done ) > "$RUN/soak-ps.txt" 2>/dev/null &
+  ( while sleep 15; do P=$(cat "$RUN/16-soak.pid" 2>/dev/null); [ -n "$P" ] && ps -o rss=,%cpu= -p "$P"; done ) > "$RUN/soak-ps.txt" 2>/dev/null &
   SAMPLER=$!
   flow 16-soak
   kill "$SAMPLER" 2>/dev/null

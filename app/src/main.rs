@@ -1,6 +1,8 @@
 //! Simple Capture desktop app: Tauri 2 shell (M1 plan §5.2–§5.4).
 
 mod about;
+#[cfg(target_os = "macos")]
+mod appmenu;
 mod commands;
 mod core;
 #[cfg(debug_assertions)]
@@ -274,6 +276,8 @@ fn main() {
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder.activate_ignoring_other_apps(false);
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(appmenu::build).on_menu_event(appmenu::handle);
     let app = builder
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .register_asynchronous_uri_scheme_protocol("sc", protocol::handle)
