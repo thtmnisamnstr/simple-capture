@@ -120,6 +120,7 @@
     gap: 8px;
   }
   .entry {
+    flex: none;
     padding: 8px 10px;
   }
   .row1 {

@@ -326,7 +326,7 @@
 
   $effect(() => {
     if (!settings || !loaded) return;
-    if ((fpsChoice === '60' && why60) || (fpsChoice === '60-1x' && why60x1)) settings.fps = 30;
+    if (probe && ((fpsChoice === '60' && why60) || (fpsChoice === '60-1x' && why60x1))) settings.fps = 30;
     if (settings.system_audio === 'app' && whyAppAudio) settings.system_audio = 'off';
     if (caps && !caps.show_clicks && settings.click_highlight) settings.click_highlight = false;
   });

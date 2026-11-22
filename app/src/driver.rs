@@ -25,6 +25,7 @@ pub enum Step {
     Pick { kind: String, id: String },
     Show(String),
     LogWindowRects,
+    Shot { label: String, path: String },
     Sim(String),
     WaitPhase { phase: String, ms: u64 },
     WaitLaunch(u64),
@@ -80,6 +81,13 @@ pub fn parse_line(line: &str) -> Result<Option<Step>, String> {
         }
         "show" if !rest.is_empty() => Step::Show(rest.to_string()),
         "log-window-rects" => Step::LogWindowRects,
+        "shot" => match rest.split_once(' ') {
+            Some((label, path)) if !path.trim().is_empty() => Step::Shot {
+                label: label.to_string(),
+                path: path.trim().to_string(),
+            },
+            _ => return Err(format!("shot: expected WINDOW PATH in {line:?}")),
+        },
         "wait-phase" => {
             let mut it = rest.split_whitespace();
             match (it.next(), it.next().map(str::parse::<u64>)) {
@@ -205,6 +213,7 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
         }
         Step::Show(label) => core.show_window(&label, false).map(|_| Value::Null),
         Step::LogWindowRects => Ok(core.window_rects()),
+        Step::Shot { label, path } => core.shot_window(&label, std::path::Path::new(&path)),
         Step::Sim(what) => {
             core.on_system_event(if what == "sleep" {
                 SourceEvent::SystemWillSleep

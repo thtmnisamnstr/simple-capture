@@ -67,7 +67,7 @@ MIC=""
 render() {
   sed -e "s|@DISPLAY@|$DISPLAY_ID|g" -e "s|@RED_WID@|$RED_WID|g" -e "s|@GREEN_WID@|$GREEN_WID|g" \
       -e "s|@GREEN_PID@|$GREEN_PID|g" -e "s|@CAMERA@|$CAMERA|g" -e "s|@MIC@|$MIC|g" \
-      -e "s|@TITLE@|${3:-}|g" "$HERE/flows/$1.txt" > "$RUN/scripts/$2.txt"
+      -e "s|@TITLE@|${3:-}|g" -e "s|@RUN@|$RUN|g" "$HERE/flows/$1.txt" > "$RUN/scripts/$2.txt"
 }
 
 drive() {
@@ -140,6 +140,11 @@ if [ ${#FILTERS[@]} -gt 0 ] && wanted 16-soak; then
   flow 16-soak
   kill "$SAMPLER" 2>/dev/null
 fi
+if [ ${#FILTERS[@]} -gt 0 ] && wanted 26-shots; then
+  mkdir -p "$RUN/shots"
+  flow 26-shots
+  echo "app-driver: window shots in $RUN/shots (they show the real screen: delete them after review)" >&2
+fi
 if [ ${#FILTERS[@]} -gt 0 ] && wanted 24-long && [ -n "$FFMPEG" ]; then
   LONG="$(python3 -I "$HERE/longproject.py" "$FFMPEG" "$RUN/projects" "${SC_LONG_SECS:-600}")" || exit 1
   sed -e "s|@LONG@|$LONG|g" "$HERE/flows/24-long.txt" > "$RUN/scripts/24-long.txt"
@@ -157,6 +162,6 @@ if [ "${SC_KEEP_MEDIA:-0}" != 1 ]; then
   find "$RUN/projects" -type d -name thumbs -prune -exec rm -rf {} +
   rm -f "$RUN/bin/simple-capture-app" "$RUN/bin/sc-devtools" "$RUN/bin/ffmpeg" "$RUN/bin/ffprobe"
 fi
-rsync -a --exclude bin --exclude thumbs --exclude '*.mov' --exclude '*.mp4' --exclude '*.m4a' --exclude '*.wav' "$RUN/" "$OUT/"
+rsync -a --exclude bin --exclude thumbs --exclude shots --exclude '*.mov' --exclude '*.mp4' --exclude '*.m4a' --exclude '*.wav' "$RUN/" "$OUT/"
 echo "app-driver: report $OUT/report.json (exit $rc)" >&2
 exit "$rc"

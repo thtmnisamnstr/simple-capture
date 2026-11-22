@@ -1,0 +1,33 @@
+# Pictures of the real windows for a look-and-feel review, with a 4-second recording for the bar,
+# the switcher and the editor. Run by name.
+show panel
+wait 2500
+shot panel @RUN@/shots/panel.png
+eval panel document.querySelector('.scroll').scrollTop = 99999
+wait 600
+shot panel @RUN@/shots/panel-bottom.png
+show library
+wait 2000
+shot library @RUN@/shots/library.png
+show about
+wait 1500
+shot about @RUN@/shots/about.png
+show onboarding
+wait 1500
+shot onboarding @RUN@/shots/onboarding.png
+show diagnostics
+wait 1500
+shot diagnostics @RUN@/shots/diagnostics.png
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv shots","settings":{"mic":"@MIC@"}}}
+wait 2500
+shot bar @RUN@/shots/bar.png
+show switcher
+wait 1200
+shot switcher @RUN@/shots/switcher.png
+cmd stop_recording
+wait-phase saved 30000
+wait 3000
+shot editor @RUN@/shots/editor.png
+cmd editor {"action":"close"}
+wait 500
+quit

@@ -10,7 +10,9 @@ use sc_core::journal::StopReason;
 use sc_core::project::{Background, Fit, ProjectV1, Via};
 use sc_export::probe::ProbeV1;
 use sc_export::{ExportJob, ExportObserver, ExportProgress, ExportState, QuickExportRequest};
-use sc_geometry::{PointF, RectPt, SizePx};
+#[cfg(debug_assertions)]
+use sc_geometry::RectPt;
+use sc_geometry::{PointF, SizePx};
 use sc_platform::{
     AudioBuffer, DeviceStream, FrameSink, OverlayRole, PermissionKind, PermissionStatus,
     PickedSource, PickerRequest, Platform, Resolution, SharedCamera, SourceEvent, VideoFrame,
@@ -199,6 +201,7 @@ impl Core {
         lock(&self.last_project).clone()
     }
 
+    #[cfg(debug_assertions)]
     pub fn last_export(&self) -> Option<String> {
         lock(&self.last_export).clone()
     }
@@ -212,6 +215,7 @@ impl Core {
         }
     }
 
+    #[cfg(debug_assertions)]
     pub fn take_ui_log(&self) -> Vec<String> {
         std::mem::take(&mut *lock(&self.ui_log))
     }
@@ -365,6 +369,28 @@ impl Core {
         }
     }
 
+    /// Debug driver: a PNG of one of our windows as the screen shows it.
+    #[cfg(debug_assertions)]
+    pub fn shot_window(&self, label: &str, path: &Path) -> Reply {
+        let id = lock(&self.window_ids)
+            .iter()
+            .find(|(l, _)| l == label)
+            .map(|(_, id)| *id)
+            .ok_or_else(|| format!("no window {label}"))?;
+        let img = self
+            .platform
+            .screen()
+            .snapshot(
+                &sc_platform::SourceSpec::Window { window: id },
+                SizePx { w: 4096, h: 4096 },
+            )
+            .map_err(|e| e.to_string())?;
+        let png = sc_text::encode_png(&img).map_err(|e| e.to_string())?;
+        std::fs::write(path, png).map_err(|e| e.to_string())?;
+        Ok(json!({ "w": img.size.w, "h": img.size.h }))
+    }
+
+    #[cfg(debug_assertions)]
     pub fn window_rects(&self) -> Value {
         let ids = lock(&self.window_ids).clone();
         let list: Vec<Value> = ids
@@ -616,18 +642,13 @@ impl Core {
         let probe = lock(&self.probe).clone();
         let per: Vec<dto::DisplayProbeDto> = displays
             .iter()
-            .map(|d| {
-                let allows = |r| {
-                    probe
-                        .as_ref()
-                        .and_then(|p| p.allows_60fps(&d.id, r))
-                        .unwrap_or(false)
-                };
-                dto::DisplayProbeDto {
+            .filter_map(|d| {
+                let allows = |r| probe.as_ref().and_then(|p| p.allows_60fps(&d.id, r));
+                Some(dto::DisplayProbeDto {
                     display_id: d.id.0.clone(),
-                    can_60fps_native: allows(Resolution::Native),
-                    can_60fps_1x: allows(Resolution::OneX),
-                }
+                    can_60fps_native: allows(Resolution::Native)?,
+                    can_60fps_1x: allows(Resolution::OneX)?,
+                })
             })
             .collect();
         Ok(dto::capabilities(&caps, &per))
@@ -917,6 +938,7 @@ impl Core {
     }
 
     /// What the region overlay does when the user confirms a region.
+    #[cfg(debug_assertions)]
     pub fn region_selected(&self, display_id: &str, region: RectPt) -> Reply {
         let purpose = self.purpose();
         self.hide_window("region");
@@ -934,6 +956,7 @@ impl Core {
     }
 
     /// What the pick overlay does when the user clicks a window or display.
+    #[cfg(debug_assertions)]
     pub fn source_picked(&self, source: SourceSpecDto) -> Reply {
         let purpose = self.purpose();
         self.hide_window("pick");

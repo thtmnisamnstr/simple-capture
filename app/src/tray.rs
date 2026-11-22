@@ -42,6 +42,7 @@ pub fn format_elapsed(ns: i64) -> String {
     }
 }
 
+#[cfg(debug_assertions)]
 pub fn item_id(label_or_id: &str) -> Option<&'static str> {
     let l = label_or_id.trim();
     ITEMS.iter().find_map(|(id, label)| {
@@ -125,6 +126,7 @@ impl Tray {
         }
     }
 
+    #[cfg(debug_assertions)]
     pub fn status_item(&self) -> usize {
         #[cfg(target_os = "macos")]
         {
@@ -142,6 +144,7 @@ impl Tray {
 
     /// Opens the menu in-process (no synthetic input), closes it after `hold`, and returns this
     /// process's on-screen windows listed halfway through (the menu is the one not in `known`).
+    #[cfg(debug_assertions)]
     pub fn open_menu(&self, hold: Duration, known: &[u32]) -> Result<Value, String> {
         let item = self.status_item();
         let icon = self.icon.clone();
