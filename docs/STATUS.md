@@ -54,8 +54,15 @@ Capture_0.1.0_aarch64.dmg` (37 MB), `…_x64-setup.exe` (32 MB), `…_x64_en-US.
 **Not verified:** any real Windows or Linux desktop; the Linux portal dialog end to end (the
 headless test compositor could not hand frames to the portal backend); the mic level meter and
 the countdown by eye (driver mode turns both off); installing and running the built installers;
-NVENC and VA-API on real GPUs; a new 30-minute soak (it records the screen for half an hour, so it
-waits for a time you are away; the M1 numbers in §2.1 stand).
+NVENC and VA-API on real GPUs.
+
+**30-minute soak (2026-11-21, release build, driver flow 16):** the main display (3024×1964),
+camera, mic and system audio for 1800.1 s: 0 dropped frames or samples on every track, no writer
+stalls or gaps; the app held 78–91 MB while recording (85 MB in the second quarter, 81 MB in the
+last; 208 MB peak during the export) at 33% of one core on average (41% peak); the Preview stayed
+native. The take opened in the editor in 344 ms and exported whole at 1080p (54,003 frames at
+122 fps, 1800.15 s long). The Preview then drew 23.5 of the camera's 30 fps; fixed (28.4 fps,
+flow 25).
 
 ### Owner decisions needed
 1. **Windows records with Media Foundation and Linux's screen track goes through GStreamer, both
