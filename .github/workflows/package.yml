@@ -179,3 +179,34 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}/release/bundle/deb/*.deb
             ${{ env.CARGO_TARGET_DIR }}/release/bundle/appimage/*.AppImage
           if-no-files-found: error
+
+  release:
+    # A version tag (v1.2.3) gathers this run's installers and the helpers' GPL/AGPL source
+    # archive into a draft GitHub Release; nothing is public until someone presses Publish.
+    name: draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [bundle, sources]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The tag matches the app's version
+        run: scripts/ci/version-check.sh "${GITHUB_REF_NAME#v}"
+      - name: Collect installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" -D dist -p 'simple-capture-*' -n helper-sources
+          find dist -type f | sort
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          find dist -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.msi' -o -name '*.deb' \
+            -o -name '*.AppImage' -o -name '*.tar.gz' \) -print0 |
+            xargs -0 gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+              --title "Simple Capture ${GITHUB_REF_NAME#v}" \
+              --notes "Installers for macOS (ad-hoc signed, not notarized), Windows and Linux. The helpers' corresponding source is simple-capture-helper-sources.tar.gz."

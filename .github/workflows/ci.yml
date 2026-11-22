@@ -174,3 +174,5 @@ jobs:
       - run: pnpm --dir ui check
       - run: pnpm --dir ui build
       - run: pnpm --dir ui test
+      - name: one version across Cargo, Tauri and the UI
+        run: scripts/ci/version-check.sh

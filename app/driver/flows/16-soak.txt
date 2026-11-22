@@ -21,4 +21,13 @@ wait 295000
 cmd preview_state
 cmd stop_recording
 wait-phase saved 180000
+wait 3000
+cmd editor {"action":"state"}
+cmd editor {"action":"seek","tl_ns":1700000000000}
+wait 2000
+cmd editor {"action":"state"}
+cmd editor {"action":"export","size":"1080"}
+wait-phase saved 1800000
+cmd editor {"action":"close"}
+wait 500
 quit

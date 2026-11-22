@@ -484,6 +484,34 @@ if log is not None and basic("16-soak", log):
                   {"camera_fps": round(cam_fps, 1), "preview_fps": [round(r, 1) for r in rates]})
             check("16-soak", "drawn natively throughout", all(x.get("native") for x in st) or sys.platform != "darwin",
                   [x.get("native") for x in st])
+        es = [x["result"] for x in steps(log, 'cmd editor {"action":"state"}')]
+        if es:
+            check("16-soak", "the 30-minute take opens in the editor within 2 s",
+                  (es[0].get("first_frame_ms") or 99999) < 2000, es[0].get("first_frame_ms"))
+        ex = [x for x in events(log, "export-state") if x.get("state") in ("done", "failed")]
+        check("16-soak", "a 1080p export of the whole take finishes", bool(ex) and ex[-1]["state"] == "done",
+              [x.get("state") for x in ex])
+        if ex and ex[-1]["state"] == "done" and FFMPEG:
+            probe = os.path.join(os.path.dirname(FFMPEG), "ffprobe")
+            r = subprocess.run([probe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                ex[-1].get("path", "")], capture_output=True, text=True)
+            try:
+                d = float(r.stdout.strip())
+            except ValueError:
+                d = 0.0
+            check("16-soak", "the export is as long as the take", abs(d - dur_s) < 2.0, {"export_s": d, "take_s": dur_s})
+        ps_file = os.path.join(RUN, "soak-ps.txt")
+        if os.path.exists(ps_file):
+            rows = [l.split() for l in open(ps_file) if l.strip() and l.split()[0].isdigit()]
+            rows = rows[: int(dur_s // 15)]
+            rss = [int(r[0]) / 1024 for r in rows]
+            cpu = [float(r[1]) for r in rows]
+            if len(rss) > 10:
+                q = len(rss) // 4
+                early, late = sum(rss[q:2 * q]) / q, sum(rss[-q:]) / q
+                check("16-soak", "memory steady while recording (last quarter within 150 MB of the second)",
+                      late - early < 150, {"early_mb": round(early), "late_mb": round(late), "max_mb": round(max(rss)),
+                                           "cpu_avg": round(sum(cpu) / len(cpu), 1), "cpu_max": round(max(cpu), 1)})
 
 log = lines("17-editor")
 if basic("17-editor", log):

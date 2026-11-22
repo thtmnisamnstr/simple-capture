@@ -134,7 +134,12 @@ if wanted 10-kill; then
   drive 10b-relaunch
 fi
 flow 11-quit-export
-[ ${#FILTERS[@]} -gt 0 ] && wanted 16-soak && flow 16-soak
+if [ ${#FILTERS[@]} -gt 0 ] && wanted 16-soak; then
+  ( while sleep 15; do P=$(pgrep -f "$RUN/bin/simple-capture-app" | head -1); [ -n "$P" ] && ps -o rss=,%cpu= -p "$P"; done ) > "$RUN/soak-ps.txt" 2>/dev/null &
+  SAMPLER=$!
+  flow 16-soak
+  kill "$SAMPLER" 2>/dev/null
+fi
 if [ ${#FILTERS[@]} -gt 0 ] && wanted 24-long && [ -n "$FFMPEG" ]; then
   LONG="$(python3 -I "$HERE/longproject.py" "$FFMPEG" "$RUN/projects" "${SC_LONG_SECS:-600}")" || exit 1
   sed -e "s|@LONG@|$LONG|g" "$HERE/flows/24-long.txt" > "$RUN/scripts/24-long.txt"
