@@ -2,5 +2,7 @@
 # window shows them.
 cmd app {"action":"library"}
 show library
-wait 5000
+wait 3000
+eval library document.querySelector('.grid').scrollTop = 99999
+wait 3000
 cmd app {"action":"library"}

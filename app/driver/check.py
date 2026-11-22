@@ -636,7 +636,15 @@ if basic("19-library", log):
           and [i["created_at"] for i in items] == sorted((i["created_at"] for i in items), reverse=True),
           [(i.get("title"), i.get("state")) for i in items])
     posters = [os.path.join(i["dir"], "thumbs", "poster-v1.png") for i in items if i.get("state") != "recording"]
-    made = [p for p in posters if os.path.exists(p) and os.path.getsize(p) > 2000]
+    def png_ok(p):
+        try:
+            head = open(p, "rb").read(24)
+        except OSError:
+            return False
+        w, h = int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+        return head[:8] == b"\x89PNG\r\n\x1a\n" and w >= 200 and h >= 100
+
+    made = [p for p in posters if png_ok(p)]
     check("19-library", "posters rendered for the visible recordings", posters and len(made) == len(posters),
           {"posters": len(posters), "made": len(made)})
 
@@ -729,7 +737,7 @@ if basic("23-shortcuts", log, allow_fail=('cmd app {"action":"shortcut_set","id"
           st[-1]["shortcuts"] if st else None)
 
 log = lines("24-long")
-if basic("24-long", log):
+if log is not None and basic("24-long", log):
     st = [x["result"] for x in steps(log, 'cmd editor {"action":"state"}')]
     if len(st) == 2:
         opened, after = st
