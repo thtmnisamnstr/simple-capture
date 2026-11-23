@@ -98,6 +98,7 @@
   async function openSettings(kind: PermissionKind) {
     error = null;
     try {
+      if (kind === 'screen') await api.requestPermission('screen');
       await api.openPermissionSettings(kind);
     } catch (e) {
       error = errorText(e);
