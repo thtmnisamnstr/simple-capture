@@ -59,12 +59,32 @@
     };
   });
 
+  const ASKED_KEY = 'sc.screen-asked';
+  let screenAsked = $state(readAsked());
+
+  function readAsked(): boolean {
+    try {
+      return localStorage.getItem(ASKED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
   async function request(kind: PermissionKind) {
     busy = kind;
     error = null;
     try {
-      await api.requestPermission(kind);
+      const s = await api.requestPermission(kind);
       await refresh();
+      if (kind === 'screen' && s !== 'granted') {
+        screenAsked = true;
+        try {
+          localStorage.setItem(ASKED_KEY, '1');
+        } catch {
+          /* only a convenience */
+        }
+        await api.openPermissionSettings('screen');
+      }
     } catch (e) {
       error = errorText(e);
     } finally {
@@ -104,14 +124,20 @@
           <p class="caption">{row.why}</p>
         </div>
         <div class="gcontrol actions">
-          {#if status === 'not_determined'}
+          {#if status === 'not_determined' && !(row.kind === 'screen' && screenAsked)}
             <button class="primary" onclick={() => request(row.kind)} disabled={busy !== null}>
               {busy === row.kind ? 'Waiting…' : 'Allow…'}
             </button>
           {:else if status !== 'granted'}
-            <button onclick={() => openSettings(row.kind)}>Open Settings…</button>
+            <button class:primary={row.kind === 'screen'} onclick={() => openSettings(row.kind)}>Open Settings…</button>
           {/if}
         </div>
+        {#if row.kind === 'screen' && screenAsked && status !== 'granted'}
+          <p class="caption next">
+            In System Settings → Screen Recording, switch on <strong>Simple Capture</strong>. macOS then asks to quit and reopen it;
+            choose Quit &amp; Reopen.
+          </p>
+        {/if}
       </li>
     {/each}
   </ul>
@@ -169,8 +195,13 @@
   }
   .perm {
     align-items: flex-start;
+    flex-wrap: wrap;
     gap: 12px;
     padding: 12px;
+  }
+  .next {
+    flex-basis: 100%;
+    margin: -4px 0 0 44px;
   }
   .tile {
     flex: none;
