@@ -102,7 +102,7 @@ impl Permissions for MacPermissions {
             PermissionKind::Microphone => "Privacy_Microphone",
         };
         Some(format!(
-            "x-apple.systempreferences:com.apple.preference.security?{pane}"
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?{pane}"
         ))
     }
 }

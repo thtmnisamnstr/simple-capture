@@ -227,6 +227,11 @@ fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
             {
                 tracing::warn!(label, "hide on close: {e}");
             }
+            if crate::core::FULL_WINDOWS.contains(&label.as_str())
+                && let Some(core) = app.try_state::<Arc<Core>>()
+            {
+                core.settle_activation();
+            }
         }
         RunEvent::WindowEvent {
             label,

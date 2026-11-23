@@ -29,6 +29,9 @@ use crate::settings::{CanvasDto, RecorderSettings, SettingsStore};
 use crate::state::{Input, Phase};
 use crate::still::{self, StillCache};
 
+/// Windows that make the app a regular app (Dock icon, menu bar, focus) while they are open.
+pub const FULL_WINDOWS: [&str; 4] = ["editor", "library", "diagnostics", "about"];
+
 pub const WINDOWS: [(&str, OverlayRole); 12] = [
     ("panel", OverlayRole::Panel),
     ("onboarding", OverlayRole::Onboarding),
@@ -347,8 +350,18 @@ impl Core {
             .app
             .get_webview_window(label)
             .ok_or_else(|| format!("no window {label:?}"))?;
+        let full = FULL_WINDOWS.contains(&label);
         if key && !self.no_key_windows {
+            #[cfg(target_os = "macos")]
+            if full {
+                let _ = self
+                    .app
+                    .set_activation_policy(tauri::ActivationPolicy::Regular);
+            }
             w.show().map_err(|e| format!("show {label}: {e}"))?;
+            if full && let Err(e) = w.set_focus() {
+                tracing::warn!(label, "focus: {e}");
+            }
         } else {
             show_without_key(&w)?;
         }
@@ -370,6 +383,27 @@ impl Core {
             && let Err(e) = w.hide()
         {
             tracing::warn!(label, "hide failed: {e}");
+        }
+        if FULL_WINDOWS.contains(&label) {
+            self.settle_activation();
+        }
+    }
+
+    /// A menu-bar app again once no full window (editor, Library, About, Diagnostics) is open.
+    pub fn settle_activation(&self) {
+        #[cfg(target_os = "macos")]
+        if !self.no_key_windows {
+            let open = FULL_WINDOWS.iter().any(|l| {
+                self.app
+                    .get_webview_window(l)
+                    .and_then(|w| w.is_visible().ok())
+                    .unwrap_or(false)
+            });
+            if !open {
+                let _ = self
+                    .app
+                    .set_activation_policy(tauri::ActivationPolicy::Accessory);
+            }
         }
     }
 

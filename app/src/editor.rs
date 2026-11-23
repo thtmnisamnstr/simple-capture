@@ -288,20 +288,8 @@ impl Core {
     }
 
     fn show_editor_window(&self) {
-        #[cfg(target_os = "macos")]
-        if !self.no_key_windows {
-            let _ = self
-                .app
-                .set_activation_policy(tauri::ActivationPolicy::Regular);
-        }
         if let Err(e) = self.show_window("editor", true) {
             tracing::warn!("editor window: {e}");
-        }
-        if !self.no_key_windows
-            && let Some(w) = self.app.get_webview_window("editor")
-            && let Err(e) = w.set_focus()
-        {
-            tracing::warn!("editor focus: {e}");
         }
     }
 
@@ -556,12 +544,6 @@ impl Core {
             self.settle_folder(s);
         }
         self.hide_window("editor");
-        #[cfg(target_os = "macos")]
-        if !self.no_key_windows {
-            let _ = self
-                .app
-                .set_activation_policy(tauri::ActivationPolicy::Accessory);
-        }
         Ok(Value::Null)
     }
 
