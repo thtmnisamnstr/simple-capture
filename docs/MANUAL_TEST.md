@@ -33,6 +33,11 @@ cargo build --locked -p simple-capture-cli -p sc-devtools
   banner is up, stay off the screen.
 - `just run` keeps the Mac awake (`caffeinate`) while the app runs; an explicit Sleep still works.
 - Stop the app with tray → **Quit**. Ctrl-C in the `just run` terminal also quits gracefully.
+- To try the real app (`com.simplecapture.desktop`, its own grants) build it with
+  `scripts/local-bundle.sh` (release build in `target/skia/release/bundle/macos/`). It is signed
+  with the self-signed "Simple Capture Local Signing" certificate in the login keychain when
+  present, so Screen Recording, Camera and Microphone stay granted across rebuilds; without it
+  the bundle is ad hoc signed and every rebuild needs the grants again.
 
 ### 0.2 Where to look
 
