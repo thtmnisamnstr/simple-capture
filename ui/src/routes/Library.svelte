@@ -215,7 +215,11 @@
           onkeydown={(e) => e.key === ' ' && (selected = [i.dir])}
         >
           <div class="poster">
-            <img src={posterUrl(i.dir)} alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLImageElement).style.visibility = 'hidden')} />
+            {#if i.state !== 'recording'}
+              {#key `${i.state}-${i.duration_ns ?? 0}`}
+                <img src="{posterUrl(i.dir)}?v={i.state}-{i.duration_ns ?? 0}" alt="" loading="lazy" onerror={(e) => ((e.currentTarget as HTMLImageElement).style.visibility = 'hidden')} />
+              {/key}
+            {/if}
             <span class="len tnum">{formatElapsed(itemLength(i))}</span>
             {#if i.state === 'recording'}<span class="state live">Recording</span>
             {:else if i.state === 'recovered'}<span class="state">Recovered</span>

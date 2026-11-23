@@ -132,8 +132,8 @@ pub fn render_loop(core: Weak<Core>) {
                         .snapshot(
                             spec,
                             SizePx {
-                                w: window.w.min(1280),
-                                h: window.h.min(1280),
+                                w: drawable.w.max(window.w).min(2560),
+                                h: drawable.h.max(window.h).min(2560),
                             },
                         )
                         .map_err(|e| tracing::debug!("stage snapshot: {e}"))
