@@ -48,6 +48,11 @@ pub enum SourceSpec {
     Camera {
         device: String,
     },
+    /// The screen of a device plugged in by USB (an iPhone or iPad), through
+    /// [`Platform::device_screens`](crate::Platform::device_screens).
+    Device {
+        device: String,
+    },
 }
 
 /// A source chosen in the system picker. `handle` holds the OS filter object.
@@ -99,6 +104,7 @@ impl PartialEq for SourceSpec {
                 Arc::ptr_eq(&a.handle, &b.handle) && a.region_pt == b.region_pt
             }
             (Camera { device: a }, Camera { device: b }) => a == b,
+            (Device { device: a }, Device { device: b }) => a == b,
             _ => false,
         }
     }
@@ -202,6 +208,14 @@ pub struct CaptureDevice {
 pub struct CameraLimit {
     pub max: SizePx,
     pub max_fps: u32,
+}
+
+impl CameraLimit {
+    /// A device's whole screen, whatever its size.
+    pub const SCREEN: CameraLimit = CameraLimit {
+        max: SizePx { w: 8192, h: 8192 },
+        max_fps: 60,
+    };
 }
 
 impl Default for CameraLimit {

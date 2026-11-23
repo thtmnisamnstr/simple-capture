@@ -1122,7 +1122,10 @@ impl Control {
             return;
         };
         sw.error = error.clone();
-        let camera = matches!(sw.spec, SourceSpec::Camera { .. });
+        let camera = matches!(
+            sw.spec,
+            SourceSpec::Camera { .. } | SourceSpec::Device { .. }
+        );
         match sw.stage {
             Stage::First if self.screen.is_some() && !camera => {
                 self.journal(JournalEvent::SwitchFailed {
@@ -1334,7 +1337,7 @@ impl Control {
     fn device_lost(&mut self, kind: DeviceKind, device_id: &str) {
         let main_camera = kind == DeviceKind::Camera
             && self.cur.as_ref().is_some_and(
-                |c| matches!(&c.spec, SourceSpec::Camera { device } if device == device_id),
+                |c| matches!(&c.spec, SourceSpec::Camera { device } | SourceSpec::Device { device } if device == device_id),
             );
         if main_camera && let Some(tag) = self.screen.as_ref().map(|l| l.tag) {
             let reason = "the camera was disconnected".to_string();

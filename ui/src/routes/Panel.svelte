@@ -43,6 +43,7 @@
   import { beginPick, beginRegion, hideSelf, showWindow, systemPicker } from '../lib/windows.ts';
   import BackgroundEditor from '../components/BackgroundEditor.svelte';
   import Icon from '../components/Icon.svelte';
+  import { call as appCall } from '../lib/appinfo.ts';
 
   let perms = $state<PermissionsDto | null>(null);
   let caps = $state<CapabilitiesDto | null>(null);
@@ -52,7 +53,21 @@
   let settings = $state<RecorderSettings | null>(null);
   let recovery = $state<RecoveryReportDto[]>([]);
   let via = $state<Via>('own_chooser');
-  let tab = $state<'displays' | 'windows' | 'apps'>('displays');
+  let tab = $state<'displays' | 'windows' | 'apps' | 'iphone'>('displays');
+  const MIRRORING = 'com.apple.ScreenContinuity';
+  const mirrorWindows = $derived((list?.windows ?? []).filter((w) => w.app.bundle_id === MIRRORING && w.on_screen));
+
+  $effect(() => {
+    if (tab !== 'iphone') return;
+    const refresh = async () => {
+      const d = await api.listDevices().catch(() => null);
+      if (d) devices = d;
+      await loadSources();
+    };
+    void refresh();
+    const t = setInterval(refresh, 2000);
+    return () => clearInterval(t);
+  });
   let appDisplay = $state<string | null>(null);
   const PREVIEW_W = 316;
   const PREVIEW_H = 138;
@@ -320,7 +335,7 @@
         });
     stillTimer = setTimeout(() => {
       fetchStill();
-      if (src.kind === 'camera') stillTimer = setTimeout(fetchStill, 1500);
+      if (src.kind === 'camera' || src.kind === 'device') stillTimer = setTimeout(fetchStill, 1500);
     }, 250);
   });
 
@@ -431,6 +446,9 @@
           {#if caps?.application_source !== false}
             <button role="tab" aria-selected={tab === 'apps'} onclick={() => (tab = 'apps')}>Apps</button>
           {/if}
+          {#if mac}
+            <button role="tab" aria-selected={tab === 'iphone'} onclick={() => (tab = 'iphone')}>iPhone</button>
+          {/if}
         </div>
         {/if}
       </div>
@@ -457,6 +475,36 @@
               <span class="dim tnum">{d.size_px.w} × {d.size_px.h}</span>
             </button>
           {/each}
+        {:else if tab === 'iphone'}
+          {#each devices.screens ?? [] as d (d.id)}
+            {@const spec: SourceSpecDto = { kind: 'device', device_id: d.id }}
+            <button class="item" aria-pressed={sameSource(source, spec)} onclick={() => choose(spec)} title="The screen of the iPhone or iPad on the cable">
+              <Icon name="phone" />
+              <span class="name">{d.name}</span>
+              <span class="tag">USB</span>
+            </button>
+          {/each}
+          {#each mirrorWindows as w (w.id)}
+            {@const spec: SourceSpecDto = { kind: 'window', window_id: w.id }}
+            <button class="item" aria-pressed={sameSource(source, spec)} onclick={() => choose(spec)} title="The iPhone Mirroring window: your iPhone over Wi-Fi">
+              <Icon name="phone" />
+              <span class="name">iPhone Mirroring</span>
+              <span class="tag">Wireless</span>
+            </button>
+          {/each}
+          <div class="empty">
+            {#if !(devices.screens?.length) && !mirrorWindows.length}
+              <p class="muted">Plug in your iPhone or iPad with a cable, unlock it and tap Trust; it shows up here in a few seconds. For wireless, open iPhone Mirroring (macOS 15 or later).</p>
+            {:else}
+              <p class="muted">Wireless goes through iPhone Mirroring; a cable gives the sharpest picture.</p>
+            {/if}
+            {#if !mirrorWindows.length}
+              <div class="row">
+                <button onclick={() => run(() => appCall('open_iphone_mirroring'))}>Open iPhone Mirroring</button>
+              </div>
+            {/if}
+            {#if !screenGranted && !(devices.screens?.length)}<p class="muted">Wireless needs Screen Recording permission.</p>{/if}
+          </div>
         {:else if !screenGranted}
           <div class="empty">
             <p class="muted">Allow Screen Recording to list windows and apps.</p>

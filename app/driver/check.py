@@ -648,6 +648,22 @@ if basic("27-tracks", log):
             check("27-tracks", "the export is as long as the screen track", dur is not None and abs(dur - total) <= 0.1,
                   {"export_s": dur, "timeline_s": total})
 
+log = lines("28-iphone")
+if log is not None and basic("28-iphone", log):
+    pr = P.get("drv iphone")
+    finalized("28-iphone", pr, "drv iphone", reason="user")
+    if pr:
+        segs = segments(pr)
+        src = segs[0].get("source", {}) if segs else {}
+        check("28-iphone", "the main picture is the plugged-in device", src.get("kind") == "camera", src)
+        size = segs[0].get("content_px", {}) if segs else {}
+        check("28-iphone", "recorded at the phone's own shape (portrait or landscape, not 16:9)",
+              bool(size) and abs(size.get("w", 16) / max(1, size.get("h", 9)) - 16 / 9) > 0.05, size)
+        tracks = [t.get("kind") for t in pr["project"]["recording"].get("tracks", [])]
+        check("28-iphone", "the Mac's camera recorded in the corner too", "camera" in tracks, tracks)
+        ex = [x for x in events(log, "export-state") if x.get("state") == "done"]
+        check("28-iphone", "export done", bool(ex), [x.get("state") for x in events(log, "export-state")])
+
 log = lines("18-diagnostics")
 if basic("18-diagnostics", log):
     done = events(log, "diagnostics-done")

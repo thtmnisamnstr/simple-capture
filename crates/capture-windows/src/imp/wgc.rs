@@ -275,7 +275,7 @@ pub fn plan(spec: &SourceSpec, cfg: &ScreenStreamConfig) -> Result<Plan> {
             })
         }
         SourceSpec::Picked(_) => Err(Error::Unsupported("the system picker")),
-        SourceSpec::Camera { .. } => Err(Error::Unsupported(
+        SourceSpec::Camera { .. } | SourceSpec::Device { .. } => Err(Error::Unsupported(
             "camera sources go through the camera, not the screen",
         )),
     }

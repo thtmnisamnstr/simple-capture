@@ -15,7 +15,8 @@ use objc2_av_foundation::{
     AVCaptureDeviceTypeExternal, AVCaptureDeviceTypeMicrophone,
     AVCaptureDeviceWasConnectedNotification, AVCaptureDeviceWasDisconnectedNotification,
     AVCaptureOutput, AVCaptureSession, AVCaptureSystemUserInterface, AVCaptureVideoDataOutput,
-    AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaTypeAudio, AVMediaTypeVideo,
+    AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaTypeAudio, AVMediaTypeMuxed,
+    AVMediaTypeVideo,
 };
 use objc2_core_foundation::CFType;
 use objc2_core_media::{
@@ -55,6 +56,85 @@ fn media_type(kind: DeviceKind) -> Result<&'static NSString> {
     }
 }
 
+#[repr(C)]
+struct CmioAddress {
+    selector: u32,
+    scope: u32,
+    element: u32,
+}
+
+#[link(name = "CoreMediaIO", kind = "framework")]
+unsafe extern "C" {
+    fn CMIOObjectSetPropertyData(
+        object: u32,
+        address: *const CmioAddress,
+        qualifier_size: u32,
+        qualifier: *const std::ffi::c_void,
+        data_size: u32,
+        data: *const std::ffi::c_void,
+    ) -> i32;
+}
+
+/// Lets plugged-in iPhones and iPads show up as capture devices (their screens, as QuickTime
+/// records them). They appear a moment later, with a device-connected notification.
+pub(crate) fn allow_screen_devices() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let address = CmioAddress {
+            selector: u32::from_be_bytes(*b"yes "),
+            scope: u32::from_be_bytes(*b"glob"),
+            element: 0,
+        };
+        let allow: u32 = 1;
+        // SAFETY: the system object (1) takes a UInt32 for this property.
+        let status = unsafe {
+            CMIOObjectSetPropertyData(
+                1,
+                &address,
+                0,
+                std::ptr::null(),
+                4,
+                (&raw const allow).cast(),
+            )
+        };
+        if status != 0 {
+            tracing::warn!(status, "could not allow device screens");
+        }
+    });
+}
+
+/// Plugged-in devices whose screen can be recorded.
+fn screen_devices() -> Vec<Retained<AVCaptureDevice>> {
+    allow_screen_devices();
+    // SAFETY: framework constants; discovery needs no permission and never prompts.
+    unsafe {
+        let Some(muxed) = AVMediaTypeMuxed else {
+            return Vec::new();
+        };
+        let arr = NSArray::from_slice(&[AVCaptureDeviceTypeExternal]);
+        AVCaptureDeviceDiscoverySession::discoverySessionWithDeviceTypes_mediaType_position(
+            &arr,
+            Some(muxed),
+            AVCaptureDevicePosition::Unspecified,
+        )
+        .devices()
+        .iter()
+        .collect()
+    }
+}
+
+fn is_screen_device(dev: &AVCaptureDevice) -> bool {
+    // SAFETY: plain getter; framework constant.
+    unsafe { AVMediaTypeMuxed.is_some_and(|m| dev.hasMediaType(m)) }
+}
+
+/// The device gives `kind`; a device screen counts as a camera.
+fn offers(dev: &AVCaptureDevice, kind: DeviceKind) -> Result<bool> {
+    // SAFETY: plain getter.
+    let direct = unsafe { dev.hasMediaType(media_type(kind)?) };
+    Ok(direct || (kind == DeviceKind::Camera && is_screen_device(dev)))
+}
+
 fn discover(kind: DeviceKind) -> Result<Vec<Retained<AVCaptureDevice>>> {
     // SAFETY: framework constants; discovery needs no permission and never prompts.
     unsafe {
@@ -74,7 +154,11 @@ fn discover(kind: DeviceKind) -> Result<Vec<Retained<AVCaptureDevice>>> {
                 Some(media_type(kind)?),
                 AVCaptureDevicePosition::Unspecified,
             );
-        Ok(ds.devices().iter().collect())
+        let mut found: Vec<Retained<AVCaptureDevice>> = ds.devices().iter().collect();
+        if kind == DeviceKind::Camera {
+            found.extend(screen_devices());
+        }
+        Ok(found)
     }
 }
 
@@ -82,7 +166,9 @@ fn kind_hint(dev: &AVCaptureDevice) -> Option<String> {
     // SAFETY: plain getters; framework constants.
     unsafe {
         let t = dev.deviceType();
-        let hint = if dev.isContinuityCamera() || &*t == AVCaptureDeviceTypeContinuityCamera {
+        let hint = if is_screen_device(dev) {
+            "screen"
+        } else if dev.isContinuityCamera() || &*t == AVCaptureDeviceTypeContinuityCamera {
             "continuity"
         } else if &*t == AVCaptureDeviceTypeDeskViewCamera {
             "desk_view"
@@ -131,8 +217,7 @@ fn find(kind: DeviceKind, id: &str) -> Result<Retained<AVCaptureDevice>> {
     // SAFETY: plain lookup.
     let dev = unsafe { AVCaptureDevice::deviceWithUniqueID(&nsstr(id)) }
         .ok_or_else(|| Error::NotFound(format!("{kind:?} device {id}")))?;
-    // SAFETY: plain getter.
-    if !unsafe { dev.hasMediaType(media_type(kind)?) } {
+    if !offers(&dev, kind)? {
         return Err(Error::NotFound(format!("{id} is not a {kind:?} device")));
     }
     Ok(dev)
@@ -661,11 +746,7 @@ fn on_device_note(note: &NSNotification, connected: bool, sink: &Arc<dyn FrameSi
         return;
     };
     for kind in [DeviceKind::Camera, DeviceKind::Mic] {
-        let Ok(mt) = media_type(kind) else {
-            continue;
-        };
-        // SAFETY: plain getter.
-        if !unsafe { dev.hasMediaType(mt) } {
+        if !offers(&dev, kind).unwrap_or(false) {
             continue;
         }
         sink.on_event(SourceEvent::DevicesChanged { kind });
@@ -684,6 +765,7 @@ fn on_device_note(note: &NSNotification, connected: bool, sink: &Arc<dyn FrameSi
 }
 
 pub(crate) fn watch(sink: Arc<dyn FrameSink>) -> Result<Box<dyn DeviceStream>> {
+    allow_screen_devices();
     let center = NSNotificationCenter::defaultCenter();
     let mut observers = Vec::new();
     // SAFETY: framework notification names.

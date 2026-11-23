@@ -157,6 +157,18 @@ impl Core {
             "restart" => self.restart_recording(),
             "cancel_countdown" => self.cancel_countdown(),
             "toggle_camera" => self.toggle_camera(),
+            #[cfg(target_os = "macos")]
+            "open_iphone_mirroring" => std::process::Command::new("/usr/bin/open")
+                .args(["-b", "com.apple.ScreenContinuity"])
+                .status()
+                .map_err(|e| e.to_string())
+                .and_then(|s| {
+                    if s.success() {
+                        Ok(Value::Null)
+                    } else {
+                        Err("iPhone Mirroring needs macOS 15 or later".into())
+                    }
+                }),
             "rec_status" => Ok(json!({
                 "paused": self.is_paused(),
                 "elapsed_ns": self.elapsed_ns(),

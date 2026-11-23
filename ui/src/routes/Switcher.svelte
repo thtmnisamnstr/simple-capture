@@ -100,7 +100,7 @@
         {#each shownRecent as r (sourceKey(r.spec))}
           <li>
             <button class="item" onclick={() => pick(r.spec)}>
-              <Icon name={r.spec.kind === 'display' ? 'display' : r.spec.kind === 'application' ? 'app' : r.spec.kind === 'region' ? 'region' : r.spec.kind === 'camera' ? 'camera' : 'window'} />
+              <Icon name={r.spec.kind === 'display' ? 'display' : r.spec.kind === 'application' ? 'app' : r.spec.kind === 'region' ? 'region' : r.spec.kind === 'camera' ? 'camera' : r.spec.kind === 'device' ? 'phone' : 'window'} />
               <span class="name">{sourceLabel(r.spec, all, cameras) || r.label}</span>
             </button>
           </li>

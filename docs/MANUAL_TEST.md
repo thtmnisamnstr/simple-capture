@@ -792,6 +792,11 @@ In the editor with any recording, press ⌘E:
 | R16 | Give "Switch source" the same keys as "Start or stop recording" | An orange note says it is also used for the other action; Default puts it back |
 | R17 | Click a shortcut, press Delete; click another, press Escape | The first shows None and no longer works; the second keeps its keys |
 | R18 | While recording, hover each button in the bar | The bar's message area says what the button does (and its shortcut); the normal tooltip shows too |
+| R19 | Plug in an iPhone, unlock it, tap Trust; panel → Source → iPhone | Within a few seconds the phone is listed with a USB tag; it is not in the camera menu |
+| R20 | Pick it, Screen + Camera, record 20 s while using the phone | The Preview shows the phone's screen live with your camera in the corner; the recording is phone-shaped (portrait or landscape) and smooth |
+| R21 | Rotate the phone while recording | The picture follows the new shape |
+| R22 | Unplug the phone while recording | The bar says the source closed; Switch… or Stop work |
+| R23 | iPhone tab → Open iPhone Mirroring; pick the iPhone Mirroring item (Wireless) and record | The mirrored phone records like a window; with system audio on, the phone's sound is in the recording |
 
 ## 10g. Library, About and Diagnostics (M6, M7)
 

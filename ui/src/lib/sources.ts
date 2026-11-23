@@ -30,6 +30,7 @@ export function sourceKey(s: SourceSpecDto): string {
     }
     case 'picked': return `picked:${s.pick_id}`;
     case 'camera': return `camera:${s.device_id}`;
+    case 'device': return `device:${s.device_id}`;
   }
 }
 
@@ -56,6 +57,7 @@ export function sourceLabel(s: SourceSpecDto, list: Partial<SourceList>, cameras
       return `Region ${Math.round(s.region_pt.w)}×${Math.round(s.region_pt.h)} on ${displayName(displays, s.display_id)}`;
     case 'picked': return s.region_pt ? 'Picked region' : 'Picked with the system picker';
     case 'camera': return cameras.find((c) => c.id === s.device_id)?.name ?? 'Camera';
+    case 'device': return cameras.find((c) => c.id === s.device_id)?.name ?? 'iPhone';
   }
 }
 
@@ -76,6 +78,7 @@ export function displayOfSource(s: SourceSpecDto, list: Partial<SourceList>): Di
     }
     case 'picked':
     case 'camera':
+    case 'device':
       return null;
   }
 }
@@ -100,7 +103,9 @@ export function sourceSizePx(s: SourceSpecDto, list: Partial<SourceList>, resolu
       return { w: evenRound(w.frame_pt.w * scale), h: evenRound(w.frame_pt.h * scale) };
     }
     case 'camera': return CAMERA_GUESS_PX;
-    case 'picked': return null;
+    case 'picked':
+    case 'device':
+      return null;
   }
 }
 

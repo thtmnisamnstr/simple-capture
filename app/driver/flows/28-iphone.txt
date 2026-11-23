@@ -1,0 +1,19 @@
+# iPhone over USB (run by name, with the phone plugged in, unlocked and trusting this Mac): its
+# screen as the main picture with the Mac's camera in the corner, the Preview, then an export.
+wait 4000
+cmd list_devices
+cmd start_recording {"request":{"source":{"kind":"device","device_id":"$PHONE"},"via":"own_chooser","title":"drv iphone","settings":{"camera":"@CAMERA@","mic":"@MIC@","preview_shown":true}}}
+wait 3000
+show stage
+wait 3000
+shot stage @RUN@/shots/iphone-stage.png
+cmd stop_recording
+wait-phase saved 30000
+wait 2500
+cmd editor {"action":"state"}
+shot editor @RUN@/shots/iphone-editor.png
+cmd editor {"action":"export","size":"720"}
+wait-phase saved 180000
+cmd editor {"action":"close"}
+wait 500
+quit

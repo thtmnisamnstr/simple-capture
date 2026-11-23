@@ -79,6 +79,7 @@ struct State {
 
 pub struct SharedCamera {
     platform: Arc<dyn Platform>,
+    limit: CameraLimit,
     me: Weak<SharedCamera>,
     state: Mutex<State>,
     fan: Arc<Fanout>,
@@ -86,8 +87,13 @@ pub struct SharedCamera {
 
 impl SharedCamera {
     pub fn new(platform: Arc<dyn Platform>) -> Arc<SharedCamera> {
+        SharedCamera::with_limit(platform, CameraLimit::default())
+    }
+
+    pub fn with_limit(platform: Arc<dyn Platform>, limit: CameraLimit) -> Arc<SharedCamera> {
         Arc::new_cyclic(|me| SharedCamera {
             platform,
+            limit,
             me: me.clone(),
             state: Mutex::new(State::default()),
             fan: Arc::new(Fanout::default()),
@@ -154,7 +160,7 @@ impl SharedCamera {
         }
         self.close(st);
         if let Some(device) = want {
-            st.open = Some(self.open(&device, CameraLimit::default())?);
+            st.open = Some(self.open(&device, self.limit)?);
         }
         Ok(())
     }
@@ -282,6 +288,7 @@ impl CameraSource for SharedCamera {
 pub struct WithSharedCamera {
     inner: Arc<dyn Platform>,
     camera: Arc<SharedCamera>,
+    screens: Arc<SharedCamera>,
 }
 
 impl WithSharedCamera {
@@ -289,11 +296,17 @@ impl WithSharedCamera {
         let camera = SharedCamera::new(inner.clone());
         (
             Arc::new(WithSharedCamera {
+                screens: SharedCamera::with_limit(inner.clone(), CameraLimit::SCREEN),
                 inner,
                 camera: camera.clone(),
             }),
             camera,
         )
+    }
+
+    /// The shared feed for device screens ([`Platform::device_screens`]).
+    pub fn screens(&self) -> Arc<SharedCamera> {
+        self.screens.clone()
     }
 }
 
@@ -327,6 +340,9 @@ impl Platform for WithSharedCamera {
     }
     fn camera(&self) -> &dyn CameraSource {
         &*self.camera
+    }
+    fn device_screens(&self) -> &dyn CameraSource {
+        &*self.screens
     }
     fn picker(&self) -> &dyn SourcePicker {
         self.inner.picker()
@@ -385,6 +401,7 @@ mod tests {
         fan.open.store(true, Ordering::Relaxed);
         let cam = SharedCamera {
             platform: crate::synthetic::SyntheticPlatform::new(crate::synthetic::Scenario::new()),
+            limit: CameraLimit::default(),
             me: Weak::new(),
             state: Mutex::new(State::default()),
             fan: fan.clone(),

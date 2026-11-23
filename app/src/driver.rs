@@ -178,6 +178,17 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
                 .last_project()
                 .map(|p| p.to_string_lossy().into_owned());
             let mut json = substitute(&json, project.as_deref(), core.last_export().as_deref())?;
+            if json.contains("$PHONE") {
+                let phone = core
+                    .platform
+                    .camera()
+                    .devices()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find(|d| d.kind_hint.as_deref() == Some("screen"))
+                    .ok_or("no iPhone or iPad on USB")?;
+                json = json.replace("$PHONE", &phone.id);
+            }
             for (i, id) in core.editor_clip_ids(true).iter().enumerate().rev() {
                 json = json.replace(&format!("$CAMCLIP{i}"), id);
             }

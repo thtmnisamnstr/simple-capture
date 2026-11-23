@@ -43,6 +43,10 @@ pub enum SourceSpecDto {
     Camera {
         device_id: String,
     },
+    /// A plugged-in iPhone's or iPad's screen as the main picture.
+    Device {
+        device_id: String,
+    },
 }
 
 impl SourceSpecDto {
@@ -97,6 +101,9 @@ impl SourceSpecDto {
                     device: device_id.clone(),
                 }
             }
+            SourceSpecDto::Device { device_id } => SourceSpec::Device {
+                device: device_id.clone(),
+            },
         })
     }
 }

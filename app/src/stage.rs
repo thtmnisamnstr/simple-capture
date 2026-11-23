@@ -58,6 +58,7 @@ struct Snap {
 #[derive(PartialEq)]
 struct Shown {
     camera: Option<sc_core::time::HostTime>,
+    device: Option<sc_core::time::HostTime>,
     key: Option<sc_core::project::CameraKey>,
     background: u64,
     snapshot: Option<Instant>,
@@ -109,6 +110,9 @@ pub fn render_loop(core: Weak<Core>) {
         };
         let drawable = sink.drawable(page);
         let camera_only = matches!(inputs.source, Some(sc_platform::SourceSpec::Camera { .. }));
+        let device = matches!(inputs.source, Some(sc_platform::SourceSpec::Device { .. }));
+        let device_seen = core.screens.frames_seen();
+        let device_frame = device.then(|| core.screens.latest()).flatten();
         let window = SizePx {
             w: page.w.round() as u32,
             h: page.h.round() as u32,
@@ -120,7 +124,7 @@ pub fn render_loop(core: Weak<Core>) {
             let img = inputs
                 .source
                 .as_ref()
-                .filter(|_| !camera_only)
+                .filter(|_| !camera_only && !device)
                 .and_then(|spec| {
                     core.platform
                         .screen()
@@ -144,6 +148,8 @@ pub fn render_loop(core: Weak<Core>) {
         let cam_frame = core.camera.latest();
         let content = if camera_only {
             cam_frame.as_ref().map(|f| f.buffer.0.size())
+        } else if device {
+            device_frame.as_ref().map(|f| f.buffer.0.size())
         } else {
             snap.as_ref().and_then(|s| s.size)
         };
@@ -167,6 +173,7 @@ pub fn render_loop(core: Weak<Core>) {
         }
         let now_showing = Shown {
             camera: cam_frame.as_ref().map(|f| f.pts),
+            device: device_frame.as_ref().map(|f| f.pts),
             key: inputs.key.clone(),
             background: bg_key,
             snapshot: snap.as_ref().map(|s| s.at),
@@ -174,14 +181,20 @@ pub fn render_loop(core: Weak<Core>) {
             drawable,
         };
         if shown.as_ref() == Some(&now_showing) {
-            let camera = core.camera.clone();
+            let (feed, seen) = if device {
+                (core.screens.clone(), device_seen)
+            } else {
+                (core.camera.clone(), cam_seen)
+            };
             drop(core);
-            camera.wait_newer(cam_seen, IDLE_WAIT);
+            feed.wait_newer(seen, IDLE_WAIT);
             continue;
         }
         if let Some((_, _, background)) = &bg {
             let main = if camera_only {
                 cam_frame.as_ref().map(|f| &f.buffer)
+            } else if device {
+                device_frame.as_ref().map(|f| &f.buffer)
             } else {
                 snap.as_ref().and_then(|s| s.frame.as_ref())
             };

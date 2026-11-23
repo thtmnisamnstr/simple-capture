@@ -57,6 +57,8 @@ pub struct Core {
     pub app: AppHandle,
     pub platform: Arc<dyn Platform>,
     pub camera: Arc<SharedCamera>,
+    /// The plugged-in device screen the panel or Preview shows (iPhone, iPad).
+    pub screens: Arc<SharedCamera>,
     mic_meter: Mutex<Option<(String, Box<dyn sc_platform::DeviceStream>)>>,
     pub live: crate::live::LiveHub,
     pub preview: Mutex<crate::preview::PreviewState>,
@@ -107,12 +109,14 @@ impl Core {
         no_key_windows: bool,
     ) -> Core {
         let (platform, camera) = WithSharedCamera::new(platform);
+        let screens = platform.screens();
         Core {
             settings: SettingsStore::new(&data_dir),
             settings_write: Mutex::new(()),
             app,
             platform,
             camera,
+            screens,
             mic_meter: Mutex::new(None),
             live: crate::live::LiveHub::default(),
             preview: Mutex::new(crate::preview::PreviewState::default()),
@@ -663,7 +667,9 @@ impl Core {
     ) -> Reply {
         let spec = source.to_spec(|id| self.picked(id))?;
         let camera_only = matches!(spec, sc_platform::SourceSpec::Camera { .. });
-        let snapshot = if camera_only {
+        let device = matches!(spec, sc_platform::SourceSpec::Device { .. });
+        let device_frame = device.then(|| self.screens.latest()).flatten();
+        let snapshot = if camera_only || device {
             None
         } else if self.platform.permissions().status(PermissionKind::Screen)
             == PermissionStatus::Granted
@@ -694,6 +700,8 @@ impl Core {
             .map(|s| sc_platform::FrameBuffer(Arc::new(still::rgba_to_nv12(s))));
         let main = if camera_only {
             cam_frame.as_ref().map(|f| &f.buffer)
+        } else if device {
+            device_frame.as_ref().map(|f| &f.buffer)
         } else {
             screen_frame.as_ref()
         };
@@ -1513,6 +1521,7 @@ impl Core {
                 if let Some(id) = lost {
                     tracing::warn!(device = id, "camera unplugged");
                     core.camera.device_lost(&id);
+                    core.screens.device_lost(&id);
                 }
                 if let Err(e) = core.refresh_camera() {
                     tracing::warn!("camera after a device change: {e}");
@@ -1866,6 +1875,15 @@ impl Core {
         let camera_error = self.camera.set_preview(device.clone()).err();
         if let Some(e) = &camera_error {
             tracing::warn!("camera preview: {e}");
+        }
+        let phone = match &s.source {
+            Some(crate::dto::SourceSpecDto::Device { device_id }) if active => {
+                Some(device_id.clone())
+            }
+            _ => None,
+        };
+        if let Err(e) = self.screens.set_preview(phone) {
+            tracing::warn!("device screen preview: {e}");
         }
         let show = active && s.preview_shown && s.source.is_some();
         let place = {

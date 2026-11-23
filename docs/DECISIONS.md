@@ -1690,3 +1690,22 @@ they are not a substitute for an M1 run.
   where both tracks are quiet.
 - **Waveforms:** the peaks cache gains one file per audio kind, so each lane draws its own sound.
 
+## ADR-052: iPhone and iPad screens as a source (macOS)
+
+- **Context:** the owner wants to record an iPhone's screen, wired and wireless. Android would be
+  welcome later; it needs scrcpy and adb as helpers and is not part of this.
+- **Wired:** the app sets CoreMediaIO's `kCMIOHardwarePropertyAllowScreenCaptureDevices` (what
+  QuickTime does), so a plugged-in, unlocked, trusting iPhone or iPad appears as an external
+  muxed AVCaptureDevice a moment later. It is listed with the cameras under the hint `screen`;
+  the UI moves such devices out of every camera menu into the panel's iPhone tab. The new
+  `SourceSpec::Device` records it as the main picture at its own size and shape, through a
+  second shared device feed (`Platform::device_screens`) so the Mac's camera can still be the
+  corner camera at the same time. The project describes the segment like a camera source.
+  CoreMediaIO links as a system framework; no new crate.
+- **Wireless:** through iPhone Mirroring (macOS 15+): its window is an ordinary window source,
+  listed in the iPhone tab with a button that opens the app. AVFoundation cannot record an
+  iPhone's screen over Wi-Fi; the phone camera and microphone that apps like Slack use wirelessly
+  are Continuity Camera, which the camera and microphone menus already offer.
+- **Not yet:** the phone's own sound over USB (the muxed device carries it) is not recorded; with
+  iPhone Mirroring, the phone's sound plays on the Mac and system audio records it.
+

@@ -33,7 +33,10 @@ export const api = {
   openPermissionSettings: (kind: PermissionKind) => call<void>('open_permission_settings', { kind }),
   listDisplays: () => call<DisplayInfo[]>('list_displays'),
   listSources: () => call<SourceList>('list_sources'),
-  listDevices: () => call<DevicesDto>('list_devices'),
+  listDevices: async (): Promise<DevicesDto> => {
+    const d = await call<DevicesDto>('list_devices');
+    return { ...d, cameras: d.cameras.filter((c) => c.kind_hint !== 'screen'), screens: d.cameras.filter((c) => c.kind_hint === 'screen') };
+  },
   showMicModes: () => call<void>('show_mic_modes'),
   getSettings: () => call<RecorderSettings>('get_settings'),
   setSettings: (settings: RecorderSettings) => call<RecorderSettings>('set_settings', { settings }),

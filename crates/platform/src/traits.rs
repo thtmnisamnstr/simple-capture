@@ -236,6 +236,11 @@ pub trait Platform: Send + Sync {
     fn system_audio(&self) -> &dyn SystemAudioSource;
     fn mic(&self) -> &dyn AudioSource;
     fn camera(&self) -> &dyn CameraSource;
+    /// Screens of plugged-in devices (iPhone, iPad), opened like cameras but kept apart from
+    /// the corner camera so both can run at once.
+    fn device_screens(&self) -> &dyn CameraSource {
+        self.camera()
+    }
     fn picker(&self) -> &dyn SourcePicker;
     fn writers(&self) -> Arc<dyn WriterFactory>;
     fn decoder(&self) -> Arc<dyn Decoder>;

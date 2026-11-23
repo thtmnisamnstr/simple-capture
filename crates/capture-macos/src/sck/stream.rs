@@ -433,7 +433,7 @@ pub(crate) fn build(
                 },
             })
         }
-        SourceSpec::Camera { .. } => Err(Error::Unsupported(
+        SourceSpec::Camera { .. } | SourceSpec::Device { .. } => Err(Error::Unsupported(
             "camera sources go through the camera, not the screen",
         )),
         SourceSpec::Picked(p) => {

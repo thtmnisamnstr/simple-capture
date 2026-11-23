@@ -140,6 +140,10 @@ if [ ${#FILTERS[@]} -gt 0 ] && wanted 16-soak; then
   flow 16-soak
   kill "$SAMPLER" 2>/dev/null
 fi
+if [ ${#FILTERS[@]} -gt 0 ] && wanted 28-iphone; then
+  mkdir -p "$RUN/shots"
+  flow 28-iphone
+fi
 if [ ${#FILTERS[@]} -gt 0 ] && wanted 26-shots; then
   mkdir -p "$RUN/shots"
   flow 26-shots

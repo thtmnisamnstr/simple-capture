@@ -1,5 +1,5 @@
-//! The recording's main picture: a screen source from the platform, or a camera recorded as the
-//! main picture (camera-only recordings), whose frames the router takes like screen frames.
+//! The recording's main picture: a screen source from the platform, or a camera or a plugged-in
+//! device's screen recorded as the main picture, whose frames the router takes like screen frames.
 
 use std::sync::Arc;
 
@@ -20,7 +20,7 @@ pub(crate) fn describe(
     cfg: &ScreenStreamConfig,
 ) -> Result<(SourceDescriptor, SizePx)> {
     match spec {
-        SourceSpec::Camera { device } => {
+        SourceSpec::Camera { device } | SourceSpec::Device { device } => {
             let name = p
                 .camera()
                 .devices()
@@ -54,6 +54,20 @@ pub(crate) fn start(
                 device: device.clone(),
             });
             let stream = p.camera().start(device, CameraLimit::default(), adapter)?;
+            Ok(Box::new(CameraStream {
+                tag,
+                inner: Some(stream),
+            }))
+        }
+        SourceSpec::Device { device } => {
+            let adapter = Arc::new(CameraAsScreen {
+                inner: sink,
+                tag,
+                device: device.clone(),
+            });
+            let stream = p
+                .device_screens()
+                .start(device, CameraLimit::SCREEN, adapter)?;
             Ok(Box::new(CameraStream {
                 tag,
                 inner: Some(stream),

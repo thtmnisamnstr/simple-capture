@@ -42,7 +42,7 @@ export interface CaptureDevice {
   is_default: boolean;
   kind_hint: string | null;
 }
-export interface DevicesDto { cameras: CaptureDevice[]; mics: CaptureDevice[] }
+export interface DevicesDto { cameras: CaptureDevice[]; mics: CaptureDevice[]; screens?: CaptureDevice[] }
 
 export type ExclusionKind = 'per_window' | 'auto_hide' | 'none';
 export interface DisplayProbeDto { display_id: string; can_60fps_native: boolean; can_60fps_1x: boolean }
@@ -66,7 +66,8 @@ export type SourceSpecDto =
   | { kind: 'application'; display_id: string; pid: number; bundle_id: string | null }
   | { kind: 'region'; display_id: string; region_pt: RectPt }
   | { kind: 'picked'; pick_id: string; region_pt: RectPt | null }
-  | { kind: 'camera'; device_id: string };
+  | { kind: 'camera'; device_id: string }
+  | { kind: 'device'; device_id: string };
 
 export type Rgba = [number, number, number, number];
 export interface GradientStop { at: number; color: Rgba }
