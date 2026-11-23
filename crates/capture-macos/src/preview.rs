@@ -17,8 +17,8 @@ pub struct MetalLayer {
     pub page: Page,
 }
 
-/// The page's part of the window (its content layout rectangle: below the title bar, all of it
-/// in full screen), in points, and the window's backing scale.
+/// The page's part of the window in points (below a standard title bar, all of the window under
+/// an overlay one) and the window's backing scale.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Page {
     pub w: f64,
@@ -58,8 +58,10 @@ pub unsafe fn metal_layer_under(webview: NonNull<c_void>) -> Result<MetalLayer> 
     })
 }
 
-/// Puts the view from [`metal_layer_under`] over the window's content layout rectangle and its
-/// layer at the window's scale. `None` once the view has left its window.
+/// Puts the view from [`metal_layer_under`] exactly under the page, so page coordinates are layer
+/// coordinates, and its layer at the window's scale. A standard title bar insets the page inside
+/// the webview, so there the content layout rectangle is the page; under an overlay title bar the
+/// page fills the webview. `None` once the view has left its window.
 ///
 /// # Safety
 /// `view` comes from [`metal_layer_under`]; main thread only.
@@ -69,7 +71,16 @@ pub unsafe fn fit_to_page(view: NonNull<c_void>) -> Option<Page> {
     // SAFETY: read on the main thread.
     let parent = unsafe { view.superview() }?;
     let window = view.window()?;
-    let page = parent.convertRect_fromView(window.contentLayoutRect(), None);
+    let layout = parent.convertRect_fromView(window.contentLayoutRect(), None);
+    let page = if window.titlebarAppearsTransparent() {
+        let siblings = parent.subviews();
+        (0..siblings.len())
+            .find(|&i| std::ptr::eq(&*siblings.objectAtIndex(i), view))
+            .and_then(|i| (i + 1 < siblings.len()).then(|| siblings.objectAtIndex(i + 1).frame()))
+            .unwrap_or(layout)
+    } else {
+        layout
+    };
     let scale = window.backingScaleFactor();
     if view.frame() != page {
         view.setFrame(page);

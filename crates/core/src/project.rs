@@ -24,6 +24,9 @@ pub struct ProjectV1 {
     pub recording: Recording,
     pub camera_layout: CameraLayout,
     pub edl: Edl,
+    /// The camera's own clips once it is unlinked from the screen; `None` while it follows `edl`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub camera_edl: Option<Edl>,
     pub audio_mix: BTreeMap<String, AudioMixEntry>,
     pub text: Vec<TextItem>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -463,6 +466,9 @@ pub struct Clip {
     pub src_out_rec_ns: i64,
     pub speed: Speed,
     pub muted: bool,
+    /// A gap on its track: it keeps its length but shows and plays nothing.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -735,6 +741,7 @@ impl ProjectV1 {
                 clips: Vec::new(),
                 extra: Extra::new(),
             },
+            camera_edl: None,
             audio_mix: BTreeMap::new(),
             text: Vec::new(),
             redactions: Vec::new(),

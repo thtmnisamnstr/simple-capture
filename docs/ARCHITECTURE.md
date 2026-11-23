@@ -466,8 +466,11 @@ type ProjectV1 = {
       src_in_rec_ns: number; src_out_rec_ns: number;   // RECORDING time
       speed: { num: number; den: number };             // 1/2, 1/1, 3/2, 2/1, 4/1
       muted: boolean;
+      hidden?: true;                // a gap: keeps its length, shows and plays nothing
     }[];
   };
+  camera_edl?: Edl;                 // the camera's own clips once unlinked (ADR-051); absent
+                                    // while the camera and mic follow `edl`
 
   audio_mix: { [track_id: string]: { gain_db: number; muted: boolean } };
 

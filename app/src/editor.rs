@@ -233,6 +233,8 @@ impl Core {
             doc.edl
                 .clips
                 .iter()
+                .chain(doc.camera_clips().clips.iter())
+                .filter(|c| !c.hidden)
                 .map(|c| c.src_out_rec_ns)
                 .max()
                 .unwrap_or(0),
@@ -606,7 +608,7 @@ impl Core {
         };
         let window = 1_000_000_000 / i64::from(crate::editor_media::PEAKS_PER_S);
         let spans = sc_core::silence::quiet_spans(&loud.db, window, rule);
-        let ranges = sc_core::silence::on_timeline(&doc.edl, &spans);
+        let ranges = sc_core::silence::on_doc(&doc, &spans);
         let removed: i64 = ranges.iter().map(|(a, b)| b - a).sum();
         Ok(json!({
             "ranges": ranges,
@@ -645,17 +647,13 @@ impl Core {
     }
 
     #[cfg(debug_assertions)]
-    pub fn editor_clip_ids(&self) -> Vec<String> {
+    pub fn editor_clip_ids(&self, camera: bool) -> Vec<String> {
         lock(&self.editor.session)
             .as_ref()
             .map(|s| {
-                s.history
-                    .doc()
-                    .edl
-                    .clips
-                    .iter()
-                    .map(|c| c.id.clone())
-                    .collect()
+                let d = s.history.doc();
+                let edl = if camera { d.camera_clips() } else { &d.edl };
+                edl.clips.iter().map(|c| c.id.clone()).collect()
             })
             .unwrap_or_default()
     }

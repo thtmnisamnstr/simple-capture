@@ -189,14 +189,14 @@
     </div>
   </div>
 
-  <h2>Colour</h2>
+  <h2>Text colour</h2>
   <div class="group">
     <div class="grow stack">
       <div class="swatches">
         {#each [...SOLID_PALETTE, '#ffd60a', '#ff2d55', '#32d74b'] as c (c)}
           <button class="swatch" aria-label={c} aria-pressed={hex(fillColor(s.fill)) === c} style:background={c} onclick={() => setColor(hexToRgba(c))}></button>
         {/each}
-        <input type="color" aria-label="Custom colour" value={hex(fillColor(s.fill))} oninput={(e) => setColor(hexToRgba(e.currentTarget.value), 'fill')} />
+        <input type="color" aria-label="Custom text colour" value={hex(fillColor(s.fill))} oninput={(e) => setColor(hexToRgba(e.currentTarget.value), 'fill')} />
         <button class="plain icon" title="Pick a colour from the screen" aria-label="Eyedropper" onclick={() => pick('fill')}>⌖</button>
       </div>
     </div>
@@ -250,10 +250,14 @@
         <input type="checkbox" class="switch" checked={!!s.glow} onchange={(e) => setStyle({ glow: e.currentTarget.checked ? { radius_1080: 14, color: fillColor(s.fill) } : null })} aria-label="Glow" />
       </span>
     </div>
-    <div class="grow stack">
-      <span class="row">
-        <span class="glabel">Box</span>
-        <span class="segmented" role="radiogroup" aria-label="Box">
+  </div>
+
+  <h2>Background</h2>
+  <div class="group">
+    <div class="grow">
+      <span class="glabel">Box</span>
+      <span class="gcontrol">
+        <span class="segmented" role="radiogroup" aria-label="Background box">
           {#each [['', 'None'], ['per_line', 'Lines'], ['merged', 'Merged'], ['inverted', 'Inverted']] as [k, label] (k)}
             <button
               role="radio"
@@ -268,17 +272,27 @@
           {/each}
         </span>
       </span>
-      {#if s.background}
-        {@const b = s.background}
-        <span class="row">
-          <input type="color" aria-label="Box colour" value={hex(b.color)} oninput={(e) => setStyle({ background: { ...b, color: [...hexToRgba(e.currentTarget.value).slice(0, 3), b.color[3]] as Rgba } }, 'bc')} />
-          <span class="caption">Opacity</span>
-          <input type="range" min="0.1" max="1" step="0.05" value={b.color[3]} aria-label="Box opacity" oninput={(e) => setStyle({ background: { ...b, color: [b.color[0], b.color[1], b.color[2], Number(e.currentTarget.value)] } }, 'ba')} />
-          <span class="caption">Corners</span>
-          <input type="range" min="0" max="40" step="1" value={b.radius_1080} aria-label="Box corners" oninput={(e) => setStyle({ background: { ...b, radius_1080: Number(e.currentTarget.value) } }, 'br')} />
-        </span>
-      {/if}
     </div>
+    {#if s.background}
+      {@const b = s.background}
+      <div class="grow stack">
+        <span class="glabel">Background colour</span>
+        <div class="swatches">
+          {#each ['#000000', '#ffffff', ...SOLID_PALETTE.filter((c) => c !== '#000000' && c !== '#ffffff'), '#ffd60a'] as c (c)}
+            <button class="swatch" aria-label="Background {c}" aria-pressed={hex(b.color) === c} style:background={c} onclick={() => setStyle({ background: { ...b, color: [...hexToRgba(c).slice(0, 3), b.color[3]] as Rgba } })}></button>
+          {/each}
+          <input type="color" aria-label="Custom background colour" value={hex(b.color)} oninput={(e) => setStyle({ background: { ...b, color: [...hexToRgba(e.currentTarget.value).slice(0, 3), b.color[3]] as Rgba } }, 'bc')} />
+        </div>
+      </div>
+      <div class="grow">
+        <span class="glabel">Opacity</span>
+        <span class="gcontrol"><input type="range" min="0.1" max="1" step="0.05" value={b.color[3]} aria-label="Background opacity" oninput={(e) => setStyle({ background: { ...b, color: [b.color[0], b.color[1], b.color[2], Number(e.currentTarget.value)] } }, 'ba')} /><span class="num tnum">{Math.round(b.color[3] * 100)}%</span></span>
+      </div>
+      <div class="grow">
+        <span class="glabel">Corners</span>
+        <span class="gcontrol"><input type="range" min="0" max="40" step="1" value={b.radius_1080} aria-label="Background corners" oninput={(e) => setStyle({ background: { ...b, radius_1080: Number(e.currentTarget.value) } }, 'br')} /><span class="num tnum">{b.radius_1080}</span></span>
+      </div>
+    {/if}
   </div>
 
   <h2>Position</h2>

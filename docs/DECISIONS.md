@@ -224,9 +224,10 @@ they are not a substitute for an M1 run.
   - Cost of the decision on macOS: about 47% vs 20% of one core at 1080 in spike 2.
 - **Update 2026-11-20 (macOS native layer on, M2 Preview window):**
   - The owner lifted the condition for macOS. The Preview window draws into a `CAMetalLayer` in an
-    NSView just below its WKWebView (`sc_capture_macos::preview`). The view covers the window's
-    content layout rectangle (the page's viewport, which stops under the title bar), so the
-    page's camera handles line up with the drawn camera; it resizes with the window.
+    NSView just below its WKWebView (`sc_capture_macos::preview`). The view covers the page:
+    the content layout rectangle under a standard title bar (WebKit insets the page there), the
+    webview's whole frame under an overlay title bar (the editor), so page coordinates are layer
+    coordinates and the page's handles line up with what is drawn; it resizes with the window.
   - The stage renderer draws at the display's pixel size with `Compositor::present` (the same
     compositor passes, then a blit into the drawable; no readback, BT.709 values passed through as
     sRGB, layer colour space sRGB to match WebKit). The page learns only the frame size, through a
@@ -1664,3 +1665,28 @@ they are not a substitute for an M1 run.
   `hevc_nvenc` (nv-codec-headers 11.1.5.3, MIT, header only; the driver loads at run time, so
   no new link dependency and drivers 470+ work). The helper's encoder probe already tries them
   first, so Fast exports and helper-written tracks use an NVIDIA GPU when there is one.
+
+## ADR-051: Separate screen and camera tracks, linked by default
+
+- **Context:** the owner wants the editor to show the screen (with system audio) and the camera
+  (with the microphone) as their own tracks, locked together by default but separable with a
+  click, so the camera or the screen can be cut out of some parts or moved on its own.
+- **Decision:** the project keeps `edl` as the screen track and the timeline's length. An
+  optional `camera_edl` holds the camera's own clips; while it is absent the camera and the mic
+  follow `edl` exactly as before, so old projects and the default experience do not change.
+  Unlinking copies the screen's clips into `camera_edl` (new ids). A clip gains `hidden`: a gap
+  that keeps its length and shows and plays nothing, which is how one track keeps its place when
+  something is removed from the other.
+- **Edits once unlinked:** deleting a clip leaves a gap; deleting a camera gap closes it up;
+  deleting a screen gap takes its time out of every track (the screen track sets the length).
+  Trims stop at the neighbouring clips instead of rippling, a dragged clip slides along its track
+  (`slide_clip`), Split can target one track, a range delete still cuts every track, and a paste
+  puts a gap of the same length on the other track. Linking again drops `camera_edl` and closes
+  the screen's gaps; it is one undoable edit.
+- **Playback and export:** the picture comes from `edl` and the camera from its own clips; where
+  the screen has a gap the camera fills the frame. Audio plays in two lanes, system audio through
+  `edl` and the mic through `camera_edl`, each with its own cut fades and speed. Camera keyframes
+  stay in recording time, so a moved camera clip keeps its placement. Remove Silences cuts only
+  where both tracks are quiet.
+- **Waveforms:** the peaks cache gains one file per audio kind, so each lane draws its own sound.
+

@@ -57,6 +57,8 @@
   let frame = $state<EditorFrame | null>(null);
   let thumbs = $state<Thumbs | null>(null);
   let peaks = $state<Uint8Array | null>(null);
+  let micPeaks = $state<Uint8Array | null>(null);
+  let systemPeaks = $state<Uint8Array | null>(null);
   let pxPerSec = $state(40);
   let fitted = false;
   const initial = hashParams(window.location.hash);
@@ -108,7 +110,13 @@
   const duration = $derived(st0[st0.length - 1] ?? 0);
   const fps = $derived(st?.fps ?? 30);
   const overlay = $derived(doc?.camera_layout.overlays[0] ?? null);
+  const linked = $derived(!doc?.camera_edl);
+  const camClips = $derived(doc?.camera_edl?.clips ?? clips);
   const recNs = $derived(frame?.rec_ns ?? locate(clips, st0, Math.min(playhead, duration - 1))?.rec_ns ?? 0);
+  const camRecNs = $derived(
+    linked ? recNs : (frame?.camera_rec_ns ?? locate(camClips, starts(camClips), Math.min(playhead, duration - 1))?.rec_ns ?? recNs),
+  );
+  const trackOf = (id: string) => (!linked && doc?.camera_edl?.clips.some((c) => c.id === id) ? 'camera' : 'screen');
   const textItems = $derived((doc?.text ?? []) as unknown as TextItemFull[]);
   const textSel = $derived(textItems.find((t) => t.id === selectedText) ?? null);
   const textQuad = $derived(frame?.text?.find((t) => t.id === selectedText) ?? null);
@@ -122,7 +130,7 @@
     if (u.can_redo !== undefined) canRedo = u.can_redo;
     if (u.playhead_tl_ns !== undefined && !playing) playhead = u.playhead_tl_ns;
     if (u.clipboard_ns !== undefined) clipboardNs = u.clipboard_ns;
-    if (doc) selected = selected.filter((id) => doc!.edl.clips.some((c) => c.id === id));
+    if (doc) selected = selected.filter((id) => [...doc!.edl.clips, ...(doc!.camera_edl?.clips ?? [])].some((c) => c.id === id));
   }
 
   async function run<T>(p: Promise<T>): Promise<T | null> {
@@ -155,6 +163,8 @@
     range = null;
     thumbs = null;
     peaks = null;
+    micPeaks = null;
+    systemPeaks = null;
     fitted = false;
     frame = null;
     sendRect();
@@ -162,7 +172,7 @@
 
   function fitZoom() {
     if (!timelineEl || duration <= 0) return;
-    pxPerSec = Math.min(Math.max((timelineEl.clientWidth - 40) / (duration / NS), 2), 400);
+    pxPerSec = Math.min(Math.max((timelineEl.clientWidth - 124) / (duration / NS), 2), 400);
     fitted = true;
   }
 
@@ -177,13 +187,16 @@
   }
 
   async function loadPeaks() {
-    try {
-      const base = /Windows|Android/.test(navigator.userAgent) ? 'http://sc.localhost/peaks' : 'sc://peaks';
-      const r = await fetch(`${base}/v1`, { cache: 'no-store' });
-      if (r.ok) peaks = new Uint8Array(await r.arrayBuffer());
-    } catch {
-      peaks = null;
-    }
+    const base = /Windows|Android/.test(navigator.userAgent) ? 'http://sc.localhost/peaks' : 'sc://peaks';
+    const get = async (kind: string) => {
+      try {
+        const r = await fetch(`${base}/${kind}`, { cache: 'no-store' });
+        return r.ok ? new Uint8Array(await r.arrayBuffer()) : null;
+      } catch {
+        return null;
+      }
+    };
+    [peaks, micPeaks, systemPeaks] = await Promise.all([get('v1'), get('mic'), get('system')]);
   }
 
   $effect(() => {
@@ -328,7 +341,14 @@
   }
 
   function split() {
-    void edit({ op: 'split', at_tl_ns: Math.round(playhead) });
+    const tracks = new Set(selected.map(trackOf));
+    const track = !linked && tracks.size === 1 ? [...tracks][0] : null;
+    void edit({ op: 'split', at_tl_ns: Math.round(playhead), track });
+  }
+
+  async function setLinked(next: boolean) {
+    await edit({ op: 'set_linked', linked: next });
+    if (!error) toast = next ? 'Linked: the camera follows the screen again (⌘Z to undo)' : 'Screen and camera can now be edited separately';
   }
 
   function duplicate() {
@@ -591,7 +611,7 @@
 
   type CamDrag = { corner: [number, number] | null; x: number; y: number; start: CameraKey };
   let camDrag: CamDrag | null = null;
-  const camKey = $derived(overlay ? keyAt(overlay.keyframes, recNs) : null);
+  const camKey = $derived(overlay ? keyAt(overlay.keyframes, camRecNs) : null);
 
   function camDown(e: PointerEvent, corner: [number, number] | null) {
     if (e.button !== 0 || !camKey || playing) return;
@@ -938,7 +958,7 @@
           {doc}
           tracks={st.tracks}
           {selected}
-          {recNs}
+          recNs={camRecNs}
           canvasPx={frame?.canvas_px ?? { w: 1920, h: 1080 }}
           bind:tab
           text={textSel}
@@ -990,14 +1010,14 @@
       {#if selected.length}<span class="badge">{selected.length} selected</span>{/if}
       <span class="spacer"></span>
       <span class="caption muted hint">Shift-drag to select a range · I/O set it</span>
-      <button class="plain icon" onclick={() => (pxPerSec = Math.max(pxPerSec / 1.4, 2))} aria-label="Zoom out">−</button>
+      <button class="plain icon" onclick={() => (pxPerSec = Math.max(pxPerSec / 1.4, 2))} aria-label="Zoom out" title="Zoom the timeline out">−</button>
       <input type="range" class="zoom" min="0" max="1" step="0.001" aria-label="Timeline zoom"
         value={Math.log(pxPerSec / 2) / Math.log(300)}
         oninput={(e) => (pxPerSec = 2 * Math.pow(300, Number(e.currentTarget.value)))} />
-      <button class="plain icon" onclick={() => (pxPerSec = Math.min(pxPerSec * 1.4, 600))} aria-label="Zoom in">+</button>
-      <button class="plain" onclick={fitZoom}>Fit</button>
+      <button class="plain icon" onclick={() => (pxPerSec = Math.min(pxPerSec * 1.4, 600))} aria-label="Zoom in" title="Zoom the timeline in">+</button>
+      <button class="plain" onclick={fitZoom} title="Fit the whole timeline in view">Fit</button>
     </div>
-    <div class="timeline" class:tall={blurs.length > 0} bind:this={timelineEl}>
+    <div class="timeline" class:tall={blurs.length > 0} class:withcam={!!overlay} bind:this={timelineEl}>
       {#if doc}
         <Timeline
           {clips}
@@ -1016,7 +1036,12 @@
             if (b && span) void edit({ op: 'upsert_redaction', item: { ...b, start_rec_ns: span[0], end_rec_ns: span[1] } });
           }}
           {thumbs}
-          {peaks}
+          peaks={overlay ? systemPeaks : peaks}
+          cameraClips={overlay ? camClips : null}
+          cameraPeaks={micPeaks}
+          {linked}
+          onlink={(l) => void setLinked(l)}
+          onslide={(id, by) => void edit({ op: 'slide_clip', id, by_tl_ns: by })}
           bind:pxPerSec
           onseek={seek}
           onselect={(ids) => {
@@ -1299,8 +1324,14 @@
     height: 150px;
     padding: 0 0 6px;
   }
+  .timeline.withcam {
+    height: 196px;
+  }
   .timeline.tall {
     height: 176px;
+  }
+  .timeline.withcam.tall {
+    height: 222px;
   }
   .status {
     display: flex;

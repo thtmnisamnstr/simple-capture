@@ -67,6 +67,25 @@
   let confirming = $state(false);
   let error = $state<string | null>(null);
   let dismissTimer: ReturnType<typeof setTimeout> | undefined;
+  let hint = $state<string | null>(null);
+
+  const hints = $derived({
+    grip: 'Drag to move this bar',
+    switch: `Switch source: record another screen, window or area without stopping${keyHint('switch')}`,
+    pause: paused ? `Resume recording${keyHint('pause')}` : `Pause recording; resume when you're ready${keyHint('pause')}`,
+    stop: `Stop and save, then open it in the editor${keyHint('record')}`,
+    restart: 'Restart: throw this take away and start again',
+    discard: 'Discard: stop and delete this recording',
+  });
+
+  function tip(id: keyof typeof hints) {
+    return {
+      onpointerenter: () => (hint = id),
+      onpointerleave: () => (hint = null),
+      onfocus: () => (hint = id),
+      onblur: () => (hint = null),
+    };
+  }
 
   const label = $derived(
     rec.state === 'preparing'
@@ -198,7 +217,7 @@
 <svelte:window {onkeydown} onpointermove={gripMove} onpointerup={gripUp} />
 
 <div class="bar" role="toolbar" aria-label="Recording controls">
-  <span class="grip" role="presentation" title="Drag to move" onpointerdown={gripDown}>
+  <span class="grip" role="presentation" title={hints.grip} onpointerdown={gripDown} {...tip('grip')}>
     <svg width="8" height="18" viewBox="0 0 8 18" aria-hidden="true"
       >{#each [3, 9, 15] as y (y)}<circle cx="2" cy={y} r="1.1" /><circle cx="6" cy={y} r="1.1" />{/each}</svg
     >
@@ -230,7 +249,9 @@
     <button class="hud danger" onclick={() => act(async () => { restarting = false; await appCall('restart'); })}>Restart</button>
   {:else}
     <div class="msg" aria-live="polite">
-      {#if sourceLost}
+      {#if hint}
+        <span class="hint">{hints[hint as keyof typeof hints]}</span>
+      {:else if sourceLost}
         <span class="lost">Source closed</span>
         <button class="hud" onclick={() => act(switchSource)}>Switch…</button>
       {:else if error}
@@ -243,7 +264,7 @@
       {/if}
     </div>
     {#if !sourceLost}
-      <button class="hud round" onclick={() => act(switchSource)} disabled={!live} title="Switch Source{keyHint('switch')}" aria-label="Switch source">
+      <button class="hud round" onclick={() => act(switchSource)} disabled={!live} title={hints.switch} aria-label="Switch source" {...tip('switch')}>
         <Icon name="switch" size={16} />
       </button>
     {/if}
@@ -251,18 +272,19 @@
       class="hud round"
       onclick={() => act(() => appCall(paused ? 'resume' : 'pause'))}
       disabled={!live}
-      title={(paused ? 'Resume' : 'Pause') + keyHint('pause')}
+      title={hints.pause}
+      {...tip('pause')}
       aria-label={paused ? 'Resume recording' : 'Pause recording'}
     >
       {#if paused}<Icon name="play" size={14} />{:else}<Icon name="pause" size={14} />{/if}
     </button>
-    <button class="stop" onclick={() => act(() => api.stopRecording())} disabled={!live && !sourceLost} aria-label="Stop recording" title="Stop">
+    <button class="stop" onclick={() => act(() => api.stopRecording())} disabled={!live && !sourceLost} aria-label="Stop recording" title={hints.stop} {...tip('stop')}>
       <span class="square" aria-hidden="true"></span>
     </button>
-    <button class="hud round" onclick={() => (restarting = true)} disabled={!live} aria-label="Restart recording" title="Restart">
+    <button class="hud round" onclick={() => (restarting = true)} disabled={!live} aria-label="Restart recording" title={hints.restart} {...tip('restart')}>
       <Icon name="undo" size={14} />
     </button>
-    <button class="hud round" onclick={() => (confirming = true)} disabled={!live && rec.state !== 'failed'} aria-label="Discard recording" title="Discard">
+    <button class="hud round" onclick={() => (confirming = true)} disabled={!live && rec.state !== 'failed'} aria-label="Discard recording" title={hints.discard} {...tip('discard')}>
       <Icon name="close" size={14} />
     </button>
   {/if}
@@ -372,6 +394,10 @@
   .state {
     color: rgba(255, 255, 255, 0.55);
   }
+  .hint {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 11px;
+  }
   .state.paused {
     color: #ffd60a;
   }
@@ -385,6 +411,7 @@
     min-width: 18px;
   }
   .notice,
+  .hint,
   .err {
     white-space: normal;
     display: -webkit-box;

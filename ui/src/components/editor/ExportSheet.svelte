@@ -247,18 +247,18 @@
         <div class="grow">
           <span class="glabel">Quality</span>
           <span class="gcontrol">
-            <span class="segmented" role="radiogroup" aria-label="Quality">
+            <select
+              aria-label="Quality"
+              value={st.quality.tier}
+              onchange={(e) => {
+                const q = e.currentTarget.value;
+                st.quality = q === 'custom' ? { tier: 'custom', crf: 23, kbps: null } : q === 'target_size' ? { tier: 'target_size', mb: 25 } : { tier: q as 'small' };
+              }}
+            >
               {#each [['small', 'Small'], ['balanced', 'Balanced'], ['high', 'High'], ['target_size', 'Size Limit'], ['custom', 'Custom']] as [q, label] (q)}
-                <button
-                  role="radio"
-                  aria-checked={st.quality.tier === q}
-                  onclick={() =>
-                    (st.quality =
-                      q === 'custom' ? { tier: 'custom', crf: 23, kbps: null } : q === 'target_size' ? { tier: 'target_size', mb: 25 } : { tier: q as 'small' })}
-                  >{label}</button
-                >
+                <option value={q}>{label}</option>
               {/each}
-            </span>
+            </select>
           </span>
         </div>
         {#if st.quality.tier === 'target_size'}

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sc_core::edit::{Doc, starts};
-use sc_core::project::{Clip, ProjectV1, TrackKind};
+use sc_core::project::{Clip, Edl, ProjectV1, TrackKind};
 use sc_decode::TrackAudio;
 use sc_platform::{Decoder, Result};
 use signalsmith_stretch::Stretch;
@@ -42,8 +42,152 @@ struct Stretched {
     drop_out: usize,
 }
 
+/// Which audio a lane plays and through which clips: everything through the screen's clips
+/// while the camera is linked; otherwise system audio with the screen and the microphone with the
+/// camera.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LaneKind {
+    All,
+    Screen,
+    Camera,
+}
+
+impl LaneKind {
+    fn plays(self, kind: &TrackKind) -> bool {
+        match self {
+            LaneKind::All => matches!(kind, TrackKind::Mic | TrackKind::SystemAudio),
+            LaneKind::Screen => matches!(kind, TrackKind::SystemAudio),
+            LaneKind::Camera => matches!(kind, TrackKind::Mic),
+        }
+    }
+
+    fn edl(self, doc: &Doc) -> &Edl {
+        match self {
+            LaneKind::Camera => doc.camera_clips(),
+            _ => &doc.edl,
+        }
+    }
+}
+
 /// Pulls the mixed timeline audio, interleaved stereo f32 at `rate`, from any timeline position.
 pub struct TimelineAudio {
+    project: Arc<ProjectV1>,
+    dir: PathBuf,
+    decoder: Arc<dyn Decoder>,
+    rate: u32,
+    lanes: Vec<Lane>,
+    buf: Vec<f32>,
+}
+
+impl TimelineAudio {
+    pub fn new(
+        project: Arc<ProjectV1>,
+        dir: &Path,
+        decoder: Arc<dyn Decoder>,
+        doc: Doc,
+        rate: u32,
+    ) -> TimelineAudio {
+        let mut a = TimelineAudio {
+            project,
+            dir: dir.to_path_buf(),
+            decoder,
+            rate: rate.max(1),
+            lanes: Vec::new(),
+            buf: Vec::new(),
+        };
+        a.set_doc(doc);
+        a
+    }
+
+    fn kinds(&self, doc: &Doc) -> Vec<LaneKind> {
+        if doc.linked() {
+            return vec![LaneKind::All];
+        }
+        let mic = self
+            .project
+            .recording
+            .tracks
+            .iter()
+            .any(|t| LaneKind::Camera.plays(&t.kind));
+        let mut v = vec![LaneKind::Screen];
+        if mic {
+            v.push(LaneKind::Camera);
+        }
+        v
+    }
+
+    pub fn rate(&self) -> u32 {
+        self.rate
+    }
+
+    pub fn frame_of(&self, tl_ns: i64) -> u64 {
+        (i128::from(tl_ns.max(0)) * i128::from(self.rate) / 1_000_000_000) as u64
+    }
+
+    pub fn ns_of(&self, frame: u64) -> i64 {
+        (i128::from(frame) * 1_000_000_000 / i128::from(self.rate)) as i64
+    }
+
+    pub fn len_frames(&self) -> u64 {
+        self.lanes.first().map_or(0, Lane::len_frames)
+    }
+
+    pub fn position(&self) -> u64 {
+        self.lanes.first().map_or(0, |l| l.pos)
+    }
+
+    pub fn set_doc(&mut self, doc: Doc) {
+        let kinds = self.kinds(&doc);
+        if kinds != self.lanes.iter().map(|l| l.kind).collect::<Vec<_>>() {
+            let pos = self.position();
+            self.lanes = kinds
+                .into_iter()
+                .map(|k| {
+                    let mut l = Lane::new(
+                        self.project.clone(),
+                        &self.dir,
+                        self.decoder.clone(),
+                        doc.clone(),
+                        self.rate,
+                        k,
+                    );
+                    l.pos = pos;
+                    l
+                })
+                .collect();
+            return;
+        }
+        for l in &mut self.lanes {
+            l.set_doc(doc.clone());
+        }
+    }
+
+    pub fn seek(&mut self, tl_ns: i64) {
+        for l in &mut self.lanes {
+            l.seek(tl_ns);
+        }
+    }
+
+    /// Fills all of `out` (whole stereo frames) and moves on; silence past the end.
+    pub fn read(&mut self, out: &mut [f32]) -> Result<()> {
+        let Some((first, rest)) = self.lanes.split_first_mut() else {
+            out.fill(0.0);
+            return Ok(());
+        };
+        first.read(out)?;
+        for l in rest {
+            self.buf.resize(out.len(), 0.0);
+            l.read(&mut self.buf)?;
+            for (o, s) in out.iter_mut().zip(&self.buf) {
+                *o = (*o + s).clamp(-1.0, 1.0);
+            }
+        }
+        Ok(())
+    }
+}
+
+struct Lane {
+    kind: LaneKind,
     project: Arc<ProjectV1>,
     dir: PathBuf,
     decoder: Arc<dyn Decoder>,
@@ -58,15 +202,17 @@ pub struct TimelineAudio {
     mix: Vec<f32>,
 }
 
-impl TimelineAudio {
-    pub fn new(
+impl Lane {
+    fn new(
         project: Arc<ProjectV1>,
         dir: &Path,
         decoder: Arc<dyn Decoder>,
         doc: Doc,
         rate: u32,
-    ) -> TimelineAudio {
-        let mut a = TimelineAudio {
+        kind: LaneKind,
+    ) -> Lane {
+        let mut a = Lane {
+            kind,
             project,
             dir: dir.to_path_buf(),
             decoder,
@@ -84,29 +230,27 @@ impl TimelineAudio {
         a
     }
 
-    pub fn rate(&self) -> u32 {
-        self.rate
-    }
-
-    pub fn frame_of(&self, tl_ns: i64) -> u64 {
+    fn frame_of(&self, tl_ns: i64) -> u64 {
         (i128::from(tl_ns.max(0)) * i128::from(self.rate) / 1_000_000_000) as u64
     }
 
-    pub fn ns_of(&self, frame: u64) -> i64 {
+    fn ns_of(&self, frame: u64) -> i64 {
         (i128::from(frame) * 1_000_000_000 / i128::from(self.rate)) as i64
     }
 
-    pub fn len_frames(&self) -> u64 {
+    fn len_frames(&self) -> u64 {
         *self.starts_frames.last().unwrap_or(&0)
     }
 
-    pub fn position(&self) -> u64 {
-        self.pos
-    }
-
-    pub fn set_doc(&mut self, doc: Doc) {
-        self.tracks = audio_track_ids(&self.project)
-            .into_iter()
+    fn set_doc(&mut self, doc: Doc) {
+        let kind = self.kind;
+        self.tracks = self
+            .project
+            .recording
+            .tracks
+            .iter()
+            .filter(|t| kind.plays(&t.kind))
+            .map(|t| t.id.clone())
             .map(|id| {
                 let gain = match doc.audio_mix.get(&id) {
                     Some(m) if m.muted => 0.0,
@@ -116,12 +260,9 @@ impl TimelineAudio {
                 (id, gain)
             })
             .collect();
-        self.starts_frames = starts(&doc.edl)
-            .into_iter()
-            .map(|t| self.frame_of(t))
-            .collect();
-        self.cuts = doc
-            .edl
+        let edl = kind.edl(&doc);
+        self.starts_frames = starts(edl).into_iter().map(|t| self.frame_of(t)).collect();
+        self.cuts = edl
             .clips
             .windows(2)
             .enumerate()
@@ -132,13 +273,12 @@ impl TimelineAudio {
         self.cur = None;
     }
 
-    pub fn seek(&mut self, tl_ns: i64) {
+    fn seek(&mut self, tl_ns: i64) {
         self.pos = self.frame_of(tl_ns);
         self.cur = None;
     }
 
-    /// Fills all of `out` (whole stereo frames) and moves on; silence past the end.
-    pub fn read(&mut self, out: &mut [f32]) -> Result<()> {
+    fn read(&mut self, out: &mut [f32]) -> Result<()> {
         let ch = usize::from(CHANNELS);
         let frames = out.len() / ch;
         let mut done = 0;
@@ -167,15 +307,19 @@ impl TimelineAudio {
         Ok(())
     }
 
+    fn edl(&self) -> &Edl {
+        self.kind.edl(&self.doc)
+    }
+
     fn enter_clip_at_pos(&mut self) -> Result<()> {
         let st = &self.starts_frames;
         let total = *st.last().unwrap_or(&0);
-        if self.pos >= total || self.doc.edl.clips.is_empty() {
+        if self.pos >= total || self.edl().clips.is_empty() {
             self.cur = None;
             return Ok(());
         }
         let index = st.partition_point(|s| *s <= self.pos).saturating_sub(1);
-        let clip = self.doc.edl.clips[index].clone();
+        let clip = self.edl().clips[index].clone();
         let into_ns = self.ns_of(self.pos - st[index]);
         let rec = clip.rec_at(into_ns);
         let end_frame = st[index + 1];
@@ -183,7 +327,7 @@ impl TimelineAudio {
             c.index + 1 == index
                 && c.stretch.is_none()
                 && into_ns == 0
-                && continues(&self.doc.edl.clips[c.index], &clip)
+                && continues(&self.edl().clips[c.index], &clip)
         });
         let readers = match keep {
             Some(c) => c.readers,
@@ -233,7 +377,10 @@ impl TimelineAudio {
     fn mix_sources(&mut self, cur: &mut ClipAudio, out: &mut [f32]) -> Result<()> {
         out.fill(0.0);
         self.scratch.resize(out.len(), 0.0);
-        let muted = self.doc.edl.clips[cur.index].muted;
+        let muted = {
+            let c = &self.edl().clips[cur.index];
+            c.muted || c.hidden
+        };
         for (r, (_, gain)) in cur.readers.iter_mut().zip(&self.tracks) {
             r.read(&mut self.scratch[..out.len()])?;
             if muted || *gain == 0.0 {

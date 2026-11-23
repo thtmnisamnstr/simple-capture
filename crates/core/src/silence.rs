@@ -51,6 +51,10 @@ pub fn on_timeline(edl: &Edl, spans: &[(i64, i64)]) -> Vec<(i64, i64)> {
     let st = starts(edl);
     let mut found = Vec::new();
     for (k, c) in edl.clips.iter().enumerate() {
+        if c.hidden {
+            found.push((st[k], st[k + 1]));
+            continue;
+        }
         for &(a, b) in spans {
             let (lo, hi) = (a.max(c.src_in_rec_ns), b.min(c.src_out_rec_ns));
             if hi > lo {
@@ -70,6 +74,31 @@ pub fn on_timeline(edl: &Edl, spans: &[(i64, i64)]) -> Vec<(i64, i64)> {
         }
     }
     out.retain(|&(a, b)| b - a >= MIN_CUT_NS);
+    out
+}
+
+/// Where the whole timeline is quiet: with an unlinked camera, only where both tracks are.
+pub fn on_doc(doc: &crate::edit::Doc, spans: &[(i64, i64)]) -> Vec<(i64, i64)> {
+    let screen = on_timeline(&doc.edl, spans);
+    let Some(cam) = &doc.camera_edl else {
+        return screen;
+    };
+    let end = crate::edit::duration(cam);
+    let mut camera = on_timeline(cam, spans);
+    camera.push((end, i64::MAX));
+    let mut out = Vec::new();
+    let (mut i, mut j) = (0, 0);
+    while i < screen.len() && j < camera.len() {
+        let (a, b) = (screen[i].0.max(camera[j].0), screen[i].1.min(camera[j].1));
+        if b - a >= MIN_CUT_NS {
+            out.push((a, b));
+        }
+        if screen[i].1 < camera[j].1 {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
     out
 }
 
@@ -110,6 +139,7 @@ mod tests {
             src_out_rec_ns: b_ms * MS,
             speed,
             muted: false,
+            hidden: false,
             extra: Default::default(),
         }
     }
@@ -168,5 +198,31 @@ mod tests {
         assert!((-46.0..=-42.0).contains(&t), "{t}");
         assert_eq!(suggested_threshold(&levels(&[(-80.0, 100)])), -60.0);
         assert_eq!(suggested_threshold(&[]), -45.0);
+    }
+
+    #[test]
+    fn an_unlinked_camera_is_cut_only_where_both_tracks_are_quiet() {
+        let mut p = crate::project::ProjectV1::new_recording(
+            "p".into(),
+            "t".into(),
+            "now".into(),
+            "0".into(),
+            crate::time::ClockKind::MachHost,
+        );
+        p.edl.clips = vec![clip(0, 10_000, Speed::ONE)];
+        let mut doc = crate::edit::Doc::of(&p);
+        assert_eq!(on_doc(&doc, &[(0, 6_000 * MS)]), vec![(0, 6_000 * MS)]);
+        doc.camera_edl = Some(Edl {
+            clips: vec![clip(5_000, 8_000, Speed::ONE)],
+            extra: Default::default(),
+        });
+        assert_eq!(
+            on_doc(&doc, &[(0, 6_000 * MS), (9_000 * MS, 10_000 * MS)]),
+            vec![
+                (0, 1_000 * MS),
+                (3_000 * MS, 6_000 * MS),
+                (9_000 * MS, 10_000 * MS)
+            ]
+        );
     }
 }

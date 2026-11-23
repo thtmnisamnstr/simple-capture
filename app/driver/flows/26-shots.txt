@@ -18,9 +18,12 @@ shot onboarding @RUN@/shots/onboarding.png
 show diagnostics
 wait 1500
 shot diagnostics @RUN@/shots/diagnostics.png
-cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv shots","settings":{"mic":"@MIC@"}}}
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv shots","settings":{"camera":"@CAMERA@","mic":"@MIC@","preview_shown":true}}}
 wait 2500
 shot bar @RUN@/shots/bar.png
+show stage
+wait 1500
+shot stage @RUN@/shots/stage.png
 show switcher
 wait 1200
 shot switcher @RUN@/shots/switcher.png

@@ -254,6 +254,7 @@ pub fn render_loop(core: Weak<Core>) {
                     "camera": cam,
                     "screen": screen,
                     "rec_ns": composed.rec_ns,
+                    "camera_rec_ns": composed.camera_rec_ns,
                 });
                 if told.as_ref() != Some(&frame) {
                     core.emit("editor-frame", frame.clone());

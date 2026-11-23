@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 
 use sc_core::image::RgbaImage;
-use sc_core::project::ProjectV1;
+use sc_core::project::{ProjectV1, TrackKind};
 use sc_decode::{SegmentFrameSource, TrackAudio};
 use sc_geometry::{Ratio, SizePx};
 use sc_render::{Backend, Compositor, FrameJob, OutputFormat, ScreenLayer};
@@ -23,8 +23,12 @@ pub fn thumbs_dir(dir: &Path) -> PathBuf {
     dir.join("thumbs")
 }
 
-pub fn peaks_path(dir: &Path) -> PathBuf {
-    thumbs_dir(dir).join("peaks-v1.bin")
+/// `kind` is `v1` for every audio track, `mic` or `system` for one kind.
+pub fn peaks_path(dir: &Path, kind: &str) -> PathBuf {
+    match kind {
+        "mic" | "system" => thumbs_dir(dir).join(format!("peaks-{kind}-v1.bin")),
+        _ => thumbs_dir(dir).join("peaks-v1.bin"),
+    }
 }
 
 pub fn thumb_path(dir: &Path, step_ms: i64, index: i64) -> PathBuf {
@@ -92,22 +96,13 @@ pub fn spawn(core: &Arc<Core>, session: u64, dir: PathBuf, project: Arc<ProjectV
 }
 
 fn peaks(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
-    let path = peaks_path(dir);
-    if !path.exists() {
+    if !peaks_path(dir, "system").exists() {
         let Some(c) = current(core, session) else {
             return;
         };
-        match compute_peaks(&c, dir, project) {
-            Ok(bytes) => {
-                if let Err(e) = sc_core::fsio::atomic_write(&path, &bytes) {
-                    tracing::warn!("peaks: {e}");
-                    return;
-                }
-            }
-            Err(e) => {
-                tracing::warn!("peaks: {e}");
-                return;
-            }
+        if let Err(e) = write_peaks(&c, dir, project) {
+            tracing::warn!("peaks: {e}");
+            return;
         }
     }
     if let Some(c) = current(core, session) {
@@ -118,14 +113,31 @@ fn peaks(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
     }
 }
 
-/// One byte per 10 ms of recording time: the loudest sample over all audio tracks, on a
-/// square-root scale so quiet speech still shows.
-fn compute_peaks(core: &Core, dir: &Path, project: &ProjectV1) -> Result<Vec<u8>, String> {
-    let ids = sc_player::audio::audio_track_ids(project);
-    Ok(window_peaks(core, dir, project, &ids)?
-        .into_iter()
-        .map(|p| (p.clamp(0.0, 1.0).sqrt() * 255.0).round() as u8)
-        .collect())
+/// One byte per 10 ms of recording time: the loudest sample over the tracks, on a square-root
+/// scale so quiet speech still shows. Written for the microphone, system audio and both.
+fn write_peaks(core: &Core, dir: &Path, project: &ProjectV1) -> Result<(), String> {
+    let of = |kind: TrackKind| -> Result<Vec<f32>, String> {
+        let ids: Vec<String> = project
+            .recording
+            .tracks
+            .iter()
+            .filter(|t| t.kind == kind)
+            .map(|t| t.id.clone())
+            .collect();
+        window_peaks(core, dir, project, &ids)
+    };
+    let (mic, system) = (of(TrackKind::Mic)?, of(TrackKind::SystemAudio)?);
+    let all: Vec<f32> = mic.iter().zip(&system).map(|(a, b)| a.max(*b)).collect();
+    let bytes = |v: &[f32]| -> Vec<u8> {
+        v.iter()
+            .map(|p| (p.clamp(0.0, 1.0).sqrt() * 255.0).round() as u8)
+            .collect()
+    };
+    for (kind, v) in [("mic", &mic), ("v1", &all), ("system", &system)] {
+        sc_core::fsio::atomic_write(&peaks_path(dir, kind), &bytes(v))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// The loudest sample of `tracks` in each 10 ms of recording time, in dBFS.

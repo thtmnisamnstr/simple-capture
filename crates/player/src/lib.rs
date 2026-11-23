@@ -20,6 +20,7 @@ pub fn timeline_doc(project: &ProjectV1) -> Doc {
             src_out_rec_ns: d,
             speed: Speed::ONE,
             muted: false,
+            hidden: false,
             extra: Extra::new(),
         });
     }

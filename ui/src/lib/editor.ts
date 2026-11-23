@@ -15,6 +15,7 @@ export interface Clip {
   src_out_rec_ns: number;
   speed: Speed;
   muted: boolean;
+  hidden?: boolean;
 }
 export interface CameraOverlay { id: string; track_id: string; keyframes: CameraKey[] }
 export interface AudioMixEntry { gain_db: number; muted: boolean }
@@ -36,6 +37,7 @@ export interface TextItem {
 }
 export interface Doc {
   edl: { clips: Clip[] };
+  camera_edl?: { clips: Clip[] } | null;
   text: TextItem[];
   redactions?: Redaction[];
   camera_layout: { overlays: CameraOverlay[] };
@@ -74,10 +76,14 @@ export interface EditorFrame {
   camera: { x: number; y: number; w: number; h: number } | null;
   screen?: { x: number; y: number; w: number; h: number } | null;
   rec_ns: number;
+  camera_rec_ns?: number | null;
 }
 
+export type Track = 'screen' | 'camera';
 export type EditOp =
-  | { op: 'split'; at_tl_ns: number }
+  | { op: 'split'; at_tl_ns: number; track?: Track | null }
+  | { op: 'set_linked'; linked: boolean }
+  | { op: 'slide_clip'; id: string; by_tl_ns: number }
   | { op: 'trim'; clip_id: string; edge: 'start' | 'end'; rec_ns: number }
   | { op: 'delete_range'; a_tl_ns: number; b_tl_ns: number }
   | { op: 'delete_clips'; ids: string[] }

@@ -14,6 +14,7 @@
     type TextItem,
   } from '../../lib/editor.ts';
   import type { CameraKey } from '../../lib/types.ts';
+  import Icon from '../Icon.svelte';
 
   export interface Thumbs { step_ms: number; count: number; w: number; h: number; ready: Set<number> }
 
@@ -41,7 +42,17 @@
     selectedBlur = null,
     onselectblur,
     onblurmove,
+    cameraClips = null,
+    cameraPeaks = null,
+    linked = true,
+    onlink,
+    onslide,
   }: {
+    cameraClips?: Clip[] | null;
+    cameraPeaks?: Uint8Array | null;
+    linked?: boolean;
+    onlink?: (linked: boolean) => void;
+    onslide?: (id: string, byNs: number) => void;
     clips: Clip[];
     text: TextItem[];
     keys: CameraKey[];
@@ -69,6 +80,7 @@
 
   const RULER_H = 24;
   const TRACK_H = 64;
+  const CAM_H = 40;
   const TEXT_H = 26;
   const BLUR_H = 20;
   const PAD = 16;
@@ -76,9 +88,14 @@
 
   let scroller: HTMLDivElement | undefined = $state();
   let canvas: HTMLCanvasElement | undefined = $state();
+  let camCanvas: HTMLCanvasElement | undefined = $state();
   let viewW = $state(800);
   let scrollX = $state(0);
+  type Lane = 'screen' | 'camera';
   const st = $derived(clipStarts(clips));
+  const camSt = $derived(cameraClips ? clipStarts(cameraClips) : []);
+  const laneClips = (l: Lane) => (l === 'camera' ? (cameraClips ?? []) : clips);
+  const laneSt = (l: Lane) => (l === 'camera' ? camSt : st);
   const duration = $derived(st[st.length - 1] ?? 0);
   const contentW = $derived(PAD * 2 + (duration / NS) * pxPerSec);
   const x = (t: number) => PAD + (t / NS) * pxPerSec;
@@ -87,11 +104,12 @@
   type Drag =
     | { kind: 'scrub' }
     | { kind: 'range'; from: number }
-    | { kind: 'trim'; id: string; edge: 'start' | 'end'; startX: number; index: number }
-    | { kind: 'move'; id: string; startX: number; index: number; moved: boolean }
+    | { kind: 'trim'; lane: Lane; id: string; edge: 'start' | 'end'; startX: number; index: number }
+    | { kind: 'move'; lane: Lane; id: string; startX: number; index: number; moved: boolean }
     | { kind: 'text'; lane: 'text' | 'blur'; id: string; part: 'body' | 'start' | 'end'; startX: number; s0: number; e0: number; moved: boolean };
   let drag = $state<Drag | null>(null);
-  let ghost = $state<{ index: number; start: number; end: number } | null>(null);
+  let ghost = $state<{ lane: Lane; index: number; start: number; end: number } | null>(null);
+  let slide = $state<{ id: string; by: number } | null>(null);
   let textGhost = $state<{ id: string; start: number; end: number } | null>(null);
   const MIN_TEXT_NS = 100_000_000;
 
@@ -135,7 +153,7 @@
   });
 
   function snapTargets(): number[] {
-    const out = [...st, playhead];
+    const out = [...st, ...camSt, playhead];
     for (const it of [...text, ...blurItems]) out.push(it.start_tl_ns, it.end_tl_ns);
     return out;
   }
@@ -180,7 +198,7 @@
     onseek(at, true);
   }
 
-  function onClipDown(e: PointerEvent, c: Clip, index: number) {
+  function onClipDown(e: PointerEvent, c: Clip, index: number, lane: Lane) {
     if (e.button !== 0) return;
     e.stopPropagation();
     if (e.shiftKey) {
@@ -193,20 +211,22 @@
     if (additive) onselect(selected.includes(c.id) ? selected.filter((s) => s !== c.id) : [...selected, c.id]);
     else if (!selected.includes(c.id)) onselect([c.id]);
     onrange(null);
-    drag = { kind: 'move', id: c.id, startX: e.clientX, index, moved: false };
+    drag = { kind: 'move', lane, id: c.id, startX: e.clientX, index, moved: false };
   }
 
-  function onEdgeDown(e: PointerEvent, c: Clip, index: number, edge: 'start' | 'end') {
+  function onEdgeDown(e: PointerEvent, c: Clip, index: number, edge: 'start' | 'end', lane: Lane) {
     if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     onselect([c.id]);
-    drag = { kind: 'trim', id: c.id, edge, startX: e.clientX, index };
-    ghost = { index, start: st[index], end: st[index + 1] };
+    drag = { kind: 'trim', lane, id: c.id, edge, startX: e.clientX, index };
+    const lst = laneSt(lane);
+    ghost = { lane, index, start: lst[index], end: lst[index + 1] };
   }
 
-  function trimRec(c: Clip, index: number, edge: 'start' | 'end', dxPx: number): number {
+  function trimRec(c: Clip, index: number, edge: 'start' | 'end', dxPx: number, lane: Lane): number {
+    const st = laneSt(lane);
     const dTl = (dxPx / pxPerSec) * NS;
     const dRec = (dTl * c.speed.num) / c.speed.den;
     if (edge === 'start') {
@@ -228,13 +248,17 @@
     if (drag.kind === 'scrub') onseek(snapped(at), false);
     else if (drag.kind === 'range') onrange([drag.from, snapped(at)]);
     else if (drag.kind === 'trim') {
-      const c = clips[drag.index];
-      const rec = trimRec(c, drag.index, drag.edge, e.clientX - drag.startX);
+      const { lane, index } = drag;
+      const c = laneClips(lane)[index];
+      const lst = laneSt(lane);
+      const rec = trimRec(c, index, drag.edge, e.clientX - drag.startX, lane);
       const len = (r0: number, r1: number) => ((r1 - r0) * c.speed.den) / c.speed.num;
       ghost =
-        drag.edge === 'start'
-          ? { index: drag.index, start: st[drag.index], end: st[drag.index] + len(rec, c.src_out_rec_ns) }
-          : { index: drag.index, start: st[drag.index], end: st[drag.index] + len(c.src_in_rec_ns, rec) };
+        drag.edge === 'end'
+          ? { lane, index, start: lst[index], end: lst[index] + len(c.src_in_rec_ns, rec) }
+          : linked
+            ? { lane, index, start: lst[index], end: lst[index] + len(rec, c.src_out_rec_ns) }
+            : { lane, index, start: lst[index] + len(c.src_in_rec_ns, rec), end: lst[index + 1] };
     } else if (drag.kind === 'text') {
       if (!drag.moved && Math.abs(e.clientX - drag.startX) < 3) return;
       drag.moved = true;
@@ -251,6 +275,11 @@
     } else if (drag.kind === 'move') {
       if (!drag.moved && Math.abs(e.clientX - drag.startX) < 5) return;
       drag.moved = true;
+      if (!linked) {
+        const s0 = laneSt(drag.lane)[drag.index];
+        slide = { id: drag.id, by: Math.max(0, snapped(s0 + ((e.clientX - drag.startX) / pxPerSec) * NS)) - s0 };
+        return;
+      }
       let best = 0;
       let bestD = Infinity;
       st.forEach((s, i) => {
@@ -277,20 +306,24 @@
     if (d.kind === 'scrub') onseek(playhead, true);
     else if (d.kind === 'range' && range && Math.abs(range[1] - range[0]) < (3 / pxPerSec) * NS) onrange(null);
     else if (d.kind === 'trim') {
-      const c = clips[d.index];
+      const c = laneClips(d.lane)[d.index];
       const dx = e.clientX - d.startX;
       ghost = null;
-      if (Math.abs(dx) >= 1) ontrim(c.id, d.edge, trimRec(c, d.index, d.edge, dx));
+      if (Math.abs(dx) >= 1) ontrim(c.id, d.edge, trimRec(c, d.index, d.edge, dx, d.lane));
     } else if (d.kind === 'move') {
       const target = dropAt;
+      const slid = slide;
       dropAt = null;
-      if (d.moved && target !== null) {
+      slide = null;
+      if (d.moved && slid) {
+        if (Math.round(slid.by) !== 0) onslide?.(d.id, Math.round(slid.by));
+      } else if (d.moved && target !== null) {
         const to = target > d.index ? target - 1 : target;
         if (to !== d.index) onmove(d.id, to);
       } else if (!d.moved) {
-        const c = clips[d.index];
-        const at = Math.min(Math.max(t(localX(e)), st[d.index]), st[d.index + 1] - 1);
-        if (c) onseek(at, true);
+        const lst = laneSt(d.lane);
+        const at = Math.min(Math.max(t(localX(e)), lst[d.index]), Math.min(lst[d.index + 1], duration) - 1);
+        onseek(Math.max(0, at), true);
       }
     }
   }
@@ -332,32 +365,42 @@
     return out;
   });
 
-  const keyMarks = $derived(keys.flatMap((k) => recToTl(clips, st, k.t_rec_ns)));
+  const keyMarks = $derived(
+    cameraClips ? keys.flatMap((k) => recToTl(cameraClips, camSt, k.t_rec_ns)) : keys.flatMap((k) => recToTl(clips, st, k.t_rec_ns)),
+  );
 
   function draw() {
-    if (!canvas) return;
     void imageTick;
+    if (canvas) paint(canvas, 'screen', TRACK_H);
+    if (camCanvas && cameraClips) paint(camCanvas, 'camera', CAM_H);
+  }
+
+  function paint(cv: HTMLCanvasElement, lane: Lane, H: number) {
+    const clips = laneClips(lane);
+    const st = laneSt(lane);
+    const wave = lane === 'camera' ? cameraPeaks : peaks;
     const dpr = window.devicePixelRatio || 1;
     const w = Math.max(1, viewW);
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(TRACK_H * dpr);
-    const g = canvas.getContext('2d');
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(H * dpr);
+    const g = cv.getContext('2d');
     if (!g) return;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, w, TRACK_H);
+    g.clearRect(0, 0, w, H);
     const thumbH = 42;
     const tileW = thumbs ? Math.max(24, (thumbs.w / thumbs.h) * thumbH) : 76;
     clips.forEach((c, i) => {
+      if (c.hidden) return;
       const x0 = x(st[i]) - scrollX;
-      const x1 = x(st[i + 1]) - scrollX;
-      if (x1 < 0 || x0 > w) return;
+      const x1 = x(Math.min(st[i + 1], lane === 'camera' ? duration : Infinity)) - scrollX;
+      if (x1 < 0 || x0 > w || x1 <= x0) return;
       g.save();
       g.beginPath();
-      g.roundRect(x0 + 1, 2, Math.max(1, x1 - x0 - 2), TRACK_H - 4, 6);
+      g.roundRect(x0 + 1, 2, Math.max(1, x1 - x0 - 2), H - 4, 6);
       g.clip();
-      g.fillStyle = 'rgba(128,128,140,0.28)';
-      g.fillRect(x0, 0, x1 - x0, TRACK_H);
-      for (let tx = Math.max(x0, x0 + Math.floor((0 - x0) / tileW) * tileW); tx < Math.min(x1, w); tx += tileW) {
+      g.fillStyle = lane === 'camera' ? 'rgba(48,176,199,0.32)' : 'rgba(128,128,140,0.28)';
+      g.fillRect(x0, 0, x1 - x0, H);
+      for (let tx = Math.max(x0, x0 + Math.floor((0 - x0) / tileW) * tileW); lane === 'screen' && tx < Math.min(x1, w); tx += tileW) {
         const mid = st[i] + ((tx + tileW / 2 - x0) / pxPerSec) * NS;
         const loc = locate(clips, st, Math.min(mid, st[i + 1] - 1));
         if (!loc || !thumbs) continue;
@@ -365,9 +408,11 @@
         const img = thumbImage(idx);
         if (img) g.drawImage(img, tx, 2, tileW, thumbH);
       }
-      if (peaks) {
+      if (wave) {
+        const peaks = wave;
+        const TRACK_H = H;
         const base = TRACK_H - 3;
-        const hMax = 16;
+        const hMax = lane === 'camera' ? 12 : 16;
         g.fillStyle = c.muted ? 'rgba(160,160,170,0.35)' : 'rgba(64,156,255,0.85)';
         g.fillRect(x0, base - hMax - 1, x1 - x0, hMax + 1);
         g.fillStyle = c.muted ? 'rgba(220,220,230,0.5)' : 'rgba(255,255,255,0.9)';
@@ -390,13 +435,78 @@
   }
 
   $effect(() => {
-    void [clips, scrollX, viewW, pxPerSec, thumbs, peaks, imageTick];
+    void [clips, cameraClips, camCanvas, scrollX, viewW, pxPerSec, thumbs, peaks, cameraPeaks, imageTick];
     draw();
   });
 </script>
 
+{#snippet boxes(lane: Lane, list: Clip[], lst: number[])}
+  {#each list as c, i (c.id)}
+    {@const g = ghost && ghost.lane === lane && ghost.index === i ? ghost : null}
+    {@const by = slide && slide.id === c.id ? slide.by : 0}
+    {@const s0 = (g ? g.start : lst[i]) + by}
+    {@const e0 = Math.min((g ? g.end : lst[i + 1]) + by, lane === 'camera' ? Math.max(duration, s0) : Infinity)}
+    {#if e0 > s0}
+      <div
+        class="clip"
+        class:gap={c.hidden}
+        class:sel={selected.includes(c.id)}
+        class:muted={c.muted}
+        class:dragging={drag?.kind === 'move' && drag.id === c.id && drag.moved}
+        style:left="{x(s0)}px"
+        style:width="{Math.max(2, x(e0) - x(s0))}px"
+        role="button"
+        tabindex="-1"
+        aria-label={c.hidden ? 'Gap' : `${lane === 'camera' ? 'Camera' : 'Screen'} clip ${i + 1}`}
+        title={c.hidden ? 'Gap: nothing plays here. Delete it to close it up.' : undefined}
+        onpointerdown={(e) => onClipDown(e, c, i, lane)}
+      >
+        {#if c.hidden}
+          <span class="gaplabel">Gap</span>
+        {:else}
+          {#if c.speed.num !== c.speed.den}<span class="badge chip">{speedLabel(c.speed)}</span>{/if}
+          {#if c.muted}<span class="badge chip">Muted</span>{/if}
+          <span class="edge l" role="presentation" onpointerdown={(e) => onEdgeDown(e, c, i, 'start', lane)}></span>
+          <span class="edge r" role="presentation" onpointerdown={(e) => onEdgeDown(e, c, i, 'end', lane)}></span>
+        {/if}
+      </div>
+    {/if}
+  {/each}
+{/snippet}
+
 <svelte:window onpointermove={onMove} onpointerup={onUp} />
 
+<div class="tl">
+  <div class="heads" aria-hidden={!cameraClips}>
+    <div style:height="{RULER_H}px"></div>
+    <div class="head" style:height="{TRACK_H}px" style:margin-top="6px">
+      <span>{cameraClips ? 'Screen' : 'Video'}</span>
+      <span class="sub">{cameraClips ? 'System audio' : 'and sound'}</span>
+    </div>
+    {#if cameraClips}
+      <button
+        class="link"
+        class:off={!linked}
+        style:top="{RULER_H + 6 + TRACK_H - 8}px"
+        aria-pressed={linked}
+        aria-label={linked ? 'Screen and camera are linked' : 'Screen and camera are separate'}
+        title={linked
+          ? 'Linked: cuts and moves apply to the screen and the camera together. Click to edit them separately.'
+          : 'Separate: cuts and moves apply to one track. Click to link them again (gaps in the screen close up).'}
+        onclick={() => onlink?.(!linked)}
+      >
+        <Icon name={linked ? 'link' : 'unlink'} size={13} />
+      </button>
+      <div class="head" style:height="{CAM_H}px" style:margin-top="6px">
+        <span>Camera</span>
+        <span class="sub">Microphone</span>
+      </div>
+    {/if}
+    <div class="head" style:height="{TEXT_H}px" style:margin-top="6px"><span>Text</span></div>
+    {#if blurItems.length}
+      <div class="head" style:height="{BLUR_H}px" style:margin-top="6px"><span>Blur</span></div>
+    {/if}
+  </div>
 <div
   class="scroller"
   bind:this={scroller}
@@ -411,33 +521,24 @@
     </div>
     <div class="track main" style:height="{TRACK_H}px" role="presentation" onpointerdown={onTrackDown}>
       <canvas class="paint" bind:this={canvas} style:left="{scrollX}px" style:width="{viewW}px" style:height="{TRACK_H}px"></canvas>
-      {#each clips as c, i (c.id)}
-        {@const g = ghost && ghost.index === i ? ghost : null}
-        <div
-          class="clip"
-          class:sel={selected.includes(c.id)}
-          class:muted={c.muted}
-          class:dragging={drag?.kind === 'move' && drag.id === c.id && drag.moved}
-          style:left="{x(g ? g.start : st[i])}px"
-          style:width="{Math.max(2, x(g ? g.end : st[i + 1]) - x(g ? g.start : st[i]))}px"
-          role="button"
-          tabindex="-1"
-          aria-label="Clip {i + 1}"
-          onpointerdown={(e) => onClipDown(e, c, i)}
-        >
-          {#if c.speed.num !== c.speed.den}<span class="badge chip">{speedLabel(c.speed)}</span>{/if}
-          {#if c.muted}<span class="badge chip">Muted</span>{/if}
-          <span class="edge l" role="presentation" onpointerdown={(e) => onEdgeDown(e, c, i, 'start')}></span>
-          <span class="edge r" role="presentation" onpointerdown={(e) => onEdgeDown(e, c, i, 'end')}></span>
-        </div>
-      {/each}
-      {#each keyMarks as k, i (i)}
-        <span class="key" style:left="{x(k)}px" title="Camera keyframe"></span>
-      {/each}
+      {@render boxes('screen', clips, st)}
+      {#if !cameraClips}
+        {#each keyMarks as k, i (i)}
+          <span class="key" style:left="{x(k)}px" title="Camera keyframe"></span>
+        {/each}
+      {/if}
       {#if dropAt !== null}<span class="drop" style:left="{x(st[dropAt])}px"></span>{/if}
     </div>
+    {#if cameraClips}
+      <div class="track cam" style:height="{CAM_H}px" role="presentation" onpointerdown={onTrackDown}>
+        <canvas class="paint" bind:this={camCanvas} style:left="{scrollX}px" style:width="{viewW}px" style:height="{CAM_H}px"></canvas>
+        {@render boxes('camera', cameraClips, camSt)}
+        {#each keyMarks as k, i (i)}
+          <span class="key" style:left="{x(k)}px" title="Camera keyframe"></span>
+        {/each}
+      </div>
+    {/if}
     <div class="track text" style:height="{TEXT_H}px" role="presentation" onpointerdown={onTrackDown}>
-      {#if text.length === 0}<span class="lane-hint" style:left="{scrollX + 10}px">Text</span>{/if}
       {#each text as it (it.id)}
         {@const g = textGhost && textGhost.id === it.id ? textGhost : null}
         <div
@@ -483,12 +584,56 @@
     {#if range}
       <div class="range" style:left="{x(Math.min(...range))}px" style:width="{Math.abs(x(range[1]) - x(range[0]))}px"></div>
     {/if}
-    <div class="playhead" style:left="{x(playhead)}px"><span class="head"></span></div>
+    <div class="playhead" style:left="{x(playhead)}px"><span class="phead"></span></div>
   </div>
+</div>
 </div>
 
 <style>
+  .tl {
+    display: flex;
+    height: 100%;
+    min-width: 0;
+  }
+  .heads {
+    position: relative;
+    flex: none;
+    width: 84px;
+    padding: 0 6px 0 12px;
+    border-right: 1px solid var(--separator);
+  }
+  .head {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--label);
+    line-height: 1.2;
+  }
+  .head .sub {
+    font-weight: 400;
+    font-size: 10px;
+    color: var(--label-2);
+  }
+  .link {
+    position: absolute;
+    right: 6px;
+    width: 22px;
+    min-width: 22px;
+    height: 22px;
+    padding: 0;
+    border-radius: 50%;
+    z-index: 1;
+    color: var(--accent);
+    background: var(--control, rgba(128, 128, 128, 0.18));
+  }
+  .link.off {
+    color: var(--label-2);
+  }
   .scroller {
+    flex: 1;
+    min-width: 0;
     position: relative;
     overflow-x: auto;
     overflow-y: hidden;
@@ -599,16 +744,25 @@
     background: var(--accent);
     pointer-events: none;
   }
+  .clip.gap {
+    cursor: default;
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--separator);
+    background-image: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--label-3) 25%, transparent) 6px 7px);
+    align-items: center;
+    justify-content: center;
+  }
+  .clip.gap.sel {
+    box-shadow: inset 0 0 0 2px var(--yellow);
+  }
+  .gaplabel {
+    font-size: 10px;
+    color: var(--label-2);
+    pointer-events: none;
+  }
   .track.text {
     border-radius: 6px;
     background: var(--fill);
-  }
-  .lane-hint {
-    position: absolute;
-    top: 5px;
-    font-size: 11px;
-    color: var(--label-3);
-    pointer-events: none;
   }
   .titem {
     position: absolute;
@@ -674,7 +828,7 @@
     background: var(--red);
     pointer-events: none;
   }
-  .head {
+  .phead {
     position: absolute;
     top: 0;
     left: -5px;

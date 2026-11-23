@@ -718,6 +718,16 @@ stop. The editor opens by itself. Check, in order:
 | E23 | Change the frame to 9:16 or add padding | The box stays on the same screen content |
 | E24 | Drag the Blur item's edges on the timeline; cut a range before it; ⌘Z | It moves and ripples like text; undo restores it |
 | E25 | Export | The exported video hides the area for exactly that stretch |
+| E26 | Record 30 s with screen, camera and mic; open the editor | The timeline shows Screen (system audio waveform), Camera (microphone waveform), Text and, once there is one, Blur; the chain button between Screen and Camera is on (linked) |
+| E27 | Linked: split, delete a clip, drag a clip | Both tracks change together, as before |
+| E28 | Click the chain to unlink; select a camera clip, ⌫ | A striped gap is left; the screen does not move; playing over it shows the screen with no camera and no mic |
+| E29 | Drag the camera clip after the gap left | It slides in time and stops at the start; the camera's mouth and voice stay in step |
+| E30 | Select a screen clip, ⌫ | A gap on the screen track; the camera fills the frame there; the timeline keeps its length |
+| E31 | Select the screen gap, ⌫ | That time leaves every track; text after it moves back |
+| E32 | Click the chain again | One step: the camera follows the screen again and the screen's gaps close; ⌘Z brings the separate tracks back |
+| E33 | Export while unlinked | The export matches the preview: camera gaps, the full-frame camera and the slid camera clip |
+| E34 | Add text; select it | The dashed box sits exactly on the drawn text; the camera and blur boxes sit exactly on the camera and the blurred area |
+| E35 | Text tab | Text colour and Background (box, colour, opacity, corners) are separate sections |
 
 ## 10d. Text (M4)
 
@@ -781,6 +791,7 @@ In the editor with any recording, press ⌘E:
 | R15 | Panel → Starting and Shortcuts → click "Pause or resume", press ⌃⌥P | It shows ⌃⌥P; ⌃⌥P now pauses a recording and ⌥⇧P does nothing; the bar's Pause tooltip says ⌃⌥P |
 | R16 | Give "Switch source" the same keys as "Start or stop recording" | An orange note says it is also used for the other action; Default puts it back |
 | R17 | Click a shortcut, press Delete; click another, press Escape | The first shows None and no longer works; the second keeps its keys |
+| R18 | While recording, hover each button in the bar | The bar's message area says what the button does (and its shortcut); the normal tooltip shows too |
 
 ## 10g. Library, About and Diagnostics (M6, M7)
 

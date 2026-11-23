@@ -28,6 +28,8 @@ pub const SPEEDS: [Speed; 5] = [
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Doc {
     pub edl: Edl,
+    #[serde(default)]
+    pub camera_edl: Option<Edl>,
     pub text: Vec<TextItem>,
     #[serde(default)]
     pub redactions: Vec<Redaction>,
@@ -40,6 +42,7 @@ impl Doc {
     pub fn of(p: &ProjectV1) -> Doc {
         Doc {
             edl: p.edl.clone(),
+            camera_edl: p.camera_edl.clone(),
             text: p.text.clone(),
             redactions: p.redactions.clone(),
             camera_layout: p.camera_layout.clone(),
@@ -50,6 +53,7 @@ impl Doc {
 
     pub fn apply_to(&self, p: &mut ProjectV1) {
         p.edl = self.edl.clone();
+        p.camera_edl = self.camera_edl.clone();
         p.text = self.text.clone();
         p.redactions = self.redactions.clone();
         p.camera_layout = self.camera_layout.clone();
@@ -60,6 +64,24 @@ impl Doc {
     pub fn duration(&self) -> i64 {
         duration(&self.edl)
     }
+
+    /// True while the camera follows the screen's clips.
+    pub fn linked(&self) -> bool {
+        self.camera_edl.is_none()
+    }
+
+    /// The clips the camera and the microphone play.
+    pub fn camera_clips(&self) -> &Edl {
+        self.camera_edl.as_ref().unwrap_or(&self.edl)
+    }
+}
+
+/// One of the two picture tracks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Track {
+    Screen,
+    Camera,
 }
 
 impl Speed {
@@ -138,6 +160,7 @@ pub fn edl_between_pauses(duration_ns: i64, pauses_rec: &[(i64, i64)]) -> Edl {
                 src_out_rec_ns: a,
                 speed: Speed::ONE,
                 muted: false,
+                hidden: false,
                 extra: Extra::new(),
             });
         }
@@ -188,6 +211,8 @@ pub fn locate_in(edl: &Edl, starts: &[i64], tl: i64) -> Option<Located> {
 pub struct Clipboard {
     pub clips: Vec<Clip>,
     pub text: Vec<TextItem>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub track: Option<Track>,
 }
 
 impl Clipboard {
@@ -212,8 +237,11 @@ pub enum Edge {
 #[serde(tag = "op", rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]
 pub enum EditOp {
+    /// Splits every track at the time, or only `track` once the camera is unlinked.
     Split {
         at_tl_ns: i64,
+        #[serde(default)]
+        track: Option<Track>,
     },
     Trim {
         clip_id: String,
@@ -283,6 +311,16 @@ pub enum EditOp {
     DeleteRedactions {
         ids: Vec<String>,
     },
+    /// Linking drops the camera's own clips and the gaps in the screen track; unlinking gives the
+    /// camera a copy of the screen's clips to edit on its own.
+    SetLinked {
+        linked: bool,
+    },
+    /// Moves an unlinked clip along its track, as far as its neighbours allow.
+    SlideClip {
+        id: String,
+        by_tl_ns: i64,
+    },
 }
 
 /// Fixed facts the edits are checked against.
@@ -294,9 +332,21 @@ pub struct Limits {
 pub fn apply(doc: &Doc, op: &EditOp, lim: Limits) -> Result<Doc> {
     let mut d = doc.clone();
     match op {
-        EditOp::Split { at_tl_ns } => {
-            split_at(&mut d.edl, *at_tl_ns);
+        EditOp::Split { at_tl_ns, track } => {
+            if *track != Some(Track::Camera) {
+                split_at(&mut d.edl, *at_tl_ns);
+            }
+            if *track != Some(Track::Screen)
+                && let Some(cam) = d.camera_edl.as_mut()
+            {
+                split_at(cam, *at_tl_ns);
+            }
         }
+        EditOp::Trim {
+            clip_id,
+            edge,
+            rec_ns,
+        } if !d.linked() => tracks::trim(&mut d, clip_id, *edge, *rec_ns, lim)?,
         EditOp::Trim {
             clip_id,
             edge,
@@ -306,11 +356,17 @@ pub fn apply(doc: &Doc, op: &EditOp, lim: Limits) -> Result<Doc> {
             delete_range(&mut d, (*a_tl_ns).min(*b_tl_ns), (*a_tl_ns).max(*b_tl_ns));
         }
         EditOp::DeleteRanges { ranges } => delete_ranges(&mut d, ranges)?,
+        EditOp::DeleteClips { ids } if !d.linked() => tracks::delete_clips(&mut d, ids)?,
         EditOp::DeleteClips { ids } => delete_clips(&mut d, ids)?,
         EditOp::Paste {
             at_tl_ns,
             clipboard,
+        } if !d.linked() => tracks::paste(&mut d, *at_tl_ns, clipboard),
+        EditOp::Paste {
+            at_tl_ns,
+            clipboard,
         } => paste(&mut d, *at_tl_ns, clipboard),
+        EditOp::Duplicate { ids } if !d.linked() => tracks::duplicate(&mut d, ids)?,
         EditOp::Duplicate { ids } => {
             let cb = copy_clips(&d, ids)?;
             let at = clip_ranges(&d.edl, ids)?
@@ -321,16 +377,19 @@ pub fn apply(doc: &Doc, op: &EditOp, lim: Limits) -> Result<Doc> {
             paste(&mut d, at, &cb);
         }
         EditOp::MoveClip { id, to_index } => {
-            let from = index_of(&d.edl, id)?;
-            let c = d.edl.clips.remove(from);
-            let to = (*to_index).min(d.edl.clips.len());
-            d.edl.clips.insert(to, c);
+            let edl = tracks::edl_mut(&mut d, tracks::track_of(doc, id)?);
+            let from = index_of(edl, id)?;
+            let c = edl.clips.remove(from);
+            let to = (*to_index).min(edl.clips.len());
+            edl.clips.insert(to, c);
         }
+        EditOp::SetSpeed { ids, speed } if !d.linked() => tracks::set_speed(&mut d, ids, *speed)?,
         EditOp::SetSpeed { ids, speed } => set_speed(&mut d, ids, *speed)?,
         EditOp::SetMuted { ids, muted } => {
             for id in ids {
-                let i = index_of(&d.edl, id)?;
-                d.edl.clips[i].muted = *muted;
+                let edl = tracks::edl_mut(&mut d, tracks::track_of(doc, id)?);
+                let i = index_of(edl, id)?;
+                edl.clips[i].muted = *muted;
             }
         }
         EditOp::SetCameraKey { overlay_id, key } => {
@@ -389,6 +448,8 @@ pub fn apply(doc: &Doc, op: &EditOp, lim: Limits) -> Result<Doc> {
         EditOp::DeleteText { ids } => d.text.retain(|t| !ids.contains(&t.id)),
         EditOp::UpsertRedaction { item } => upsert_redaction(&mut d, item, lim)?,
         EditOp::DeleteRedactions { ids } => d.redactions.retain(|t| !ids.contains(&t.id)),
+        EditOp::SetLinked { linked } => tracks::set_linked(&mut d, *linked)?,
+        EditOp::SlideClip { id, by_tl_ns } => tracks::slide(&mut d, id, *by_tl_ns)?,
     }
     if d.edl.clips.is_empty() && !doc.edl.clips.is_empty() {
         return Err(Error::Invalid(
@@ -466,6 +527,9 @@ fn delete_range(d: &mut Doc, a: i64, b: i64) {
     let removed: i64 = d.edl.clips[i..j].iter().map(Clip::tl_len).sum();
     d.edl.clips.drain(i..j);
     let new_a = starts(&d.edl)[i];
+    if let Some(cam) = d.camera_edl.as_mut() {
+        tracks::cut(cam, new_a, new_a + removed);
+    }
     ripple_remove_all(d, new_a, new_a + removed);
 }
 
@@ -552,11 +616,33 @@ pub fn copy_range(d: &Doc, a: i64, b: i64) -> Clipboard {
     Clipboard {
         clips: scratch.edl.clips[i..j].iter().map(Clip::fresh).collect(),
         text: within(&d.text, a, b, a),
+        track: None,
     }
 }
 
-/// The given clips in timeline order, with the text that lies inside each of them.
+/// The given clips in timeline order, with the text that lies inside each of them. Clips from an
+/// unlinked camera track come without text.
 pub fn copy_clips(d: &Doc, ids: &[String]) -> Result<Clipboard> {
+    if let Some(first) = ids.first()
+        && tracks::track_of(d, first)? == Track::Camera
+        && let Some(cam) = &d.camera_edl
+    {
+        let only = Doc {
+            edl: cam.clone(),
+            camera_edl: None,
+            text: Vec::new(),
+            ..d.clone()
+        };
+        let ids: Vec<String> = ids
+            .iter()
+            .filter(|id| cam.clips.iter().any(|c| &c.id == *id))
+            .cloned()
+            .collect();
+        return Ok(Clipboard {
+            track: Some(Track::Camera),
+            ..copy_clips(&only, &ids)?
+        });
+    }
     let mut cb = Clipboard::default();
     for (a, b) in clip_ranges(&d.edl, ids)? {
         let off = cb.len();
@@ -817,6 +903,8 @@ impl History {
         self.coalesce = None;
     }
 }
+
+mod tracks;
 
 #[cfg(test)]
 mod tests;

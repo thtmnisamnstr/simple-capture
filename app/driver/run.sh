@@ -116,7 +116,7 @@ CAMERA="${SC_DRV_CAMERA:-$(pick_dev cameras)}"
 MIC="${SC_DRV_MIC:-$(pick_dev mics)}"
 echo "app-driver: camera=${CAMERA:-none} mic=${MIC:-none}" >&2
 
-for f in 02-still-csp 03-sources 04-switch 05-exclusion 06-export 17-editor 18-diagnostics 19-library 20-pause 21-camera 22-silence 23-shortcuts 25-preview-rate 07-sleep 12-preview 14-preview-capture 08-quit-recording; do
+for f in 02-still-csp 03-sources 04-switch 05-exclusion 06-export 17-editor 27-tracks 18-diagnostics 19-library 20-pause 21-camera 22-silence 23-shortcuts 25-preview-rate 07-sleep 12-preview 14-preview-capture 08-quit-recording; do
   flow "$f"
 done
 if wanted 08-quit-recording; then

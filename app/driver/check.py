@@ -605,6 +605,49 @@ if basic("17-editor", log):
         check("17-editor", "editor-frame says native on macOS", sys.platform != "darwin" or (ui and ui[-1]["payload"].get("native")),
               ui[-1]["payload"] if ui else None)
 
+log = lines("27-tracks")
+if basic("27-tracks", log):
+    pr = P.get("drv tracks")
+    finalized("27-tracks", pr, "drv tracks", reason="user")
+    states = [x["result"] for x in steps(log, 'cmd editor {"action":"state"}')]
+    check("27-tracks", "three editor states", len(states) == 3, len(states))
+    if len(states) == 3:
+        def spans(clips):
+            out, t = [], 0
+            for c in clips:
+                n = (c["src_out_rec_ns"] - c["src_in_rec_ns"]) * c["speed"]["den"] // c["speed"]["num"]
+                out.append((t, t + n, c["src_in_rec_ns"], bool(c.get("hidden"))))
+                t += n
+            return out
+        first, mid, last = states
+        cam = (mid["doc"].get("camera_edl") or {}).get("clips", [])
+        cs = spans(cam)
+        check("27-tracks", "the camera has a 2 s gap, then its clip from 3 s",
+              len(cs) == 2 and cs[0][3] and abs(cs[0][1] - 2e9) < 2e7 and not cs[1][3] and abs(cs[1][2] - 3e9) < 2e7,
+              cs)
+        check("27-tracks", "the screen track did not move",
+              spans(mid["doc"]["edl"]["clips"]) == spans(first["doc"]["edl"]["clips"]),
+              {"before": spans(first["doc"]["edl"]["clips"]), "after": spans(mid["doc"]["edl"]["clips"])})
+        check("27-tracks", "linking again drops the camera's own clips",
+              last["doc"].get("camera_edl") is None and pr is not None and "camera_edl" not in pr["project"],
+              last["doc"].get("camera_edl"))
+        ex = [x for x in events(log, "export-state") if x.get("state") == "done"]
+        check("27-tracks", "export done", bool(ex), [x.get("state") for x in events(log, "export-state")])
+        if ex and FFMPEG:
+            probe = os.path.join(os.path.dirname(FFMPEG), "ffprobe")
+            out = ex[0].get("path", "")
+            total = spans(mid["doc"]["edl"]["clips"])[-1][1] / 1e9
+            dur = None
+            if os.path.exists(probe) and os.path.exists(out):
+                r = subprocess.run([probe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", out],
+                                   capture_output=True, text=True)
+                try:
+                    dur = float(r.stdout.strip())
+                except ValueError:
+                    dur = None
+            check("27-tracks", "the export is as long as the screen track", dur is not None and abs(dur - total) <= 0.1,
+                  {"export_s": dur, "timeline_s": total})
+
 log = lines("18-diagnostics")
 if basic("18-diagnostics", log):
     done = events(log, "diagnostics-done")

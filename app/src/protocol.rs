@@ -120,7 +120,7 @@ fn editor_file(
             )
         }
         "peaks" => (
-            crate::editor_media::peaks_path(&dir),
+            crate::editor_media::peaks_path(&dir, path.trim_start_matches('/')),
             "application/octet-stream",
         ),
         _ => return None,

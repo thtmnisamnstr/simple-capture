@@ -11,6 +11,7 @@ fn clip(a: i64, b: i64) -> Clip {
         src_out_rec_ns: b,
         speed: Speed::ONE,
         muted: false,
+        hidden: false,
         extra: Extra::new(),
     }
 }
@@ -76,13 +77,22 @@ fn locate_maps_timeline_to_recording_across_cuts_and_speed() {
 #[test]
 fn split_makes_two_clips_and_snaps_near_edges() {
     let d = doc(vec![clip(0, 10 * S)]);
-    let d1 = apply(&d, &EditOp::Split { at_tl_ns: 4 * S }, LIM).expect("split");
+    let d1 = apply(
+        &d,
+        &EditOp::Split {
+            at_tl_ns: 4 * S,
+            track: None,
+        },
+        LIM,
+    )
+    .expect("split");
     assert_eq!(ranges(&d1), vec![(0, 4 * S), (4 * S, 10 * S)]);
     assert_ne!(d1.edl.clips[0].id, d1.edl.clips[1].id);
     let near = apply(
         &d1,
         &EditOp::Split {
             at_tl_ns: 4 * S + 5_000_000,
+            track: None,
         },
         LIM,
     )
@@ -355,8 +365,15 @@ fn history_undoes_redoes_and_coalesces() {
     let d = doc(vec![clip(0, 10 * S)]);
     let mut h = History::new(d.clone());
     assert!(
-        h.apply(&EditOp::Split { at_tl_ns: 5 * S }, LIM, None)
-            .expect("split")
+        h.apply(
+            &EditOp::Split {
+                at_tl_ns: 5 * S,
+                track: None
+            },
+            LIM,
+            None
+        )
+        .expect("split")
     );
     let after_split = h.doc().clone();
     for g in [-6.0, -3.0, -1.0] {
@@ -382,8 +399,15 @@ fn history_undoes_redoes_and_coalesces() {
     assert_eq!(h.doc().audio_mix["mic"].gain_db, -1.0);
     assert!(!h.redo());
     assert!(
-        !h.apply(&EditOp::Split { at_tl_ns: 0 }, LIM, None)
-            .expect("no-op")
+        !h.apply(
+            &EditOp::Split {
+                at_tl_ns: 0,
+                track: None
+            },
+            LIM,
+            None
+        )
+        .expect("no-op")
     );
 }
 
@@ -416,6 +440,7 @@ fn random_op(r: &mut Rng, d: &Doc, clipboard: &Clipboard) -> EditOp {
     match r.below(11) {
         0 | 1 => EditOp::Split {
             at_tl_ns: r.time(d),
+            track: None,
         },
         2 => {
             let a = r.time(d);
@@ -611,7 +636,10 @@ fn blur_boxes_keep_their_recording_time_through_edits() {
             a_tl_ns: S,
             b_tl_ns: 3 * S,
         },
-        EditOp::Split { at_tl_ns: 5 * S },
+        EditOp::Split {
+            at_tl_ns: 5 * S,
+            track: None,
+        },
     ];
     let mut e = d.clone();
     for op in &ops {
@@ -698,4 +726,241 @@ fn blur_boxes_are_checked_and_capped_at_eight_at_once() {
         apply(&e, &EditOp::UpsertRedaction { item: moved }, LIM).is_ok(),
         "editing one of the eight"
     );
+}
+
+fn shown(edl: &Edl) -> Vec<(i64, i64, i64)> {
+    let st = starts(edl);
+    edl.clips
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| !c.hidden)
+        .map(|(i, c)| (st[i], st[i + 1], c.src_in_rec_ns))
+        .collect()
+}
+
+fn unlinked() -> Doc {
+    let d = doc(vec![clip(0, 4 * S), clip(4 * S, 10 * S)]);
+    apply(&d, &EditOp::SetLinked { linked: false }, LIM).expect("unlink")
+}
+
+fn cam_ids(d: &Doc) -> Vec<String> {
+    d.camera_clips()
+        .clips
+        .iter()
+        .map(|c| c.id.clone())
+        .collect()
+}
+
+#[test]
+fn unlinking_gives_the_camera_its_own_copy_and_linking_drops_it() {
+    let d = unlinked();
+    let cam = d.camera_edl.as_ref().expect("camera clips");
+    assert_eq!(shown(cam), shown(&d.edl));
+    assert!(
+        cam.clips
+            .iter()
+            .all(|c| d.edl.clips.iter().all(|s| s.id != c.id))
+    );
+    let back = apply(&d, &EditOp::SetLinked { linked: true }, LIM).expect("link");
+    assert!(back.linked());
+    assert_eq!(ranges(&back), ranges(&d));
+}
+
+#[test]
+fn unlinking_needs_a_camera() {
+    let mut d = doc(vec![clip(0, 4 * S)]);
+    d.camera_layout.overlays.clear();
+    assert!(apply(&d, &EditOp::SetLinked { linked: false }, LIM).is_err());
+}
+
+#[test]
+fn deleting_a_camera_clip_leaves_a_gap_and_the_screen_alone() {
+    let d = unlinked();
+    let ids = vec![cam_ids(&d)[0].clone()];
+    let d1 = apply(&d, &EditOp::DeleteClips { ids }, LIM).expect("lift");
+    assert_eq!(shown(&d1.edl), shown(&d.edl));
+    assert_eq!(shown(d1.camera_clips()), vec![(4 * S, 10 * S, 4 * S)]);
+    assert_eq!(d1.duration(), 10 * S);
+    let gap = vec![cam_ids(&d1)[0].clone()];
+    let d2 = apply(&d1, &EditOp::DeleteClips { ids: gap }, LIM).expect("close");
+    assert_eq!(shown(d2.camera_clips()), vec![(0, 6 * S, 4 * S)]);
+    assert_eq!(shown(&d2.edl), shown(&d.edl));
+}
+
+#[test]
+fn a_screen_gap_deleted_takes_its_time_out_of_every_track() {
+    let mut d = unlinked();
+    d.text.push(TextItem::new(6 * S, 7 * S, "t"));
+    let d1 = apply(&d, &EditOp::DeleteClips { ids: ids(&d, &[0]) }, LIM).expect("lift");
+    assert_eq!(shown(&d1.edl), vec![(4 * S, 10 * S, 4 * S)]);
+    assert_eq!(spans(&d1), vec![(6 * S, 7 * S)]);
+    let d2 = apply(
+        &d1,
+        &EditOp::DeleteClips {
+            ids: ids(&d1, &[0]),
+        },
+        LIM,
+    )
+    .expect("close");
+    assert_eq!(shown(&d2.edl), vec![(0, 6 * S, 4 * S)]);
+    assert_eq!(shown(d2.camera_clips()), vec![(0, 6 * S, 4 * S)]);
+    assert_eq!(spans(&d2), vec![(2 * S, 3 * S)]);
+}
+
+#[test]
+fn sliding_stops_at_the_neighbours() {
+    let d = unlinked();
+    let ids = cam_ids(&d);
+    let lifted = apply(
+        &d,
+        &EditOp::DeleteClips {
+            ids: vec![ids[0].clone()],
+        },
+        LIM,
+    )
+    .expect("lift");
+    let later = cam_ids(&lifted)[1].clone();
+    let back = apply(
+        &lifted,
+        &EditOp::SlideClip {
+            id: later.clone(),
+            by_tl_ns: -1_000 * S,
+        },
+        LIM,
+    )
+    .expect("slide");
+    assert_eq!(shown(back.camera_clips()), vec![(0, 6 * S, 4 * S)]);
+    let fwd = apply(
+        &back,
+        &EditOp::SlideClip {
+            id: later,
+            by_tl_ns: 3 * S,
+        },
+        LIM,
+    )
+    .expect("slide");
+    assert_eq!(shown(fwd.camera_clips()), vec![(3 * S, 9 * S, 4 * S)]);
+    assert_eq!(shown(&fwd.edl), shown(&d.edl));
+    assert!(
+        apply(
+            &d,
+            &EditOp::SlideClip {
+                id: ids[0].clone(),
+                by_tl_ns: S
+            },
+            LIM
+        )
+        .map(|x| shown(x.camera_clips()))
+        .expect("blocked")
+            == shown(d.camera_clips())
+    );
+}
+
+#[test]
+fn trimming_an_unlinked_clip_moves_nothing_else() {
+    let d = unlinked();
+    let first = cam_ids(&d)[0].clone();
+    let d1 = apply(
+        &d,
+        &EditOp::Trim {
+            clip_id: first.clone(),
+            edge: Edge::End,
+            rec_ns: 3 * S,
+        },
+        LIM,
+    )
+    .expect("trim");
+    assert_eq!(
+        shown(d1.camera_clips()),
+        vec![(0, 3 * S, 0), (4 * S, 10 * S, 4 * S)]
+    );
+    let d2 = apply(
+        &d1,
+        &EditOp::Trim {
+            clip_id: first,
+            edge: Edge::End,
+            rec_ns: 9 * S,
+        },
+        LIM,
+    )
+    .expect("trim");
+    assert_eq!(shown(d2.camera_clips()), shown(d.camera_clips()));
+    assert_eq!(shown(&d2.edl), shown(&d.edl));
+}
+
+#[test]
+fn a_range_delete_cuts_both_tracks() {
+    let d = unlinked();
+    let d1 = apply(
+        &d,
+        &EditOp::DeleteRange {
+            a_tl_ns: 2 * S,
+            b_tl_ns: 5 * S,
+        },
+        LIM,
+    )
+    .expect("cut");
+    assert_eq!(shown(&d1.edl), vec![(0, 2 * S, 0), (2 * S, 7 * S, 5 * S)]);
+    assert_eq!(shown(d1.camera_clips()), shown(&d1.edl));
+}
+
+#[test]
+fn splitting_one_track_leaves_the_other() {
+    let d = unlinked();
+    let d1 = apply(
+        &d,
+        &EditOp::Split {
+            at_tl_ns: 2 * S,
+            track: Some(Track::Camera),
+        },
+        LIM,
+    )
+    .expect("split");
+    assert_eq!(d1.camera_clips().clips.len(), 3);
+    assert_eq!(d1.edl.clips.len(), 2);
+}
+
+#[test]
+fn linking_closes_the_screen_gaps() {
+    let d = unlinked();
+    let d1 = apply(&d, &EditOp::DeleteClips { ids: ids(&d, &[0]) }, LIM).expect("lift");
+    let d2 = apply(&d1, &EditOp::SetLinked { linked: true }, LIM).expect("link");
+    assert!(d2.linked());
+    assert_eq!(ranges(&d2), vec![(4 * S, 10 * S)]);
+}
+
+#[test]
+fn pasting_camera_clips_keeps_the_screen_in_step_with_a_gap() {
+    let d = unlinked();
+    let cb = copy_clips(&d, &[cam_ids(&d)[0].clone()]).expect("copy");
+    assert_eq!(cb.track, Some(Track::Camera));
+    let d1 = apply(
+        &d,
+        &EditOp::Paste {
+            at_tl_ns: 4 * S,
+            clipboard: cb,
+        },
+        LIM,
+    )
+    .expect("paste");
+    assert_eq!(
+        shown(d1.camera_clips()),
+        vec![(0, 4 * S, 0), (4 * S, 8 * S, 0), (8 * S, 14 * S, 4 * S)]
+    );
+    assert_eq!(shown(&d1.edl), vec![(0, 4 * S, 0), (8 * S, 14 * S, 4 * S)]);
+}
+
+#[test]
+fn unlinked_projects_round_trip_and_old_ones_still_read() {
+    let u = unlinked();
+    let d = apply(&u, &EditOp::DeleteClips { ids: ids(&u, &[0]) }, LIM).expect("lift");
+    let json = serde_json::to_string(&d).expect("ser");
+    assert_eq!(serde_json::from_str::<Doc>(&json).expect("de"), d);
+    let linked = doc(vec![clip(0, S)]);
+    let old = serde_json::to_value(&linked).expect("ser");
+    assert!(
+        old.get("camera_edl")
+            .is_some_and(serde_json::Value::is_null)
+    );
+    assert!(old["edl"]["clips"][0].get("hidden").is_none());
 }

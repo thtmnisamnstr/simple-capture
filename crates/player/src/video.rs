@@ -20,6 +20,7 @@ pub struct TimelineVideo {
     camera: Option<(TrackFrameSource, String)>,
     doc: Doc,
     starts: Vec<i64>,
+    camera_starts: Vec<i64>,
     backgrounds: BackgroundCache,
     project_dir: PathBuf,
     segment_sizes: Vec<SizePx>,
@@ -30,6 +31,8 @@ pub struct TimelineVideo {
 pub struct Composed {
     pub tl_ns: i64,
     pub rec_ns: i64,
+    /// Recording time of the camera picture; `None` in a gap on an unlinked camera track.
+    pub camera_rec_ns: Option<i64>,
     pub screen: Option<SegmentFrame>,
     pub camera: Option<(FrameBuffer, CameraPlacement)>,
     pub text: Vec<TextFrame>,
@@ -52,6 +55,7 @@ impl TimelineVideo {
             source: SegmentFrameSource::open(project, dir, decoder)?,
             camera,
             starts: starts(&doc.edl),
+            camera_starts: starts(doc.camera_clips()),
             doc,
             backgrounds: BackgroundCache::new(2),
             project_dir: dir.to_path_buf(),
@@ -72,6 +76,7 @@ impl TimelineVideo {
 
     pub fn set_doc(&mut self, doc: Doc) {
         self.starts = starts(&doc.edl);
+        self.camera_starts = starts(doc.camera_clips());
         self.doc = doc;
     }
 
@@ -99,25 +104,45 @@ impl TimelineVideo {
         let loc = locate_in(&self.doc.edl, &self.starts, tl)
             .ok_or_else(|| Error::Other(format!("sc_player: no clip at {tl} ns")))?;
         let rec = loc.rec_ns;
-        let screen = self.source.frame_at(rec)?;
+        let screen_shown = !self.doc.edl.clips[loc.index].hidden;
+        let mut screen = if screen_shown {
+            self.source.frame_at(rec)?
+        } else {
+            None
+        };
+        let camera_rec = match &self.doc.camera_edl {
+            None => Some(rec),
+            Some(cam) => locate_in(cam, &self.camera_starts, tl)
+                .filter(|l| !cam.clips[l.index].hidden)
+                .map(|l| l.rec_ns),
+        };
         let mut camera = None;
-        if let Some((src, overlay)) = self.camera.as_mut()
-            && let Some(o) = self
+        if let (Some((src, overlay)), Some(cam_rec)) = (self.camera.as_mut(), camera_rec)
+            && let Some(f) = src.frame_at(cam_rec)?
+        {
+            let placement = self
                 .doc
                 .camera_layout
                 .overlays
                 .iter()
                 .find(|o| &o.id == overlay)
-            && let Some(p) = camera_at(&o.keyframes, rec)
-            && let Some(f) = src.frame_at(rec)?
-        {
-            camera = Some((f, p));
+                .and_then(|o| camera_at(&o.keyframes, cam_rec));
+            if screen_shown {
+                camera = placement.map(|p| (f, p));
+            } else {
+                screen = Some(full_frame(f));
+            }
         }
         let text = self.text_at(tl_ns.clamp(0, end), canvas);
-        let redact = redactions_at(&self.doc, rec);
+        let redact = if screen_shown {
+            redactions_at(&self.doc, rec)
+        } else {
+            Vec::new()
+        };
         Ok(Composed {
             tl_ns: tl,
             rec_ns: rec,
+            camera_rec_ns: camera_rec,
             screen,
             camera,
             text,
@@ -162,6 +187,23 @@ impl TimelineVideo {
                 &self.project_dir,
             )
             .map_err(|e| Error::Other(format!("sc_player: background: {e}")))
+    }
+}
+
+/// The camera filling the picture where the screen track has a gap.
+fn full_frame(frame: FrameBuffer) -> SegmentFrame {
+    let size = frame.0.size();
+    SegmentFrame {
+        segment_id: "camera".into(),
+        frame_px: size,
+        content_px: RectPx {
+            x: 0,
+            y: 0,
+            w: size.w,
+            h: size.h,
+        },
+        frame,
+        held: false,
     }
 }
 

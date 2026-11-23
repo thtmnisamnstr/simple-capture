@@ -178,7 +178,10 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
                 .last_project()
                 .map(|p| p.to_string_lossy().into_owned());
             let mut json = substitute(&json, project.as_deref(), core.last_export().as_deref())?;
-            for (i, id) in core.editor_clip_ids().iter().enumerate().rev() {
+            for (i, id) in core.editor_clip_ids(true).iter().enumerate().rev() {
+                json = json.replace(&format!("$CAMCLIP{i}"), id);
+            }
+            for (i, id) in core.editor_clip_ids(false).iter().enumerate().rev() {
                 json = json.replace(&format!("$CLIP{i}"), id);
             }
             let args: Value = serde_json::from_str(&json)

@@ -56,7 +56,10 @@
 
   let error = $state<string | null>(null);
 
-  const chosen = $derived(doc.edl.clips.filter((c) => selected.includes(c.id)));
+  const onCamera = (id: string) => !!doc.camera_edl?.clips.some((c) => c.id === id);
+  const picked = $derived([...doc.edl.clips, ...(doc.camera_edl?.clips ?? [])].filter((c) => selected.includes(c.id)));
+  const chosen = $derived(picked.filter((c) => !c.hidden));
+  const gaps = $derived(picked.length - chosen.length);
   const overlay = $derived(doc.camera_layout.overlays[0] ?? null);
   const key = $derived(overlay ? keyAt(overlay.keyframes, recNs) : null);
   const keyHere = $derived(!!overlay && overlay.keyframes.some((k) => Math.abs(k.t_rec_ns - recNs) < 1_000_000));
@@ -105,14 +108,19 @@
 
   <div class="body">
     {#if tab === 'clip'}
-      {#if chosen.length === 0}
+      {#if chosen.length === 0 && gaps > 0}
+        <p class="empty">{gaps === 1 ? 'A gap' : `${gaps} gaps`}: nothing shows or plays here. Delete closes it up.</p>
+        <div class="actions">
+          <button class="destructive" onclick={ondelete}>Close Gap</button>
+        </div>
+      {:else if chosen.length === 0}
         <p class="empty">Select a clip on the timeline to change its speed or mute it. Split at the playhead with S.</p>
         <div class="group">
           <div class="grow"><span class="glabel">Clips</span><span class="gcontrol muted tnum">{doc.edl.clips.length}</span></div>
           <div class="grow"><span class="glabel">Length</span><span class="gcontrol muted tnum">{formatTime(doc.edl.clips.reduce((n, c) => n + tlLen(c), 0))}</span></div>
         </div>
       {:else}
-        <h2>{chosen.length === 1 ? 'Clip' : `${chosen.length} clips`}</h2>
+        <h2>{chosen.length === 1 ? (onCamera(chosen[0].id) ? 'Camera clip' : doc.camera_edl ? 'Screen clip' : 'Clip') : `${chosen.length} clips`}</h2>
         <div class="group">
           <div class="grow stack">
             <span class="glabel">Speed</span>

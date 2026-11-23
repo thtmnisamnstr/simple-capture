@@ -18,6 +18,7 @@ fn clip(a_ms: i64, b_ms: i64) -> Clip {
         src_out_rec_ns: b_ms * MS,
         speed: Speed::ONE,
         muted: false,
+        hidden: false,
         extra: Extra::new(),
     }
 }
@@ -160,4 +161,31 @@ fn double_speed_keeps_events_in_time() {
             "click at {got} ms, want {want} ms ({spots:?})"
         );
     }
+}
+
+#[test]
+fn an_unlinked_mic_follows_the_camera_clips() {
+    let (dir, p) = setup(1000);
+    let mut doc = Doc::of(&p);
+    doc.edl.clips = vec![clip(100, 200), clip(200, 300)];
+    let mut gap = clip(0, 100);
+    gap.hidden = true;
+    doc.camera_edl = Some(sc_core::project::Edl {
+        clips: vec![clip(500, 600), gap],
+        extra: Extra::new(),
+    });
+    let mut a = TimelineAudio::new(
+        Arc::new(p.clone()),
+        dir.path(),
+        Arc::new(SctrkDecoder),
+        doc,
+        RATE,
+    );
+    assert_eq!(a.len_frames(), 9600);
+    let out = read(&mut a, 9600);
+    assert_eq!(src_index(out[1000]), 500 * 48 + 1000);
+    assert!(
+        out[5000..].iter().all(|s| *s == 0.0),
+        "the camera gap is silent"
+    );
 }
