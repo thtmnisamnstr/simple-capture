@@ -70,6 +70,9 @@
     }
   }
 
+  const badge = (kind: PermissionKind, status: keyof typeof LABEL) =>
+    kind === 'screen' && screenAsked && status === 'not_determined' ? 'Off' : LABEL[status];
+
   async function request(kind: PermissionKind) {
     busy = kind;
     error = null;
@@ -119,9 +122,15 @@
         <div class="glabel text">
           <div class="title-line">
             <h3 id="perm-{row.kind}">{row.title}</h3>
-            <span class="badge {TONE[status]}" aria-label="{row.title}: {LABEL[status]}">{LABEL[status]}</span>
+            <span class="badge {TONE[status]}" aria-label="{row.title}: {badge(row.kind, status)}">{badge(row.kind, status)}</span>
           </div>
           <p class="caption">{row.why}</p>
+          {#if row.kind === 'screen' && screenAsked && status !== 'granted'}
+            <p class="caption next">
+              In System Settings → Screen Recording, switch on <strong>Simple Capture</strong>. macOS then asks to quit and reopen it;
+              choose Quit &amp; Reopen.
+            </p>
+          {/if}
         </div>
         <div class="gcontrol actions">
           {#if status === 'not_determined' && !(row.kind === 'screen' && screenAsked)}
@@ -132,12 +141,6 @@
             <button class:primary={row.kind === 'screen'} onclick={() => openSettings(row.kind)}>Open Settings…</button>
           {/if}
         </div>
-        {#if row.kind === 'screen' && screenAsked && status !== 'granted'}
-          <p class="caption next">
-            In System Settings → Screen Recording, switch on <strong>Simple Capture</strong>. macOS then asks to quit and reopen it;
-            choose Quit &amp; Reopen.
-          </p>
-        {/if}
       </li>
     {/each}
   </ul>
@@ -195,13 +198,11 @@
   }
   .perm {
     align-items: flex-start;
-    flex-wrap: wrap;
     gap: 12px;
     padding: 12px;
   }
   .next {
-    flex-basis: 100%;
-    margin: -4px 0 0 44px;
+    margin-top: 4px;
   }
   .tile {
     flex: none;
