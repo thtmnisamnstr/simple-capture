@@ -797,6 +797,11 @@ In the editor with any recording, press ⌘E:
 | R21 | Rotate the phone while recording | The picture follows the new shape |
 | R22 | Unplug the phone while recording | The bar says the source closed; Switch… or Stop work |
 | R23 | iPhone tab → Open iPhone Mirroring; pick the iPhone Mirroring item (Wireless) and record | The mirrored phone records like a window; with system audio on, the phone's sound is in the recording |
+| R24 | Camera Only, frame 9:16, Camera → Fill; record | A vertical video filled by the middle of the camera, no bars; Fit gives the whole camera with the background above and below |
+| R25 | Screen, frame 9:16, a wide window, Picture → Fill | The window's middle fills the frame; blur boxes stay on their content in the editor and the export |
+| R26 | Region… and Click a Window | The screen stays visible (lightly dimmed) while choosing |
+| R27 | Screen only (no camera); open the Preview | No camera box or handles in it |
+| R28 | Grant Screen Recording in System Settings, return to Permissions | It reads Granted |
 
 ## 10g. Library, About and Diagnostics (M6, M7)
 

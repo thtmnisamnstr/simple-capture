@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use sc_core::project::{Background, CameraKey, Rgba};
+use sc_core::project::{Background, CameraKey, Fit, Rgba};
 use sc_geometry::Aspect;
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,13 @@ pub struct CanvasDto {
     pub background: Background,
     #[serde(default)]
     pub background_image: Option<String>,
+    /// Fill crops the main picture to the frame's shape instead of fitting it inside.
+    #[serde(default = "contain")]
+    pub fit: Fit,
+}
+
+fn contain() -> Fit {
+    Fit::Contain
 }
 
 impl Default for CanvasDto {
@@ -25,6 +32,7 @@ impl Default for CanvasDto {
                 color: Rgba([0.07, 0.07, 0.08, 1.0]),
             },
             background_image: None,
+            fit: Fit::Contain,
         }
     }
 }
@@ -235,6 +243,7 @@ mod tests {
                     radius_norm: 0.7,
                 },
                 background_image: Some("/tmp/bg.png".into()),
+                fit: Fit::Cover,
             },
             camera: Some("cam-1".into()),
             mic: None,

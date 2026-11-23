@@ -597,6 +597,17 @@
               </div>
             </div>
           </div>
+          {#if settings.canvas.aspect !== 'original'}
+            <div class="grow">
+              <span class="glabel">{mode === 'camera' ? 'Camera' : 'Picture'}</span>
+              <div class="gcontrol">
+                <div class="segmented" role="radiogroup" aria-label="How the picture fits the frame">
+                  <button role="radio" aria-checked={(settings.canvas.fit ?? 'contain') === 'contain'} title="All of the picture, with the background around it" onclick={() => (settings!.canvas.fit = 'contain')}>Fit</button>
+                  <button role="radio" aria-checked={settings.canvas.fit === 'cover'} title="Fill the frame, cropping the edges (for vertical video from a wide camera)" onclick={() => (settings!.canvas.fit = 'cover')}>Fill</button>
+                </div>
+              </div>
+            </div>
+          {/if}
           <div class="grow">
             <span class="glabel">Background</span>
             <div class="gcontrol">

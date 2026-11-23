@@ -51,7 +51,9 @@ impl Permissions for MacPermissions {
     fn status(&self, k: PermissionKind) -> PermissionStatus {
         match k {
             PermissionKind::Screen => {
-                if CGPreflightScreenCaptureAccess() {
+                if CGPreflightScreenCaptureAccess()
+                    || super::content::can_read_other_window_titles()
+                {
                     PermissionStatus::Granted
                 } else {
                     PermissionStatus::NotDetermined

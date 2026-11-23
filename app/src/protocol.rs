@@ -98,7 +98,7 @@ fn editor_file(
                     ),
                 },
                 Err(e) => {
-                    tracing::debug!(name, "poster: {e}");
+                    tracing::warn!(name, "poster: {e}");
                     respond(
                         StatusCode::NOT_FOUND,
                         "text/plain",

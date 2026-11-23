@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use sc_core::image::RgbaImage;
 use sc_core::project::Background;
-use sc_geometry::{Aspect, Ratio, RectPx, SizePx, contain_fit, even_round};
+use sc_geometry::{Aspect, Ratio, RectPx, SizePx, even_round};
 use sc_platform::{CpuNv12Frame, FrameBuffer};
 use sc_render::{FrameJob, OutputFormat, ScreenLayer};
 
@@ -81,20 +81,26 @@ pub fn compose_png(
     project_dir: &Path,
     main: Option<&FrameBuffer>,
     camera: Option<(&sc_core::camera::CameraPlacement, &FrameBuffer)>,
+    fit: sc_core::project::Fit,
 ) -> Result<Vec<u8>, String> {
     let bg = sc_text::rasterize_background(background, canvas, project_dir)
         .map_err(|e| format!("still background: {e}"))?;
     let screen = main.map(|f| {
         let size = f.0.size();
-        ScreenLayer {
-            frame: f,
-            src: RectPx {
+        let (src, dst) = sc_player::video::place(
+            fit,
+            canvas,
+            RectPx {
                 x: 0,
                 y: 0,
                 w: size.w,
                 h: size.h,
             },
-            dst: contain_fit(canvas, size),
+        );
+        ScreenLayer {
+            frame: f,
+            src,
+            dst,
             redact: &[],
         }
     });
@@ -167,7 +173,7 @@ pub fn id_from_path(host: Option<&str>, path: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sc_core::project::Rgba;
+    use sc_core::project::{Fit, Rgba};
 
     #[test]
     fn canvas_sizes() {
@@ -218,8 +224,15 @@ mod tests {
         };
         let canvas = still_canvas(Aspect::R16x9, None);
         let frame = FrameBuffer(Arc::new(rgba_to_nv12(&snap)));
-        let png =
-            compose_png(&bg, canvas, Path::new("/nonexistent"), Some(&frame), None).expect("png");
+        let png = compose_png(
+            &bg,
+            canvas,
+            Path::new("/nonexistent"),
+            Some(&frame),
+            None,
+            Fit::Contain,
+        )
+        .expect("png");
         let img = sc_text::decode_image(&png).expect("decode");
         assert_eq!(img.size, canvas);
         let at = |x: usize, y: usize| &img.data[y * img.stride + x * 4..y * img.stride + x * 4 + 4];
@@ -228,7 +241,15 @@ mod tests {
             "edge is background"
         );
         assert!(at(480, 270)[0] > 200, "centre is the snapshot");
-        let plain = compose_png(&bg, canvas, Path::new("/nonexistent"), None, None).expect("png");
+        let plain = compose_png(
+            &bg,
+            canvas,
+            Path::new("/nonexistent"),
+            None,
+            None,
+            Fit::Contain,
+        )
+        .expect("png");
         assert!(plain.starts_with(b"\x89PNG"));
     }
 

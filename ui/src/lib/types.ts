@@ -78,7 +78,7 @@ export type Background =
   | { kind: 'image'; asset: string; sha256: string; fit: 'cover'; focus_norm: PointF };
 
 export type Aspect = 'original' | '16:9' | '4:3' | '1:1' | '9:16';
-export interface CanvasDto { aspect: Aspect; background: Background; background_image: string | null }
+export interface CanvasDto { aspect: Aspect; background: Background; background_image: string | null; fit?: 'contain' | 'cover' }
 
 export interface RecorderSettings {
   source: SourceSpecDto | null;

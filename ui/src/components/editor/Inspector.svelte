@@ -323,7 +323,16 @@
               <button role="radio" aria-checked={canvas.aspect === a} onclick={() => setCanvas({ aspect: a })}>{a === 'original' ? 'Original' : a}</button>
             {/each}
           </div>
-          <span class="caption">The recording fits inside; the rest shows the background.</span>
+          <span class="caption">{canvas.fit === 'cover' ? 'The recording fills the frame; its edges are cropped.' : 'The recording fits inside; the rest shows the background.'}</span>
+        </div>
+        <div class="grow">
+          <span class="glabel">Picture</span>
+          <span class="gcontrol">
+            <span class="segmented" role="radiogroup" aria-label="How the picture fits the frame">
+              <button role="radio" aria-checked={canvas.fit !== 'cover'} onclick={() => setCanvas({ fit: 'contain' })}>Fit</button>
+              <button role="radio" aria-checked={canvas.fit === 'cover'} onclick={() => setCanvas({ fit: 'cover' })}>Fill</button>
+            </span>
+          </span>
         </div>
       </div>
       <h2>Background</h2>

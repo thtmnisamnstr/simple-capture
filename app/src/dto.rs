@@ -138,6 +138,7 @@ pub fn record_request(
         canvas.ratio = r;
     }
     canvas.background = s.canvas.background.clone();
+    canvas.fit = s.canvas.fit;
     let title = dto
         .title
         .as_deref()

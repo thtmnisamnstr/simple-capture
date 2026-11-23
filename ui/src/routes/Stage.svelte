@@ -19,6 +19,8 @@
   let frame = $state({ w: 0, h: 0 });
   let native = $state(false);
   let key = $state<CameraKey | null>(null);
+  let cornerCamera = $state(false);
+  const corner = (st: RecorderSettings) => !!st.camera && st.source?.kind !== 'camera';
   let error = $state<string | null>(null);
   let drag: { corner: [number, number] | null; x: number; y: number; start: CameraKey } | null = null;
   let queued = false;
@@ -39,7 +41,9 @@
 
   async function load() {
     try {
-      key = (await api.getSettings()).camera_key;
+      const st = await api.getSettings();
+      key = st.camera_key;
+      cornerCamera = corner(st);
     } catch (e) {
       error = errorText(e);
     }
@@ -53,7 +57,9 @@
     });
     load();
     const off = onEvent('settings-changed', isObject, (s) => {
-      if (!drag) key = (s as unknown as RecorderSettings).camera_key;
+      const st = s as unknown as RecorderSettings;
+      cornerCamera = corner(st);
+      if (!drag) key = st.camera_key;
     });
     const onResize = () => (view = { w: window.innerWidth, h: window.innerHeight });
     window.addEventListener('resize', onResize);
@@ -135,7 +141,7 @@
 <div class="stage window" class:native>
   <div class="frame" style:width="{css.w}px" style:height="{css.h}px">
     <canvas bind:this={canvas} style:width="{css.w}px" style:height="{css.h}px"></canvas>
-    {#if rect && key?.visible}
+    {#if rect && key?.visible && cornerCamera}
       <div
         class="cam"
         class:round={key.shape === 'circle'}

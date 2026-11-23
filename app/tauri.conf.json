@@ -67,7 +67,8 @@
         "decorations": false,
         "skipTaskbar": true,
         "visible": false,
-        "focus": false
+        "focus": false,
+        "backgroundColor": "#00000000"
       },
       {
         "label": "pick",
@@ -79,7 +80,8 @@
         "decorations": false,
         "skipTaskbar": true,
         "visible": false,
-        "focus": false
+        "focus": false,
+        "backgroundColor": "#00000000"
       },
       {
         "label": "saved",

@@ -8,9 +8,12 @@ use std::sync::Arc;
 use sc_core::camera::{CameraPlacement, camera_at};
 use sc_core::edit::{Doc, locate_in, starts};
 use sc_core::image::RgbaImage;
+use sc_core::project::Fit;
 use sc_core::project::ProjectV1;
 use sc_decode::{SegmentFrame, SegmentFrameSource, TrackFrameSource};
-use sc_geometry::{Ratio, RectF, RectPx, SizePx, camera_rects, contain_fit};
+use sc_geometry::{
+    PointF, Ratio, RectF, RectPx, SizePx, camera_rects, contain_fit, cover_src_rect,
+};
 use sc_platform::{Decoder, Error, FrameBuffer, Result};
 use sc_render::{FrameJob, Redact, ScreenLayer, TextLayer};
 use sc_text::{BackgroundCache, TextEngine, TextFrame};
@@ -37,6 +40,7 @@ pub struct Composed {
     pub camera: Option<(FrameBuffer, CameraPlacement)>,
     pub text: Vec<TextFrame>,
     pub redact: Vec<Redact>,
+    pub fit: Fit,
 }
 
 impl TimelineVideo {
@@ -134,10 +138,14 @@ impl TimelineVideo {
             }
         }
         let text = self.text_at(tl_ns.clamp(0, end), canvas);
-        let redact = if screen_shown {
-            redactions_at(&self.doc, rec)
-        } else {
-            Vec::new()
+        let fit = self.doc.output.canvas.fit;
+        let redact = match screen.as_ref() {
+            Some(f) if screen_shown && f.content_px.w > 0 && f.content_px.h > 0 => recrop(
+                &redactions_at(&self.doc, rec),
+                f.content_px,
+                place(fit, canvas, f.content_px).0,
+            ),
+            _ => Vec::new(),
         };
         Ok(Composed {
             tl_ns: tl,
@@ -147,6 +155,7 @@ impl TimelineVideo {
             camera,
             text,
             redact,
+            fit,
         })
     }
 
@@ -188,6 +197,62 @@ impl TimelineVideo {
             )
             .map_err(|e| Error::Other(format!("sc_player: background: {e}")))
     }
+}
+
+/// Source crop and canvas destination of a main picture: all of it fitted inside, or the
+/// centre cropped to fill the whole canvas.
+pub fn place(fit: Fit, canvas: SizePx, content: RectPx) -> (RectPx, RectPx) {
+    let size = SizePx {
+        w: content.w,
+        h: content.h,
+    };
+    match fit {
+        Fit::Contain => (content, contain_fit(canvas, size)),
+        Fit::Cover => {
+            let c = cover_src_rect(size, canvas, PointF { x: 0.5, y: 0.5 });
+            let src = RectPx {
+                x: content.x + c.x.round() as i32,
+                y: content.y + c.y.round() as i32,
+                w: (c.w.round() as u32).clamp(1, content.w),
+                h: (c.h.round() as u32).clamp(1, content.h),
+            };
+            let dst = RectPx {
+                x: 0,
+                y: 0,
+                w: canvas.w,
+                h: canvas.h,
+            };
+            (src, dst)
+        }
+    }
+}
+
+/// Blur boxes given as fractions of `whole`, as fractions of `crop` instead (the renderer takes
+/// them as fractions of the drawn source).
+fn recrop(redact: &[Redact], whole: RectPx, crop: RectPx) -> Vec<Redact> {
+    if crop == whole {
+        return redact.to_vec();
+    }
+    let (ox, oy) = (
+        f64::from(crop.x - whole.x) / f64::from(whole.w),
+        f64::from(crop.y - whole.y) / f64::from(whole.h),
+    );
+    let (sx, sy) = (
+        f64::from(whole.w) / f64::from(crop.w),
+        f64::from(whole.h) / f64::from(crop.h),
+    );
+    redact
+        .iter()
+        .map(|r| Redact {
+            rect: [
+                (r.rect[0] - ox) * sx,
+                (r.rect[1] - oy) * sy,
+                r.rect[2] * sx,
+                r.rect[3] * sy,
+            ],
+            ..*r
+        })
+        .collect()
 }
 
 /// The camera filling the picture where the screen track has a gap.
@@ -239,14 +304,18 @@ impl Composed {
         background_key: Option<u64>,
         text: &'a [TextLayer<'a>],
     ) -> FrameJob<'a> {
-        let screen = self.screen_dst(canvas).and_then(|dst| {
-            self.screen.as_ref().map(|f| ScreenLayer {
-                frame: &f.frame,
-                src: f.content_px,
-                dst,
-                redact: &self.redact,
-            })
-        });
+        let screen = match self.screen.as_ref() {
+            Some(f) if f.content_px.w > 0 && f.content_px.h > 0 => {
+                let (src, dst) = place(self.fit, canvas, f.content_px);
+                Some(ScreenLayer {
+                    frame: &f.frame,
+                    src,
+                    dst,
+                    redact: &self.redact,
+                })
+            }
+            _ => None,
+        };
         let camera = self.camera.as_ref().map(|(f, p)| {
             let rects = camera_rects(canvas, f.0.size(), p.shape.aspect(), &p.pose);
             sc_render::camera_layer(p, f, rects.dst)
@@ -261,18 +330,20 @@ impl Composed {
         }
     }
 
+    /// Where the whole screen picture lands on `canvas`; with Fill it reaches past the edges.
     pub fn screen_dst(&self, canvas: SizePx) -> Option<RectPx> {
         self.screen
             .as_ref()
             .filter(|f| f.content_px.w > 0 && f.content_px.h > 0)
             .map(|f| {
-                contain_fit(
-                    canvas,
-                    SizePx {
-                        w: f.content_px.w,
-                        h: f.content_px.h,
-                    },
-                )
+                let (src, dst) = place(self.fit, canvas, f.content_px);
+                let k = f64::from(dst.w) / f64::from(src.w.max(1));
+                RectPx {
+                    x: dst.x - (f64::from(src.x - f.content_px.x) * k).round() as i32,
+                    y: dst.y - (f64::from(src.y - f.content_px.y) * k).round() as i32,
+                    w: (f64::from(f.content_px.w) * k).round() as u32,
+                    h: (f64::from(f.content_px.h) * k).round() as u32,
+                }
             })
     }
 
@@ -280,5 +351,43 @@ impl Composed {
         self.camera
             .as_ref()
             .map(|(f, p)| camera_rects(canvas, f.0.size(), p.shape.aspect(), &p.pose).dst)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const fn rect(x: i32, y: i32, w: u32, h: u32) -> RectPx {
+        RectPx { x, y, w, h }
+    }
+
+    #[test]
+    fn fill_crops_the_middle_to_the_frame_shape() {
+        let canvas = SizePx { w: 1080, h: 1920 };
+        let (src, dst) = place(Fit::Cover, canvas, rect(0, 0, 1920, 1080));
+        assert_eq!(dst, rect(0, 0, 1080, 1920));
+        assert_eq!(src, rect(656, 0, 608, 1080));
+        let (src, dst) = place(Fit::Contain, canvas, rect(0, 0, 1920, 1080));
+        assert_eq!(src, rect(0, 0, 1920, 1080));
+        assert_eq!(dst.w, 1080);
+    }
+
+    #[test]
+    fn blur_boxes_follow_the_crop() {
+        let whole = rect(0, 0, 1000, 500);
+        let crop = rect(250, 0, 500, 500);
+        let r = recrop(
+            &[Redact {
+                rect: [0.5, 0.2, 0.1, 0.4],
+                black: true,
+            }],
+            whole,
+            crop,
+        );
+        let [x, y, w, h] = r[0].rect;
+        assert!((x - 0.5).abs() < 1e-9 && (y - 0.2).abs() < 1e-9);
+        assert!((w - 0.2).abs() < 1e-9 && (h - 0.4).abs() < 1e-9);
+        assert!(r[0].black);
     }
 }

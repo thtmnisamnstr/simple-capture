@@ -11,7 +11,7 @@ use objc2_core_foundation::{CFArray, CGRect};
 use objc2_core_graphics::{
     CGDisplayBounds, CGDisplayCopyDisplayMode, CGDisplayIsBuiltin, CGDisplayMode,
     CGGetActiveDisplayList, CGMainDisplayID, CGWindowListCopyWindowInfo, CGWindowListOption,
-    kCGWindowNumber,
+    kCGWindowName, kCGWindowNumber, kCGWindowOwnerName, kCGWindowOwnerPID,
 };
 use objc2_foundation::{NSArray, NSDictionary, NSError, NSNumber, NSString};
 use objc2_screen_capture_kit::{SCDisplay, SCRunningApplication, SCShareableContent, SCWindow};
@@ -395,6 +395,47 @@ pub(crate) fn z_order() -> HashMap<u32, u32> {
         }
     }
     out
+}
+
+/// Another app's window title is readable only with Screen Recording allowed; a check that never
+/// prompts, for when `CGPreflightScreenCaptureAccess` lags behind the setting.
+pub(crate) fn can_read_other_window_titles() -> bool {
+    let Some(arr) = CGWindowListCopyWindowInfo(
+        CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements,
+        0,
+    ) else {
+        return false;
+    };
+    let arr: &NSArray<NSDictionary<NSString, AnyObject>> =
+        unsafe { &*(&*arr as *const CFArray as *const NSArray<NSDictionary<NSString, AnyObject>>) };
+    let (pid_key, name_key, owner_key) = unsafe {
+        (
+            util::cfstr_as_ns(kCGWindowOwnerPID),
+            util::cfstr_as_ns(kCGWindowName),
+            util::cfstr_as_ns(kCGWindowOwnerName),
+        )
+    };
+    let me = std::process::id() as i32;
+    arr.iter().any(|d| {
+        let pid = d
+            .objectForKey(pid_key)
+            .and_then(|o| o.downcast::<NSNumber>().ok())
+            .map(|n| n.intValue());
+        let owner = d
+            .objectForKey(owner_key)
+            .and_then(|o| o.downcast::<NSString>().ok())
+            .map(|s| s.to_string());
+        let titled = d
+            .objectForKey(name_key)
+            .and_then(|o| o.downcast::<NSString>().ok())
+            .is_some_and(|s| s.length() > 0);
+        pid.is_some_and(|p| p != me)
+            && titled
+            && !matches!(
+                owner.as_deref(),
+                Some("Window Server" | "Dock" | "Control Center")
+            )
+    })
 }
 
 fn display_of(frame: RectPt, displays: &[CgDisplay]) -> Option<DisplayId> {

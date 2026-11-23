@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use sc_core::camera::camera_at;
 use sc_core::image::RgbaImage;
 use sc_core::project::Background;
-use sc_geometry::{Ratio, RectPx, SizePx, camera_rects, contain_fit, even_round};
+use sc_geometry::{Ratio, RectPx, SizePx, camera_rects, even_round};
 use sc_platform::FrameBuffer;
 use sc_render::{Backend, Compositor, FrameJob, ScreenLayer};
 
@@ -45,6 +45,7 @@ pub fn fit(ratio: Ratio, inner: SizePx) -> SizePx {
 pub struct StageInputs {
     pub source: Option<sc_platform::SourceSpec>,
     pub aspect: sc_geometry::Aspect,
+    pub fit: sc_core::project::Fit,
     pub background: Background,
     pub key: Option<sc_core::project::CameraKey>,
 }
@@ -200,15 +201,20 @@ pub fn render_loop(core: Weak<Core>) {
             };
             let screen = main.map(|f| {
                 let size = f.0.size();
-                ScreenLayer {
-                    frame: f,
-                    src: RectPx {
+                let (src, dst) = sc_player::video::place(
+                    inputs.fit,
+                    canvas,
+                    RectPx {
                         x: 0,
                         y: 0,
                         w: size.w,
                         h: size.h,
                     },
-                    dst: contain_fit(canvas, size),
+                );
+                ScreenLayer {
+                    frame: f,
+                    src,
+                    dst,
                     redact: &[],
                 }
             });

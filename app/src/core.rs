@@ -755,10 +755,18 @@ impl Core {
             .filter(|_| !camera_only)
             .zip(placement.as_ref())
             .map(|(f, p)| (p, &f.buffer));
-        let png = still::compose_png(&bg, size, Path::new("/"), main, cam).or_else(|e| {
-            tracing::warn!("still: {e}; retrying with the canvas background");
-            still::compose_png(&canvas.background, size, Path::new("/"), main, cam)
-        })?;
+        let png =
+            still::compose_png(&bg, size, Path::new("/"), main, cam, canvas.fit).or_else(|e| {
+                tracing::warn!("still: {e}; retrying with the canvas background");
+                still::compose_png(
+                    &canvas.background,
+                    size,
+                    Path::new("/"),
+                    main,
+                    cam,
+                    canvas.fit,
+                )
+            })?;
         let id = sc_core::ids::new_id();
         lock(&self.stills).insert(id.clone(), png);
         Ok(json!(still::still_url(&id)))
@@ -2047,6 +2055,7 @@ impl Core {
         Some(crate::stage::StageInputs {
             source: src.to_spec(|id| self.picked(id)).ok(),
             aspect: canvas.aspect,
+            fit: canvas.fit,
             background,
             key: key.filter(|k| k.visible),
         })
