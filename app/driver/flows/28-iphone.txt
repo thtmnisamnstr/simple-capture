@@ -13,7 +13,7 @@ wait 2500
 cmd editor {"action":"state"}
 shot editor @RUN@/shots/iphone-editor.png
 cmd editor {"action":"export","size":"720"}
-wait-phase saved 180000
+wait-phase saved 60000
 cmd editor {"action":"close"}
 wait 500
 quit
