@@ -1821,3 +1821,36 @@ fn the_corner_camera_can_also_become_the_main_picture() {
         .expect("the corner camera track keeps recording");
     assert!(camera.health.frames > 30, "{}", camera.health.frames);
 }
+
+#[test]
+fn a_resized_source_gets_a_new_section_once_it_settles() {
+    let dir = tmp("resized");
+    let p = platform(
+        Scenario::new()
+            .screen("win", ScreenScript::default())
+            .at(300 * MS, ScriptedEvent::Resize(size(200, 300))),
+    );
+    let s = Session::start(
+        as_dyn(&p),
+        request(&dir, display_spec("win", Some(size(320, 180)))),
+        Arc::new(Obs::default()),
+    )
+    .expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    assert!(
+        wait_for(Duration::from_secs(5), || ProjectV1::load(&pdir)
+            .is_ok_and(|p| p.recording.screen.segments.len() == 2)),
+        "a second section after the resize settles"
+    );
+    sleep_host(&*p, 300 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let proj = ProjectV1::load(&pdir).expect("load");
+    let segs = &proj.recording.screen.segments;
+    assert_eq!(segs[0].end_reason, Some(EndReason::SourceResized));
+    assert_eq!(segs[1].start_reason, StartReason::SourceResized);
+    assert!(
+        segs[1].start_rec_ns >= 800 * MS,
+        "not before the 0.6 s settle"
+    );
+    check_segments(&proj, &pdir, &*p.decoder());
+}

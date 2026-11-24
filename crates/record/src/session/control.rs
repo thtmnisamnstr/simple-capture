@@ -76,6 +76,8 @@ struct Switch {
     stage: Stage,
     stream: Option<Box<dyn ScreenStream>>,
     error: String,
+    /// A new section for the same source after it changed size, not the user's switch.
+    resize: bool,
 }
 
 struct Cont {
@@ -101,6 +103,10 @@ struct Control {
     screen: Option<Live>,
     cur: Option<Cur>,
     active: Option<(StreamTag, String)>,
+    /// Frame size of the active section, to tell a real resize from a no-op.
+    active_px: Option<SizePx>,
+    /// When a resized source gets its new section, once its size has held still.
+    resized_at: Option<Instant>,
     switch: Option<Switch>,
     queued: Option<(SourceSpec, Via)>,
     cont: Vec<Cont>,
@@ -118,6 +124,14 @@ struct Control {
 /// Camera keys reach the journal in batches: every append fsyncs, and a drag sends up to 30 keys
 /// a second. A crash loses at most this much camera motion.
 const KEY_FLUSH: Duration = Duration::from_millis(200);
+/// How long a source's new size must hold before it gets its own section.
+const RESIZE_SETTLE: Duration = Duration::from_millis(600);
+
+/// The content is now `w` × `h` frame pixels: more than 2% off the section's frame either way.
+fn changed(frame: SizePx, w: f64, h: f64) -> bool {
+    let off = |a: u32, b: f64| (f64::from(a) - b).abs() > f64::from(a) * 0.02;
+    w.is_finite() && h.is_finite() && w >= 2.0 && h >= 2.0 && (off(frame.w, w) || off(frame.h, h))
+}
 /// Drags send keys about every 33 ms; a key after a longer pause is a jump, not motion.
 const KEY_MOTION_GAP_NS: i64 = 100_000_000;
 
@@ -318,6 +332,8 @@ pub(crate) fn start(
         screen: None,
         cur: None,
         active: None,
+        active_px: None,
+        resized_at: None,
         switch: None,
         queued: None,
         cont: Vec::new(),
@@ -710,21 +726,26 @@ impl Control {
 
     fn run(mut self) {
         loop {
-            let wait = self
+            let mut wait = self
                 .switch
                 .as_ref()
                 .map_or(Duration::from_millis(250), |s| {
                     s.deadline.saturating_duration_since(Instant::now())
                 });
+            if let Some(at) = self.resized_at {
+                wait = wait.min(at.saturating_duration_since(Instant::now()));
+            }
             match self.rx.recv_timeout(wait) {
                 Ok(m) => {
                     if self.handle(m) {
                         return;
                     }
+                    self.check_resize();
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     self.flush_keys();
                     self.check_deadline();
+                    self.check_resize();
                 }
                 Err(RecvTimeoutError::Disconnected) => {
                     let _ = self.finalize(StopReason::Quit);
@@ -991,6 +1012,7 @@ impl Control {
         t.segment_id = Some(seg.id.clone());
         t.first_sample_offset_ns = seg.start_rec_ns;
         self.project.recording.tracks.push(t);
+        self.active_px = Some(seg.frame_px);
         self.project.recording.screen.segments.push(seg);
         self.save();
         self.follow_app();
@@ -1012,10 +1034,33 @@ impl Control {
         }
     }
 
-    fn request_switch(&mut self, spec: SourceSpec, via: Via) {
-        if self.switch.is_some() {
-            self.queued = Some((spec, via));
+    /// Starts the current source again as a new section once a resize has settled.
+    fn check_resize(&mut self) {
+        let due = self.resized_at.is_some_and(|at| Instant::now() >= at);
+        if !due || self.switch.is_some() || !self.live() {
             return;
+        }
+        self.resized_at = None;
+        if let Some(c) = self.cur.as_ref() {
+            let (spec, via) = (c.spec.clone(), c.via);
+            self.log(Level::Info, "source resized: starting a new section");
+            self.request_switch_as(spec, via, true);
+        }
+    }
+
+    fn request_switch(&mut self, spec: SourceSpec, via: Via) {
+        self.request_switch_as(spec, via, false);
+    }
+
+    fn request_switch_as(&mut self, spec: SourceSpec, via: Via, resize: bool) {
+        if self.switch.is_some() {
+            if !resize {
+                self.queued = Some((spec, via));
+            }
+            return;
+        }
+        if !resize {
+            self.resized_at = None;
         }
         let host = self.sh.now();
         let (desc, size) = match super::sources::describe(self.platform(), &spec, &self.cfg()) {
@@ -1040,7 +1085,9 @@ impl Control {
             via,
         });
         hold(HoldPoint::AfterSwitchBegin);
-        self.sh.set_state(SessionState::Switching);
+        if !resize {
+            self.sh.set_state(SessionState::Switching);
+        }
         let mut sw = Switch {
             spec,
             via,
@@ -1051,6 +1098,7 @@ impl Control {
             stage: Stage::First,
             stream: None,
             error: String::new(),
+            resize,
         };
         if let Err(e) = self.prepare(&mut sw) {
             let error = e.to_string();
@@ -1100,9 +1148,17 @@ impl Control {
             writer: Some(writer),
             size: sw.size,
             via: sw.via,
-            reason: StartReason::UserSwitch,
+            reason: if sw.resize {
+                StartReason::SourceResized
+            } else {
+                StartReason::UserSwitch
+            },
             source: sw.desc.clone(),
-            closes_old_with: EndReason::UserSwitch,
+            closes_old_with: if sw.resize {
+                EndReason::SourceResized
+            } else {
+                EndReason::UserSwitch
+            },
         })));
         Ok(())
     }
@@ -1230,6 +1286,7 @@ impl Control {
             stage: Stage::Restore,
             stream: None,
             error,
+            resize: false,
         };
         if let Err(e) = self.prepare(&mut nsw) {
             let error = format!("{}; {e}", nsw.error);
@@ -1310,6 +1367,19 @@ impl Control {
                         content_rect_pt,
                         content_scale,
                     });
+                    let resizable = self.cur.as_ref().is_some_and(|c| {
+                        !matches!(
+                            c.spec,
+                            SourceSpec::Camera { .. } | SourceSpec::Device { .. }
+                        )
+                    });
+                    if resizable
+                        && let (Some(r), Some(k), Some(px)) =
+                            (content_rect_pt, content_scale, self.active_px)
+                        && changed(px, r.w * k, r.h * k)
+                    {
+                        self.resized_at = Some(Instant::now() + RESIZE_SETTLE);
+                    }
                 }
             }
             SourceEvent::DeviceLost { kind, device_id } => self.device_lost(kind, &device_id),

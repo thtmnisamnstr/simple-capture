@@ -249,6 +249,8 @@ pub enum ScriptedEvent {
     DeviceLost(DeviceKind),
     DevicesChanged(DeviceKind),
     OwnWindowsChanged,
+    /// The newest screen stream's content becomes this size (points at scale 1).
+    Resize(SizePx),
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -310,6 +310,16 @@ impl EventGen {
             },
             ScriptedEvent::DevicesChanged(kind) => SourceEvent::DevicesChanged { kind },
             ScriptedEvent::OwnWindowsChanged => SourceEvent::OwnWindowsChanged,
+            ScriptedEvent::Resize(size) => SourceEvent::SourceResized {
+                stream: StreamTag(0),
+                content_rect_pt: Some(RectPt {
+                    x: 0.0,
+                    y: 0.0,
+                    w: f64::from(size.w),
+                    h: f64::from(size.h),
+                }),
+                content_scale: Some(1.0),
+            },
         })
     }
 }
@@ -684,9 +694,17 @@ impl Hub {
             }
             let id = st.emitters[i].id;
             let sink = Arc::clone(&st.emitters[i].sink);
-            let Some(item) = st.emitters[i].source.produce() else {
+            let Some(mut item) = st.emitters[i].source.produce() else {
                 continue;
             };
+            if let Item::Event(SourceEvent::SourceResized { stream, .. }) = &mut item
+                && let Some(tag) = st.emitters.iter().rev().find_map(|e| match &e.source {
+                    Gen::Screen(g) => Some(g.tag),
+                    _ => None,
+                })
+            {
+                *stream = tag;
+            }
             self.after_produce(&mut st, i, id, &item);
             let guard = lock(&self.deliver);
             drop(st);
