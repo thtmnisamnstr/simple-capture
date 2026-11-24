@@ -1,6 +1,0 @@
-[swap 16:37:16] machine: Apple M3 Pro, 26.7.2, load: 6.38 9.74 7.66
-[swap 16:37:16] update-shared
-[swap 16:37:38] update-separate
-[swap 16:37:59] restart-separate
-[swap 16:38:20] overlap-separate
-[swap 16:38:41] done: /Users/gavin/Documents/Development/simple-capture/spikes/03-macos-pipeline/out/swap-r2

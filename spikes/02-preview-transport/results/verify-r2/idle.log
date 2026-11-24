@@ -1,4 +1,0 @@
-[js] snapshot: {"button_center_rgb":[0,0,0],"decoded_frame_id":0,"decoded_ts_age_ms":-170633375,"html_over_preview":false,"image_px":[2,2],"png":"/Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/verify-r2/idle.png","preview_visible":false,"scale":0.0014705882352941176,"titlebar_px":0.8411764705882354}
-[bench] wrote /Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/verify-r2/idle.json
-[js] report written: /Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/verify-r2/idle.json
-[bench] event loop exit

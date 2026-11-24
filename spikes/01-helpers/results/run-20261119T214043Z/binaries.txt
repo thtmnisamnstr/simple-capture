@@ -1,5 +1,0 @@
-git: b57ada0
-312b5228c2d4d0711a6b39d1ba706e077370ad50957c12ea6b178cba4f829dc4  third_party/out/macos-arm64/ffmpeg
-a881a5915cba3ce814242a478c7d0edd9c73e542a8bb8d06204990c60558aa51  third_party/out/macos-arm64/ffprobe
-142b8286696a2209e73ddabe97980f8e2cc00455e81b96d2c26e5e5e3ff6247e  third_party/out/macos-arm64/gifski
-validator: /opt/homebrew/bin/ffprobe (ffprobe version 9.0.2 Copyright (c) 2007-2026 the FFmpeg developers)

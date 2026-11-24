@@ -1,9 +1,0 @@
-[swap 16:34:48] machine: Apple M3 Pro, 26.7.2, load: 12.15 11.68 7.80
-[swap 16:34:48] update-shared
-[swap 16:35:09] update-separate
-[swap 16:35:30] restart-separate
-[swap 16:35:51] overlap-separate
-[swap 16:36:12] restart-shared
-[swap 16:36:33] update-shared-config-first
-[swap 16:36:52] update-separate-dims
-[swap 16:37:13] done: /Users/gavin/Documents/Development/simple-capture/spikes/03-macos-pipeline/out/swap-r1
