@@ -28,14 +28,9 @@ Set these repository secrets yourself; their values never go into the repository
 | `APPLE_API_KEY_ID` | That key's Key ID |
 | `APPLE_API_ISSUER` | The Issuer ID shown above the keys list |
 
-```bash
-base64 -i devid.p12 | gh secret set APPLE_CERTIFICATE_P12
-gh secret set APPLE_CERTIFICATE_PASSWORD
-gh secret set APPLE_API_KEY_P8 < AuthKey_XXXXXXXXXX.p8
-gh secret set APPLE_API_KEY_ID
-gh secret set APPLE_API_ISSUER
-rm devid.p12
-```
+`scripts/set-apple-secrets.sh devid.p12 AuthKey_XXXXXXXXXX.p8` sets all five: it checks the
+`.p12` opens and holds the Developer ID, asks for the password and the two IDs without echoing
+the password, and sends each value straight to `gh secret set`. Delete the `.p12` afterwards.
 
 The `bundle (macos-15)` job then imports the certificate into a temporary keychain, signs the
 app and its helpers, notarizes and staples it, builds the DMG, and signs, notarizes and staples
