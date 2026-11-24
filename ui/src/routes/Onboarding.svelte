@@ -189,7 +189,7 @@
     height: 46px;
     border-radius: 11px;
     color: #fff;
-    background: linear-gradient(#4aa3ff, #0a6cf0);
+    background: linear-gradient(135deg, #257a59, #0d4b34);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }
   ul {

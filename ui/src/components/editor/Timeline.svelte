@@ -413,7 +413,7 @@
         const TRACK_H = H;
         const base = TRACK_H - 3;
         const hMax = lane === 'camera' ? 12 : 16;
-        g.fillStyle = c.muted ? 'rgba(160,160,170,0.35)' : 'rgba(64,156,255,0.85)';
+        g.fillStyle = c.muted ? 'rgba(160,160,170,0.35)' : 'rgba(47,160,111,0.85)';
         g.fillRect(x0, base - hMax - 1, x1 - x0, hMax + 1);
         g.fillStyle = c.muted ? 'rgba(220,220,230,0.5)' : 'rgba(255,255,255,0.9)';
         const from = Math.max(x0, 0);
@@ -625,7 +625,7 @@
     padding: 0;
     border-radius: 50%;
     z-index: 1;
-    color: var(--accent);
+    color: var(--accent-ink);
     background: var(--control, rgba(128, 128, 128, 0.18));
   }
   .link.off {

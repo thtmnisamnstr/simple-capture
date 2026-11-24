@@ -1,13 +1,15 @@
 /* macOS look (ADR-044): system font and semantic colours for light and dark, AppKit-sized
-   controls. Components share these classes; windows only lay them out. */
+   controls. Components share these classes; windows only lay them out. The accent is Simple
+   Balance's green (ADR-053); red stays for recording and destructive actions. */
 
 :root {
   color-scheme: light dark;
-  --accent: #007aff;
-  --accent-pressed: #0062cc;
+  --accent: #176b4b;
+  --accent-pressed: #10543a;
+  --accent-ink: #176b4b;
   --on-accent: #ffffff;
   --red: #ff3b30;
-  --green: #28cd41;
+  --green: #1f8a5c;
   --orange: #ff9500;
   --yellow: #ffcc00;
 
@@ -49,10 +51,11 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --accent: #0a84ff;
-    --accent-pressed: #0070e0;
+    --accent: #1c7c58;
+    --accent-pressed: #16694a;
+    --accent-ink: #58c795;
     --red: #ff453a;
-    --green: #32d74b;
+    --green: #58c795;
     --orange: #ff9f0a;
     --yellow: #ffd60a;
 
@@ -74,12 +77,6 @@
     --shadow-pop: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 10px 32px rgba(0, 0, 0, 0.5);
     --warn-fill: rgba(255, 159, 10, 0.14);
     --warn-label: #ffb340;
-  }
-}
-
-@supports (color: AccentColor) {
-  :root {
-    --accent: AccentColor;
   }
 }
 
@@ -207,7 +204,7 @@ button.plain:hover:not(:disabled) {
 }
 
 button.link {
-  color: var(--accent);
+  color: var(--accent-ink);
   padding: 0;
 }
 

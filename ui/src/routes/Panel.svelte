@@ -978,7 +978,7 @@
     flex: none;
   }
   .item :global(.icon) {
-    color: var(--accent);
+    color: var(--accent-ink);
   }
   .item:hover:not([aria-pressed='true']) {
     background: var(--fill);

@@ -30,6 +30,12 @@ pub struct Tray {
     icon: TrayIcon,
     start_stop: MenuItem<tauri::Wry>,
     pause: MenuItem<tauri::Wry>,
+    recording: std::sync::atomic::AtomicBool,
+}
+
+fn tray_image(png: &[u8]) -> Result<Image<'static>, String> {
+    let img = sc_text::decode_image(png).map_err(|e| format!("tray icon: {e}"))?;
+    Ok(Image::new_owned(img.data, img.size.w, img.size.h))
 }
 
 pub fn format_elapsed(ns: i64) -> String {
@@ -68,9 +74,7 @@ impl Tray {
             .map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>)
             .collect();
         let menu = Menu::with_items(app, &refs).map_err(e)?;
-        let png = sc_text::decode_image(include_bytes!("../icons/tray-template@2x.png"))
-            .map_err(|e| format!("tray icon: {e}"))?;
-        let image = Image::new_owned(png.data, png.size.w, png.size.h);
+        let image = tray_image(include_bytes!("../icons/tray-template@2x.png"))?;
         let icon = TrayIconBuilder::with_id("main")
             .icon(image)
             .icon_as_template(true)
@@ -95,6 +99,7 @@ impl Tray {
             icon,
             start_stop,
             pause,
+            recording: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -115,6 +120,24 @@ impl Tray {
         });
         if let Err(e) = self.icon.set_title(title) {
             tracing::debug!("tray title: {e}");
+        }
+        if self
+            .recording
+            .swap(recording, std::sync::atomic::Ordering::Relaxed)
+            != recording
+        {
+            let (bytes, template): (&[u8], bool) = if recording {
+                (include_bytes!("../icons/tray-recording@2x.png"), false)
+            } else {
+                (include_bytes!("../icons/tray-template@2x.png"), true)
+            };
+            match tray_image(bytes) {
+                Ok(image) => {
+                    let _ = self.icon.set_icon(Some(image));
+                    let _ = self.icon.set_icon_as_template(template);
+                }
+                Err(e) => tracing::debug!("{e}"),
+            }
         }
         let text = if recording {
             "Stop Recording"

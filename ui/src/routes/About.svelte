@@ -3,6 +3,7 @@
   import { appApi, type AboutInfo, type LicenseFile } from '../lib/appinfo.ts';
   import { editor } from '../lib/editor.ts';
   import { showWindow } from '../lib/windows.ts';
+  import Logo from '../components/Logo.svelte';
   import Icon from '../components/Icon.svelte';
 
   let info: AboutInfo | null = $state(null);
@@ -41,7 +42,7 @@
     <pre class="text group">{viewing.text}</pre>
   {:else}
     <header class="hero">
-      <span class="logo"><Icon name="film" size={26} /></span>
+      <span class="logo"><Logo size={52} /></span>
       <div>
         <h1>Simple Capture</h1>
         <p class="caption tnum">
@@ -104,9 +105,8 @@
     place-items: center;
     width: 52px;
     height: 52px;
-    border-radius: 12px;
-    color: #fff;
-    background: linear-gradient(160deg, var(--accent, #0a84ff), #5e5ce6);
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }
   .lead {
     margin: 0;

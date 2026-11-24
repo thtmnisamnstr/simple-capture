@@ -355,7 +355,7 @@
     background: var(--fill-2);
   }
   li.selected .poster {
-    box-shadow: 0 0 0 2px var(--accent, #0a84ff);
+    box-shadow: 0 0 0 2px var(--accent);
   }
   .poster {
     position: relative;

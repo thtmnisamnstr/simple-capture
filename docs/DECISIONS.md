@@ -1719,3 +1719,19 @@ they are not a substitute for an M1 run.
   the owner's phone was not offered that way (only an Apple TV), so wireless stays with iPhone
   Mirroring.
 
+## ADR-053: Simple Balance branding (logo, menu bar icon, green accent)
+
+- **Context:** the owner wants Simple Capture to look like a sibling of Simple Balance: a simple
+  logo where the S is worked into a familiar indicator for what the app does (Simple Balance's S
+  becomes a $ in a coin), and its green rather than the system's blue accent. The plain red
+  record button identified nothing, and neither did the menu bar's record mark.
+- **Logo:** Simple Balance's rounded tile and gradient (#257a59 → #0d4b34) with the same white
+  2-unit line drawing on a 24-unit grid: a camera viewfinder (corner brackets) holding Simple
+  Balance's S, with a red REC dot in the top-right corner. Sources in `assets/brand/`
+  (`app-icon.svg` on the macOS 824/1024 grid, `mark.svg` for in-app use, the menu bar glyphs);
+  `app/icons/` is generated from `app/icons/source.png` with `tauri icon`.
+- **Menu bar:** the same glyph as a template image while idle; drawn in red while recording.
+- **Colour:** the accent is Simple Balance's green (#176b4b light; #1c7c58 fills and #58c795 text
+  in dark, `--accent-ink`), no longer the system accent; status green follows it. Red stays for
+  recording, stopping and destructive actions. Neutral surfaces stay macOS greys (ADR-044).
+

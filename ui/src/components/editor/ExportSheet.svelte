@@ -522,7 +522,7 @@
     font-size: 12px;
   }
   .chip[aria-checked='true'] {
-    background: var(--accent, #0a84ff);
+    background: var(--accent);
     border-color: transparent;
     color: #fff;
   }

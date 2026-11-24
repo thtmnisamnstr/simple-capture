@@ -164,8 +164,8 @@
   .hl,
   .region {
     position: absolute;
-    border: 3px solid #0a84ff;
-    background: rgba(10, 132, 255, 0.16);
+    border: 3px solid #2fa06f;
+    background: rgba(47, 160, 111, 0.18);
     border-radius: 6px;
     pointer-events: none;
   }
@@ -184,7 +184,7 @@
     white-space: nowrap;
     padding: 2px 8px;
     border-radius: 5px;
-    background: #0a84ff;
+    background: #1c7c58;
     color: #fff;
     font-size: 12px;
   }

@@ -207,7 +207,7 @@
     text-align: left;
   }
   .item :global(.icon) {
-    color: var(--accent);
+    color: var(--accent-ink);
   }
   .item:hover,
   .item:focus-visible {
