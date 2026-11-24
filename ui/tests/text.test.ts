@@ -2,6 +2,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PRESETS, applyPreset, defaultStyle, fontFaceCss, newTextItem, snapAngle, snapPos } from '../src/lib/text.ts';
 
+test('new text copies a remembered style even when it is a reactive proxy', () => {
+  const live = (o: object): object =>
+    new Proxy(o, { get: (t, k) => (typeof Reflect.get(t, k) === 'object' && Reflect.get(t, k) !== null ? live(Reflect.get(t, k)) : Reflect.get(t, k)) });
+  const style = live({ ...defaultStyle(), fill: { solid: [0.2, 0.4, 0.6, 1] } }) as ReturnType<typeof defaultStyle>;
+  assert.throws(() => structuredClone(style), /could not be cloned|DataCloneError/);
+  const item = newTextItem('t1', 0, style);
+  assert.deepEqual(item.style.fill, { solid: [0.2, 0.4, 0.6, 1] });
+  assert.doesNotThrow(() => structuredClone(item));
+});
+
 test('angles snap to 0, ±15, ±90 and 180', () => {
   assert.equal(snapAngle(2), 0);
   assert.equal(snapAngle(13), 15);

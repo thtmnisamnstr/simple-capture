@@ -130,6 +130,12 @@ export function defaultStyle(): TextStyle {
   };
 }
 
+/** A deep copy of plain JSON data that also accepts Svelte's reactive proxies, which
+ * `structuredClone` rejects with a DataCloneError. */
+export function plainCopy<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T;
+}
+
 export function newTextItem(id: string, start: number, style?: TextStyle): TextItemFull {
   return {
     id,
@@ -137,7 +143,7 @@ export function newTextItem(id: string, start: number, style?: TextStyle): TextI
     end_tl_ns: Math.round(start + DEFAULT_TEXT_NS),
     layer: 0,
     content: 'Your text',
-    style: style ? structuredClone(style) : defaultStyle(),
+    style: style ? plainCopy(style) : defaultStyle(),
     transform: { center_norm: { x: 0.5, y: 0.78 }, scale: 1, rotation_deg: 0 },
     anim: { in: { kind: 'pop', duration_s: 0.35, easing: 'ease_out' }, out: { kind: 'fade', duration_s: 0.25, easing: 'ease_out' } },
   };
@@ -222,7 +228,7 @@ export const PRESETS: Preset[] = [
 ];
 
 export function applyPreset(style: TextStyle, p: Preset): TextStyle {
-  return { ...style, ...structuredClone(p.style) };
+  return { ...style, ...plainCopy(p.style) };
 }
 
 const RECENT_KEY = 'sc.text.recent';

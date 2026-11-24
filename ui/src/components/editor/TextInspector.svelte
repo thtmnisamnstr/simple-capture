@@ -10,6 +10,7 @@
     WEIGHTS,
     applyPreset,
     fillColor,
+    plainCopy,
     recentStyles,
     rememberStyle,
     rgbaCss,
@@ -79,13 +80,13 @@
 
   function preset(p: (typeof PRESETS)[number]) {
     const style = applyPreset(s, p);
-    onchange({ ...item, style, anim: p.anim ? structuredClone(p.anim) : item.anim });
+    onchange({ ...item, style, anim: p.anim ? plainCopy(p.anim) : item.anim });
     rememberStyle(style);
     recent = recentStyles();
   }
 
   function useRecent(st: TextStyle) {
-    onchange({ ...item, style: structuredClone(st) });
+    onchange({ ...item, style: plainCopy(st) });
   }
 
   function setAnim(which: 'in' | 'out', kind: string) {

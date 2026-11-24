@@ -35,6 +35,7 @@
   import {
     fontFaceCss,
     newTextItem,
+    plainCopy,
     rememberStyle,
     snapAngle,
     snapPos,
@@ -357,7 +358,7 @@
 
   function textChange(item: TextItemFull, coalesce?: string) {
     void edit({ op: 'upsert_text', item: item as never }, coalesce);
-    lastStyle = item.style;
+    lastStyle = plainCopy(item.style);
   }
 
   function addText() {
@@ -379,7 +380,7 @@
 
   function pasteText(src: TextItemFull) {
     const len = src.end_tl_ns - src.start_tl_ns;
-    const item = { ...structuredClone(src), id: crypto.randomUUID(), start_tl_ns: Math.round(playhead), end_tl_ns: Math.round(playhead + len) };
+    const item = { ...plainCopy(src), id: crypto.randomUUID(), start_tl_ns: Math.round(playhead), end_tl_ns: Math.round(playhead + len) };
     void edit({ op: 'upsert_text', item: item as never });
     selectedText = item.id;
   }
