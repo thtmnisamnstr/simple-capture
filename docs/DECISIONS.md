@@ -1746,3 +1746,17 @@ they are not a substitute for an M1 run.
   The player, editor preview, blur boxes, posters and every export use it; the recorder's live
   Preview keeps the canvas default.
 
+## ADR-055: Our own click highlights where the system cannot draw them
+
+- **Context:** ScreenCaptureKit draws clicks only on macOS 15+; macOS 14, Windows and Linux had
+  none (`cursor.jsonl` was deferred to M7, ADR-018 item 7).
+- **Decision:** with Highlight clicks on and no system drawing, the recorder polls the pointer
+  every 16 ms (CoreGraphics' combined session state on macOS, GetCursorPos/GetAsyncKeyState on
+  Windows; no permission needed, no event tap) and writes `cursor.jsonl`: one line per change,
+  `{"t": rec_ns, "x", "y": global points, "b": buttons}`. Each section stores where its picture
+  was on screen at its start (`screen_pt`), and the project is marked `own_clicks`. The player
+  maps every press of the last 0.45 s into the picture (through the section's Fit/Fill) and draws a
+  fading yellow ring on top of the text, so preview, posters and exports match. Linux has no
+  global pointer under Wayland, so it offers no click highlight.
+- **Limits:** a window moved during its section keeps the place it had when the section began.
+

@@ -7,6 +7,7 @@
 mod control;
 pub mod gapfill;
 mod health;
+mod pointer;
 mod router;
 mod shared;
 mod sink;

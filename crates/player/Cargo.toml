@@ -22,6 +22,7 @@ simple-capture-decode.workspace = true
 simple-capture-render.workspace = true
 simple-capture-text.workspace = true
 signalsmith-stretch.workspace = true
+serde_json.workspace = true
 cpal = { workspace = true, optional = true }
 tracing.workspace = true
 

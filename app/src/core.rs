@@ -689,7 +689,9 @@ impl Core {
                 })
             })
             .collect();
-        Ok(dto::capabilities(&caps, &per))
+        let mut v = dto::capabilities(&caps, &per);
+        v["own_clicks"] = json!(!caps.show_clicks && self.platform.desktop().pointer().is_ok());
+        Ok(v)
     }
 
     /// `camera_key`: the placement to show, when the caller has one newer than the saved settings.

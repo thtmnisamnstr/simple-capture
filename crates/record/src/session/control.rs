@@ -113,6 +113,7 @@ struct Control {
     sys_stream: Option<Box<dyn SystemAudioStream>>,
     watch: Option<Box<dyn DeviceStream>>,
     health: Option<(Sender<()>, JoinHandle<()>)>,
+    pointer: Option<super::pointer::PointerLog>,
     results: Vec<TrackResult>,
     finished: Option<std::result::Result<StopSummary, String>>,
     camera_keys: Vec<CameraKey>,
@@ -124,6 +125,54 @@ struct Control {
 /// Camera keys reach the journal in batches: every append fsyncs, and a drag sends up to 30 keys
 /// a second. A crash loses at most this much camera motion.
 const KEY_FLUSH: Duration = Duration::from_millis(200);
+/// Where a section's picture was on screen when it started, in global points, so a click there
+/// can be found in the picture.
+fn screen_rect(p: &dyn Platform, src: &SourceDescriptor) -> Option<sc_geometry::RectPt> {
+    let display = |id: &str| {
+        p.screen()
+            .displays()
+            .ok()?
+            .into_iter()
+            .find(|d| d.id.0 == id)
+            .map(|d| d.frame_pt)
+    };
+    let offset = |base: sc_geometry::RectPt, r: sc_geometry::RectPt| sc_geometry::RectPt {
+        x: base.x + r.x,
+        y: base.y + r.y,
+        w: r.w,
+        h: r.h,
+    };
+    match src {
+        SourceDescriptor::Display {
+            display_id,
+            frame_pt,
+            ..
+        } => frame_pt.or_else(|| display(display_id)),
+        SourceDescriptor::Region {
+            display_id,
+            region_pt,
+            ..
+        } => display(display_id).map(|d| offset(d, *region_pt)),
+        SourceDescriptor::Application {
+            display_id,
+            crop_pt,
+            ..
+        } => {
+            let d = display(display_id)?;
+            Some(crop_pt.map_or(d, |c| offset(d, c)))
+        }
+        SourceDescriptor::Window { window_id, .. } => p
+            .screen()
+            .list(&[])
+            .ok()?
+            .windows
+            .into_iter()
+            .find(|w| w.id.0 == *window_id)
+            .map(|w| w.frame_pt),
+        SourceDescriptor::Camera { .. } => None,
+    }
+}
+
 /// How long a source's new size must hold before it gets its own section.
 const RESIZE_SETTLE: Duration = Duration::from_millis(600);
 
@@ -340,6 +389,7 @@ pub(crate) fn start(
         sys_stream: None,
         watch: None,
         health: None,
+        pointer: None,
         results: Vec::new(),
         finished: None,
         camera_keys: Vec::new(),
@@ -646,6 +696,22 @@ impl Control {
         let h = health::spawn(self.sh.clone(), hrx)
             .map_err(|e| Error::State(format!("spawn the health thread: {e}")))?;
         self.health = Some((htx, h));
+        if self.req.click_highlight && !platform.capabilities().show_clicks {
+            self.pointer = super::pointer::PointerLog::spawn(self.sh.clone());
+            if self.pointer.is_some() {
+                self.project
+                    .recording
+                    .screen
+                    .extra
+                    .insert("own_clicks".into(), serde_json::Value::Bool(true));
+                for seg in &mut self.project.recording.screen.segments {
+                    if let Some(r) = screen_rect(&*self.sh.platform, &seg.source) {
+                        seg.extra.insert("screen_pt".into(), serde_json::json!(r));
+                    }
+                }
+                self.save();
+            }
+        }
         self.sh.set_state(SessionState::Recording);
         Ok(())
     }
@@ -1013,6 +1079,12 @@ impl Control {
         t.first_sample_offset_ns = seg.start_rec_ns;
         self.project.recording.tracks.push(t);
         self.active_px = Some(seg.frame_px);
+        let mut seg = seg;
+        if self.pointer.is_some()
+            && let Some(r) = screen_rect(&*self.sh.platform, &seg.source)
+        {
+            seg.extra.insert("screen_pt".into(), serde_json::json!(r));
+        }
         self.project.recording.screen.segments.push(seg);
         self.save();
         self.follow_app();
@@ -1505,6 +1577,9 @@ impl Control {
         }
         for c in std::mem::take(&mut self.cont) {
             self.finish_cont(c, Some(stop_host));
+        }
+        if let Some(p) = self.pointer.take() {
+            p.stop();
         }
         if let Some((tx, j)) = self.health.take() {
             drop(tx);

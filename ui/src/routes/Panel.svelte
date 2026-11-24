@@ -350,7 +350,7 @@
     if (!settings || !loaded) return;
     if (probe && ((fpsChoice === '60' && why60) || (fpsChoice === '60-1x' && why60x1))) settings.fps = 30;
     if (settings.system_audio === 'app' && whyAppAudio) settings.system_audio = 'off';
-    if (caps && !caps.show_clicks && settings.click_highlight) settings.click_highlight = false;
+    if (caps && !caps.show_clicks && !caps.own_clicks && settings.click_highlight) settings.click_highlight = false;
   });
 
   function choose(spec: SourceSpecDto, how: Via = 'own_chooser') {
@@ -802,7 +802,7 @@
             <span class="glabel">Show the cursor</span>
             <input class="switch" type="checkbox" bind:checked={settings.cursor} />
           </label>
-          {#if caps?.show_clicks}
+          {#if caps?.show_clicks || caps?.own_clicks}
             <label class="grow">
               <span class="glabel">Highlight clicks</span>
               <input class="switch" type="checkbox" bind:checked={settings.click_highlight} disabled={!settings.cursor} />

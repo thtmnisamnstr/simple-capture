@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use sc_platform::{Desktop, Error, Result};
+use sc_platform::{Desktop, Error, Pointer, Result};
 use windows::Win32::Foundation::{HANDLE, HGLOBAL};
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
@@ -71,6 +71,34 @@ fn on_sta(folders: bool, done: Box<dyn FnOnce(Option<PathBuf>) + Send>) {
 pub struct WinDesktop;
 
 impl Desktop for WinDesktop {
+    fn pointer(&self) -> Result<Pointer> {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::Graphics::Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromPoint};
+        use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+        let mut p = POINT::default();
+        // SAFETY: plain Win32 queries with valid out-pointers; none needs a permission.
+        unsafe {
+            GetCursorPos(&mut p).map_err(|e| Error::Other(format!("GetCursorPos: {e}")))?;
+            let mon = MonitorFromPoint(p, MONITOR_DEFAULTTONEAREST);
+            let (mut dx, mut dy) = (96u32, 96u32);
+            let _ = GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, &mut dx, &mut dy);
+            let scale = f64::from(dx.max(1)) / 96.0;
+            let down = |vk: i32| (GetAsyncKeyState(vk) as u16 & 0x8000) != 0;
+            Ok(Pointer {
+                at: sc_geometry::PointF {
+                    x: f64::from(p.x) / scale,
+                    y: f64::from(p.y) / scale,
+                },
+                buttons: u8::from(down(i32::from(VK_LBUTTON.0)))
+                    | (u8::from(down(i32::from(VK_RBUTTON.0))) << 1),
+            })
+        }
+    }
+
     fn reveal(&self, path: &Path) -> Result<()> {
         let mut cmd = std::process::Command::new("explorer.exe");
         if path.is_dir() {

@@ -219,6 +219,17 @@ pub trait Desktop: Send + Sync {
         let _ = path;
         Err(crate::Error::Unsupported("move to the Trash"))
     }
+    /// Where the pointer is (global points, top-left of the main display) and which buttons are
+    /// down (bit 0 left, bit 1 right). Never needs a permission.
+    fn pointer(&self) -> Result<Pointer> {
+        Err(crate::Error::Unsupported("read the pointer"))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Pointer {
+    pub at: sc_geometry::PointF,
+    pub buttons: u8,
 }
 
 /// M3; kept for ADR-007.

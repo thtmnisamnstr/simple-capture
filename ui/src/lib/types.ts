@@ -51,6 +51,8 @@ export interface CapabilitiesDto {
   application_source: boolean;
   app_audio: boolean;
   show_clicks: boolean;
+  /** Simple Capture draws the click highlights itself (the system cannot). */
+  own_clicks?: boolean;
   mic_modes: boolean;
   switch_source: boolean;
   exclusion: ExclusionKind;

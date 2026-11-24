@@ -29,6 +29,27 @@ pub struct TimelineVideo {
     segment_sizes: Vec<SizePx>,
     text: Option<TextEngine>,
     text_failed: bool,
+    clicks: Vec<Click>,
+    screen_rects: std::collections::HashMap<String, sc_geometry::RectPt>,
+}
+
+/// A button press from the recording's pointer log, in global points.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Click {
+    t_rec_ns: i64,
+    x: f64,
+    y: f64,
+}
+
+/// How long a click's ring shows after the press.
+pub const CLICK_SHOW_NS: i64 = 450_000_000;
+
+/// A click ring on the canvas: centre in canvas pixels and how far through its fade it is.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClickMark {
+    pub x: f32,
+    pub y: f32,
+    pub age: f32,
 }
 
 pub struct Composed {
@@ -42,6 +63,8 @@ pub struct Composed {
     pub redact: Vec<Redact>,
     pub fit: Fit,
     pub focus: PointF,
+    pub clicks: Vec<ClickMark>,
+    canvas_short: u32,
 }
 
 impl TimelineVideo {
@@ -76,6 +99,17 @@ impl TimelineVideo {
                 .collect(),
             text: None,
             text_failed: false,
+            clicks: load_clicks(project, dir),
+            screen_rects: project
+                .recording
+                .screen
+                .segments
+                .iter()
+                .filter_map(|s| {
+                    let r = s.extra.get("screen_pt")?;
+                    Some((s.id.clone(), serde_json::from_value(r.clone()).ok()?))
+                })
+                .collect(),
         })
     }
 
@@ -140,6 +174,12 @@ impl TimelineVideo {
         }
         let text = self.text_at(tl_ns.clamp(0, end), canvas);
         let (fit, focus) = framing(&self.doc, screen.as_ref().map(|f| f.segment_id.as_str()));
+        let clicks = match screen.as_ref() {
+            Some(f) if screen_shown && !self.clicks.is_empty() => {
+                self.click_marks(rec, f, fit, focus, canvas)
+            }
+            _ => Vec::new(),
+        };
         let redact = match screen.as_ref() {
             Some(f) if screen_shown && f.content_px.w > 0 && f.content_px.h > 0 => recrop(
                 &redactions_at(&self.doc, rec),
@@ -158,7 +198,42 @@ impl TimelineVideo {
             redact,
             fit,
             focus,
+            clicks,
+            canvas_short: canvas.w.min(canvas.h),
         })
+    }
+
+    /// Rings for the presses of the last [`CLICK_SHOW_NS`] that fall inside this picture.
+    fn click_marks(
+        &self,
+        rec: i64,
+        f: &SegmentFrame,
+        fit: Fit,
+        focus: PointF,
+        canvas: SizePx,
+    ) -> Vec<ClickMark> {
+        let Some(on) = self.screen_rects.get(&f.segment_id) else {
+            return Vec::new();
+        };
+        if on.w <= 0.0 || on.h <= 0.0 || f.content_px.w == 0 || f.content_px.h == 0 {
+            return Vec::new();
+        }
+        let (src, dst) = place(fit, focus, canvas, f.content_px);
+        let from = self
+            .clicks
+            .partition_point(|c| c.t_rec_ns < rec - CLICK_SHOW_NS);
+        self.clicks[from..]
+            .iter()
+            .take_while(|c| c.t_rec_ns <= rec)
+            .filter_map(|c| {
+                let (x, y) = click_on_canvas((c.x, c.y), *on, f.content_px, src, dst)?;
+                Some(ClickMark {
+                    x,
+                    y,
+                    age: ((rec - c.t_rec_ns) as f64 / CLICK_SHOW_NS as f64) as f32,
+                })
+            })
+            .collect()
     }
 
     fn text_at(&mut self, tl: i64, canvas: SizePx) -> Vec<TextFrame> {
@@ -199,6 +274,100 @@ impl TimelineVideo {
             )
             .map_err(|e| Error::Other(format!("sc_player: background: {e}")))
     }
+}
+
+/// Where a click at global point `at` lands on the canvas: through the section's place on
+/// screen (`on`), its content in the frame, and the crop (`src`) drawn into `dst`. `None` when it
+/// falls outside the picture.
+fn click_on_canvas(
+    at: (f64, f64),
+    on: sc_geometry::RectPt,
+    content: RectPx,
+    src: RectPx,
+    dst: RectPx,
+) -> Option<(f32, f32)> {
+    let fx = (at.0 - on.x) / on.w;
+    let fy = (at.1 - on.y) / on.h;
+    if !(0.0..=1.0).contains(&fx) || !(0.0..=1.0).contains(&fy) || src.w == 0 || src.h == 0 {
+        return None;
+    }
+    let px = f64::from(content.x) + fx * f64::from(content.w);
+    let py = f64::from(content.y) + fy * f64::from(content.h);
+    let x = f64::from(dst.x) + (px - f64::from(src.x)) * f64::from(dst.w) / f64::from(src.w);
+    let y = f64::from(dst.y) + (py - f64::from(src.y)) * f64::from(dst.h) / f64::from(src.h);
+    let inside = x >= f64::from(dst.x)
+        && y >= f64::from(dst.y)
+        && x <= f64::from(dst.x) + f64::from(dst.w)
+        && y <= f64::from(dst.y) + f64::from(dst.h);
+    inside.then_some((x as f32, y as f32))
+}
+
+const RING_PX: u32 = 128;
+const RING_KEY: u64 = 0x5c_c11c_4116;
+
+/// A soft yellow ring with a faint fill, drawn at each click.
+fn ring_image() -> &'static RgbaImage {
+    static RING: std::sync::OnceLock<RgbaImage> = std::sync::OnceLock::new();
+    RING.get_or_init(|| {
+        let n = RING_PX as usize;
+        let mut data = vec![0u8; n * n * 4];
+        let c = n as f32 / 2.0;
+        let (outer, width) = (c - 2.0, 9.0f32);
+        for y in 0..n {
+            for x in 0..n {
+                let d = ((x as f32 + 0.5 - c).powi(2) + (y as f32 + 0.5 - c).powi(2)).sqrt();
+                let edge = (outer - d).clamp(0.0, 1.0);
+                let ring = edge * (d - (outer - width) + 1.0).clamp(0.0, 1.0);
+                let fill = edge * 0.22;
+                let a = (ring * 0.95 + fill * (1.0 - ring)).clamp(0.0, 1.0);
+                let i = (y * n + x) * 4;
+                data[i] = (255.0 * a) as u8;
+                data[i + 1] = (214.0 * a) as u8;
+                data[i + 2] = (10.0 * a) as u8;
+                data[i + 3] = (255.0 * a) as u8;
+            }
+        }
+        RgbaImage {
+            size: SizePx {
+                w: RING_PX,
+                h: RING_PX,
+            },
+            stride: n * 4,
+            data,
+        }
+    })
+}
+
+/// Button presses from `cursor.jsonl`, when the recording logged them for our own highlights.
+fn load_clicks(project: &ProjectV1, dir: &Path) -> Vec<Click> {
+    let own = project.recording.screen.click_highlight
+        && project.recording.screen.extra.get("own_clicks") == Some(&serde_json::Value::Bool(true));
+    if !own {
+        return Vec::new();
+    }
+    let Ok(text) = std::fs::read_to_string(dir.join("cursor.jsonl")) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut held = 0u64;
+    for line in text.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let (Some(t), Some(x), Some(y), Some(b)) = (
+            v["t"].as_i64(),
+            v["x"].as_f64(),
+            v["y"].as_f64(),
+            v["b"].as_u64(),
+        ) else {
+            continue;
+        };
+        if b & !held != 0 {
+            out.push(Click { t_rec_ns: t, x, y });
+        }
+        held = b;
+    }
+    out
 }
 
 /// The framing of the section `segment`: its own, or the canvas default with a centred crop.
@@ -295,8 +464,10 @@ pub fn redactions_at(doc: &Doc, rec: i64) -> Vec<Redact> {
 }
 
 impl Composed {
+    /// The text, then any click rings on top.
     pub fn text_layers(&self) -> Vec<TextLayer<'_>> {
-        self.text
+        let mut layers: Vec<TextLayer<'_>> = self
+            .text
             .iter()
             .map(|t| TextLayer {
                 image: &t.image,
@@ -304,7 +475,22 @@ impl Composed {
                 to_canvas: t.to_canvas,
                 opacity: t.opacity,
             })
-            .collect()
+            .collect();
+        if !self.clicks.is_empty() {
+            let canvas = self.canvas_short;
+            let ring = ring_image();
+            for c in &self.clicks {
+                let d = canvas as f32 * 0.05 * (0.6 + 0.4 * c.age.min(1.0));
+                let s = d / RING_PX as f32;
+                layers.push(TextLayer {
+                    image: ring,
+                    key: RING_KEY,
+                    to_canvas: [s, 0.0, 0.0, s, c.x - d / 2.0, c.y - d / 2.0],
+                    opacity: (1.0 - c.age).clamp(0.0, 1.0),
+                });
+            }
+        }
+        layers
     }
 
     pub fn job<'a>(
@@ -389,6 +575,64 @@ mod tests {
         let (src, dst) = place(Fit::Contain, mid, canvas, rect(0, 0, 1920, 1080));
         assert_eq!(src, rect(0, 0, 1920, 1080));
         assert_eq!(dst.w, 1080);
+    }
+
+    #[test]
+    fn a_click_lands_where_it_was_in_the_picture() {
+        let on = sc_geometry::RectPt {
+            x: 100.0,
+            y: 50.0,
+            w: 400.0,
+            h: 300.0,
+        };
+        let content = rect(0, 0, 800, 600);
+        let mid = PointF { x: 0.5, y: 0.5 };
+        let (src, dst) = place(Fit::Contain, mid, SizePx { w: 1600, h: 900 }, content);
+        let (x, y) = click_on_canvas((300.0, 200.0), on, content, src, dst).expect("inside");
+        assert!(
+            (x - 800.0).abs() < 1.0 && (y - 450.0).abs() < 1.0,
+            "the centre: {x},{y}"
+        );
+        assert!(click_on_canvas((90.0, 200.0), on, content, src, dst).is_none());
+        let (src, dst) = place(Fit::Cover, mid, SizePx { w: 900, h: 1600 }, content);
+        assert!(
+            click_on_canvas((110.0, 200.0), on, content, src, dst).is_none(),
+            "cropped away by Fill"
+        );
+    }
+
+    #[test]
+    fn presses_come_from_button_down_edges() {
+        let dir = std::env::temp_dir().join(format!("sc-clicks-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let lines = [
+            r#"{"t":0,"x":1,"y":1,"b":0}"#,
+            r#"{"t":10,"x":2,"y":2,"b":1}"#,
+            r#"{"t":20,"x":3,"y":3,"b":1}"#,
+            r#"{"t":30,"x":4,"y":4,"b":0}"#,
+            "not json",
+            r#"{"t":40,"x":5,"y":5,"b":2}"#,
+        ];
+        std::fs::write(dir.join("cursor.jsonl"), lines.join("\n")).expect("write");
+        let mut p = sc_core::project::ProjectV1::new_recording(
+            "p".into(),
+            "t".into(),
+            "now".into(),
+            "0".into(),
+            sc_core::ClockKind::MachHost,
+        );
+        assert!(load_clicks(&p, &dir).is_empty(), "not asked for");
+        p.recording.screen.click_highlight = true;
+        p.recording
+            .screen
+            .extra
+            .insert("own_clicks".into(), serde_json::Value::Bool(true));
+        let c = load_clicks(&p, &dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            c.iter().map(|c| (c.t_rec_ns, c.x)).collect::<Vec<_>>(),
+            vec![(10, 2.0), (40, 5.0)]
+        );
     }
 
     #[test]

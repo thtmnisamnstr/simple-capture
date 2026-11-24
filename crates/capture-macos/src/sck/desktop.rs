@@ -6,7 +6,29 @@ use objc2_app_kit::{
     NSPasteboardWriting, NSWorkspace,
 };
 use objc2_foundation::{NSArray, NSString, NSURL};
-use sc_platform::{Desktop, Error, Result};
+use sc_platform::{Desktop, Error, Pointer, Result};
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CgPoint {
+    x: f64,
+    y: f64,
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGEventCreate(source: *const std::ffi::c_void) -> *const std::ffi::c_void;
+    fn CGEventGetLocation(event: *const std::ffi::c_void) -> CgPoint;
+    fn CGEventSourceButtonState(state: i32, button: u32) -> bool;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFRelease(cf: *const std::ffi::c_void);
+}
+
+/// kCGEventSourceStateCombinedSessionState.
+const COMBINED_SESSION: i32 = 0;
 
 use super::glue::main_async;
 
@@ -22,6 +44,25 @@ impl MacDesktop {
 }
 
 impl Desktop for MacDesktop {
+    fn pointer(&self) -> Result<Pointer> {
+        // SAFETY: CGEventCreate(NULL) returns a fresh event we release; the state queries take
+        // plain values. None of these need a permission (no event tap).
+        unsafe {
+            let e = CGEventCreate(std::ptr::null());
+            if e.is_null() {
+                return Err(Error::Other("pointer: no event".into()));
+            }
+            let at = CGEventGetLocation(e);
+            CFRelease(e);
+            let left = CGEventSourceButtonState(COMBINED_SESSION, 0);
+            let right = CGEventSourceButtonState(COMBINED_SESSION, 1);
+            Ok(Pointer {
+                at: sc_geometry::PointF { x: at.x, y: at.y },
+                buttons: u8::from(left) | (u8::from(right) << 1),
+            })
+        }
+    }
+
     fn trash(&self, path: &Path) -> Result<()> {
         let url = NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()));
         objc2_foundation::NSFileManager::defaultManager()
