@@ -819,7 +819,9 @@ In the editor with any recording, press ⌘E:
 | E38 | Turn Snap off (or press N), drag a text edge near a cut | It no longer jumps to the cut; Snap on again restores it and is remembered next time |
 | E39 | Two overlapping text items; Text tab → Bring to Front / Send to Back | The chosen one draws above or below the other in the preview and the export |
 | E40 | Frame tab → 4:5 | A portrait 4:5 frame in the preview and the export |
-| E41 | Export → WebP, then APNG, Loop: Several times (3) | Each file plays in a browser with the right colours and stops after three plays; WebP is much smaller than the GIF |
+| E41 | Export → WebP, Loop: Several times (3) | It plays in a browser with the right colours and stops after three plays; it is much smaller than the GIF |
+| E42 | Add three texts at the same playhead, and two blurs that overlap | Overlapping items stack on separate rows; items that don't overlap share the first row; the timeline grows to fit |
+| E43 | Scrub the timeline, switch to another app and back, scrub again | The screen track's pictures stay; Play works after changing a text's animation time |
 
 ## 10g. Library, About and Diagnostics (M6, M7)
 

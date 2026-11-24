@@ -570,6 +570,13 @@ function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
       else list.push(op.item);
     }
     if (op.op === 'delete_redactions') list.splice(0, list.length, ...list.filter((r) => !op.ids?.includes(r.id)));
+    const texts = (mockDoc as { text: { id: string }[] }).text;
+    if (op.op === 'upsert_text' && op.item) {
+      const i = texts.findIndex((t) => t.id === op.item!.id);
+      if (i >= 0) texts[i] = op.item;
+      else texts.push(op.item);
+    }
+    if (op.op === 'delete_text') texts.splice(0, texts.length, ...texts.filter((t) => !op.ids?.includes(t.id)));
     (mockDoc as { redactions?: unknown[] }).redactions = list;
     mockRevision += 1;
     return { doc: JSON.parse(JSON.stringify(mockDoc)), revision: mockRevision, can_undo: true, can_redo: false };

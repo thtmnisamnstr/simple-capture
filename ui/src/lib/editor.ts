@@ -178,17 +178,28 @@ function call<T>(action: string, args: Record<string, unknown> = {}): Promise<T>
   return inTauri() ? invoke<T>('editor', { action, args }) : mockInvoke<T>('editor', { action, ...args });
 }
 
+/** Times are whole nanoseconds; values worked out from seconds can come out fractional. */
+export function wholeNs<T>(v: T): T {
+  if (Array.isArray(v)) return v.map(wholeNs) as T;
+  if (v && typeof v === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) out[k] = k.endsWith('_ns') && typeof x === 'number' ? Math.round(x) : wholeNs(x);
+    return out as T;
+  }
+  return v;
+}
+
 export const editor = {
   open: (projectDir: string) => call<EditorState>('open', { project_dir: projectDir }),
   state: () => call<EditorState>('state'),
-  edit: (op: EditOp, coalesce?: string) => call<DocUpdate>('edit', { op, coalesce: coalesce ?? null }),
+  edit: (op: EditOp, coalesce?: string) => call<DocUpdate>('edit', { op: wholeNs(op), coalesce: coalesce ?? null }),
   undo: () => call<DocUpdate>('undo'),
   redo: () => call<DocUpdate>('redo'),
   seal: () => call<DocUpdate>('seal'),
   copy: (range: Selection) => call<DocUpdate>('copy', { range }),
   cut: (range: Selection) => call<DocUpdate>('cut', { range }),
-  paste: (at: number) => call<DocUpdate>('paste', { at_tl_ns: at }),
-  play: (from?: number) => call<{ playhead_tl_ns: number; playing: boolean }>('play', { from_tl_ns: from ?? null }),
+  paste: (at: number) => call<DocUpdate>('paste', { at_tl_ns: Math.round(at) }),
+  play: (from?: number) => call<{ playhead_tl_ns: number; playing: boolean }>('play', { from_tl_ns: from == null ? null : Math.round(from) }),
   pause: () => call<{ playhead_tl_ns: number; playing: boolean }>('pause'),
   seek: (t: number) => call<void>('seek', { tl_ns: Math.round(t) }),
   rect: (rect: { x: number; y: number; w: number; h: number } | null) => call<void>('rect', { rect }),
@@ -314,4 +325,19 @@ export function tickStep(pxPerSec: number, minPx = 70): number {
 
 export function trackName(kind: EditorTrack['kind']): string {
   return { screen: 'Screen', camera: 'Camera', mic: 'Microphone', system_audio: 'System audio', device_audio: 'Device sound' }[kind];
+}
+
+/** Rows for timeline items: each goes on the first row that is free at its start, so items that
+ * overlap in time stack and the rest share row 0. */
+export function stackRows(items: { id: string; start_tl_ns: number; end_tl_ns: number }[]): { rows: number; row: Map<string, number> } {
+  const sorted = [...items].sort((a, b) => a.start_tl_ns - b.start_tl_ns || a.end_tl_ns - b.end_tl_ns);
+  const ends: number[] = [];
+  const row = new Map<string, number>();
+  for (const it of sorted) {
+    let r = ends.findIndex((e) => e <= it.start_tl_ns);
+    if (r < 0) r = ends.push(0) - 1;
+    ends[r] = it.end_tl_ns;
+    row.set(it.id, r);
+  }
+  return { rows: Math.max(1, ends.length), row };
 }

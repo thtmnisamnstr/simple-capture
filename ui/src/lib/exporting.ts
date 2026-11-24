@@ -1,5 +1,5 @@
-export type Format = 'mp4' | 'webm' | 'gif' | 'mov' | 'webp' | 'apng';
-export type VideoCodec = 'h264' | 'hevc' | 'av1' | 'vp9' | 'vp8' | 'prores' | 'gif' | 'webp' | 'apng';
+export type Format = 'mp4' | 'webm' | 'gif' | 'mov' | 'webp';
+export type VideoCodec = 'h264' | 'hevc' | 'av1' | 'vp9' | 'vp8' | 'prores' | 'gif' | 'webp';
 export type AudioCodec = 'aac' | 'opus' | 'flac' | 'alac' | 'vorbis' | 'pcm' | 'none';
 export type Quality =
   | { tier: 'small' | 'balanced' | 'high' }
@@ -61,12 +61,11 @@ export const FORMAT_ALLOWED: Record<Format, { video: VideoCodec[]; audio: AudioC
   gif: { video: ['gif'], audio: ['none'] },
   mov: { video: ['prores', 'h264', 'hevc'], audio: ['pcm', 'aac', 'none'] },
   webp: { video: ['webp'], audio: ['none'] },
-  apng: { video: ['apng'], audio: ['none'] },
 };
 
-/** GIF, animated WebP and APNG: no sound, image frame rates, a loop setting. */
+/** GIF and animated WebP: no sound, image frame rates, a loop setting. */
 export function isAnimation(f: Format): boolean {
-  return f === 'gif' || f === 'webp' || f === 'apng';
+  return f === 'gif' || f === 'webp';
 }
 
 export const VIDEO_LABELS: Record<VideoCodec, string> = {
@@ -78,7 +77,6 @@ export const VIDEO_LABELS: Record<VideoCodec, string> = {
   prores: 'ProRes 422',
   gif: 'GIF',
   webp: 'WebP',
-  apng: 'APNG',
 };
 
 export const AUDIO_LABELS: Record<AudioCodec, string> = {
@@ -111,7 +109,6 @@ export function forFormat(format: Format): ExportSettings {
     case 'mov':
       return { ...base, format, video: 'prores', audio: 'pcm', fps: 30, size: { kind: 'original' } };
     case 'webp':
-    case 'apng':
       return { ...base, format, video: format, audio: 'none', fps: 15, size: { kind: 'long', value: 960 } };
   }
 }

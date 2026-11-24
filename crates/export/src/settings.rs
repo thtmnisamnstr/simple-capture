@@ -12,7 +12,6 @@ pub enum Format {
     Gif,
     Mov,
     Webp,
-    Apng,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -26,7 +25,6 @@ pub enum VideoCodec {
     Prores,
     Gif,
     Webp,
-    Apng,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -160,12 +158,6 @@ impl ExportSettings {
                 15,
                 SizeChoice::Long(960),
             ),
-            Format::Apng => (
-                VideoCodec::Apng,
-                AudioCodec::None,
-                15,
-                SizeChoice::Long(960),
-            ),
             Format::Mov => (
                 VideoCodec::Prores,
                 AudioCodec::Pcm,
@@ -196,13 +188,12 @@ impl ExportSettings {
             Format::Gif => "gif",
             Format::Mov => "mov",
             Format::Webp => "webp",
-            Format::Apng => "png",
         }
     }
 
-    /// GIF, animated WebP and APNG: no sound, image frame rates.
+    /// GIF and animated WebP: no sound, image frame rates.
     pub fn is_animation(&self) -> bool {
-        matches!(self.format, Format::Gif | Format::Webp | Format::Apng)
+        matches!(self.format, Format::Gif | Format::Webp)
     }
 
     pub fn fps_choices(&self) -> &'static [u32] {
@@ -243,7 +234,6 @@ impl ExportSettings {
             ),
             Format::Gif => (&[VideoCodec::Gif], &[AudioCodec::None]),
             Format::Webp => (&[VideoCodec::Webp], &[AudioCodec::None]),
-            Format::Apng => (&[VideoCodec::Apng], &[AudioCodec::None]),
             Format::Mov => (
                 &[VideoCodec::Prores, VideoCodec::H264, VideoCodec::Hevc],
                 &[AudioCodec::Pcm, AudioCodec::Aac, AudioCodec::None],
@@ -289,9 +279,6 @@ pub fn less_compatible(
             Some("ALAC in MP4 plays in Apple apps, not in browsers")
         }
         (Format::Webm, _, _) => Some("WebM plays in browsers and VLC, not in QuickTime"),
-        (Format::Apng, _, _) => {
-            Some("Animated PNG files are large; browsers play them, Preview shows the first frame")
-        }
         _ => None,
     }
 }

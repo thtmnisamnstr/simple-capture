@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NS, formatTime, keyAt, locate, recToTl, snapTo, starts, tickStep, tlLen, type Clip } from '../src/lib/editor.ts';
+import { NS, formatTime, keyAt, locate, recToTl, snapTo, starts, tickStep, tlLen, wholeNs, stackRows, type Clip } from '../src/lib/editor.ts';
 import type { CameraKey } from '../src/lib/types.ts';
 
 const clip = (a: number, b: number, num = 1, den = 1): Clip => ({
@@ -41,4 +41,20 @@ test('the key in effect is the last at or before the time', () => {
   assert.equal(keyAt([k(0), k(10)], 5)?.t_rec_ns, 0);
   assert.equal(keyAt([k(0), k(10)], 10)?.t_rec_ns, 10);
   assert.equal(keyAt([k(3)], 1)?.t_rec_ns, 3);
+});
+
+test('edit ops send whole nanoseconds, however deep', () => {
+  const op = { kind: 'set_text', item: { start_tl_ns: 1.2 * 1e9 + 0.4, style: { size: 12.5 }, keys: [{ t_tl_ns: 3.7 }] } };
+  const w = wholeNs(op);
+  assert.equal(w.item.start_tl_ns, 1_200_000_000);
+  assert.equal(w.item.keys[0].t_tl_ns, 4);
+  assert.equal(w.item.style.size, 12.5, 'only times are rounded');
+});
+
+test('overlapping items stack; the rest share the first row', () => {
+  const it = (id: string, s: number, e: number) => ({ id, start_tl_ns: s, end_tl_ns: e });
+  const { rows, row } = stackRows([it('a', 0, 10), it('b', 5, 15), it('c', 10, 20), it('d', 6, 8), it('e', 30, 40)]);
+  assert.equal(rows, 3);
+  assert.deepEqual(['a', 'b', 'c', 'd', 'e'].map((k) => row.get(k)), [0, 1, 0, 2, 0]);
+  assert.equal(stackRows([]).rows, 1);
 });

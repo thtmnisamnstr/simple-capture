@@ -41,7 +41,6 @@ pub fn video_encoder(video: VideoCodec, enc: Encoder) -> Option<&'static str> {
         (VideoCodec::Vp8, false) => "libvpx",
         (VideoCodec::Prores, false) => "prores_ks",
         (VideoCodec::Webp, _) => "libwebp_anim",
-        (VideoCodec::Apng, _) => "apng",
         #[cfg(target_os = "macos")]
         (VideoCodec::H264, true) => "h264_videotoolbox",
         #[cfg(target_os = "macos")]
@@ -153,7 +152,6 @@ fn video_quality(st: &ExportSettings, enc: &str) -> Vec<String> {
             a.push(q.to_string());
             a
         }
-        "apng" => s(&["-pred", "mixed"]),
         _ => Vec::new(),
     }
 }
@@ -251,9 +249,6 @@ pub fn video_args(st: &ExportSettings, wav: Option<&Path>, out: &Path) -> Option
         Format::Webp => {
             a.extend(s(&["-loop", &plays(st.gif.repeat), "-f", "webp"]));
         }
-        Format::Apng => {
-            a.extend(s(&["-plays", &plays(st.gif.repeat), "-f", "apng"]));
-        }
         Format::Gif => return None,
     }
     a.push("-y".into());
@@ -261,7 +256,7 @@ pub fn video_args(st: &ExportSettings, wav: Option<&Path>, out: &Path) -> Option
     Some(a)
 }
 
-/// The WebP and APNG loop count: how many times it plays, 0 for ever.
+/// The WebP loop count: how many times it plays, 0 for ever.
 fn plays(r: Loop) -> String {
     match r {
         Loop::Forever => "0".into(),
@@ -270,11 +265,10 @@ fn plays(r: Loop) -> String {
     }
 }
 
-/// WebP and APNG take RGB: libwebp does its own (BT.601) conversion and PNG has no YUV.
+/// WebP takes RGB: libwebp does its own (BT.601) conversion from it.
 fn rgb_pix(venc: &str) -> Option<&'static str> {
     match venc {
         "libwebp_anim" => Some("bgra"),
-        "apng" => Some("rgb24"),
         _ => None,
     }
 }
@@ -444,18 +438,12 @@ mod tests {
     }
 
     #[test]
-    fn webp_and_apng_take_rgb_and_loop_counts() {
+    fn webp_takes_rgb_and_a_loop_count() {
         let mut st = ExportSettings::for_format(Format::Webp);
         st.gif.repeat = Loop::Times(3);
         let a = video_args(&st, Some(Path::new("a.wav")), Path::new("o.webp")).expect("webp");
         assert!(has(&a, ["-c:v", "libwebp_anim"]) && has(&a, ["-pix_fmt", "bgra"]));
         assert!(has(&a, ["-quality", "75"]) && has(&a, ["-loop", "3"]) && has(&a, ["-f", "webp"]));
         assert!(a.contains(&"-an".to_string()) && !a.contains(&"-colorspace".to_string()));
-        let mut p = ExportSettings::for_format(Format::Apng);
-        assert_eq!(p.extension(), "png");
-        p.gif.repeat = Loop::Forever;
-        let a = video_args(&p, None, Path::new("o.png")).expect("apng");
-        assert!(has(&a, ["-c:v", "apng"]) && has(&a, ["-pix_fmt", "rgb24"]));
-        assert!(has(&a, ["-plays", "0"]) && has(&a, ["-f", "apng"]));
     }
 }

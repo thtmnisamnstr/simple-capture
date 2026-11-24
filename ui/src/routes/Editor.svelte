@@ -57,6 +57,7 @@
   let clipboardNs = $state(0);
   let frame = $state<EditorFrame | null>(null);
   let thumbs = $state<Thumbs | null>(null);
+  let timelineH = $state(150);
   let peaks = $state<Uint8Array | null>(null);
   let micPeaks = $state<Uint8Array | null>(null);
   let systemPeaks = $state<Uint8Array | null>(null);
@@ -152,14 +153,20 @@
   async function load() {
     const s = await run(editor.state());
     if (!s) return;
+    const sameProject = st?.project_dir === s.project_dir;
     st = s;
     doc = s.doc;
     revision = s.revision;
     canUndo = s.can_undo;
     canRedo = s.can_redo;
-    playhead = s.playhead_tl_ns;
+    if (!scrubbing) playhead = s.playhead_tl_ns;
     playing = s.playing;
     clipboardNs = s.clipboard_ns;
+    sendRect();
+    if (sameProject) {
+      void loadPeaks();
+      return;
+    }
     selected = [];
     range = null;
     thumbs = null;
@@ -168,7 +175,6 @@
     systemPeaks = null;
     fitted = false;
     frame = null;
-    sendRect();
   }
 
   function fitZoom() {
@@ -1102,9 +1108,10 @@
       <button class="plain" onclick={fitZoom} title="Fit the whole timeline in view">Fit</button>
       <button class="plain" aria-pressed={snapping} class:on={snapping} onclick={toggleSnapping} title="Snap to the playhead, cuts and text edges (N)">Snap</button>
     </div>
-    <div class="timeline" class:tall={blurs.length > 0} class:withcam={!!overlay} bind:this={timelineEl}>
+    <div class="timeline" style:height="{timelineH}px" bind:this={timelineEl}>
       {#if doc}
         <Timeline
+          bind:height={timelineH}
           {clips}
           text={doc.text}
           keys={overlay?.keyframes ?? []}
@@ -1414,17 +1421,9 @@
   }
   .timeline {
     min-width: 0;
-    height: 150px;
+    max-height: 45vh;
+    overflow-y: auto;
     padding: 0 0 6px;
-  }
-  .timeline.withcam {
-    height: 196px;
-  }
-  .timeline.tall {
-    height: 176px;
-  }
-  .timeline.withcam.tall {
-    height: 222px;
   }
   .status {
     display: flex;

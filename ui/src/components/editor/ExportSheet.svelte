@@ -214,12 +214,12 @@
     {/if}
 
     <div class="segmented formats" role="radiogroup" aria-label="Format">
-      {#each [['mp4', 'MP4'], ['webm', 'WebM'], ['mov', 'MOV'], ['gif', 'GIF'], ['webp', 'WebP'], ['apng', 'APNG']] as [f, label] (f)}
+      {#each [['mp4', 'MP4'], ['mov', 'MOV'], ['webm', 'WebM'], ['gif', 'GIF'], ['webp', 'WebP']] as [f, label] (f)}
         <button
           role="radio"
           aria-checked={st.format === f}
-          disabled={(f === 'webp' || f === 'apng') && !avail(f, 'best')}
-          title={f === 'webp' ? 'Animated WebP: smaller than GIF, full colour' : f === 'apng' ? 'Animated PNG: lossless, full colour, large' : undefined}
+          disabled={f === 'webp' && !avail(f, 'best')}
+          title={f === 'webp' ? 'Animated WebP: smaller than GIF, full colour' : undefined}
           onclick={() => setFormat(f as Format)}>{label}</button>
       {/each}
     </div>

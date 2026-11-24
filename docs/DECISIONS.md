@@ -1787,3 +1787,5 @@ they are not a substitute for an M1 run.
   quality 60/75/90); APNG is lossless with mixed prediction. The format buttons stay disabled
   when the helper lacks the encoder.
 - **Limits:** APNG files are large, and macOS Preview and Quick Look show only the first frame.
+- **Update 2026-11-24:** the owner does not want APNG; the app offers WebP only (the helper
+  keeps its APNG and PNG encoders, unused). The sheet's order is MP4, MOV, WebM, GIF, WebP.

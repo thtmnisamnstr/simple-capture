@@ -5,6 +5,7 @@
     locate,
     recToTl,
     snapTo,
+    stackRows,
     speedLabel,
     starts as clipStarts,
     tickStep,
@@ -47,12 +48,14 @@
     linked = true,
     onlink,
     onslide,
+    height = $bindable(150),
   }: {
     cameraClips?: Clip[] | null;
     cameraPeaks?: Uint8Array | null;
     linked?: boolean;
     onlink?: (linked: boolean) => void;
     onslide?: (id: string, byNs: number) => void;
+    height?: number;
     clips: Clip[];
     text: TextItem[];
     keys: CameraKey[];
@@ -80,7 +83,7 @@
 
   const RULER_H = 24;
   const TRACK_H = 64;
-  const CAM_H = 40;
+  const CAM_H = TRACK_H;
   const TEXT_H = 26;
   const BLUR_H = 20;
   const PAD = 16;
@@ -120,6 +123,15 @@
     ),
   );
 
+  const textStack = $derived(stackRows(text));
+  const blurStack = $derived(stackRows(blurItems));
+  const textLaneH = $derived(textStack.rows * TEXT_H);
+  const blurLaneH = $derived(blurStack.rows * BLUR_H);
+  $effect(() => {
+    height =
+      RULER_H + 6 + TRACK_H + (cameraClips ? 6 + CAM_H : 0) + 6 + textLaneH + (blurItems.length ? 6 + blurLaneH : 0) + 24;
+  });
+
   function onTextDown(e: PointerEvent, it: TextItem | BlurItem, part: 'body' | 'start' | 'end', lane: 'text' | 'blur' = 'text') {
     if (e.button !== 0) return;
     e.stopPropagation();
@@ -141,6 +153,10 @@
     if (!img) {
       img = new Image();
       img.onload = () => imageTick++;
+      img.onerror = () => {
+        images.delete(i);
+        setTimeout(() => imageTick++, 500);
+      };
       const base = /Windows|Android/.test(navigator.userAgent) ? 'http://sc.localhost/thumb' : 'sc://thumb';
       img.src = `${base}/${thumbs.step_ms}/${i}.png`;
       images.set(i, img);
@@ -412,7 +428,7 @@
         const peaks = wave;
         const TRACK_H = H;
         const base = TRACK_H - 3;
-        const hMax = lane === 'camera' ? 12 : 16;
+        const hMax = 16;
         g.fillStyle = c.muted ? 'rgba(160,160,170,0.35)' : 'rgba(47,160,111,0.85)';
         g.fillRect(x0, base - hMax - 1, x1 - x0, hMax + 1);
         g.fillStyle = c.muted ? 'rgba(220,220,230,0.5)' : 'rgba(255,255,255,0.9)';
@@ -502,9 +518,9 @@
         <span class="sub">Microphone</span>
       </div>
     {/if}
-    <div class="head" style:height="{TEXT_H}px" style:margin-top="6px"><span>Text</span></div>
+    <div class="head" style:height="{textLaneH}px" style:margin-top="6px"><span>Text</span></div>
     {#if blurItems.length}
-      <div class="head" style:height="{BLUR_H}px" style:margin-top="6px"><span>Blur</span></div>
+      <div class="head" style:height="{blurLaneH}px" style:margin-top="6px"><span>Blur</span></div>
     {/if}
   </div>
 <div
@@ -538,12 +554,14 @@
         {/each}
       </div>
     {/if}
-    <div class="track text" style:height="{TEXT_H}px" role="presentation" onpointerdown={onTrackDown}>
+    <div class="track text" style:height="{textLaneH}px" role="presentation" onpointerdown={onTrackDown}>
       {#each text as it (it.id)}
         {@const g = textGhost && textGhost.id === it.id ? textGhost : null}
         <div
           class="titem"
           class:sel={selectedText === it.id}
+          style:top="{(textStack.row.get(it.id) ?? 0) * TEXT_H + 2}px"
+          style:height="{TEXT_H - 4}px"
           style:left="{x(g ? g.start : it.start_tl_ns)}px"
           style:width="{Math.max(6, x(g ? g.end : it.end_tl_ns) - x(g ? g.start : it.start_tl_ns))}px"
           role="button"
@@ -558,12 +576,14 @@
       {/each}
     </div>
     {#if blurItems.length}
-      <div class="track text blurs" style:height="{BLUR_H}px" role="presentation" onpointerdown={onTrackDown}>
+      <div class="track text blurs" style:height="{blurLaneH}px" role="presentation" onpointerdown={onTrackDown}>
         {#each blurItems as it (it.id)}
           {@const g = textGhost && textGhost.id === it.id ? textGhost : null}
           <div
             class="titem blur"
             class:sel={selectedBlur === it.blur}
+            style:top="{(blurStack.row.get(it.id) ?? 0) * BLUR_H + 2}px"
+            style:height="{BLUR_H - 4}px"
             style:left="{x(g ? g.start : it.start_tl_ns)}px"
             style:width="{Math.max(6, x(g ? g.end : it.end_tl_ns) - x(g ? g.start : it.start_tl_ns))}px"
             role="button"
@@ -592,7 +612,7 @@
 <style>
   .tl {
     display: flex;
-    height: 100%;
+    min-height: 100%;
     min-width: 0;
   }
   .heads {
@@ -766,8 +786,6 @@
   }
   .titem {
     position: absolute;
-    top: 2px;
-    bottom: 2px;
     display: flex;
     align-items: center;
     padding: 0 8px;

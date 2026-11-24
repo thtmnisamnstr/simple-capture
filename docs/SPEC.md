@@ -168,7 +168,7 @@ Opens automatically after recording. It must stay light and fast.
   - WebM. Video: VP9 (default), AV1, VP8. Audio: Opus (default), Vorbis.
   - GIF: gifski (default) or Fast palette mode; no audio.
   - MOV (ProRes 422 + PCM) for editing.
-  - Animated WebP (libwebp, Small/Balanced/High) and APNG (lossless); no audio, GIF frame rates and sizes, a loop setting.
+  - Animated WebP (libwebp, Small/Balanced/High); no audio, GIF frame rates and sizes, a loop setting. The sheet offers MP4, MOV, WebM, GIF, WebP in that order.
 - Encoder: "Best quality" (x264/x265/SVT-AV1/libvpx/gifski) or "Fast" (hardware/palette), with estimated time and file size.
 - FPS per format. Each format has its own fps picker and remembers its own last value, capped at the recording's fps (adapt Kap's fpsHistory):
   - Video formats: 15/24/25/30/50/60.
