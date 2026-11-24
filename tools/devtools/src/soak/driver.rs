@@ -430,6 +430,7 @@ fn kind_text(k: TrackKind) -> &'static str {
         TrackKind::Camera => "camera",
         TrackKind::Mic => "mic",
         TrackKind::SystemAudio => "system_audio",
+        TrackKind::DeviceAudio => "device_audio",
     }
 }
 

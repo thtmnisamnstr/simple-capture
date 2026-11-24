@@ -24,6 +24,7 @@ pub(crate) struct Firsts {
     pub camera: Option<SizePx>,
     pub mic: Option<(u32, u16)>,
     pub sys: Option<(u32, u16)>,
+    pub dev: Option<(u32, u16)>,
 }
 
 pub(crate) struct Feed {
@@ -38,7 +39,8 @@ pub(crate) struct SessionSink {
     pub camera: OnceLock<Feed>,
     pub mic: OnceLock<Feed>,
     pub sys: OnceLock<Feed>,
-    seen: [AtomicBool; 4],
+    pub dev: OnceLock<Feed>,
+    seen: [AtomicBool; 5],
     firsts: Mutex<Firsts>,
     cv: Condvar,
     levels: Mutex<[(std::time::Instant, f32); 2]>,
@@ -51,7 +53,7 @@ impl SessionSink {
             return;
         };
         let peak = samples.iter().fold(0f32, |m, v| m.max(v.abs()));
-        let i = usize::from(track == AudioTrackKind::SystemAudio);
+        let i = usize::from(track != AudioTrackKind::Mic);
         let report = {
             let mut l = lock(&self.levels);
             l[i].1 = l[i].1.max(peak);
@@ -88,6 +90,7 @@ impl SessionSink {
             camera: OnceLock::new(),
             mic: OnceLock::new(),
             sys: OnceLock::new(),
+            dev: OnceLock::new(),
             seen: Default::default(),
             firsts: Mutex::new(Firsts::default()),
             cv: Condvar::new(),
@@ -177,6 +180,10 @@ impl FrameSink for SessionSink {
             AudioTrackKind::SystemAudio => {
                 self.first(3, |x| x.sys = Some(fmt));
                 forward(&self.sys, TrackIn::Audio(a), true);
+            }
+            AudioTrackKind::DeviceAudio => {
+                self.first(4, |x| x.dev = Some(fmt));
+                forward(&self.dev, TrackIn::Audio(a), true);
             }
         }
     }

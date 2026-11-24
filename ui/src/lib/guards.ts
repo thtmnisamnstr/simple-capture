@@ -87,7 +87,7 @@ export function isNotice(v: unknown): v is NoticeDto {
     case 'source_lost': return isStr(v.segment);
     case 'device_lost': return (v.device === 'camera' || v.device === 'mic') && isStr(v.name);
     case 'disk_low': return isNum(v.bytes_left);
-    case 'audio_gap': return (v.track === 'mic' || v.track === 'system_audio') && isNum(v.dur_ns);
+    case 'audio_gap': return (v.track === 'mic' || v.track === 'system_audio' || v.track === 'device_audio') && isNum(v.dur_ns);
     case 'frames_dropping': return isStr(v.track) && isNum(v.pct);
     case 'stopped_for_sleep':
     case 'stopped_for_disk':

@@ -180,6 +180,7 @@ pub struct AudioBuffer {
 pub enum AudioTrackKind {
     Mic,
     SystemAudio,
+    DeviceAudio,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

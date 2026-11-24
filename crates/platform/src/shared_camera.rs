@@ -50,7 +50,12 @@ impl FrameSink for Fanout {
         self.fresh.notify_all();
     }
 
-    fn on_audio(&self, _t: AudioTrackKind, _a: AudioBuffer) {}
+    fn on_audio(&self, t: AudioTrackKind, a: AudioBuffer) {
+        let recorders = lock(&self.recorders).clone();
+        for (_, r) in &recorders {
+            r.on_audio(t, a.clone());
+        }
+    }
 
     fn on_event(&self, e: SourceEvent) {
         let recorders = lock(&self.recorders).clone();

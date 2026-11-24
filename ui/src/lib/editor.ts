@@ -44,7 +44,7 @@ export interface Doc {
   audio_mix: Record<string, AudioMixEntry>;
   output: { canvas: ProjectCanvas; segment_framing?: Record<string, SegmentFraming> | null };
 }
-export interface EditorTrack { id: string; kind: 'screen' | 'camera' | 'mic' | 'system_audio' }
+export interface EditorTrack { id: string; kind: 'screen' | 'camera' | 'mic' | 'system_audio' | 'device_audio' }
 export interface EditorState {
   project_dir: string;
   title: string;
@@ -313,5 +313,5 @@ export function tickStep(pxPerSec: number, minPx = 70): number {
 }
 
 export function trackName(kind: EditorTrack['kind']): string {
-  return { screen: 'Screen', camera: 'Camera', mic: 'Microphone', system_audio: 'System audio' }[kind];
+  return { screen: 'Screen', camera: 'Camera', mic: 'Microphone', system_audio: 'System audio', device_audio: 'Device sound' }[kind];
 }

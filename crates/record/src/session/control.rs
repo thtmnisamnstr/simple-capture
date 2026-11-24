@@ -661,8 +661,24 @@ impl Control {
             let c = self.spawn_track("system_audio", TrackKind::SystemAudio, writer)?;
             self.cont.push(c);
         }
+        if device {
+            let file = format!("tracks/device_audio.{}", self.ext);
+            let (rate, ch) = firsts.dev.unwrap_or((48_000, 2));
+            let writer =
+                writers.audio(&self.sh.dir.join(&file), &audio_spec(rate, ch, &self.req))?;
+            let t = self.track(
+                "device_audio",
+                TrackKind::DeviceAudio,
+                &file,
+                None,
+                Some((rate, ch)),
+            );
+            self.project.recording.tracks.push(t);
+            let c = self.spawn_track("device_audio", TrackKind::DeviceAudio, writer)?;
+            self.cont.push(c);
+        }
         for t in &self.project.recording.tracks {
-            if matches!(t.kind, TrackKind::Mic | TrackKind::SystemAudio) {
+            if t.kind.is_audio() {
                 self.project.audio_mix.insert(
                     t.id.clone(),
                     AudioMixEntry {
@@ -756,6 +772,7 @@ impl Control {
         let feed = match kind {
             TrackKind::Camera => &self.sink.camera,
             TrackKind::Mic => &self.sink.mic,
+            TrackKind::DeviceAudio => &self.sink.dev,
             _ => &self.sink.sys,
         };
         let video = kind == TrackKind::Camera;
@@ -1735,6 +1752,30 @@ impl Control {
             t.health.dropped = snap.dropped;
             t.health.writer_not_ready = snap.writer_not_ready;
             t.health.gaps = r.gaps.clone();
+        }
+        let silent: Vec<String> = self
+            .project
+            .recording
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::DeviceAudio)
+            .filter(|t| {
+                self.results
+                    .iter()
+                    .any(|r| r.track_id == t.id && r.first_host.is_none())
+            })
+            .map(|t| t.id.clone())
+            .collect();
+        for id in silent {
+            self.log(
+                Level::Info,
+                "the device sent no sound; its audio track is left out",
+            );
+            if let Some(t) = self.project.recording.tracks.iter().find(|t| t.id == id) {
+                let _ = std::fs::remove_file(self.sh.dir.join(&t.file));
+            }
+            self.project.recording.tracks.retain(|t| t.id != id);
+            self.project.audio_mix.remove(&id);
         }
     }
 }

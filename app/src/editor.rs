@@ -112,6 +112,7 @@ fn track_json(p: &ProjectV1) -> Value {
         TrackKind::Camera => "camera",
         TrackKind::Mic => "mic",
         TrackKind::SystemAudio => "system_audio",
+        TrackKind::DeviceAudio => "device_audio",
     };
     Value::Array(
         p.recording

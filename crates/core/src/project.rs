@@ -316,6 +316,17 @@ pub enum TrackKind {
     Camera,
     Mic,
     SystemAudio,
+    /// The sound of a plugged-in device whose screen is recorded (an iPhone over USB).
+    DeviceAudio,
+}
+
+impl TrackKind {
+    pub fn is_audio(self) -> bool {
+        matches!(
+            self,
+            TrackKind::Mic | TrackKind::SystemAudio | TrackKind::DeviceAudio
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

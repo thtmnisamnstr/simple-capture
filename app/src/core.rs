@@ -1252,6 +1252,7 @@ impl Core {
                 sc_core::project::TrackKind::Camera => "camera",
                 sc_core::project::TrackKind::Mic => "mic",
                 sc_core::project::TrackKind::SystemAudio => "system_audio",
+                sc_core::project::TrackKind::DeviceAudio => "device_audio",
             };
             if !kinds.contains(&k) {
                 kinds.push(k);

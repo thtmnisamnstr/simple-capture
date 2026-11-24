@@ -1854,3 +1854,59 @@ fn a_resized_source_gets_a_new_section_once_it_settles() {
     );
     check_segments(&proj, &pdir, &*p.decoder());
 }
+
+fn device_session(name: &str, sound: bool) -> ProjectV1 {
+    let dir = tmp(name);
+    let scenario = Scenario::new()
+        .camera(Some(VideoScript {
+            size: size(180, 320),
+            fps: 30,
+        }))
+        .device_audio(sound.then(|| AudioScript {
+            channels: 2,
+            ..mic()
+        }));
+    let p = platform(scenario);
+    let req = request(
+        &dir,
+        SourceSpec::Device {
+            device: sc_platform::synthetic::CAMERA_DEVICE_ID.into(),
+        },
+    );
+    let s = Session::start(as_dyn(&p), req, Arc::new(Obs::default())).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 800 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let proj = ProjectV1::load(&pdir).expect("load");
+    for t in &proj.recording.tracks {
+        assert!(pdir.join(&t.file).exists(), "{} is on disk", t.file);
+    }
+    proj
+}
+
+#[test]
+fn a_device_screen_records_the_device_sound_as_its_own_track() {
+    let proj = device_session("device_sound", true);
+    let t = proj
+        .recording
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::DeviceAudio)
+        .expect("a device audio track");
+    assert_eq!(t.id, "device_audio");
+    assert_eq!(t.audio.as_ref().map(|a| a.channels), Some(2));
+    assert!(t.duration_ns.is_some_and(|d| d >= 600 * MS), "{t:?}");
+    assert!(proj.audio_mix.contains_key("device_audio"));
+}
+
+#[test]
+fn a_device_that_sends_no_sound_leaves_no_audio_track() {
+    let proj = device_session("device_quiet", false);
+    assert!(
+        proj.recording
+            .tracks
+            .iter()
+            .all(|t| t.kind != TrackKind::DeviceAudio)
+    );
+    assert!(!proj.audio_mix.contains_key("device_audio"));
+}

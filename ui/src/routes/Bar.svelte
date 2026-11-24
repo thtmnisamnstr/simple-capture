@@ -108,7 +108,7 @@
       case 'switch_failed': return n.restored ? `Switch failed, still recording the previous source (${n.error})` : `Switch failed: ${n.error}`;
       case 'device_lost': return `${n.device === 'camera' ? 'Camera' : 'Microphone'} “${n.name}” disconnected`;
       case 'disk_low': return `Disk almost full: ${formatBytes(n.bytes_left)} left`;
-      case 'audio_gap': return `${n.track === 'mic' ? 'Microphone' : 'System audio'} dropped out for ${(n.dur_ns / 1e9).toFixed(1)} s`;
+      case 'audio_gap': return `${n.track === 'mic' ? 'Microphone' : n.track === 'device_audio' ? 'Device sound' : 'System audio'} dropped out for ${(n.dur_ns / 1e9).toFixed(1)} s`;
       case 'hotkey_unavailable': return `Some shortcuts are unavailable: ${n.error}`;
       case 'paused': return n.paused ? 'Paused' : 'Recording';
       case 'export_failed': return `Export failed: ${n.error}`;

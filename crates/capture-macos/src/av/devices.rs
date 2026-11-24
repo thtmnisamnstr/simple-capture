@@ -350,6 +350,7 @@ unsafe impl Send for SendClock {}
 
 pub(crate) struct DelegateState {
     kind: DeviceKind,
+    audio: AudioTrackKind,
     tag: StreamTag,
     sink: Arc<dyn FrameSink>,
     accepting: AtomicBool,
@@ -403,7 +404,7 @@ impl DelegateState {
                     return;
                 };
                 a.pts = HostTime(pts);
-                self.sink.on_audio(AudioTrackKind::Mic, a);
+                self.sink.on_audio(self.audio, a);
             }
         }
         self.delivered.fetch_add(1, Ordering::Relaxed);
@@ -446,9 +447,18 @@ enum Output {
     Audio(Retained<AVCaptureAudioDataOutput>),
 }
 
+/// The sound output a plugged-in device's screen session also carries.
+struct Sound {
+    output: Retained<AVCaptureAudioDataOutput>,
+    state: Arc<DelegateState>,
+    _delegate: Retained<CaptureDelegate>,
+    _queue: DispatchRetained<DispatchQueue>,
+}
+
 pub(crate) struct AvDeviceStream {
     session: Retained<AVCaptureSession>,
     output: Output,
+    sound: Option<Sound>,
     state: Arc<DelegateState>,
     _delegate: Retained<CaptureDelegate>,
     _queue: DispatchRetained<DispatchQueue>,
@@ -474,12 +484,18 @@ impl DeviceStream for AvDeviceStream {
 
     fn stop(self: Box<Self>) -> Result<()> {
         self.state.accepting.store(false, Ordering::Release);
-        // SAFETY: stopping a configured session; detaching the delegate afterwards.
+        if let Some(s) = &self.sound {
+            s.state.accepting.store(false, Ordering::Release);
+        }
+        // SAFETY: stopping a configured session; detaching the delegates afterwards.
         unsafe {
             self.session.stopRunning();
             match &self.output {
                 Output::Video(o) => o.setSampleBufferDelegate_queue(None, None),
                 Output::Audio(o) => o.setSampleBufferDelegate_queue(None, None),
+            }
+            if let Some(s) = &self.sound {
+                s.output.setSampleBufferDelegate_queue(None, None);
             }
         }
         let kind = self.state.kind;
@@ -562,8 +578,22 @@ pub(crate) fn start(
         DeviceKind::Camera => StreamTag(NEXT_CAMERA_TAG.fetch_add(1, Ordering::Relaxed)),
         DeviceKind::Mic => StreamTag(0),
     };
+    let screen_device = kind == DeviceKind::Camera && is_screen_device(&dev);
+    let sound_state = screen_device.then(|| {
+        Arc::new(DelegateState {
+            kind: DeviceKind::Mic,
+            audio: AudioTrackKind::DeviceAudio,
+            tag: StreamTag(0),
+            sink: sink.clone(),
+            accepting: AtomicBool::new(true),
+            clock: Mutex::new(None),
+            delivered: AtomicU64::new(0),
+            dropped: AtomicU64::new(0),
+        })
+    });
     let state = Arc::new(DelegateState {
         kind,
+        audio: AudioTrackKind::Mic,
         tag,
         sink,
         accepting: AtomicBool::new(true),
@@ -670,15 +700,42 @@ pub(crate) fn start(
                     (Output::Audio(out), format)
                 }
             };
+            let sound = sound_state.clone().and_then(|st| {
+                let delegate = CaptureDelegate::new(st.clone());
+                let queue = DispatchQueue::new(
+                    "com.simplecapture.av.device-sound",
+                    DispatchQueueAttr::SERIAL,
+                );
+                let out = AVCaptureAudioDataOutput::new();
+                out.setAudioSettings(Some(&stereo_f32_settings(48_000.0)));
+                out.setSampleBufferDelegate_queue(
+                    Some(ProtocolObject::from_ref(&*delegate)),
+                    Some(&queue),
+                );
+                if !session.canAddOutput(&out) {
+                    tracing::info!("{device_id}: the device offers no sound output");
+                    return None;
+                }
+                session.addOutput(&out);
+                Some(Sound {
+                    output: out,
+                    state: st,
+                    _delegate: delegate,
+                    _queue: queue,
+                })
+            });
             session.commitConfiguration();
-            (session, output, format)
+            (session, output, sound, format)
         };
         Ok(configured)
     };
-    let (session, output, format) =
+    let (session, output, sound, format) =
         objc_try(&format!("configuring {kind:?} {device_id}"), configure)??;
     // SAFETY: plain getter.
     if let Some(c) = unsafe { session.synchronizationClock() } {
+        if let Some(s) = &sound {
+            *s.state.clock.lock().unwrap_or_else(|p| p.into_inner()) = Some(SendClock(c.clone()));
+        }
         *state.clock.lock().unwrap_or_else(|p| p.into_inner()) = Some(SendClock(c));
     }
     // SAFETY: blocks until running; called off the main thread per the threading contract.
@@ -689,6 +746,9 @@ pub(crate) fn start(
     .unwrap_or(false);
     if !ok {
         state.accepting.store(false, Ordering::Release);
+        if let Some(s) = &sound {
+            s.state.accepting.store(false, Ordering::Release);
+        }
         return Err(Error::Other(format!(
             "{kind:?} {device_id}: the capture session did not start"
         )));
@@ -697,6 +757,7 @@ pub(crate) fn start(
     Ok(Box::new(AvDeviceStream {
         session,
         output,
+        sound,
         state,
         _delegate: delegate,
         _queue: queue,

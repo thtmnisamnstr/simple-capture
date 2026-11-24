@@ -661,6 +661,7 @@ if log is not None and basic("28-iphone", log):
               bool(size) and abs(size.get("w", 16) / max(1, size.get("h", 9)) - 16 / 9) > 0.05, size)
         tracks = [t.get("kind") for t in pr["project"]["recording"].get("tracks", [])]
         check("28-iphone", "the Mac's camera recorded in the corner too", "camera" in tracks, tracks)
+        check("28-iphone", "the phone's sound recorded as its own track", "device_audio" in tracks, tracks)
         ex = [x for x in events(log, "export-state") if x.get("state") == "done"]
         check("28-iphone", "export done", bool(ex), [x.get("state") for x in events(log, "export-state")])
 

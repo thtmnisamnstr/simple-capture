@@ -69,7 +69,7 @@
   const overlay = $derived(doc.camera_layout.overlays[0] ?? null);
   const key = $derived(overlay ? keyAt(overlay.keyframes, recNs) : null);
   const keyHere = $derived(!!overlay && overlay.keyframes.some((k) => Math.abs(k.t_rec_ns - recNs) < 1_000_000));
-  const audio = $derived(tracks.filter((t) => t.kind === 'mic' || t.kind === 'system_audio'));
+  const audio = $derived(tracks.filter((t) => t.kind === 'mic' || t.kind === 'system_audio' || t.kind === 'device_audio'));
   const canvas = $derived(doc.output.canvas);
 
   function setKey(patch: Partial<CameraKey>, coalesce?: string) {

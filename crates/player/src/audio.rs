@@ -19,7 +19,7 @@ pub fn audio_track_ids(project: &ProjectV1) -> Vec<String> {
         .recording
         .tracks
         .iter()
-        .filter(|t| matches!(t.kind, TrackKind::Mic | TrackKind::SystemAudio))
+        .filter(|t| t.kind.is_audio())
         .map(|t| t.id.clone())
         .collect()
 }
@@ -43,7 +43,7 @@ struct Stretched {
 }
 
 /// Which audio a lane plays and through which clips: everything through the screen's clips
-/// while the camera is linked; otherwise system audio with the screen and the microphone with the
+/// while the camera is linked; otherwise system and device audio with the screen and the microphone with the
 /// camera.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LaneKind {
@@ -55,8 +55,8 @@ enum LaneKind {
 impl LaneKind {
     fn plays(self, kind: &TrackKind) -> bool {
         match self {
-            LaneKind::All => matches!(kind, TrackKind::Mic | TrackKind::SystemAudio),
-            LaneKind::Screen => matches!(kind, TrackKind::SystemAudio),
+            LaneKind::All => kind.is_audio(),
+            LaneKind::Screen => matches!(kind, TrackKind::SystemAudio | TrackKind::DeviceAudio),
             LaneKind::Camera => matches!(kind, TrackKind::Mic),
         }
     }

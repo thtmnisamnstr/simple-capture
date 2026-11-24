@@ -198,10 +198,10 @@ impl Worker {
             .is_some_and(|t| t.elapsed() < Duration::from_secs(5));
         if !quiet {
             self.last_gap_notice = Some(Instant::now());
-            let track = if self.c.kind == TrackKind::Mic {
-                AudioTrackKind::Mic
-            } else {
-                AudioTrackKind::SystemAudio
+            let track = match self.c.kind {
+                TrackKind::Mic => AudioTrackKind::Mic,
+                TrackKind::DeviceAudio => AudioTrackKind::DeviceAudio,
+                _ => AudioTrackKind::SystemAudio,
             };
             self.c.sh.notice(Notice::AudioGap {
                 track,

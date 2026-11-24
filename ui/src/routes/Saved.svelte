@@ -13,7 +13,7 @@
   let projectDir = $state<string | null>(null);
   let duration = $state(0);
   let tracks = $state<string[]>([]);
-  const TRACK_NAMES: Record<string, string> = { screen: 'screen', camera: 'camera', mic: 'microphone', system_audio: 'system audio' };
+  const TRACK_NAMES: Record<string, string> = { screen: 'screen', camera: 'camera', mic: 'microphone', system_audio: 'system audio', device_audio: 'device sound' };
   const contents = $derived(tracks.map((t) => TRACK_NAMES[t] ?? t).join(', '));
   let size = $state<Size | null>(null);
   let stoppedFor = $state<'sleep' | 'disk' | null>(null);

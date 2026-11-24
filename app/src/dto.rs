@@ -219,6 +219,7 @@ fn track_kind(k: AudioTrackKind) -> &'static str {
     match k {
         AudioTrackKind::Mic => "mic",
         AudioTrackKind::SystemAudio => "system_audio",
+        AudioTrackKind::DeviceAudio => "device_audio",
     }
 }
 

@@ -412,7 +412,7 @@ Movies/Simple Capture/<YYYY-MM-DD HH.MM.SS> <title>.sc/
   journal.jsonl         append-only recording events (fsync'd), folded into project.json on stop
   cursor.jsonl          cursor positions + clicks, per segment (for the optional click highlight)
   tracks/screen-000.mov  tracks/screen-001.mov  …   one file per screen segment (ADR-034)
-  tracks/camera.mov  tracks/mic.mov  tracks/system_audio.mov
+  tracks/camera.mov  tracks/mic.mov  tracks/system_audio.mov  tracks/device_audio.mov (iPhone over USB)
   assets/background-<sha256[0..12]>.<ext>             copied background images (ADR-033)
   thumbs/project.jpg    thumbs/strip/…  waveforms/…  (caches; safe to delete)
   session.log
@@ -536,7 +536,7 @@ type Background =
 type GradientStop = { at: number; color: Rgba };           // 2–4 stops
 
 type Track = {
-  id: string; kind: "screen" | "camera" | "mic" | "system_audio";
+  id: string; kind: "screen" | "camera" | "mic" | "system_audio" | "device_audio";
   segment_id?: string;              // screen tracks only
   file: string;                     // relative, e.g. "tracks/screen-000.mov"
   container: "mov_fragmented"; codec: "hevc" | "h264" | "aac";

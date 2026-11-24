@@ -93,7 +93,11 @@ impl FrameSink for CameraAsScreen {
         });
     }
 
-    fn on_audio(&self, _: AudioTrackKind, _: AudioBuffer) {}
+    fn on_audio(&self, t: AudioTrackKind, a: AudioBuffer) {
+        if t == AudioTrackKind::DeviceAudio {
+            self.inner.on_audio(t, a);
+        }
+    }
 
     fn on_event(&self, e: SourceEvent) {
         match e {

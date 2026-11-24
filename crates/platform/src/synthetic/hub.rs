@@ -761,6 +761,7 @@ impl Hub {
         });
         Ok(Box::new(SynthDeviceStream {
             handle: self.add_emitter(sink, source)?,
+            sound: None,
             format: "synthetic system events".into(),
         }))
     }
@@ -850,6 +851,7 @@ impl ScreenStream for SynthScreenStream {
 
 struct SynthDeviceStream {
     handle: Handle,
+    sound: Option<Handle>,
     format: String,
 }
 
@@ -860,6 +862,9 @@ impl DeviceStream for SynthDeviceStream {
 
     fn stop(self: Box<Self>) -> Result<()> {
         self.handle.stop();
+        if let Some(s) = self.sound {
+            s.stop();
+        }
         Ok(())
     }
 }
@@ -1114,6 +1119,7 @@ impl AudioSource for HubRef {
                 .start_audio(AudioTrackKind::Mic, Some(DeviceKind::Mic), script, sink)?;
         Ok(Box::new(SynthDeviceStream {
             handle,
+            sound: None,
             format: format!(
                 "synthetic f32 {} Hz {} ch, {} frames/buffer",
                 script.rate, script.channels, script.buffer_frames
@@ -1196,9 +1202,19 @@ impl CameraSource for HubRef {
             template: background(size, hash, false),
             k: 0,
         }));
+        let sound = match &self.0.scenario.device_audio {
+            Some(a) => {
+                Some(
+                    self.0
+                        .start_audio(AudioTrackKind::DeviceAudio, None, a, sink.clone())?,
+                )
+            }
+            None => None,
+        };
         let handle = self.0.add_emitter(sink, source)?;
         Ok(Box::new(SynthDeviceStream {
             handle,
+            sound,
             format: format!("synthetic nv12 {}x{} @ {fps} fps", size.w, size.h),
         }))
     }

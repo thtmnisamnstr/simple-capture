@@ -28,7 +28,7 @@
   let anchor: string | null = null;
   let confirming = $state<LibraryItem[] | null>(null);
   let recoveryOf = $state<LibraryItem | null>(null);
-  const TRACK_NAMES: Record<string, string> = { mic: 'Microphone', camera: 'Camera', system_audio: 'System audio' };
+  const TRACK_NAMES: Record<string, string> = { mic: 'Microphone', camera: 'Camera', system_audio: 'System audio', device_audio: 'Device sound' };
   const trackName = (id = '') => TRACK_NAMES[id] ?? (id.startsWith('screen') ? 'Screen' : id || 'A track');
   let busy = $state(false);
   let sort = $state<LibrarySort>(loadSort());

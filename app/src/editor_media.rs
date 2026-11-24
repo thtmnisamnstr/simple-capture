@@ -114,19 +114,22 @@ fn peaks(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
 }
 
 /// One byte per 10 ms of recording time: the loudest sample over the tracks, on a square-root
-/// scale so quiet speech still shows. Written for the microphone, system audio and both.
+/// scale so quiet speech still shows. Written for the microphone, the screen's sound (system and device audio) and both.
 fn write_peaks(core: &Core, dir: &Path, project: &ProjectV1) -> Result<(), String> {
-    let of = |kind: TrackKind| -> Result<Vec<f32>, String> {
+    let of = |kinds: &[TrackKind]| -> Result<Vec<f32>, String> {
         let ids: Vec<String> = project
             .recording
             .tracks
             .iter()
-            .filter(|t| t.kind == kind)
+            .filter(|t| kinds.contains(&t.kind))
             .map(|t| t.id.clone())
             .collect();
         window_peaks(core, dir, project, &ids)
     };
-    let (mic, system) = (of(TrackKind::Mic)?, of(TrackKind::SystemAudio)?);
+    let (mic, system) = (
+        of(&[TrackKind::Mic])?,
+        of(&[TrackKind::SystemAudio, TrackKind::DeviceAudio])?,
+    );
     let all: Vec<f32> = mic.iter().zip(&system).map(|(a, b)| a.max(*b)).collect();
     let bytes = |v: &[f32]| -> Vec<u8> {
         v.iter()

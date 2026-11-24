@@ -1718,6 +1718,14 @@ they are not a substitute for an M1 run.
   CoreMediaIO also offers wireless screen devices (`kCMIOHardwarePropertyAllowWirelessScreenCaptureDevices`);
   the owner's phone was not offered that way (only an Apple TV), so wireless stays with iPhone
   Mirroring.
+- **Update 2026-11-24 (the phone's sound):** the device screen's capture session also gets an
+  audio output (48 kHz stereo float) when the device offers one, and its sound reaches the
+  recorder through the shared device feed as a new track kind, `device_audio` (file
+  `tracks/device_audio.mov`), opened when the recording starts on a device screen. It mixes,
+  mutes and plays like system audio: on the screen's lane when the camera is unlinked, in the
+  "system" waveform, in silence removal and in exports. A device that sends no sound leaves no
+  track. A recording that switches to the phone later in the take has no phone sound (the track
+  exists only when the take starts on the phone).
 
 ## ADR-053: Simple Balance branding (logo, menu bar icon, green accent)
 

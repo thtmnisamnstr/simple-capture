@@ -153,7 +153,7 @@ export type NoticeDto =
   | { kind: 'source_lost'; segment: string }
   | { kind: 'device_lost'; device: 'camera' | 'mic'; name: string }
   | { kind: 'disk_low'; bytes_left: number }
-  | { kind: 'audio_gap'; track: 'mic' | 'system_audio'; dur_ns: number }
+  | { kind: 'audio_gap'; track: 'mic' | 'system_audio' | 'device_audio'; dur_ns: number }
   | { kind: 'frames_dropping'; track: string; pct: number }
   | { kind: 'stopped_for_sleep' }
   | { kind: 'stopped_for_disk' }
