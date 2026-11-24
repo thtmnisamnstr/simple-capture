@@ -478,7 +478,7 @@ type ProjectV1 = {
 
   output: {
     canvas: Canvas;                 // replaces the earlier output.aspect / screen_crop_norm
-    segment_framing?: {             // reserved for cover + pan (M3+), keyed by segment id
+    segment_framing?: {             // a section's own Fit/Fill and crop focus, keyed by segment id
       [segment_id: string]: { fit: "contain" | "cover"; focus_norm: Point };
     };
   };

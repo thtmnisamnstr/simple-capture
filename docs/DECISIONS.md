@@ -1735,3 +1735,14 @@ they are not a substitute for an M1 run.
   in dark, `--accent-ink`), no longer the system accent; status green follows it. Red stays for
   recording, stopping and destructive actions. Neutral surfaces stay macOS greys (ADR-044).
 
+## ADR-054: Fit or Fill per recorded section
+
+- **Context:** a recording that switches sources mixes shapes; one Fit/Fill choice for the whole
+  video crops one source's sides or leaves bands around another.
+- **Decision:** each screen segment (a section between source switches) can override the canvas
+  fit in `output.segment_framing` (reserved for this since M1): Fit, or Fill with a crop focus
+  (fractions of that picture, 0.5/0.5 is centred). The editor's Frame tab offers Default / Fit /
+  Fill and Keep sliders for the section under the playhead (`set_segment_framing`, undoable).
+  The player, editor preview, blur boxes, posters and every export use it; the recorder's live
+  Preview keeps the canvas default.
+

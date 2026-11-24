@@ -496,7 +496,8 @@ pub struct Output {
     pub extra: Extra,
 }
 
-/// Reserved for cover + pan (M3+).
+/// How one recorded section's picture sits in the frame, instead of the canvas default: fitted
+/// inside, or filling it with the crop centred on `focus_norm` (fractions of the picture).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SegmentFraming {
     pub fit: Fit,

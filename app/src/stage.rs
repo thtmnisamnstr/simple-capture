@@ -203,6 +203,7 @@ pub fn render_loop(core: Weak<Core>) {
                 let size = f.0.size();
                 let (src, dst) = sc_player::video::place(
                     inputs.fit,
+                    sc_geometry::PointF { x: 0.5, y: 0.5 },
                     canvas,
                     RectPx {
                         x: 0,

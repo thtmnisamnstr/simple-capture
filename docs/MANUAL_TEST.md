@@ -807,6 +807,7 @@ In the editor with any recording, press ⌘E:
 | R26 | Region… and Click a Window | The screen stays visible (lightly dimmed) while choosing |
 | R27 | Screen only (no camera); open the Preview | No camera box or handles in it |
 | R28 | Grant Screen Recording in System Settings, return to Permissions | It reads Granted |
+| E36 | Record a 16:9 frame from one window, switch to a much wider window; in the editor put the playhead in the second part → Frame → This section → Fill, drag Keep to Left | Only that part changes: it fills the frame and keeps its left side; the first part is unchanged; the export matches |
 
 ## 10g. Library, About and Diagnostics (M6, M7)
 

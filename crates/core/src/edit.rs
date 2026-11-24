@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::project::{
     AudioMixEntry, CameraKey, CameraLayout, Canvas, Clip, Edl, Extra, Output, ProjectV1, Redaction,
-    Speed, TextItem,
+    SegmentFraming, Speed, TextItem,
 };
 use crate::{Error, Result};
 
@@ -321,6 +321,11 @@ pub enum EditOp {
         id: String,
         by_tl_ns: i64,
     },
+    /// One recorded section's own framing; `None` goes back to the canvas default.
+    SetSegmentFraming {
+        segment_id: String,
+        framing: Option<SegmentFraming>,
+    },
 }
 
 /// Fixed facts the edits are checked against.
@@ -450,6 +455,33 @@ pub fn apply(doc: &Doc, op: &EditOp, lim: Limits) -> Result<Doc> {
         EditOp::DeleteRedactions { ids } => d.redactions.retain(|t| !ids.contains(&t.id)),
         EditOp::SetLinked { linked } => tracks::set_linked(&mut d, *linked)?,
         EditOp::SlideClip { id, by_tl_ns } => tracks::slide(&mut d, id, *by_tl_ns)?,
+        EditOp::SetSegmentFraming {
+            segment_id,
+            framing,
+        } => {
+            let map = d.output.segment_framing.get_or_insert_with(BTreeMap::new);
+            match framing {
+                Some(f) => {
+                    let mut f = f.clone();
+                    let clamp = |v: f64| {
+                        if v.is_finite() {
+                            v.clamp(0.0, 1.0)
+                        } else {
+                            0.5
+                        }
+                    };
+                    f.focus_norm.x = clamp(f.focus_norm.x);
+                    f.focus_norm.y = clamp(f.focus_norm.y);
+                    map.insert(segment_id.clone(), f);
+                }
+                None => {
+                    map.remove(segment_id);
+                }
+            }
+            if map.is_empty() {
+                d.output.segment_framing = None;
+            }
+        }
     }
     if d.edl.clips.is_empty() && !doc.edl.clips.is_empty() {
         return Err(Error::Invalid(

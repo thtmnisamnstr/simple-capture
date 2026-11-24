@@ -16,6 +16,8 @@
     selected,
     recNs,
     canvasPx,
+    segmentId = null,
+    segmentCount = 1,
     tab = $bindable('clip'),
     onedit,
     onsplit,
@@ -37,6 +39,8 @@
     selected: string[];
     recNs: number;
     canvasPx: { w: number; h: number };
+    segmentId?: string | null;
+    segmentCount?: number;
     tab?: 'clip' | 'text' | 'camera' | 'audio' | 'frame';
     onedit: (op: EditOp, coalesce?: string) => void;
     onsplit: () => void;
@@ -79,6 +83,16 @@
   function corner(c: Corner) {
     if (!key) return;
     setKey({ center_norm: cornerCenter(canvasPx, shapeAspect(key.shape), key.size_norm, c) });
+  }
+
+  const ownFraming = $derived(segmentId ? (doc.output.segment_framing?.[segmentId] ?? null) : null);
+
+  function setFraming(fit: 'default' | 'contain' | 'cover', focus = ownFraming?.focus_norm ?? { x: 0.5, y: 0.5 }, coalesce?: string) {
+    if (!segmentId) return;
+    onedit(
+      { op: 'set_segment_framing', segment_id: segmentId, framing: fit === 'default' ? null : { fit, focus_norm: focus } },
+      coalesce,
+    );
   }
 
   function setCanvas(patch: Partial<ProjectCanvas>) {
@@ -335,6 +349,42 @@
           </span>
         </div>
       </div>
+      {#if segmentId}
+        <h2>{segmentCount > 1 ? 'This section' : 'Picture'}</h2>
+        <div class="group">
+          <div class="grow stack">
+            <div class="segmented" role="radiogroup" aria-label="How this section fits the frame">
+              <button role="radio" aria-checked={!ownFraming} onclick={() => setFraming('default')}>Default</button>
+              <button role="radio" aria-checked={ownFraming?.fit === 'contain'} onclick={() => setFraming('contain')}>Fit</button>
+              <button role="radio" aria-checked={ownFraming?.fit === 'cover'} onclick={() => setFraming('cover')}>Fill</button>
+            </div>
+            <span class="caption">
+              {segmentCount > 1
+                ? 'The part of the recording under the playhead, from one source to the next switch. Default follows the frame setting above.'
+                : 'Default follows the frame setting above.'}
+            </span>
+          </div>
+          {#if ownFraming?.fit === 'cover'}
+            {@const f = ownFraming.focus_norm}
+            <div class="grow">
+              <span class="glabel">Keep</span>
+              <span class="gcontrol">
+                <span class="caption">Left</span>
+                <input type="range" min="0" max="1" step="0.01" value={f.x} aria-label="Horizontal crop position" oninput={(e) => setFraming('cover', { x: Number(e.currentTarget.value), y: f.y }, 'focus-x')} />
+                <span class="caption">Right</span>
+              </span>
+            </div>
+            <div class="grow">
+              <span class="glabel"></span>
+              <span class="gcontrol">
+                <span class="caption">Top</span>
+                <input type="range" min="0" max="1" step="0.01" value={f.y} aria-label="Vertical crop position" oninput={(e) => setFraming('cover', { x: f.x, y: Number(e.currentTarget.value) }, 'focus-y')} />
+                <span class="caption">Bottom</span>
+              </span>
+            </div>
+          {/if}
+        </div>
+      {/if}
       <h2>Background</h2>
       <div class="group">
         <div class="grow stack">

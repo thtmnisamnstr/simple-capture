@@ -41,6 +41,7 @@ pub struct Composed {
     pub text: Vec<TextFrame>,
     pub redact: Vec<Redact>,
     pub fit: Fit,
+    pub focus: PointF,
 }
 
 impl TimelineVideo {
@@ -138,12 +139,12 @@ impl TimelineVideo {
             }
         }
         let text = self.text_at(tl_ns.clamp(0, end), canvas);
-        let fit = self.doc.output.canvas.fit;
+        let (fit, focus) = framing(&self.doc, screen.as_ref().map(|f| f.segment_id.as_str()));
         let redact = match screen.as_ref() {
             Some(f) if screen_shown && f.content_px.w > 0 && f.content_px.h > 0 => recrop(
                 &redactions_at(&self.doc, rec),
                 f.content_px,
-                place(fit, canvas, f.content_px).0,
+                place(fit, focus, canvas, f.content_px).0,
             ),
             _ => Vec::new(),
         };
@@ -156,6 +157,7 @@ impl TimelineVideo {
             text,
             redact,
             fit,
+            focus,
         })
     }
 
@@ -199,9 +201,17 @@ impl TimelineVideo {
     }
 }
 
-/// Source crop and canvas destination of a main picture: all of it fitted inside, or the
-/// centre cropped to fill the whole canvas.
-pub fn place(fit: Fit, canvas: SizePx, content: RectPx) -> (RectPx, RectPx) {
+/// The framing of the section `segment`: its own, or the canvas default with a centred crop.
+pub fn framing(doc: &Doc, segment: Option<&str>) -> (Fit, PointF) {
+    let centre = PointF { x: 0.5, y: 0.5 };
+    segment
+        .and_then(|id| doc.output.segment_framing.as_ref()?.get(id))
+        .map_or((doc.output.canvas.fit, centre), |f| (f.fit, f.focus_norm))
+}
+
+/// Source crop and canvas destination of a main picture: all of it fitted inside, or cropped
+/// around `focus` (fractions of the picture) to fill the whole canvas.
+pub fn place(fit: Fit, focus: PointF, canvas: SizePx, content: RectPx) -> (RectPx, RectPx) {
     let size = SizePx {
         w: content.w,
         h: content.h,
@@ -209,7 +219,7 @@ pub fn place(fit: Fit, canvas: SizePx, content: RectPx) -> (RectPx, RectPx) {
     match fit {
         Fit::Contain => (content, contain_fit(canvas, size)),
         Fit::Cover => {
-            let c = cover_src_rect(size, canvas, PointF { x: 0.5, y: 0.5 });
+            let c = cover_src_rect(size, canvas, focus);
             let src = RectPx {
                 x: content.x + c.x.round() as i32,
                 y: content.y + c.y.round() as i32,
@@ -306,7 +316,7 @@ impl Composed {
     ) -> FrameJob<'a> {
         let screen = match self.screen.as_ref() {
             Some(f) if f.content_px.w > 0 && f.content_px.h > 0 => {
-                let (src, dst) = place(self.fit, canvas, f.content_px);
+                let (src, dst) = place(self.fit, self.focus, canvas, f.content_px);
                 Some(ScreenLayer {
                     frame: &f.frame,
                     src,
@@ -336,7 +346,7 @@ impl Composed {
             .as_ref()
             .filter(|f| f.content_px.w > 0 && f.content_px.h > 0)
             .map(|f| {
-                let (src, dst) = place(self.fit, canvas, f.content_px);
+                let (src, dst) = place(self.fit, self.focus, canvas, f.content_px);
                 let k = f64::from(dst.w) / f64::from(src.w.max(1));
                 RectPx {
                     x: dst.x - (f64::from(src.x - f.content_px.x) * k).round() as i32,
@@ -365,10 +375,18 @@ mod tests {
     #[test]
     fn fill_crops_the_middle_to_the_frame_shape() {
         let canvas = SizePx { w: 1080, h: 1920 };
-        let (src, dst) = place(Fit::Cover, canvas, rect(0, 0, 1920, 1080));
+        let mid = PointF { x: 0.5, y: 0.5 };
+        let (src, dst) = place(Fit::Cover, mid, canvas, rect(0, 0, 1920, 1080));
         assert_eq!(dst, rect(0, 0, 1080, 1920));
         assert_eq!(src, rect(656, 0, 608, 1080));
-        let (src, dst) = place(Fit::Contain, canvas, rect(0, 0, 1920, 1080));
+        let (left, _) = place(
+            Fit::Cover,
+            PointF { x: 0.0, y: 0.5 },
+            canvas,
+            rect(0, 0, 1920, 1080),
+        );
+        assert_eq!(left.x, 0);
+        let (src, dst) = place(Fit::Contain, mid, canvas, rect(0, 0, 1920, 1080));
         assert_eq!(src, rect(0, 0, 1920, 1080));
         assert_eq!(dst.w, 1080);
     }

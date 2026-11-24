@@ -199,6 +199,9 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
                 };
                 json = json.replace("$PHONE", &phone.id);
             }
+            for (i, id) in core.editor_segment_ids().iter().enumerate().rev() {
+                json = json.replace(&format!("$SEG{i}"), id);
+            }
             for (i, id) in core.editor_clip_ids(true).iter().enumerate().rev() {
                 json = json.replace(&format!("$CAMCLIP{i}"), id);
             }

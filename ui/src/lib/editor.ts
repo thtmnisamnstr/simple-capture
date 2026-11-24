@@ -42,7 +42,7 @@ export interface Doc {
   redactions?: Redaction[];
   camera_layout: { overlays: CameraOverlay[] };
   audio_mix: Record<string, AudioMixEntry>;
-  output: { canvas: ProjectCanvas };
+  output: { canvas: ProjectCanvas; segment_framing?: Record<string, SegmentFraming> | null };
 }
 export interface EditorTrack { id: string; kind: 'screen' | 'camera' | 'mic' | 'system_audio' }
 export interface EditorState {
@@ -77,13 +77,16 @@ export interface EditorFrame {
   screen?: { x: number; y: number; w: number; h: number } | null;
   rec_ns: number;
   camera_rec_ns?: number | null;
+  segment?: string | null;
 }
 
+export interface SegmentFraming { fit: 'contain' | 'cover'; focus_norm: PointF }
 export type Track = 'screen' | 'camera';
 export type EditOp =
   | { op: 'split'; at_tl_ns: number; track?: Track | null }
   | { op: 'set_linked'; linked: boolean }
   | { op: 'slide_clip'; id: string; by_tl_ns: number }
+  | { op: 'set_segment_framing'; segment_id: string; framing: SegmentFraming | null }
   | { op: 'trim'; clip_id: string; edge: 'start' | 'end'; rec_ns: number }
   | { op: 'delete_range'; a_tl_ns: number; b_tl_ns: number }
   | { op: 'delete_clips'; ids: string[] }

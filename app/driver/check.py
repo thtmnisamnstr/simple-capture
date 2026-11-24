@@ -664,6 +664,21 @@ if log is not None and basic("28-iphone", log):
         ex = [x for x in events(log, "export-state") if x.get("state") == "done"]
         check("28-iphone", "export done", bool(ex), [x.get("state") for x in events(log, "export-state")])
 
+log = lines("29-sections")
+if log is not None and basic("29-sections", log):
+    pr = P.get("drv sections")
+    finalized("29-sections", pr, "drv sections", reason="user")
+    if pr:
+        segs = segments(pr)
+        framing = (pr["project"].get("output", {}).get("segment_framing") or {})
+        check("29-sections", "two sections; the second keeps its own Fill, left edge",
+              len(segs) == 2 and framing.get(segs[1]["id"], {}).get("fit") == "cover"
+              and framing.get(segs[1]["id"], {}).get("focus_norm", {}).get("x") == 0.0
+              and segs[0]["id"] not in framing,
+              {"segments": [s["id"] for s in segs], "framing": framing})
+        ex = [x for x in events(log, "export-state") if x.get("state") == "done"]
+        check("29-sections", "export done", bool(ex), [x.get("state") for x in events(log, "export-state")])
+
 log = lines("18-diagnostics")
 if basic("18-diagnostics", log):
     done = events(log, "diagnostics-done")

@@ -1,0 +1,17 @@
+# Per-section framing: a window, then the whole display; the display section set to Fill keeping
+# its left edge, then exported. The first section keeps the default (Fit).
+cmd start_recording {"request":{"source":{"kind":"window","window_id":@RED_WID@},"via":"own_chooser","title":"drv sections","settings":{}}}
+wait 3000
+cmd switch_source {"spec":{"kind":"display","display_id":"@DISPLAY@"}}
+wait 3000
+cmd stop_recording
+wait-phase saved 30000
+wait 2500
+cmd editor {"action":"rect","rect":{"x":0,"y":52,"w":880,"h":520}}
+cmd editor {"action":"edit","op":{"op":"set_segment_framing","segment_id":"$SEG1","framing":{"fit":"cover","focus_norm":{"x":0.0,"y":0.5}}}}
+cmd editor {"action":"state"}
+cmd editor {"action":"export","size":"720"}
+wait-phase saved 120000
+cmd editor {"action":"close"}
+wait 500
+quit

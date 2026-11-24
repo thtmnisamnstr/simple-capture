@@ -959,6 +959,8 @@
           tracks={st.tracks}
           {selected}
           recNs={camRecNs}
+          segmentId={frame?.segment ?? null}
+          segmentCount={st.segments.length}
           canvasPx={frame?.canvas_px ?? { w: 1920, h: 1080 }}
           bind:tab
           text={textSel}

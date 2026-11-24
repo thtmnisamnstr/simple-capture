@@ -964,3 +964,36 @@ fn unlinked_projects_round_trip_and_old_ones_still_read() {
     );
     assert!(old["edl"]["clips"][0].get("hidden").is_none());
 }
+
+#[test]
+fn a_section_gets_its_own_framing_and_can_go_back_to_the_default() {
+    use crate::project::{Fit, SegmentFraming};
+    let d = doc(vec![clip(0, 4 * S)]);
+    let set = |d: &Doc, framing: Option<SegmentFraming>| {
+        apply(
+            d,
+            &EditOp::SetSegmentFraming {
+                segment_id: "s1".into(),
+                framing,
+            },
+            LIM,
+        )
+        .expect("framing")
+    };
+    let fill = SegmentFraming {
+        fit: Fit::Cover,
+        focus_norm: sc_geometry::PointF {
+            x: 7.0,
+            y: f64::NAN,
+        },
+        extra: Extra::new(),
+    };
+    let d1 = set(&d, Some(fill));
+    let f = &d1.output.segment_framing.as_ref().expect("map")["s1"];
+    assert_eq!(
+        (f.fit, f.focus_norm.x, f.focus_norm.y),
+        (Fit::Cover, 1.0, 0.5)
+    );
+    let d2 = set(&d1, None);
+    assert!(d2.output.segment_framing.is_none());
+}

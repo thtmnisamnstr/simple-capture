@@ -629,6 +629,22 @@ impl Core {
     }
 
     #[cfg(debug_assertions)]
+    pub fn editor_segment_ids(&self) -> Vec<String> {
+        lock(&self.editor.session)
+            .as_ref()
+            .map(|s| {
+                s.project
+                    .recording
+                    .screen
+                    .segments
+                    .iter()
+                    .map(|g| g.id.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[cfg(debug_assertions)]
     pub fn editor_clip_ids(&self, camera: bool) -> Vec<String> {
         lock(&self.editor.session)
             .as_ref()
