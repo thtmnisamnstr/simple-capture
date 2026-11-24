@@ -84,6 +84,7 @@ export interface RecorderSettings {
   source: SourceSpecDto | null;
   canvas: CanvasDto;
   camera: string | null;
+  camera_quality?: 'auto' | 'p720' | 'p1080x60' | 'p2160';
   mic: string | null;
   system_audio: 'off' | 'all' | 'app';
   fps: 30 | 60;

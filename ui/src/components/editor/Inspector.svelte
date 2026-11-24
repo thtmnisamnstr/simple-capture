@@ -31,6 +31,7 @@
     onselecttext,
     ontext,
     ontextduplicate,
+    ontextorder,
     ontextdelete,
     onpick,
   }: {
@@ -54,6 +55,7 @@
     onselecttext: (id: string) => void;
     ontext: (item: TextItemFull, coalesce?: string) => void;
     ontextduplicate: () => void;
+    ontextorder?: (dir: 1 | -1) => void;
     ontextdelete: () => void;
     onpick: () => Promise<Rgba | null>;
   } = $props();
@@ -179,7 +181,7 @@
       {/if}
     {:else if tab === 'text'}
       {#if text}
-        <TextInspector item={text} {fonts} {system} {unresolved} onchange={ontext} onduplicate={ontextduplicate} ondelete={ontextdelete} {onpick} />
+        <TextInspector item={text} {fonts} {system} {unresolved} onchange={ontext} onduplicate={ontextduplicate} onorder={ontextorder} ondelete={ontextdelete} {onpick} />
       {:else}
         <button class="primary add" onclick={onaddtext}>Add Text at Playhead</button>
         <p class="empty">Or press T. Double-click text in the preview to type on it.</p>

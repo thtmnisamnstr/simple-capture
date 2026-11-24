@@ -164,3 +164,37 @@ fn a_lost_camera_is_closed_and_reopened_on_request() {
         cam.frames_seen() > seen + 3
     });
 }
+
+#[test]
+fn a_new_quality_reopens_the_preview_but_not_under_a_recording() {
+    let (p, cam) = platform();
+    cam.set_preview(Some(CAMERA_DEVICE_ID.into()))
+        .expect("preview");
+    wait("preview frames", || cam.frames_seen() > 3);
+    let first = cam.latest().expect("latest").stream;
+    let hd60 = CameraLimit {
+        max: SizePx { w: 1920, h: 1080 },
+        max_fps: 60,
+    };
+    cam.set_limit(hd60).expect("limit");
+    wait("a reopened stream", || {
+        cam.latest().is_some_and(|f| f.stream != first)
+    });
+    let second = cam.latest().expect("latest").stream;
+    cam.set_limit(hd60).expect("same limit");
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(cam.latest().expect("latest").stream, second);
+
+    let att = p
+        .camera()
+        .start(CAMERA_DEVICE_ID, CameraLimit::default(), Collector::new())
+        .expect("attach");
+    cam.set_limit(CameraLimit::default())
+        .expect("limit while recording");
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(cam.latest().expect("latest").stream, second);
+    att.stop().expect("stop");
+    wait("reopened after the recording", || {
+        cam.latest().is_some_and(|f| f.stream != second)
+    });
+}

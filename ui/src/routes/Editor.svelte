@@ -450,10 +450,19 @@
     selectedText = item.id;
   }
 
+  function orderText(dir: 1 | -1) {
+    if (!textSel) return;
+    const layers = textItems.filter((t) => t.id !== textSel.id).map((t) => t.layer);
+    if (!layers.length) return;
+    const layer = dir > 0 ? Math.max(...layers) + 1 : Math.min(...layers) - 1;
+    if (layer === textSel.layer) return;
+    textChange({ ...(plainCopy($state.snapshot(textSel)) as TextItemFull), layer });
+  }
+
   function duplicateText() {
     if (!textSel) return;
     const len = textSel.end_tl_ns - textSel.start_tl_ns;
-    const item = { ...structuredClone($state.snapshot(textSel) as TextItemFull), id: crypto.randomUUID(), start_tl_ns: textSel.end_tl_ns, end_tl_ns: textSel.end_tl_ns + len };
+    const item = { ...plainCopy($state.snapshot(textSel) as TextItemFull), id: crypto.randomUUID(), start_tl_ns: textSel.end_tl_ns, end_tl_ns: textSel.end_tl_ns + len };
     void edit({ op: 'upsert_text', item: item as never });
     selectedText = item.id;
   }
@@ -1043,6 +1052,7 @@
           onselecttext={selectText}
           ontext={textChange}
           ontextduplicate={duplicateText}
+          ontextorder={orderText}
           ontextdelete={deleteText}
           onpick={pickColor}
           onedit={(op, c) => void edit(op, c)}

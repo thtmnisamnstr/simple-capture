@@ -66,12 +66,39 @@ pub enum AfterRecording {
     QuickExport,
 }
 
+/// The camera format to aim for; Auto is the best format up to 1080p at 30 fps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CameraQuality {
+    #[default]
+    Auto,
+    P720,
+    P1080x60,
+    P2160,
+}
+
+impl CameraQuality {
+    pub fn limit(self) -> sc_platform::CameraLimit {
+        let (w, h, fps) = match self {
+            CameraQuality::Auto => (1920, 1080, 30),
+            CameraQuality::P720 => (1280, 720, 30),
+            CameraQuality::P1080x60 => (1920, 1080, 60),
+            CameraQuality::P2160 => (3840, 2160, 30),
+        };
+        sc_platform::CameraLimit {
+            max: sc_geometry::SizePx { w, h },
+            max_fps: fps,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RecorderSettings {
     pub source: Option<SourceSpecDto>,
     pub canvas: CanvasDto,
     pub camera: Option<String>,
+    pub camera_quality: CameraQuality,
     pub mic: Option<String>,
     pub system_audio: SystemAudioDto,
     pub fps: u32,
@@ -107,6 +134,7 @@ impl Default for RecorderSettings {
             source: None,
             canvas: CanvasDto::default(),
             camera: None,
+            camera_quality: CameraQuality::Auto,
             mic: None,
             system_audio: SystemAudioDto::Off,
             fps: 30,
@@ -246,6 +274,7 @@ mod tests {
                 fit: Fit::Cover,
             },
             camera: Some("cam-1".into()),
+            camera_quality: CameraQuality::P1080x60,
             mic: None,
             system_audio: SystemAudioDto::App,
             fps: 60,

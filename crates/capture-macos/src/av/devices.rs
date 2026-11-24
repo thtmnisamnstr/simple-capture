@@ -243,12 +243,14 @@ pub(crate) struct FormatChoice {
     pub max_fps: f64,
 }
 
-/// Largest format within `limit` that reaches `limit.max_fps`, preferring 420v/420f.
+/// Largest format within `limit` that reaches `limit.max_fps`, preferring 420v/420f; when none
+/// reaches that rate, the fastest one within the size, then the largest.
 pub(crate) fn best_format(
     dev: &AVCaptureDevice,
     limit: CameraLimit,
 ) -> Option<(Retained<AVCaptureDeviceFormat>, FormatChoice)> {
-    let mut best: Option<(Retained<AVCaptureDeviceFormat>, FormatChoice, i64)> = None;
+    let mut fast: Option<(Retained<AVCaptureDeviceFormat>, FormatChoice, i64)> = None;
+    let mut slow: Option<(Retained<AVCaptureDeviceFormat>, FormatChoice, (i64, i64))> = None;
     // SAFETY: plain getters on a device and its formats.
     unsafe {
         for f in dev.formats().iter() {
@@ -266,23 +268,28 @@ pub(crate) fn best_format(
                 .iter()
                 .map(|r| r.maxFrameRate())
                 .fold(0.0, f64::max);
-            if max_fps + 0.01 < f64::from(limit.max_fps) {
-                continue;
-            }
             let sub = fd.media_sub_type();
             let nv12 = i64::from(sub == PIX_420V || sub == PIX_420F);
-            let score = i64::from(w) * i64::from(h) * 4 + nv12 * 2 - i64::from(max_fps > 60.0);
-            if best.as_ref().is_none_or(|b| score > b.2) {
-                let choice = FormatChoice {
-                    size: SizePx { w, h },
-                    subtype: sub,
-                    max_fps,
-                };
-                best = Some((f.clone(), choice, score));
+            let area = i64::from(w) * i64::from(h);
+            let choice = FormatChoice {
+                size: SizePx { w, h },
+                subtype: sub,
+                max_fps,
+            };
+            if max_fps + 0.01 >= f64::from(limit.max_fps) {
+                let score = area * 4 + nv12 * 2 - i64::from(max_fps > 60.0);
+                if fast.as_ref().is_none_or(|b| score > b.2) {
+                    fast = Some((f.clone(), choice, score));
+                }
+            } else {
+                let score = ((max_fps * 100.0) as i64, area * 4 + nv12 * 2);
+                if slow.as_ref().is_none_or(|b| score > b.2) {
+                    slow = Some((f.clone(), choice, score));
+                }
             }
         }
     }
-    best.map(|b| (b.0, b.1))
+    fast.map(|b| (b.0, b.1)).or(slow.map(|b| (b.0, b.1)))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

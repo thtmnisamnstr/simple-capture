@@ -64,6 +64,7 @@ struct Open {
     device: String,
     stream: Box<dyn DeviceStream>,
     format: String,
+    limit: CameraLimit,
 }
 
 #[derive(Default)]
@@ -79,7 +80,7 @@ struct State {
 
 pub struct SharedCamera {
     platform: Arc<dyn Platform>,
-    limit: CameraLimit,
+    limit: Mutex<CameraLimit>,
     me: Weak<SharedCamera>,
     state: Mutex<State>,
     fan: Arc<Fanout>,
@@ -93,7 +94,7 @@ impl SharedCamera {
     pub fn with_limit(platform: Arc<dyn Platform>, limit: CameraLimit) -> Arc<SharedCamera> {
         Arc::new_cyclic(|me| SharedCamera {
             platform,
-            limit,
+            limit: Mutex::new(limit),
             me: me.clone(),
             state: Mutex::new(State::default()),
             fan: Arc::new(Fanout::default()),
@@ -112,6 +113,19 @@ impl SharedCamera {
         }
         st.preview = device;
         self.settle(&mut st)
+    }
+
+    /// The format to aim for from the next open. An open camera reopens with it unless a
+    /// recording holds it.
+    pub fn set_limit(&self, limit: CameraLimit) -> Result<()> {
+        if std::mem::replace(&mut *lock(&self.limit), limit) == limit {
+            return Ok(());
+        }
+        let mut st = lock(&self.state);
+        if st.recording == 0 {
+            return self.settle(&mut st);
+        }
+        Ok(())
     }
 
     pub fn latest(&self) -> Option<VideoFrame> {
@@ -152,7 +166,9 @@ impl SharedCamera {
         } else {
             st.preview.clone()
         };
-        if st.lost && st.recording == 0 {
+        let limit = *lock(&self.limit);
+        let stale = st.open.as_ref().is_some_and(|o| o.limit != limit);
+        if (st.lost || stale) && st.recording == 0 {
             self.close(st);
         }
         if st.open.as_ref().map(|o| &o.device) == want.as_ref() {
@@ -160,7 +176,8 @@ impl SharedCamera {
         }
         self.close(st);
         if let Some(device) = want {
-            st.open = Some(self.open(&device, self.limit)?);
+            let limit = *lock(&self.limit);
+            st.open = Some(self.open(&device, limit)?);
         }
         Ok(())
     }
@@ -189,6 +206,7 @@ impl SharedCamera {
             device: device.to_string(),
             stream,
             format,
+            limit,
         })
     }
 
@@ -401,7 +419,7 @@ mod tests {
         fan.open.store(true, Ordering::Relaxed);
         let cam = SharedCamera {
             platform: crate::synthetic::SyntheticPlatform::new(crate::synthetic::Scenario::new()),
-            limit: CameraLimit::default(),
+            limit: Mutex::new(CameraLimit::default()),
             me: Weak::new(),
             state: Mutex::new(State::default()),
             fan: fan.clone(),

@@ -1914,6 +1914,9 @@ impl Core {
         self.refresh_mic_meter(&s, recording);
         let active = lock(&self.preview).panel_open || recording;
         let device = if active { s.camera.clone() } else { None };
+        if let Err(e) = self.camera.set_limit(s.camera_quality.limit()) {
+            tracing::warn!("camera quality: {e}");
+        }
         let camera_error = self.camera.set_preview(device.clone()).err();
         if let Some(e) = &camera_error {
             tracing::warn!("camera preview: {e}");

@@ -652,6 +652,17 @@
               </select>
             </div>
           </div>
+          <div class="grow">
+            <span class="glabel">Quality</span>
+            <div class="gcontrol">
+              <select aria-label="Camera quality" value={settings.camera_quality ?? 'auto'} onchange={(e) => (settings!.camera_quality = e.currentTarget.value as 'auto')} title="The camera's sharpest format up to this; a camera that cannot reach the frame rate uses its fastest">
+                <option value="auto">Auto (up to 1080p, 30 fps)</option>
+                <option value="p720">720p, 30 fps</option>
+                <option value="p1080x60">1080p, 60 fps</option>
+                <option value="p2160">Up to 4K, 30 fps</option>
+              </select>
+            </div>
+          </div>
           {#if mode === 'camera' && caps?.mic_modes}
             <div class="grow">
               <span class="glabel caption">The camera fills the frame.</span>

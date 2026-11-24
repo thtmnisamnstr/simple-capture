@@ -26,6 +26,7 @@
     system,
     onchange,
     onduplicate,
+    onorder,
     ondelete,
     onpick,
     unresolved = 0,
@@ -35,6 +36,7 @@
     system: string[];
     onchange: (next: TextItemFull, coalesce?: string) => void;
     onduplicate: () => void;
+    onorder?: (dir: 1 | -1) => void;
     ondelete: () => void;
     onpick: () => Promise<Rgba | null>;
     unresolved?: number;
@@ -376,6 +378,10 @@
   </div>
   <div class="actions">
     <button onclick={onduplicate}>Duplicate</button>
+    {#if onorder}
+      <button onclick={() => onorder(1)} title="Draw this text above the other text">Bring to Front</button>
+      <button onclick={() => onorder(-1)} title="Draw this text below the other text">Send to Back</button>
+    {/if}
     <button class="destructive" onclick={ondelete}>Delete</button>
   </div>
 </div>
