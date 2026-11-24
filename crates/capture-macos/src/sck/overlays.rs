@@ -179,7 +179,7 @@ impl OverlayWindows for MacOverlays {
             let _: () = unsafe { objc2::msg_send![obj, _setPreventsActivation: true] };
         }
         if let Some(panel) = unsafe { (obj as *const AnyObject as *const NSPanel).as_ref() } {
-            panel.setBecomesKeyOnlyIfNeeded(true);
+            panel.setBecomesKeyOnlyIfNeeded(role != OverlayRole::Stage);
             panel.setFloatingPanel(true);
         }
         win.setHidesOnDeactivate(false);

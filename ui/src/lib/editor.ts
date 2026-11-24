@@ -20,7 +20,7 @@ export interface Clip {
 export interface CameraOverlay { id: string; track_id: string; keyframes: CameraKey[] }
 export interface AudioMixEntry { gain_db: number; muted: boolean }
 export interface ProjectCanvas {
-  aspect: 'original' | '16:9' | '4:3' | '1:1' | '9:16';
+  aspect: 'original' | '16:9' | '4:3' | '1:1' | '4:5' | '9:16';
   ratio: { num: number; den: number };
   fit: 'contain' | 'cover';
   background: Background;

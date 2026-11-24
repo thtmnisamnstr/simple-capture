@@ -104,7 +104,7 @@ export function forFormat(format: Format): ExportSettings {
   }
 }
 
-export type FrameShape = 'original' | '16:9' | '4:3' | '1:1' | '9:16';
+export type FrameShape = 'original' | '16:9' | '4:3' | '1:1' | '4:5' | '9:16';
 
 export interface Destination {
   id: string;

@@ -129,6 +129,7 @@
     { value: '16:9', label: '16:9' },
     { value: '4:3', label: '4:3' },
     { value: '1:1', label: '1:1' },
+    { value: '4:5', label: '4:5' },
     { value: '9:16', label: '9:16' },
   ];
 
@@ -215,6 +216,12 @@
   $effect(() => {
     load();
     const offs = [
+      onEvent('devices-changed', isObject, () => {
+        void api
+          .listDevices()
+          .then((d) => (devices = d))
+          .catch(() => undefined);
+      }),
       onEvent('source-picked', isPicked, (p) => {
         if (p.purpose !== 'start') return;
         choose(p.source, p.via);

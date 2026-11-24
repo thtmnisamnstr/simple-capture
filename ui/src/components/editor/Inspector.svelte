@@ -109,7 +109,7 @@
     }
   }
 
-  const ASPECTS: ProjectCanvas['aspect'][] = ['original', '16:9', '4:3', '1:1', '9:16'];
+  const ASPECTS: ProjectCanvas['aspect'][] = ['original', '16:9', '4:3', '1:1', '4:5', '9:16'];
   const mix = (id: string) => doc.audio_mix[id] ?? { gain_db: 0, muted: false };
 </script>
 

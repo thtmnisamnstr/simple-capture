@@ -280,11 +280,76 @@
   }
 
   async function togglePlay() {
+    if (shuttleRate !== 0) {
+      stopShuttle();
+      seek(playhead, true);
+      return;
+    }
     const r = await run(playing ? editor.pause() : editor.play(playhead));
     if (r) {
       playing = r.playing;
       playhead = r.playhead_tl_ns;
     }
+  }
+
+  let snapping = $state(readSnapping());
+
+  function readSnapping(): boolean {
+    try {
+      return localStorage.getItem('sc.editor.snapping') !== '0';
+    } catch {
+      return true;
+    }
+  }
+
+  function toggleSnapping() {
+    snapping = !snapping;
+    try {
+      localStorage.setItem('sc.editor.snapping', snapping ? '1' : '0');
+    } catch {
+      /* only remembered when storage works */
+    }
+  }
+
+  let shuttleRate = $state(0);
+  let shuttleTimer: ReturnType<typeof setInterval> | undefined;
+
+  function stopShuttle() {
+    clearInterval(shuttleTimer);
+    shuttleTimer = undefined;
+    shuttleRate = 0;
+  }
+
+  /** J/K/L: L plays (again for 2× and 4×), J the same backwards, K stops. Only 1× forward
+   * plays sound; the others step the picture silently. */
+  async function shuttle(dir: -1 | 0 | 1) {
+    const current = shuttleRate !== 0 ? shuttleRate : playing ? 1 : 0;
+    const next = dir === 0 ? 0 : Math.sign(current) === dir ? Math.min(Math.abs(current) * 2, 4) * dir : dir;
+    clearInterval(shuttleTimer);
+    shuttleTimer = undefined;
+    if (next === 1) {
+      shuttleRate = 0;
+      if (!playing) await togglePlay();
+      return;
+    }
+    if (playing) await togglePlay();
+    shuttleRate = next;
+    if (next === 0) {
+      seek(playhead, true);
+      return;
+    }
+    let last = performance.now();
+    shuttleTimer = setInterval(() => {
+      const now = performance.now();
+      const t = playhead + (now - last) * 1e6 * next;
+      last = now;
+      if (t <= 0 || t >= duration) {
+        seek(t, true);
+        stopShuttle();
+        return;
+      }
+      seek(t, false);
+    }, 66);
   }
 
   function stepFrames(n: number) {
@@ -526,21 +591,26 @@
         handled();
         void togglePlay();
         break;
+      case 'n':
+      case 'N':
+        if (e.metaKey || e.ctrlKey) return;
+        handled();
+        toggleSnapping();
+        break;
       case 'k':
       case 'K':
         handled();
-        if (playing) void togglePlay();
+        void shuttle(0);
         break;
       case 'l':
       case 'L':
         handled();
-        if (!playing) void togglePlay();
+        void shuttle(1);
         break;
       case 'j':
       case 'J':
         handled();
-        seek(playhead - 2 * NS, true);
-        if (playing) void editor.play(Math.max(0, playhead));
+        void shuttle(-1);
         break;
       case 'ArrowLeft':
         handled();
@@ -798,6 +868,7 @@
         <Icon name={playing ? 'pause' : 'play'} size={16} />
       </button>
       <span class="time tnum">{formatTime(playhead)} <span class="muted">/ {formatTime(duration)}</span></span>
+      {#if shuttleRate !== 0}<span class="shuttle tnum" aria-live="polite">{shuttleRate < 0 ? '◀◀' : '▶▶'} {Math.abs(shuttleRate)}×</span>{/if}
     </div>
     <div class="right">
       <button class="plain icon tool" disabled={!canUndo} onclick={undo} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" size={15} /></button>
@@ -1019,6 +1090,7 @@
         oninput={(e) => (pxPerSec = 2 * Math.pow(300, Number(e.currentTarget.value)))} />
       <button class="plain icon" onclick={() => (pxPerSec = Math.min(pxPerSec * 1.4, 600))} aria-label="Zoom in" title="Zoom the timeline in">+</button>
       <button class="plain" onclick={fitZoom} title="Fit the whole timeline in view">Fit</button>
+      <button class="plain" aria-pressed={snapping} class:on={snapping} onclick={toggleSnapping} title="Snap to the playhead, cuts and text edges (N)">Snap</button>
     </div>
     <div class="timeline" class:tall={blurs.length > 0} class:withcam={!!overlay} bind:this={timelineEl}>
       {#if doc}
@@ -1039,6 +1111,7 @@
             if (b && span) void edit({ op: 'upsert_redaction', item: { ...b, start_rec_ns: span[0], end_rec_ns: span[1] } });
           }}
           {thumbs}
+          {snapping}
           peaks={overlay ? systemPeaks : peaks}
           cameraClips={overlay ? camClips : null}
           cameraPeaks={micPeaks}
@@ -1321,6 +1394,13 @@
   }
   .hint {
     margin-right: 8px;
+  }
+  button.on {
+    color: var(--accent-ink);
+  }
+  .shuttle {
+    font-size: 11px;
+    color: var(--accent-ink);
   }
   .timeline {
     min-width: 0;

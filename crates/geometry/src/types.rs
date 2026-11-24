@@ -86,7 +86,7 @@ impl Ratio {
     }
 }
 
-/// Output canvas aspect (ADR-033). `R4x5` is reserved.
+/// Output canvas aspect (ADR-033).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Aspect {

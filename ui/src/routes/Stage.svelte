@@ -134,9 +134,22 @@
     wheelTimer = setTimeout(save, 300);
   }
   let wheelTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const NUDGE: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+
+  function onkeydown(e: KeyboardEvent) {
+    const d = NUDGE[e.key];
+    if (!d || !key || !cornerCamera || frame.w === 0 || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    const px = (e.shiftKey ? 0.025 : 0.005) * Math.min(frame.w, frame.h);
+    const c = { x: key.center_norm.x + (d[0] * px) / frame.w, y: key.center_norm.y + (d[1] * px) / frame.h };
+    live({ ...key, center_norm: clampCenter({ w: frame.w, h: frame.h }, shapeAspect(key.shape), key.size_norm, c) });
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(save, 300);
+  }
 </script>
 
-<svelte:window onpointermove={move} onpointerup={up} />
+<svelte:window onpointermove={move} onpointerup={up} {onkeydown} />
 
 <div class="stage window" class:native>
   <div class="frame" style:width="{css.w}px" style:height="{css.h}px">

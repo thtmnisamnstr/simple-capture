@@ -77,7 +77,7 @@ export type Background =
   | { kind: 'radial'; stops: GradientStop[]; center_norm: PointF; radius_norm: number }
   | { kind: 'image'; asset: string; sha256: string; fit: 'cover'; focus_norm: PointF };
 
-export type Aspect = 'original' | '16:9' | '4:3' | '1:1' | '9:16';
+export type Aspect = 'original' | '16:9' | '4:3' | '1:1' | '4:5' | '9:16';
 export interface CanvasDto { aspect: Aspect; background: Background; background_image: string | null; fit?: 'contain' | 'cover' }
 
 export interface RecorderSettings {
