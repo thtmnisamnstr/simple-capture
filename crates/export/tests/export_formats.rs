@@ -94,6 +94,8 @@ fn want_v(v: VideoCodec) -> &'static str {
         VideoCodec::Vp8 => "vp8",
         VideoCodec::Prores => "prores",
         VideoCodec::Gif => "gif",
+        VideoCodec::Webp => "webp",
+        VideoCodec::Apng => "apng",
     }
 }
 
@@ -317,6 +319,96 @@ fn gifs_from_gifski_and_the_palette_play_at_the_chosen_rate() {
             delays.iter().all(|d| *d >= 2),
             "browsers slow down delays under 2 cs"
         );
+    }
+}
+
+/// Chunk type and body of each RIFF chunk inside a WebP's top-level chunk.
+fn riff_chunks(b: &[u8]) -> Vec<([u8; 4], &[u8])> {
+    let mut out = Vec::new();
+    let mut i = 12;
+    while i + 8 <= b.len() {
+        let len = u32::from_le_bytes([b[i + 4], b[i + 5], b[i + 6], b[i + 7]]) as usize;
+        let body = &b[i + 8..(i + 8 + len).min(b.len())];
+        out.push(([b[i], b[i + 1], b[i + 2], b[i + 3]], body));
+        i += 8 + len + (len & 1);
+    }
+    out
+}
+
+fn png_chunks(b: &[u8]) -> Vec<([u8; 4], &[u8])> {
+    let mut out = Vec::new();
+    let mut i = 8;
+    while i + 8 <= b.len() {
+        let len = u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]) as usize;
+        let body = &b[i + 8..(i + 8 + len).min(b.len())];
+        out.push(([b[i + 4], b[i + 5], b[i + 6], b[i + 7]], body));
+        i += 12 + len;
+    }
+    out
+}
+
+#[test]
+fn animated_webp_and_png_have_every_frame_and_the_loop_count() {
+    if !helpers_available() {
+        return;
+    }
+    let t = TempDir::new("anim");
+    let dir = project(&t);
+    for format in [Format::Webp, Format::Apng] {
+        let mut st = ExportSettings::for_format(format);
+        st.fps = 10;
+        st.gif.repeat = Loop::Times(3);
+        let path = export(&dir, st);
+        let b = std::fs::read(&path).expect("file");
+        let (played_ms, plays, size) = if format == Format::Webp {
+            assert_eq!((&b[0..4], &b[8..12]), (&b"RIFF"[..], &b"WEBP"[..]));
+            let c = riff_chunks(&b);
+            let vp8x = c.iter().find(|(k, _)| k == b"VP8X").expect("VP8X").1;
+            let w = 1 + u32::from_le_bytes([vp8x[4], vp8x[5], vp8x[6], 0]);
+            let h = 1 + u32::from_le_bytes([vp8x[7], vp8x[8], vp8x[9], 0]);
+            let anim = c.iter().find(|(k, _)| k == b"ANIM").expect("ANIM").1;
+            let plays = u16::from_le_bytes([anim[4], anim[5]]);
+            let ms: u32 = c
+                .iter()
+                .filter(|(k, _)| k == b"ANMF")
+                .map(|(_, f)| u32::from_le_bytes([f[12], f[13], f[14], 0]))
+                .sum();
+            (ms, u32::from(plays), (w, h))
+        } else {
+            assert_eq!(&b[1..4], b"PNG");
+            let c = png_chunks(&b);
+            let ihdr = c.iter().find(|(k, _)| k == b"IHDR").expect("IHDR").1;
+            let w = u32::from_be_bytes([ihdr[0], ihdr[1], ihdr[2], ihdr[3]]);
+            let h = u32::from_be_bytes([ihdr[4], ihdr[5], ihdr[6], ihdr[7]]);
+            let actl = c.iter().find(|(k, _)| k == b"acTL").expect("acTL").1;
+            let n = u32::from_be_bytes([actl[0], actl[1], actl[2], actl[3]]);
+            let plays = u32::from_be_bytes([actl[4], actl[5], actl[6], actl[7]]);
+            let fctl: Vec<&[u8]> = c
+                .iter()
+                .filter(|(k, _)| k == b"fcTL")
+                .map(|(_, f)| *f)
+                .collect();
+            assert_eq!(
+                n as usize,
+                fctl.len(),
+                "acTL frame count matches the frames"
+            );
+            let ms: u32 = fctl
+                .iter()
+                .map(|f| {
+                    let num = u32::from(u16::from_be_bytes([f[20], f[21]]));
+                    let den = u32::from(u16::from_be_bytes([f[22], f[23]]).max(1));
+                    num * 1000 / den
+                })
+                .sum();
+            (ms, plays, (w, h))
+        };
+        assert_eq!(size, (640, 360), "{format:?}: never upscaled");
+        assert!(
+            played_ms.abs_diff(2000) <= 100,
+            "{format:?}: {played_ms} ms of frames for 2 s"
+        );
+        assert_eq!(plays, 3, "{format:?}");
     }
 }
 

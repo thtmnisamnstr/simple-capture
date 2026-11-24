@@ -259,10 +259,10 @@ pub fn plan(project: &ProjectV1, req: &ExportRequest, now: LocalDateTime) -> Res
     let mut st = st;
     let mut canvas = req.canvas.unwrap_or_else(|| output_size(project, &st));
     let has_audio = st.audio != AudioCodec::None
-        && st.format != Format::Gif
+        && !st.is_animation()
         && !crate::recipe::audio_track_ids(project).is_empty();
     let target = match st.quality {
-        Quality::TargetSize { mb } if st.format != Format::Gif => {
+        Quality::TargetSize { mb } if !st.is_animation() => {
             let t = target_bitrate(mb, duration_ns, has_audio);
             st.audio_kbps = has_audio.then_some(t.audio_kbps);
             st.quality = Quality::Custom {
@@ -339,6 +339,8 @@ pub fn estimate(p: &Plan) -> Estimate {
             GifMode::Gifski => 0.6 + f64::from(st.gif.quality) / 100.0 * 0.8,
             GifMode::Palette => 2.0 + f64::from(st.gif.colors) / 256.0 * 1.8,
         },
+        VideoCodec::Webp => 0.4 * t,
+        VideoCodec::Apng => 4.0,
     };
     let audio_kbps = if p.audio {
         match st.audio {
@@ -365,6 +367,8 @@ pub fn estimate(p: &Plan) -> Estimate {
             GifMode::Gifski => 40.0 * 518_400.0 / 2_073_600.0,
             GifMode::Palette => 7.0 * 518_400.0 / 2_073_600.0,
         },
+        (VideoCodec::Webp, _) => 12.0,
+        (VideoCodec::Apng, _) => 20.0,
     };
     let speed = fps_1080 * 2_073_600.0 / px.max(1.0);
     let (low, high) = match (st.quality, &p.target) {

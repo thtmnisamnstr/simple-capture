@@ -10,6 +10,7 @@ use crate::settings::{
 };
 
 const TAG_709: &str = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
+const TO_RGB: &str = "scale=in_color_matrix=bt709:in_range=tv:out_range=pc";
 const TAG_601: &str = "scale=out_color_matrix=bt601:out_range=tv,setparams=color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m:range=tv";
 
 #[cfg(target_os = "macos")]
@@ -39,6 +40,8 @@ pub fn video_encoder(video: VideoCodec, enc: Encoder) -> Option<&'static str> {
         (VideoCodec::Vp9, false) => "libvpx-vp9",
         (VideoCodec::Vp8, false) => "libvpx",
         (VideoCodec::Prores, false) => "prores_ks",
+        (VideoCodec::Webp, _) => "libwebp_anim",
+        (VideoCodec::Apng, _) => "apng",
         #[cfg(target_os = "macos")]
         (VideoCodec::H264, true) => "h264_videotoolbox",
         #[cfg(target_os = "macos")]
@@ -144,6 +147,13 @@ fn video_quality(st: &ExportSettings, enc: &str) -> Vec<String> {
             a.push(["lt", "standard", "hq"][t].to_string());
             a
         }
+        "libwebp_anim" => {
+            let q = custom_crf.map_or([60, 75, 90][t], |c| 100u32.saturating_sub(c).clamp(1, 100));
+            let mut a = s(&["-lossless", "0", "-compression_level", "4", "-quality"]);
+            a.push(q.to_string());
+            a
+        }
+        "apng" => s(&["-pred", "mixed"]),
         _ => Vec::new(),
     }
 }
@@ -194,30 +204,36 @@ pub fn video_args(st: &ExportSettings, wav: Option<&Path>, out: &Path) -> Option
     if aenc.is_some() {
         a.extend(s(&["-map", "1:a:0"]));
     }
-    let (filter, tags) = if st.video == VideoCodec::Vp8 {
-        (TAG_601, ["smpte170m", "smpte170m", "smpte170m"])
+    if let Some(rgb) = rgb_pix(venc) {
+        a.extend(s(&["-vf", &format!("{TAG_709},{TO_RGB}"), "-c:v", venc]));
+        a.extend(video_quality(st, venc));
+        a.extend(s(&["-pix_fmt", rgb]));
     } else {
-        (TAG_709, ["bt709", "bt709", "bt709"])
-    };
-    a.extend(s(&["-vf", filter, "-c:v", venc]));
-    a.extend(video_quality(st, venc));
-    let pix = match venc {
-        "prores_ks" => "yuv422p10le",
-        "prores_videotoolbox" => "p210le",
-        _ => "yuv420p",
-    };
-    a.extend(s(&[
-        "-pix_fmt",
-        pix,
-        "-color_primaries",
-        tags[0],
-        "-color_trc",
-        tags[1],
-        "-colorspace",
-        tags[2],
-        "-color_range",
-        "tv",
-    ]));
+        let (filter, tags) = if st.video == VideoCodec::Vp8 {
+            (TAG_601, ["smpte170m", "smpte170m", "smpte170m"])
+        } else {
+            (TAG_709, ["bt709", "bt709", "bt709"])
+        };
+        a.extend(s(&["-vf", filter, "-c:v", venc]));
+        a.extend(video_quality(st, venc));
+        let pix = match venc {
+            "prores_ks" => "yuv422p10le",
+            "prores_videotoolbox" => "p210le",
+            _ => "yuv420p",
+        };
+        a.extend(s(&[
+            "-pix_fmt",
+            pix,
+            "-color_primaries",
+            tags[0],
+            "-color_trc",
+            tags[1],
+            "-colorspace",
+            tags[2],
+            "-color_range",
+            "tv",
+        ]));
+    }
     if st.video == VideoCodec::Hevc {
         a.extend(s(&["-tag:v", "hvc1"]));
     }
@@ -232,11 +248,35 @@ pub fn video_args(st: &ExportSettings, wav: Option<&Path>, out: &Path) -> Option
         Format::Mp4 => a.extend(s(&["-movflags", "+faststart", "-f", "mp4"])),
         Format::Mov => a.extend(s(&["-movflags", "+faststart", "-f", "mov"])),
         Format::Webm => a.extend(s(&["-f", "webm"])),
+        Format::Webp => {
+            a.extend(s(&["-loop", &plays(st.gif.repeat), "-f", "webp"]));
+        }
+        Format::Apng => {
+            a.extend(s(&["-plays", &plays(st.gif.repeat), "-f", "apng"]));
+        }
         Format::Gif => return None,
     }
     a.push("-y".into());
     a.push(out.to_string_lossy().into_owned());
     Some(a)
+}
+
+/// The WebP and APNG loop count: how many times it plays, 0 for ever.
+fn plays(r: Loop) -> String {
+    match r {
+        Loop::Forever => "0".into(),
+        Loop::Once => "1".into(),
+        Loop::Times(n) => n.max(1).to_string(),
+    }
+}
+
+/// WebP and APNG take RGB: libwebp does its own (BT.601) conversion and PNG has no YUV.
+fn rgb_pix(venc: &str) -> Option<&'static str> {
+    match venc {
+        "libwebp_anim" => Some("bgra"),
+        "apng" => Some("rgb24"),
+        _ => None,
+    }
 }
 
 fn gifski_repeat(r: Loop) -> String {
@@ -401,5 +441,21 @@ mod tests {
             ["--repeat", "-1"]
         ));
         assert!(video_args(&st, None, Path::new("o.gif")).is_none());
+    }
+
+    #[test]
+    fn webp_and_apng_take_rgb_and_loop_counts() {
+        let mut st = ExportSettings::for_format(Format::Webp);
+        st.gif.repeat = Loop::Times(3);
+        let a = video_args(&st, Some(Path::new("a.wav")), Path::new("o.webp")).expect("webp");
+        assert!(has(&a, ["-c:v", "libwebp_anim"]) && has(&a, ["-pix_fmt", "bgra"]));
+        assert!(has(&a, ["-quality", "75"]) && has(&a, ["-loop", "3"]) && has(&a, ["-f", "webp"]));
+        assert!(a.contains(&"-an".to_string()) && !a.contains(&"-colorspace".to_string()));
+        let mut p = ExportSettings::for_format(Format::Apng);
+        assert_eq!(p.extension(), "png");
+        p.gif.repeat = Loop::Forever;
+        let a = video_args(&p, None, Path::new("o.png")).expect("apng");
+        assert!(has(&a, ["-c:v", "apng"]) && has(&a, ["-pix_fmt", "rgb24"]));
+        assert!(has(&a, ["-plays", "0"]) && has(&a, ["-f", "apng"]));
     }
 }

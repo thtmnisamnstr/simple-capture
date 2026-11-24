@@ -1760,3 +1760,17 @@ they are not a substitute for an M1 run.
   global pointer under Wayland, so it offers no click highlight.
 - **Limits:** a window moved during its section keeps the place it had when the section began.
 
+
+## ADR-056: Animated WebP and APNG export
+
+- **Context:** SPEC lists animated WebP and APNG as nice-to-haves; the helper had no zlib (so no
+  PNG encoder) and no libwebp.
+- **Decision:** the FFmpeg helper adds zlib 1.4 and libwebp 1.6.0, both static, pinned and
+  checksum-verified in `third_party/versions.toml`, with the `apng`, `png` and `libwebp_anim`
+  encoders and the `apng` and `webp` muxers. Both formats behave like GIF in the sheet (no audio,
+  GIF frame rates, 960 long side by default, the same Loop setting written as the plays count).
+  Frames go to the encoders as RGB converted from BT.709 limited range, so libwebp's own
+  conversion and PNG's RGB both see the right colours. WebP offers Small/Balanced/High (libwebp
+  quality 60/75/90); APNG is lossless with mixed prediction. The format buttons stay disabled
+  when the helper lacks the encoder.
+- **Limits:** APNG files are large, and macOS Preview and Quick Look show only the first frame.

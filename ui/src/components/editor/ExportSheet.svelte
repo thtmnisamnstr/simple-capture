@@ -6,6 +6,7 @@
     DESTINATIONS,
     FORMAT_ALLOWED,
     GIF_FPS,
+    isAnimation,
     VIDEO_FPS,
     VIDEO_LABELS,
     destinationOf,
@@ -62,8 +63,9 @@
     }
   }
   const isGif = $derived(st.format === 'gif');
+  const isAnim = $derived(isAnimation(st.format));
   const allowed = $derived(FORMAT_ALLOWED[st.format]);
-  const fpsList = $derived(isGif ? GIF_FPS : VIDEO_FPS);
+  const fpsList = $derived(isAnim ? GIF_FPS : VIDEO_FPS);
   const sizeKey = $derived(st.size.kind === 'class' ? `class:${st.size.value}` : st.size.kind === 'original' ? 'original' : st.size.kind === 'long' ? `long:${st.size.value}` : 'custom');
 
   function avail(v: string, enc: 'best' | 'fast'): boolean {
@@ -169,8 +171,8 @@
 
   const sizes = $derived.by(() => {
     const list: [string, string][] = [['original', opts ? `Original (${opts.reference.w} × ${opts.reference.h})` : 'Original']];
-    if (isGif) list.push(['long:960', 'Long side 960 (GIF default)']);
-    for (const c of isGif ? [1080, 720, 480, 360, 240] : [2160, 1440, 1080, 720, 480]) list.push([`class:${c}`, `${c}p`]);
+    if (isAnim) list.push(['long:960', 'Long side 960 (default)']);
+    for (const c of isAnim ? [1080, 720, 480, 360, 240] : [2160, 1440, 1080, 720, 480]) list.push([`class:${c}`, `${c}p`]);
     list.push(['custom', 'Custom…']);
     return list;
   });
@@ -212,13 +214,18 @@
     {/if}
 
     <div class="segmented formats" role="radiogroup" aria-label="Format">
-      {#each [['mp4', 'MP4'], ['webm', 'WebM'], ['gif', 'GIF'], ['mov', 'MOV']] as [f, label] (f)}
-        <button role="radio" aria-checked={st.format === f} onclick={() => setFormat(f as Format)}>{label}</button>
+      {#each [['mp4', 'MP4'], ['webm', 'WebM'], ['mov', 'MOV'], ['gif', 'GIF'], ['webp', 'WebP'], ['apng', 'APNG']] as [f, label] (f)}
+        <button
+          role="radio"
+          aria-checked={st.format === f}
+          disabled={(f === 'webp' || f === 'apng') && !avail(f, 'best')}
+          title={f === 'webp' ? 'Animated WebP: smaller than GIF, full colour' : f === 'apng' ? 'Animated PNG: lossless, full colour, large' : undefined}
+          onclick={() => setFormat(f as Format)}>{label}</button>
       {/each}
     </div>
 
     <div class="group">
-      {#if !isGif}
+      {#if !isAnim}
         <div class="grow">
           <span class="glabel">Video</span>
           <span class="gcontrol">
@@ -294,6 +301,19 @@
           </div>
         {/if}
       {:else}
+        {#if st.format === 'webp'}
+          <div class="grow">
+            <span class="glabel">Quality</span>
+            <span class="gcontrol">
+              <select aria-label="Quality" value={st.quality.tier} onchange={(e) => (st.quality = { tier: e.currentTarget.value as 'small' })}>
+                {#each [['small', 'Small'], ['balanced', 'Balanced'], ['high', 'High']] as [q, label] (q)}
+                  <option value={q}>{label}</option>
+                {/each}
+              </select>
+            </span>
+          </div>
+        {/if}
+        {#if isGif}
         <div class="grow">
           <span class="glabel">Encoder</span>
           <span class="gcontrol">
@@ -323,6 +343,7 @@
               <label class="inline"><input type="checkbox" class="switch" bind:checked={st.gif.dither} /> Dither</label>
             </span>
           </div>
+        {/if}
         {/if}
         <div class="grow">
           <span class="glabel">Loop</span>

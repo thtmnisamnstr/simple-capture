@@ -29,7 +29,7 @@ Independent reviews of the new code ran before handing over; their verified find
 |---|---|---|---|
 | M3 editor | timeline, every edit with undo/redo, speed with kept pitch, playback across cuts, camera keyframes, audio mix, frame/background, autosave, export of the edit | 045 | MANUAL_TEST §10c |
 | M4 text | 13 bundled families + system fonts, colour emoji, styles, boxes, gradients, animations, on-preview editing | 046 | §10d |
-| M5 export | MP4/WebM/MOV/GIF, Best/Fast encoders, quality tiers and custom, fps per format, sizes, presets, estimates, Copy/Open | 047 | §10e |
+| M5 export | MP4/WebM/MOV/GIF/WebP/APNG, Best/Fast encoders, quality tiers and custom, fps per format, sizes, presets, estimates, Copy/Open | 047 | §10e |
 | M6 Windows/Linux | Windows and Linux backends, helper tracks, our own Windows/Linux helpers, package workflow, self-test and Diagnostics | 048 | §13, §10g |
 | M7 polish | pause/resume, Restart, countdown, global shortcuts, Library, Trash, About/licenses, mic meter, stats overlay, export-after-recording, delete-raw-after-export, README | 049 | §10f, §10g |
 

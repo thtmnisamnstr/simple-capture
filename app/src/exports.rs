@@ -74,6 +74,8 @@ impl Core {
             VideoCodec::Vp9,
             VideoCodec::Vp8,
             VideoCodec::Prores,
+            VideoCodec::Webp,
+            VideoCodec::Apng,
         ] {
             let k = serde_json::to_value(v).unwrap_or(Value::Null);
             let best = encode::video_encoder(v, sc_export::settings::Encoder::Best)

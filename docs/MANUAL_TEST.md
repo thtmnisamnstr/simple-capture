@@ -818,6 +818,7 @@ In the editor with any recording, press ⌘E:
 | E38 | Turn Snap off (or press N), drag a text edge near a cut | It no longer jumps to the cut; Snap on again restores it and is remembered next time |
 | E39 | Two overlapping text items; Text tab → Bring to Front / Send to Back | The chosen one draws above or below the other in the preview and the export |
 | E40 | Frame tab → 4:5 | A portrait 4:5 frame in the preview and the export |
+| E41 | Export → WebP, then APNG, Loop: Several times (3) | Each file plays in a browser with the right colours and stops after three plays; WebP is much smaller than the GIF |
 
 ## 10g. Library, About and Diagnostics (M6, M7)
 
