@@ -476,7 +476,12 @@ impl Control {
         let want_cam = self.req.camera.is_some();
         let want_mic = self.req.mic.is_some();
         let want_sys = self.sys_stream.is_some();
-        let timeout_ms = self.req.tuning.start_timeout_ms;
+        let device = matches!(self.req.source, SourceSpec::Device { .. });
+        let timeout_ms = if device {
+            self.req.tuning.start_timeout_ms.max(10_000)
+        } else {
+            self.req.tuning.start_timeout_ms
+        };
         let firsts = self
             .sink
             .wait_firsts(
@@ -501,6 +506,14 @@ impl Control {
                 }
                 if want_sys && f.sys.is_none() {
                     missing.push("system audio");
+                }
+                if device && !f.screen {
+                    return Error::Platform(sc_platform::Error::Timeout(
+                        "the iPhone or iPad sent no picture. Unlock it and keep it unlocked; if it \
+                         still sends nothing (QuickTime too), restart the Mac, as macOS's iPhone \
+                         screen helper can get stuck"
+                            .into(),
+                    ));
                 }
                 Error::Platform(sc_platform::Error::Timeout(format!(
                     "no first sample from {} within {timeout_ms} ms",

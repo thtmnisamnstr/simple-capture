@@ -1708,4 +1708,14 @@ they are not a substitute for an M1 run.
   are Continuity Camera, which the camera and microphone menus already offer.
 - **Not yet:** the phone's own sound over USB (the muxed device carries it) is not recorded; with
   iPhone Mirroring, the phone's sound plays on the Mac and system audio records it.
+- **Update 2026-11-23 (tested with the owner's iPhone):** recording over USB works: the phone's
+  full screen (1206 × 2622 portrait) with the Mac's camera in the corner, first frame about 2 s
+  after the start. Before that every app, QuickTime included, got nothing: the system log showed
+  macOS's `iOSScreenCaptureAssistant` (running for five days) failing every start with "no such
+  device" for the phone's USB capture interface. Restarting that helper (`sudo killall
+  iOSScreenCaptureAssistant`, or restarting the Mac) fixed it. A device source now waits up to
+  10 s for its first picture and, if none comes, says to unlock the phone or restart the Mac.
+  CoreMediaIO also offers wireless screen devices (`kCMIOHardwarePropertyAllowWirelessScreenCaptureDevices`);
+  the owner's phone was not offered that way (only an Apple TV), so wireless stays with iPhone
+  Mirroring.
 
