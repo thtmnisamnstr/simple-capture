@@ -1,4 +1,4 @@
-//! The screen track through GStreamer, in process (beta): VA-API, NVENC or OpenH264 H.264 into
+//! The screen track through GStreamer, in process (experimental): VA-API, NVENC or OpenH264 H.264 into
 //! Matroska, the same container the FFmpeg helper writes, so reading, probing and recovery stay
 //! with the helper. Audio tracks stay with the helper too. Video keeps the helper's constant-rate
 //! rule: a frame lands in the slot nearest its time and the previous image fills skipped slots.

@@ -10,6 +10,7 @@ use sc_core::journal::StopReason;
 use sc_geometry::RectPt;
 use sc_platform::SourceEvent;
 use serde_json::{Value, json};
+use tauri::Manager;
 
 use crate::core::{Core, Reply};
 use crate::dto::SourceSpecDto;
@@ -211,6 +212,26 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
             let args: Value = serde_json::from_str(&json)
                 .map_err(|e| format!("cmd {name}: bad JSON {json:?}: {e}"))?;
             crate::commands::dispatch(core, &name, &args)
+        }
+        Step::TrayOpenMenu if core.phase().is_recording() => {
+            let opened = core.rec_ns_now();
+            crate::tray::show_recording_menu(core);
+            std::thread::sleep(Duration::from_millis(600));
+            let rects = core.window_rects();
+            std::thread::sleep(Duration::from_millis(600));
+            if let Some(w) = core.app.get_webview_window("traymenu") {
+                let _ = w.hide();
+            }
+            let menu = rects
+                .as_array()
+                .and_then(|a| a.iter().find(|r| r["label"] == "traymenu"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            Ok(json!({
+                "menu_window": menu,
+                "opened_rec_ns": opened,
+                "closed_rec_ns": core.rec_ns_now(),
+            }))
         }
         Step::TrayOpenMenu => {
             let t = core.tray.get().ok_or("no tray")?;

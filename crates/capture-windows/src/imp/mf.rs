@@ -1,4 +1,4 @@
-//! Raw tracks through Media Foundation, in process (beta): H.264 and AAC into fragmented MP4
+//! Raw tracks through Media Foundation, in process (experimental): H.264 and AAC into fragmented MP4
 //! through a sink writer (a hardware encoder when the system has one), read back with a source
 //! reader. Video keeps the helper's constant-rate rule: a frame lands in the slot nearest its
 //! time and the previous image fills skipped slots.

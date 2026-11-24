@@ -32,11 +32,12 @@ use crate::still::{self, StillCache};
 /// Windows that make the app a regular app (Dock icon, menu bar, focus) while they are open.
 pub const FULL_WINDOWS: [&str; 4] = ["editor", "library", "diagnostics", "about"];
 
-pub const WINDOWS: [(&str, OverlayRole); 12] = [
+pub const WINDOWS: [(&str, OverlayRole); 13] = [
     ("panel", OverlayRole::Panel),
     ("onboarding", OverlayRole::Onboarding),
     ("bar", OverlayRole::FloatingBar),
     ("switcher", OverlayRole::Popover),
+    ("traymenu", OverlayRole::Popover),
     ("region", OverlayRole::RegionOverlay),
     ("pick", OverlayRole::PickOverlay),
     ("saved", OverlayRole::Saved),
@@ -323,7 +324,7 @@ impl Core {
             #[cfg(target_os = "macos")]
             match label {
                 "bar" => apply_material(&w, sc_capture_macos::material::Material::Hud, 16.0),
-                "switcher" => {
+                "switcher" | "traymenu" => {
                     apply_material(&w, sc_capture_macos::material::Material::Popover, 12.0)
                 }
                 _ => {}

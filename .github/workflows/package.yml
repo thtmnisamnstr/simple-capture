@@ -209,4 +209,4 @@ jobs:
             -o -name '*.AppImage' -o -name '*.tar.gz' \) -print0 |
             xargs -0 gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
               --title "Simple Capture ${GITHUB_REF_NAME#v}" \
-              --notes "Installers for macOS (ad-hoc signed, not notarized), Windows and Linux. The helpers' corresponding source is simple-capture-helper-sources.tar.gz."
+              --notes "Installers for macOS (ad-hoc signed, not notarized), and experimental builds for Windows and Linux. See CHANGELOG.md. The helpers' corresponding source is simple-capture-helper-sources.tar.gz."

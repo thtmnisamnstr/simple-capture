@@ -172,13 +172,13 @@ pub fn platform() -> Arc<dyn Platform> {
     })
 }
 
-/// The screen track through GStreamer when it has a hardware or OpenH264 encoder (beta);
+/// The screen track through GStreamer when it has a hardware or OpenH264 encoder (experimental);
 /// `SC_MEDIA=helper`, or no such encoder, records with the FFmpeg helper.
 fn media_writers(ffmpeg: &Path) -> Arc<dyn WriterFactory> {
     let helper = HelperWriters::new(ffmpeg.to_path_buf());
     let forced = std::env::var("SC_MEDIA").is_ok_and(|v| v.eq_ignore_ascii_case("helper"));
     if !forced && let Some(encoder) = gst::usable_encoder() {
-        tracing::info!(encoder, "tracks: GStreamer (beta)");
+        tracing::info!(encoder, "tracks: GStreamer (experimental)");
         return Arc::new(gst::GstWriters { encoder, helper });
     }
     tracing::info!("tracks: FFmpeg helper");

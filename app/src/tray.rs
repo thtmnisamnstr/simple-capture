@@ -8,7 +8,7 @@ use sc_core::journal::StopReason;
 use serde_json::Value;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIcon, TrayIconBuilder};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, LogicalPosition, Manager};
 
 use crate::core::{Core, Reply};
@@ -28,6 +28,7 @@ pub const ITEMS: [(&str, &str); 9] = [
 
 pub struct Tray {
     icon: TrayIcon,
+    menu: Menu<tauri::Wry>,
     start_stop: MenuItem<tauri::Wry>,
     pause: MenuItem<tauri::Wry>,
     recording: std::sync::atomic::AtomicBool,
@@ -81,6 +82,20 @@ impl Tray {
             .tooltip("Simple Capture")
             .menu(&menu)
             .show_menu_on_left_click(true)
+            .on_tray_icon_event({
+                let core = core.clone();
+                move |_tray, ev| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = ev
+                        && core.phase().is_recording()
+                    {
+                        show_recording_menu(&core);
+                    }
+                }
+            })
             .on_menu_event(move |_app, ev| {
                 let id = ev.id().as_ref().to_string();
                 let core = core.clone();
@@ -97,6 +112,7 @@ impl Tray {
         let _ = pause.set_enabled(false);
         Ok(Tray {
             icon,
+            menu,
             start_stop,
             pause,
             recording: std::sync::atomic::AtomicBool::new(false),
@@ -137,6 +153,13 @@ impl Tray {
                     let _ = self.icon.set_icon_as_template(template);
                 }
                 Err(e) => tracing::debug!("{e}"),
+            }
+            // A system menu only becomes excludable from the recording once it is already on
+            // screen, so its first frame can be captured; while recording, a click opens the
+            // `traymenu` window instead, which was excluded before the recording began.
+            let menu = (!recording).then(|| self.menu.clone());
+            if let Err(e) = self.icon.set_menu(menu) {
+                tracing::warn!("tray menu: {e}");
             }
         }
         let text = if recording {
@@ -206,6 +229,22 @@ impl Tray {
         if let Err(e) = w.set_position(LogicalPosition::new(p.x, p.y + s.height)) {
             tracing::debug!("position {label}: {e}");
         }
+    }
+}
+
+/// The recording menu below the tray icon; a second click closes it.
+pub fn show_recording_menu(core: &Arc<Core>) {
+    if let Some(w) = core.app.get_webview_window("traymenu")
+        && w.is_visible().unwrap_or(false)
+    {
+        let _ = w.hide();
+        return;
+    }
+    if let Some(t) = core.tray.get() {
+        t.below_icon(&core.app, "traymenu");
+    }
+    if let Err(e) = core.show_window("traymenu", true) {
+        tracing::warn!("tray menu: {e}");
     }
 }
 

@@ -36,6 +36,8 @@ export function call<T>(action: string, args: Record<string, unknown> = {}): Pro
 
 export const appApi = {
   about: () => call<AboutInfo>('about'),
+  recStatus: () => call<{ paused: boolean; elapsed_ns: number }>('rec_status'),
+  trayItem: (id: string) => call<unknown>('tray_item', { id }),
   licenseText: (path: string) => call<string>('license_text', { path }),
   runDiagnostics: () => call<null>('diagnostics_run'),
   library: () => call<Library>('library'),

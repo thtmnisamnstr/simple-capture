@@ -169,8 +169,8 @@ if basic("01-onboarding", log):
     DISPLAYS = steps(log, "cmd list_displays")[0]["result"]
     rects = steps(log, "log-window-rects")[0]["result"]
     vis = {r["label"]: r["visible"] for r in rects}
-    check("01-onboarding", "twelve windows, IDs > 0, onboarding shown",
-          len(rects) == 12 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
+    check("01-onboarding", "thirteen windows, IDs > 0, onboarding shown",
+          len(rects) == 13 and all(r["id"] > 0 for r in rects) and vis.get("onboarding"), vis)
     ui = ui_lines(steps(log, "ui-log")[0])
     text = next((l for l in ui if "onboarding " in l), "")
     check("01-onboarding", "onboarding renders the three statuses",
@@ -261,8 +261,10 @@ if basic("05-exclusion", log) and FFMPEG and DISPLAYS:
     show_t = steps(log, "show bar")[0]["rec_ns"] / 1e9
     stop_t = max(s["rec_ns"] for s in steps(log) if s.get("rec_ns") is not None) / 1e9
     opened, closed = menu["result"]["opened_rec_ns"] / 1e9, menu["result"]["closed_rec_ns"] / 1e9
-    menus = [w for w in menu["result"]["other_windows"] if w["rect_pt"][1] > 20 and w["rect_pt"][3] > 40]
-    check("05-exclusion", "tray menu window seen on screen", bool(menus), menu["result"]["other_windows"])
+    mw = menu["result"].get("menu_window") or {}
+    mr = mw.get("rect_pt") or {}
+    menus = [{"rect_pt": [mr["x"], mr["y"], mr["w"], mr["h"]]}] if mw.get("visible") and mr else []
+    check("05-exclusion", "tray menu window shown while recording", bool(menus), mw)
     if pr and segments(pr):
         seg = segments(pr)[0]
         path = os.path.join(pr["dir"], [e["file"] for e in pr["journal"] if e.get("ev") == "segment_open"][0])
@@ -284,9 +286,7 @@ if basic("05-exclusion", log) and FFMPEG and DISPLAYS:
             if not crop:
                 check("05-exclusion", f"{what} rect inside the frame", False, rect)
                 continue
-            # A menu's window exists only once it tracks; the refresh it triggers takes ~150 ms.
-            grace = 0.25 if what == "tray menu" else 0.0
-            compare("05-exclusion", what, gray_frames(path, crop, fps), absent, present, fps, grace)
+            compare("05-exclusion", what, gray_frames(path, crop, fps), absent, present, fps, 0.0)
 
 log = lines("06-export")
 if basic("06-export", log):

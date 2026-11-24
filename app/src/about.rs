@@ -169,6 +169,12 @@ impl Core {
                         Err("iPhone Mirroring needs macOS 15 or later".into())
                     }
                 }),
+            "tray_item" => crate::tray::on_item(
+                self,
+                args.get("id")
+                    .and_then(Value::as_str)
+                    .ok_or("missing argument \"id\"")?,
+            ),
             "rec_status" => Ok(json!({
                 "paused": self.is_paused(),
                 "elapsed_ns": self.elapsed_ns(),

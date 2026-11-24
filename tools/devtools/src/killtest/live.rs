@@ -29,10 +29,11 @@ use sc_core::project::{ProjectState, ProjectV1, TrackKind};
 
 const USAGE: &str = "usage: sc-devtools killtest live --runsh PATH --hook-cli PATH --cli PATH \
                      --work DIR [--runs N] [--case NAME]... [--report FILE]";
-/// The [S3] target. A track can lose its whole unwritten fragment plus the encoder's latency, so
-/// a kill fails only past `fragment_interval_s` + [`LATENCY_SLACK_NS`]; past the target it warns.
+/// The [S3] target; a kill past it warns.
 const TARGET_LOSS_NS: i64 = 1_000_000_000;
-const LATENCY_SLACK_NS: i64 = 250_000_000;
+/// The most a kill may lose (owner Q-a, 2026-11-24): the measured 1.08 s with 1 s fragments is
+/// accepted, anything longer fails.
+const ACCEPTED_LOSS_NS: i64 = 1_100_000_000;
 const REGION: &str = "region:main:100,100,640,360";
 
 struct Case {
@@ -452,14 +453,7 @@ fn one(o: &Opts, run: u32, case: &Case, st: &mut Step) -> Result<()> {
             }
         }
     }
-    let fragment_ns = p
-        .recording
-        .tracks
-        .iter()
-        .map(|t| (t.fragment_interval_s * 1e9) as i64)
-        .max()
-        .unwrap_or(0);
-    let limit = TARGET_LOSS_NS.max(fragment_ns + LATENCY_SLACK_NS);
+    let limit = ACCEPTED_LOSS_NS;
     for (id, end) in &ends {
         let loss = kill_rec - end;
         st.num(&format!("{id}_loss_ms"), json!(loss / 1_000_000));

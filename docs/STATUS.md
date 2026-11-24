@@ -20,8 +20,8 @@ merged to `main` (35b7d3e); M2 is on `m2` and also contained in `m3`.
 | Remove Silences | E18–E20 | silence and delete_ranges tests; driver flow 22 live on a real recording |
 | Blur and black boxes | E21–E25 | GPU = CPU exactly; export test; driver flow 22 exports a black box over the real screen |
 | Customizable shortcuts | R15–R17 | driver flow 23 (registration, clash, bare key refused, clear) |
-| Windows: Media Foundation tracks (beta) | TESTING_ON_WINDOWS_LINUX.md | round trips on GitHub's Windows runner |
-| Linux: GStreamer screen track (beta) | TESTING_ON_WINDOWS_LINUX.md | round trip in tools/linux-dev and on GitHub's Ubuntu runner |
+| Windows: Media Foundation tracks (experimental) | TESTING_ON_WINDOWS_LINUX.md | round trips on GitHub's Windows runner |
+| Linux: GStreamer screen track (experimental) | TESTING_ON_WINDOWS_LINUX.md | round trip in tools/linux-dev and on GitHub's Ubuntu runner |
 | NVENC in the Linux and Windows helpers | — | `package` run 44958418772 built every installer with it; the Linux helper lists h264_nvenc/hevc_nvenc and links only system libraries; no NVIDIA GPU here to run it |
 
 Independent reviews of the new code ran before handing over; their verified findings were fixed
@@ -70,7 +70,8 @@ flow 25).
 
 ### Owner decisions needed
 1. **Windows records with Media Foundation and Linux's screen track goes through GStreamer, both
-   beta** (ADR-050). Older recordings and any file these cannot open still go through the
+   experimental** (ADR-050; the owner ships the Windows and Linux builds as experimental,
+   2026-11-24). Older recordings and any file these cannot open still go through the
    helper; `SC_MEDIA=helper` switches back. Untested on a real desktop until you try them
    (docs/TESTING_ON_WINDOWS_LINUX.md).
 2. ⚑ **Linux records only what the system's share dialog picks** (displays and windows; no app or
@@ -410,8 +411,8 @@ caveats above), objc2-app-kit linking CloudKit and CoreData (trimmed), Skia Free
 
 | # | Question | Options | Where |
 |---|---|---|---|
-| Q-a | Kill loss bound | (1) set `fragment_interval_s` to about 0.5 s (should keep loss under 1 s; file overhead not measured), or (2) restate the target as "≤ fragment interval + encoder latency" and keep 1 s | ADR-008 |
-| Q-b | Tray menu leak (0–1 frame) | (1) accept it as a known exception, (2) change the tray (no menu while recording), or (3) whole-app exclusion if your B4 test shows it works in the release bundle | ADR-010 |
+| Q-a | Kill loss bound | **Answered 2026-11-24:** about 1.08 s with 1 s fragments is accepted, nothing longer; the live kill test fails above 1.1 s and a test keeps fragments at 1 s | ADR-008 |
+| Q-b | Tray menu leak (0–1 frame) | **Fixed 2026-11-24:** while recording, the tray opens our own menu window, excluded before the recording starts (0 of 37 frames in flow 05) | ADR-010 |
 | Q-c | Mic level meter and debug overlay (SPEC v1, on no milestone line) | proposed: M7 (polish and performance pass) | M1_PLAN §1 |
 | Q-d | App audio for unbundled apps | proposed: keep App mode, note in the UI that it isolates apps with a bundle ID | ADR-010 |
 | Q-e (optional) | Drop Skia's default `pdf` feature (and with it expat) | `default-features = false, features = ["textlayout", "embed-freetype", "jpeg"]`; rebuilds Skia once | LICENSES §2.4 |

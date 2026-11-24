@@ -78,18 +78,18 @@ Start the app once (`cargo run -p simple-capture-app`), quit it from the tray, a
 `~/.local/share/com.simplecapture.desktop/logs/simple-capture-app.log` on Linux. One line says
 which path records tracks:
 
-- Windows: `tracks: Media Foundation (beta)`, or `tracks: FFmpeg helper` with the reason above it.
-- Linux: `tracks: GStreamer (beta)` with the encoder (`vah264enc`, `vaapih264enc`, `nvh264enc` or
+- Windows: `tracks: Media Foundation (experimental)`, or `tracks: FFmpeg helper` with the reason above it.
+- Linux: `tracks: GStreamer (experimental)` with the encoder (`vah264enc`, `vaapih264enc`, `nvh264enc` or
   `openh264enc`), or `tracks: FFmpeg helper`. To list what GStreamer offers:
   `gst-inspect-1.0 | grep -E "h264enc"`.
 
-`SC_MEDIA=helper` forces the helper path on either system; use it to tell a beta-path problem
+`SC_MEDIA=helper` forces the helper path on either system; use it to tell a experimental-path problem
 from anything else.
 
 ## 5. Live checks (announce first: these record the real screen, camera and microphone)
 
 Run the app, then go through docs/MANUAL_TEST.md §13 (Windows WN1–WN9 or Linux LX1–), then these
-beta checks:
+experimental checks:
 
 | # | Step | Expected |
 |---|---|---|

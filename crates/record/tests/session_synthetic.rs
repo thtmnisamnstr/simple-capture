@@ -1916,3 +1916,10 @@ fn a_device_that_sends_no_sound_leaves_no_audio_track() {
     );
     assert!(!proj.audio_mix.contains_key("device_audio"));
 }
+
+/// A kill loses up to one unwritten fragment; the owner accepted about 1.08 s with 1 s fragments
+/// and nothing longer (Q-a).
+#[test]
+fn fragments_stay_at_most_one_second() {
+    assert!(sc_record::Tuning::default().fragment_interval_s <= 1.0);
+}

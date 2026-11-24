@@ -118,7 +118,7 @@ pub struct WindowsPlatform {
     decoder: Arc<dyn Decoder>,
 }
 
-/// Media Foundation records in process (beta); `SC_MEDIA=helper` or a system without it falls
+/// Media Foundation records in process (experimental); `SC_MEDIA=helper` or a system without it falls
 /// back to the FFmpeg helper.
 fn media_writers(ffmpeg: &Path) -> Arc<dyn WriterFactory> {
     let forced = std::env::var("SC_MEDIA").is_ok_and(|v| v.eq_ignore_ascii_case("helper"));
@@ -126,7 +126,7 @@ fn media_writers(ffmpeg: &Path) -> Arc<dyn WriterFactory> {
         helper: HelperWriters::new(ffmpeg.to_path_buf()),
     };
     if !forced && mf.usable() {
-        tracing::info!("tracks: Media Foundation (beta)");
+        tracing::info!("tracks: Media Foundation (experimental)");
         return Arc::new(mf);
     }
     tracing::info!("tracks: FFmpeg helper");

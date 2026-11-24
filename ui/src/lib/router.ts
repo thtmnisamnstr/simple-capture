@@ -5,6 +5,7 @@ export const ROUTES = [
   'onboarding',
   'bar',
   'switcher',
+  'traymenu',
   'region',
   'pick',
   'saved',

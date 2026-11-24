@@ -4,6 +4,7 @@
   import Onboarding from './routes/Onboarding.svelte';
   import Bar from './routes/Bar.svelte';
   import Switcher from './routes/Switcher.svelte';
+  import TrayMenu from './routes/TrayMenu.svelte';
   import Region from './routes/Region.svelte';
   import Pick from './routes/Pick.svelte';
   import Saved from './routes/Saved.svelte';
@@ -31,6 +32,8 @@
     <Bar />
   {:else if route === 'switcher'}
     <Switcher />
+  {:else if route === 'traymenu'}
+    <TrayMenu />
   {:else if route === 'region'}
     <Region />
   {:else if route === 'pick'}

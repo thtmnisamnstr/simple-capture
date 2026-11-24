@@ -38,7 +38,8 @@ with no account and no network.
 ### Known limits
 - macOS builds are not notarized: right-click → Open the first time, and macOS asks again for
   Screen Recording, Camera and Microphone after each update.
-- The Windows and Linux builds pass CI but have not been tried on a real desktop yet.
+- The Windows and Linux builds are experimental: they pass CI but have not been tried on a real
+  desktop yet.
 - Linux records what the system's share dialog picks (displays and windows), and hides the
   app's own windows while recording.
 - Copy-protected apps (Apple Music and most streaming apps) send silence to every recorder,

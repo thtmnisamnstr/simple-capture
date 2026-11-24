@@ -35,8 +35,8 @@ computer.
 | Recording encode | VideoToolbox HEVC | GPU encoder or Media Foundation through the helper, else x264 | x264 through the helper |
 | Our windows in the video | excluded | excluded | hidden while recording |
 
-macOS is the primary platform. The Windows and Linux builds compile and pass their tests in CI,
-but have not yet been tried on a real desktop; see `docs/MANUAL_TEST.md` §13.
+macOS is the primary platform. The Windows and Linux builds are experimental: they compile and
+pass their tests in CI, but have not yet been tried on a real desktop; see `docs/MANUAL_TEST.md` §13.
 
 ## Install
 

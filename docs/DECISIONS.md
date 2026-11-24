@@ -298,6 +298,10 @@ they are not a substitute for an M1 run.
     the file-overhead cost is not measured) or restate the target as "≤ fragment interval +
     encoder latency".
 
+- **Update 2026-11-24 (owner, Q-a):** the measured loss of up to about 1.08 s with 1 s fragments
+  is accepted; it must not grow. `sc-devtools killtest live` fails above 1.1 s, and a test keeps
+  `fragment_interval_s` at 1 s or less.
+
 ## ADR-009: Frame-rate and resolution policy for recording
 - **Status:** Accepted (owner approved M0 on 2026-11-19 without objecting to this proposal).
 - **Evidence [S3]:** HEVC encoder throughput on the M3 Pro:
@@ -388,6 +392,10 @@ they are not a substitute for an M1 run.
     `NSMenuDidBeginTracking` plus a filter update, so 0–1 frame can leak. Options: accept it, or
     exclude the whole app (`SC_EXCLUSION=app`), which fails under the dev host [S3] and is
     re-tested by the owner in the release bundle (MANUAL_TEST B4).
+  - **Update 2026-11-24 (owner: fix it):** while recording, the tray icon has no system menu; a
+    click opens `traymenu`, a menu-like window created hidden at launch and so excluded before
+    any recording starts (Stop, Pause/Resume, Switch Source…, Open Recorder, Quit). Flow 05
+    finds it in 0 of 37 frames with no grace period. Outside recording the tray keeps its menu.
   - The floating bar and switch popover were absent from the compared frames
     [M1:app-integration]; the CLI's own test window (magenta) was absent from all 963 checked
     frames [M1:e2e].
@@ -1627,7 +1635,7 @@ they are not a substitute for an M1 run.
 
 ## ADR-050: Owner requests after M7 (record modes, rename, silences, blur, shortcuts, built-in media)
 
-- **Status:** accepted (owner, 2026-11-21). Windows and Linux media parts are **beta** until the
+- **Status:** accepted (owner, 2026-11-21). Windows and Linux media parts are **experimental** until the
   owner has tried them on his own machines.
 - **Record modes:** Screen, Screen + Camera and Camera Only. A camera can be the main picture
   (`SourceSpec::Camera`), recorded as a screen segment, so camera-only takes and switches between
@@ -1650,13 +1658,13 @@ they are not a substitute for an M1 run.
   the prefilter and the composite, identical on GPU and CPU; the camera and text stay on top.
 - **Customizable shortcuts:** each global shortcut takes new keys from the recorder panel; keys
   need ⌘, ⌃ or ⌥; clashes (between actions or with other apps) show next to the shortcut.
-- **Windows tracks (beta):** Media Foundation in process: H.264 (hardware encoder when present,
+- **Windows tracks (experimental):** Media Foundation in process: H.264 (hardware encoder when present,
   1 s GOP, no B-frames) and AAC into fragmented MP4 through a sink writer, read with a source
   reader that counts times from the first frame and uses the decoder's row pitch. Pictures over
   4096 px and audio at rates other than 44.1/48 kHz go to the helper. `.mkv` tracks from older
   recordings, and anything Media Foundation cannot open, still go through the helper;
   `SC_MEDIA=helper` or a system without Media Foundation records with the helper.
-- **Linux screen track (beta):** GStreamer in process (WebKitGTK already links it, so no new
+- **Linux screen track (experimental):** GStreamer in process (WebKitGTK already links it, so no new
   runtime dependency): VA-API, NVENC or OpenH264 into the same Matroska the helper writes, so
   reading, probing, recovery and audio stay with the helper. x264enc is never picked by the app
   (GPL stays in the helper); with no such encoder, or `SC_MEDIA=helper`, the helper records as

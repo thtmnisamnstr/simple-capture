@@ -58,6 +58,19 @@
         "backgroundColor": "#00000000"
       },
       {
+        "label": "traymenu",
+        "url": "index.html#/traymenu",
+        "title": "Simple Capture",
+        "width": 240,
+        "height": 152,
+        "resizable": false,
+        "decorations": false,
+        "skipTaskbar": true,
+        "visible": false,
+        "focus": false,
+        "backgroundColor": "#00000000"
+      },
+      {
         "label": "region",
         "url": "index.html#/region",
         "title": "Select Region",
