@@ -1606,11 +1606,13 @@ fn pause_cuts_the_paused_time_out_of_the_timeline() {
     let s = Session::start(as_dyn(&p), req, obs.clone()).expect("start");
     let pdir = s.project_dir().to_path_buf();
     sleep_host(&*p, 800 * MS);
+    let before_pause = p.host_now().0;
     s.pause().expect("pause");
     assert!(s.paused());
     s.pause().expect("pausing twice is a no-op");
     sleep_host(&*p, 1000 * MS);
     s.resume().expect("resume");
+    let after_resume = p.host_now().0;
     assert!(!s.paused());
     sleep_host(&*p, 800 * MS);
     let sum = s.stop(StopReason::User).expect("stop");
@@ -1619,7 +1621,11 @@ fn pause_cuts_the_paused_time_out_of_the_timeline() {
     assert_eq!(proj.recording.pauses.len(), 1);
     let pause = &proj.recording.pauses[0];
     let paused = pause.end_host_ns - pause.start_host_ns;
-    assert!((paused - 1000 * MS).abs() < 150 * MS, "paused {paused} ns");
+    assert!(
+        paused >= 1000 * MS - 5 * MS && paused <= after_resume - before_pause,
+        "paused {paused} ns, calls spanned {} ns",
+        after_resume - before_pause
+    );
     assert_eq!(proj.edl.clips.len(), 2, "{:?}", proj.edl.clips);
     let start = proj.recording.start_host_ns;
     assert_eq!(proj.edl.clips[0].src_in_rec_ns, 0);
