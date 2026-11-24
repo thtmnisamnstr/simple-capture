@@ -106,6 +106,9 @@ jobs:
             bundles: deb,appimage
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
+    env:
+      # Developer ID signing and notarization run only when these secrets are set (docs/RELEASING.md).
+      DEVID: ${{ startsWith(matrix.os, 'macos') && secrets.APPLE_CERTIFICATE_P12 != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
@@ -160,10 +163,58 @@ jobs:
           chmod +x third_party/out/${{ matrix.plat }}/* 2>/dev/null || true
           scripts/ci/notices.sh
           scripts/stage-helpers.sh third_party/out/${{ matrix.plat }}
+      - name: Developer ID keychain and notary key (macOS)
+        if: env.DEVID == 'true'
+        shell: bash
+        env:
+          P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          kc="$RUNNER_TEMP/signing.keychain-db"
+          kcpass="$(uuidgen)"
+          security create-keychain -p "$kcpass" "$kc"
+          security set-keychain-settings -lut 3600 "$kc"
+          security unlock-keychain -p "$kcpass" "$kc"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/devid.p12"
+          security import "$RUNNER_TEMP/devid.p12" -k "$kc" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/devid.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpass" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          printf '%s' "$API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          {
+            echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8"
+            echo "APPLE_API_KEY_ID=$API_KEY_ID"
+            echo "APPLE_API_ISSUER=$API_ISSUER"
+          } >> "$GITHUB_ENV"
       - name: Tauri bundle
         shell: bash
         working-directory: app
-        run: ../ui/node_modules/.bin/tauri build --config tauri.bundle.conf.json --bundles ${{ matrix.bundles }} -- --locked
+        run: |
+          bundles=${{ matrix.bundles }}
+          [ "$DEVID" = true ] && bundles=app
+          ../ui/node_modules/.bin/tauri build --config tauri.bundle.conf.json --bundles "$bundles" -- --locked
+      - name: Sign, notarize and package (macOS, Developer ID)
+        if: env.DEVID == 'true'
+        shell: bash
+        run: |
+          app="$CARGO_TARGET_DIR/release/bundle/macos/Simple Capture.app"
+          scripts/macos-sign.sh "$app"
+          version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' app/tauri.conf.json)
+          mkdir -p "$CARGO_TARGET_DIR/release/bundle/dmg" "$RUNNER_TEMP/dmg"
+          cp -R "$app" "$RUNNER_TEMP/dmg/"
+          ln -s /Applications "$RUNNER_TEMP/dmg/Applications"
+          dmg="$CARGO_TARGET_DIR/release/bundle/dmg/Simple Capture_${version}_aarch64.dmg"
+          hdiutil create -volname "Simple Capture" -srcfolder "$RUNNER_TEMP/dmg" -ov -format UDZO "$dmg"
+          scripts/macos-sign.sh "$dmg"
+      - name: Remove the signing keychain
+        if: always() && env.DEVID == 'true'
+        shell: bash
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
       - name: Save Skia build
         if: always() && steps.skia.outputs.cache-hit != 'true'
         uses: ./.github/actions/skia-cache
@@ -209,4 +260,4 @@ jobs:
             -o -name '*.AppImage' -o -name '*.tar.gz' \) -print0 |
             xargs -0 gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
               --title "Simple Capture ${GITHUB_REF_NAME#v}" \
-              --notes "Installers for macOS (ad-hoc signed, not notarized), and experimental builds for Windows and Linux. See CHANGELOG.md. The helpers' corresponding source is simple-capture-helper-sources.tar.gz."
+              --notes "Installers for macOS, and experimental builds for Windows and Linux. See CHANGELOG.md. The helpers' corresponding source is simple-capture-helper-sources.tar.gz."

@@ -125,7 +125,7 @@ The CBDT emoji build (`NotoColorEmoji.ttf` from the same noto-emoji commit, save
 The text overlays' bundled fonts (ADR-020 final list), unmodified, each with its license file in
 `assets/fonts/`. Sources: google/fonts commit cc5661d43cd4f9aad5567033a8e15ca28dc35c86 and
 googlefonts/noto-emoji commit 8998f5dd683424a73e2314a8c1f1e359c19e8742, fetched and checked by
-`assets/fonts/fetch.sh` (same SHA-256). The app bundle ships them in
+`scripts/fetch-fonts.sh` (same SHA-256). The app bundle ships them in
 `Resources/fonts`.
 
 | File | License | SHA-256 |

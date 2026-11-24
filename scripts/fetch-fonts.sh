@@ -1,5 +1,5 @@
 set -eu
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/../assets/fonts"
 EMOJI=8998f5dd683424a73e2314a8c1f1e359c19e8742
 GF=cc5661d43cd4f9aad5567033a8e15ca28dc35c86
 fetch() {
