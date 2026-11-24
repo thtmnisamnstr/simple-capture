@@ -503,7 +503,7 @@
             {#if !(devices.screens?.length) && !mirrorWindows.length}
               <p class="muted">Plug in your iPhone or iPad with a cable, unlock it and tap Trust; it shows up here in a few seconds. For wireless, open iPhone Mirroring (macOS 15 or later).</p>
             {:else}
-              <p class="muted">Wireless goes through iPhone Mirroring; a cable gives the sharpest picture.</p>
+              <p class="muted">Wireless goes through iPhone Mirroring; a cable gives the sharpest picture and the phone's sound. Starting a recording pauses whatever the phone is playing; press play again. Music and video apps that block recording stay silent.</p>
             {/if}
             {#if !mirrorWindows.length}
               <div class="row">

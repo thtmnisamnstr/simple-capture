@@ -707,7 +707,6 @@ pub(crate) fn start(
                     DispatchQueueAttr::SERIAL,
                 );
                 let out = AVCaptureAudioDataOutput::new();
-                out.setAudioSettings(Some(&stereo_f32_settings(48_000.0)));
                 out.setSampleBufferDelegate_queue(
                     Some(ProtocolObject::from_ref(&*delegate)),
                     Some(&queue),
