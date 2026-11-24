@@ -232,6 +232,15 @@ pub struct AudioWriterSpec {
     pub fragment_interval_s: f64,
 }
 
+impl AudioWriterSpec {
+    /// An AAC bitrate the encoder accepts at this rate: 96 kbps per channel at 48 kHz, scaled
+    /// down for headset mics (AirPods send 24 kHz, older Bluetooth 16 kHz), which macOS's AAC
+    /// encoder refuses at 96 kbps.
+    pub fn aac_bitrate(sample_rate: u32, channels: u16) -> u32 {
+        (sample_rate.saturating_mul(2)).clamp(16_000, 96_000) * u32::from(channels.clamp(1, 2))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Append {
     Written,

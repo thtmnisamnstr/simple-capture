@@ -1784,7 +1784,7 @@ fn audio_spec(rate: u32, channels: u16, req: &RecordRequest) -> AudioWriterSpec 
     AudioWriterSpec {
         sample_rate: rate,
         channels,
-        bitrate: 96_000 * u32::from(channels.clamp(1, 2)),
+        bitrate: AudioWriterSpec::aac_bitrate(rate, channels),
         fragment_interval_s: req.tuning.fragment_interval_s,
     }
 }

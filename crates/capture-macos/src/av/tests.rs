@@ -691,3 +691,38 @@ fn audio_seek_continues_the_same_samples() {
     }
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn headset_rates_encode_at_their_bitrate() {
+    for rate in [16_000u32, 24_000, 44_100, 48_000] {
+        let dir = tmp(&format!("rate-{rate}"));
+        let spec = AudioWriterSpec {
+            sample_rate: rate,
+            channels: 1,
+            bitrate: AudioWriterSpec::aac_bitrate(rate, 1),
+            fragment_interval_s: 1.0,
+        };
+        let mut w = AudioWriter::create(&dir.join("a.mov"), &spec).expect("writer");
+        let frames = rate / 10;
+        for k in 0..10u32 {
+            let samples: Vec<f32> = (0..frames)
+                .map(|i| {
+                    0.3 * ((k * frames + i) as f32 * 440.0 * std::f32::consts::TAU / rate as f32)
+                        .sin()
+                })
+                .collect();
+            let a = AudioBuffer {
+                pts: HostTime(0),
+                sample_rate: rate,
+                channels: 1,
+                frames,
+                data: AudioData::F32Interleaved(samples.into()),
+            };
+            w.append_audio(&a, i64::from(k) * 100_000_000, 0)
+                .unwrap_or_else(|e| panic!("{rate} Hz: {e}"));
+        }
+        let fin = Box::new(w).finish(None).expect("finish");
+        assert!(fin.samples > 0, "{rate} Hz wrote nothing");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
