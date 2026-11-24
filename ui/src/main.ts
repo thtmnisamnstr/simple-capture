@@ -2,7 +2,6 @@ import { mount } from 'svelte';
 import './app.css';
 import App from './App.svelte';
 import { inTauri } from './lib/api.ts';
-import { bootMock } from './lib/mock.ts';
 import { installUiLog } from './lib/uilog.ts';
 
 if (inTauri()) document.documentElement.dataset.native = '';
@@ -12,6 +11,6 @@ if (!target) throw new Error('missing #app');
 
 const app = mount(App, { target });
 if (inTauri()) installUiLog(() => window.location.hash.replace(/^#\/?/, '').split('?')[0] || 'panel');
-else bootMock();
+else void import('./lib/mock.ts').then((m) => m.bootMock());
 
 export default app;

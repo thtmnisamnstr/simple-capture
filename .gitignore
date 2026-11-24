@@ -3,7 +3,6 @@ target/
 node_modules/
 dist/
 .DS_Store
-spikes/**/target/
 third_party/build/
 third_party/out
 .wt/

@@ -16,7 +16,6 @@ simple-capture-geometry.workspace = true
 skia-safe.workspace = true
 fontdb.workspace = true
 serde_json.workspace = true
-tracing.workspace = true
 
 [lints]
 workspace = true

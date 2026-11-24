@@ -1,7 +1,6 @@
 // Typed wrappers for the app commands (plan §5.2). Falls back to the mock backend outside Tauri.
 
 import { invoke } from '@tauri-apps/api/core';
-import { mockInvoke } from './mock.ts';
 import type {
   CapabilitiesDto,
   DevicesDto,
@@ -18,13 +17,17 @@ import type {
   SourceSpecDto,
   CanvasDto,
   CameraKey,
-  PreviewStateDto,
 } from './types.ts';
 
 export const inTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+/** The mock backend outside Tauri, loaded on first use so the app's bundle leaves it out. */
+export function viaMock<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
+  return import('./mock.ts').then((m) => m.mockInvoke<T>(cmd, args));
+}
+
 function call<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
-  return inTauri() ? invoke<T>(cmd, args) : mockInvoke<T>(cmd, args);
+  return inTauri() ? invoke<T>(cmd, args) : viaMock<T>(cmd, args);
 }
 
 export const api = {
@@ -57,7 +60,6 @@ export const api = {
   reveal: (path: string) => call<void>('reveal', { path }),
   recoveryReport: () => call<RecoveryReportDto[]>('recovery_report'),
   cameraPreview: (active: boolean) => call<{ shown: boolean }>('camera_preview', { active }),
-  previewState: () => call<PreviewStateDto>('preview_state'),
   cameraKeyLive: (key: CameraKey, last = false) => call<void>('camera_key_live', { key, last }),
   showVideoEffects: () => call<void>('show_video_effects'),
   barDrag: (phase: 'begin' | 'move' | 'end', x: number, y: number) => call<void>('bar_drag', { phase, x, y }),

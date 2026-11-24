@@ -6,9 +6,6 @@ use crate::project::{
     Extra, Rgba, TextAlign, TextAnim, TextFill, TextItem, TextStyle, TextTransform,
 };
 
-/// Length of a new text item (SPEC: 3 seconds).
-pub const DEFAULT_TEXT_NS: i64 = 3_000_000_000;
-
 impl Default for TextStyle {
     fn default() -> TextStyle {
         TextStyle {

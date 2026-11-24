@@ -4,6 +4,10 @@
 stops were taken, so every milestone from M2 on waits for the owner's hands-on review.** M1 is
 merged to `main` (35b7d3e); M2 is on `m2` and also contained in `m3`.
 
+
+> The M0 spikes (`spikes/`, prototypes and their reports) were removed before 0.1.0; paths to them
+> in these docs refer to commit d05da49 and earlier.
+
 ## After M7: the owner's requests (2026-11-21, ADR-050)
 
 | Feature | Where to try it | Verified here |
@@ -78,7 +82,6 @@ flow 25).
 5. **The package workflow runs on pull requests, version tags and manual runs** (owner, ok).
 
 ### Open items
-- Linux cameras that only offer MJPEG are not supported yet.
 - Carried: the Windows CI flake `stop_before_the_duration_ends_there`; Preview at ~24 fps while
   recording; camera A/V sync unmeasured (STATUS §3).
 - The owner's own hands-on recording `~/Movies/Simple Capture/2026-11-20 15.35.33 Recording.sc`

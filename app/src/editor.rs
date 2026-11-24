@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use sc_core::edit::{Clipboard, EditOp, History, Limits, copy_clips, copy_range};
@@ -19,9 +19,7 @@ use crate::preview::StagePage;
 
 pub const AUTOSAVE_AFTER: Duration = Duration::from_millis(400);
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|p| p.into_inner())
-}
+use crate::core::lock;
 
 /// Where the preview sits in the page, in points.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -89,22 +87,7 @@ struct Range {
     ids: Option<Vec<String>>,
 }
 
-fn arg<T: serde::de::DeserializeOwned>(args: &Value, name: &str) -> Result<T, String> {
-    let v = args
-        .get(name)
-        .filter(|v| !v.is_null())
-        .ok_or_else(|| format!("missing argument {name:?}"))?;
-    serde_json::from_value(v.clone()).map_err(|e| format!("argument {name:?}: {e}"))
-}
-
-fn opt<T: serde::de::DeserializeOwned>(args: &Value, name: &str) -> Result<Option<T>, String> {
-    match args.get(name).filter(|v| !v.is_null()) {
-        Some(v) => serde_json::from_value(v.clone())
-            .map(Some)
-            .map_err(|e| format!("argument {name:?}: {e}")),
-        None => Ok(None),
-    }
-}
+use crate::commands::{arg, opt_arg as opt};
 
 fn track_json(p: &ProjectV1) -> Value {
     let kind = |k: TrackKind| match k {
@@ -485,21 +468,33 @@ impl Core {
         self.editor_save(false);
     }
 
+    /// Writes to disk outside the session lock, which playback takes every frame; saves run
+    /// one at a time so an older revision never lands after a newer one.
     fn editor_save(&self, force: bool) {
-        let mut guard = lock(&self.editor.session);
-        let Some(s) = guard.as_mut() else { return };
-        if !force && s.history.revision() == s.saved_rev {
+        static SAVING: Mutex<()> = Mutex::new(());
+        let _one_at_a_time = lock(&SAVING);
+        let (dir, rev, p) = {
+            let guard = lock(&self.editor.session);
+            let Some(s) = guard.as_ref() else { return };
+            let rev = s.history.revision();
+            if !force && rev == s.saved_rev {
+                return;
+            }
+            let mut p = (*s.project).clone();
+            s.history.doc().apply_to(&mut p);
+            (s.dir.clone(), rev, p)
+        };
+        if let Err(e) = p.save(&dir) {
+            tracing::warn!(dir = %dir.display(), "autosave: {e}");
             return;
         }
-        let mut p = (*s.project).clone();
-        s.history.doc().apply_to(&mut p);
-        match p.save(&s.dir) {
-            Ok(()) => {
-                s.saved_rev = s.history.revision();
-                s.project = Arc::new(p);
+        let mut guard = lock(&self.editor.session);
+        if let Some(s) = guard.as_mut().filter(|s| s.dir == dir) {
+            s.saved_rev = rev;
+            s.project = Arc::new(p);
+            if s.history.revision() == rev {
                 s.changed_at = None;
             }
-            Err(e) => tracing::warn!(dir = %s.dir.display(), "autosave: {e}"),
         }
     }
 

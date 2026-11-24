@@ -52,7 +52,7 @@ pub type Reply = Result<Value, String>;
 /// Pointer and window positions (global points) when a bar drag began.
 type BarDrag = ((f64, f64), (f64, f64));
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
 }
 
@@ -944,11 +944,8 @@ impl Core {
                     tracing::warn!("system picker switch: {e}");
                 }
             }
-            Ok(None) => self.emit("pick-cancelled", json!({"purpose": purpose})),
-            Err(e) => {
-                tracing::warn!("system picker: {e}");
-                self.emit("pick-cancelled", json!({"purpose": purpose}));
-            }
+            Ok(None) => {}
+            Err(e) => tracing::warn!("system picker: {e}"),
         }
     }
 

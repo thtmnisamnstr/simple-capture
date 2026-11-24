@@ -850,7 +850,10 @@ pub fn ripple_insert<T: Timed>(items: &mut [T], at: i64, len: i64) {
     }
 }
 
-/// Unlimited undo/redo over whole-document snapshots. Consecutive commits with the same
+/// Undo steps kept; older ones are dropped.
+pub const MAX_UNDO: usize = 500;
+
+/// Undo/redo over whole-document snapshots (the newest `MAX_UNDO`). Consecutive commits with the same
 /// coalesce key (one slider drag, one handle drag) become one undo step.
 #[derive(Debug, Clone)]
 pub struct History {
@@ -903,6 +906,9 @@ impl History {
         let prev = std::mem::replace(&mut self.doc, next);
         if !merge {
             self.undo.push(prev);
+            if self.undo.len() > MAX_UNDO {
+                self.undo.drain(..self.undo.len() - MAX_UNDO);
+            }
         }
         self.redo.clear();
         self.coalesce = coalesce.map(str::to_string);

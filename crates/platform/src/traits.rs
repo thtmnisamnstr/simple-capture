@@ -232,9 +232,6 @@ pub struct Pointer {
     pub buttons: u8,
 }
 
-/// M3; kept for ADR-007.
-pub trait PreviewSink: Send + Sync {}
-
 pub trait Platform: Send + Sync {
     fn name(&self) -> &'static str;
     fn capabilities(&self) -> Capabilities;

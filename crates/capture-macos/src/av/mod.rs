@@ -22,6 +22,7 @@ use sc_platform::{
 
 pub use devices::CAMERA_TAG_BASE;
 pub(crate) use devices::allow_screen_devices;
+pub(crate) use frames::asbd_of;
 pub use frames::{MacAudioSample, MacPixelFrame, PIX_420F, PIX_420V};
 
 /// Spike 3 `encbench` default (0.05 bits per pixel per frame).

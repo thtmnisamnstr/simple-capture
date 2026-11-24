@@ -43,31 +43,27 @@ pub(crate) struct SessionSink {
     seen: [AtomicBool; 5],
     firsts: Mutex<Firsts>,
     cv: Condvar,
-    levels: Mutex<[(std::time::Instant, f32); 2]>,
+    levels: Mutex<[std::time::Instant; 2]>,
     held: Mutex<Option<VideoFrame>>,
 }
 
 impl SessionSink {
+    /// One buffer's peak per 66 ms: converting every buffer to read its peak costs more than the
+    /// meter is worth.
     fn level(&self, track: AudioTrackKind, a: &AudioBuffer) {
+        let i = usize::from(track != AudioTrackKind::Mic);
+        {
+            let mut l = lock(&self.levels);
+            if l[i].elapsed() < std::time::Duration::from_millis(66) {
+                return;
+            }
+            l[i] = std::time::Instant::now();
+        }
         let Some(samples) = a.data.samples() else {
             return;
         };
         let peak = samples.iter().fold(0f32, |m, v| m.max(v.abs()));
-        let i = usize::from(track != AudioTrackKind::Mic);
-        let report = {
-            let mut l = lock(&self.levels);
-            l[i].1 = l[i].1.max(peak);
-            if l[i].0.elapsed() < std::time::Duration::from_millis(66) {
-                None
-            } else {
-                let p = l[i].1;
-                l[i] = (std::time::Instant::now(), 0.0);
-                Some(p)
-            }
-        };
-        if let Some(p) = report {
-            self.sh.obs.on_level(track, p);
-        }
+        self.sh.obs.on_level(track, peak);
     }
 
     /// The screen sends frames only when it changes: the last one seen while paused is recorded
@@ -95,7 +91,7 @@ impl SessionSink {
             firsts: Mutex::new(Firsts::default()),
             cv: Condvar::new(),
             held: Mutex::new(None),
-            levels: Mutex::new([(std::time::Instant::now(), 0.0); 2]),
+            levels: Mutex::new([std::time::Instant::now(); 2]),
         })
     }
 

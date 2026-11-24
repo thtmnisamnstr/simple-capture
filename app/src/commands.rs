@@ -66,12 +66,12 @@ fn arg_value<'a>(args: &'a Value, name: &str) -> Option<&'a Value> {
         .filter(|v| !v.is_null())
 }
 
-fn arg<T: DeserializeOwned>(args: &Value, name: &str) -> Result<T, String> {
+pub(crate) fn arg<T: DeserializeOwned>(args: &Value, name: &str) -> Result<T, String> {
     let v = arg_value(args, name).ok_or_else(|| format!("missing argument {name:?}"))?;
     serde_json::from_value(v.clone()).map_err(|e| format!("argument {name:?}: {e}"))
 }
 
-fn opt_arg<T: DeserializeOwned>(args: &Value, name: &str) -> Result<Option<T>, String> {
+pub(crate) fn opt_arg<T: DeserializeOwned>(args: &Value, name: &str) -> Result<Option<T>, String> {
     arg_value(args, name)
         .map(|v| serde_json::from_value(v.clone()).map_err(|e| format!("argument {name:?}: {e}")))
         .transpose()

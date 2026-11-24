@@ -6,7 +6,7 @@
 //! draws the frame, and the header gives its size.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 pub const HEADER: usize = 16;
@@ -14,9 +14,7 @@ pub const I420: u32 = 1;
 #[cfg(target_os = "macos")]
 pub const NATIVE: u32 = 2;
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|p| p.into_inner())
-}
+use crate::core::lock;
 
 #[derive(Clone)]
 pub struct LiveFrame {

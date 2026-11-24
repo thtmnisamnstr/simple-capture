@@ -3,15 +3,11 @@
 mod common;
 
 use common::*;
-use sc_export::recipe::{
-    FrameRenderer, QUICK_LONG_SIDE_CAP, default_out_path, mix_wav_path, quick_canvas, quick_plan,
-    x264_quick,
-};
-use sc_export::{ExportSize, QuickExportRequest};
+use sc_export::ExportSize;
+use sc_export::recipe::{FrameRenderer, QUICK_LONG_SIDE_CAP, default_out_path, quick_canvas};
 use sc_geometry::{Aspect, RectPx, SizeClass, SizePx, contain_fit};
 use sc_platform::synthetic::SctrkDecoder;
 use sc_render::{Backend, OutputFormat};
-use std::path::Path;
 use std::sync::Arc;
 
 fn sz(w: u32, h: u32) -> SizePx {
@@ -100,64 +96,21 @@ fn size_classes_never_upscale() {
 }
 
 #[test]
-fn plan_fps_frames_and_default_name() {
-    let t = TempDir::new("plan-fps");
+fn default_name_skips_taken_files() {
+    let t = TempDir::new("plan-name");
     let mut p = new_project(t.path(), "Demo", 1000);
     p.segment(Seg::new(0, 1000, 320, 180));
     let dir = p.save();
-    let mut req = QuickExportRequest {
-        project_dir: dir.clone(),
-        out_path: None,
-        size: ExportSize::Reference,
-        fps: None,
-    };
-    let plan = quick_plan(&p.project, &dir, &req).expect("plan");
-    assert_eq!(plan.fps, 30);
-    assert_eq!(plan.frames, 30);
-    assert_eq!(plan.duration_ns, 1000 * MS);
-    assert_eq!(plan.out_path, t.path().join("Demo.mp4"));
-    assert!(plan.audio_tracks.is_empty());
-    req.fps = Some(24);
-    assert_eq!(quick_plan(&p.project, &dir, &req).expect("plan").frames, 24);
-
+    assert_eq!(
+        default_out_path(&dir).expect("name"),
+        t.path().join("Demo.mp4")
+    );
     std::fs::write(t.path().join("Demo.mp4"), b"x").expect("write");
     std::fs::write(t.path().join("Demo 2.mp4.part"), b"x").expect("write");
     assert_eq!(
         default_out_path(&dir).expect("name"),
         t.path().join("Demo 3.mp4")
     );
-
-    let mut rec = new_project(t.path(), "Rec", 1000);
-    rec.project.recording.stop_host_ns = None;
-    assert!(quick_plan(&rec.project, &rec.dir, &req).is_err());
-}
-
-#[test]
-fn recipe_args() {
-    let out = Path::new("/x/Demo.mp4.part");
-    assert_eq!(mix_wav_path(out), Path::new("/x/Demo.mp4.wav.part"));
-    let a = x264_quick(sz(1920, 1080), 30, true, out);
-    let joined = a.join(" ");
-    for want in [
-        "-f yuv4mpegpipe -i pipe:0",
-        &format!("-f wav -i {}", mix_wav_path(out).display()),
-        "-map 0:v:0 -map 1:a:0",
-        "-c:v libx264 -preset medium -profile:v high -pix_fmt yuv420p -crf 22",
-        "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv",
-        "-color_primaries bt709 -color_trc bt709 -colorspace bt709 -color_range tv",
-        "-b:a 160k",
-        "-movflags +faststart -f mp4 -y /x/Demo.mp4.part",
-    ] {
-        assert!(joined.contains(want), "missing {want:?} in {joined}");
-    }
-    #[cfg(target_os = "macos")]
-    assert!(joined.contains("-c:a aac_at"));
-    for banned in ["-ss", "-to", "-r", "-s", "-an"] {
-        assert!(!a.iter().any(|x| x == banned), "{banned} in {joined}");
-    }
-    let silent = x264_quick(sz(1920, 1080), 30, false, out);
-    assert!(silent.iter().any(|x| x == "-an"));
-    assert!(!silent.iter().any(|x| x == "-c:a" || x.contains(".wav")));
 }
 
 fn px(d: &[u8], w: u32, x: u32, y: u32) -> [u8; 4] {

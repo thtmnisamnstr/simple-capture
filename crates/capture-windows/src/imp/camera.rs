@@ -195,19 +195,7 @@ fn frame_from(
         let (w, h) = (size.w as usize, size.h as usize);
         let rows = h + h.div_ceil(2);
         let stride = (len as usize / rows).max(w);
-        let mut f = CpuNv12Frame::black(size, false);
-        let uv_stride = f.uv_stride();
-        for y in 0..h {
-            if let Some(src) = data.get(y * stride..y * stride + w) {
-                f.y[y * w..(y + 1) * w].copy_from_slice(src);
-            }
-        }
-        for y in 0..h.div_ceil(2) {
-            let o = (h + y) * stride;
-            if let Some(src) = data.get(o..o + uv_stride) {
-                f.uv[y * uv_stride..(y + 1) * uv_stride].copy_from_slice(src);
-            }
-        }
+        let f = CpuNv12Frame::from_padded(data, size, stride, h);
         let _ = buf.Unlock();
         Some(f)
     }

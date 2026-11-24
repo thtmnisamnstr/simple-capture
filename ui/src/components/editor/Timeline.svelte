@@ -14,6 +14,7 @@
     type Redaction,
     type TextItem,
   } from '../../lib/editor.ts';
+  import { scUrl } from '../../lib/format.ts';
   import type { CameraKey } from '../../lib/types.ts';
   import Icon from '../Icon.svelte';
 
@@ -145,6 +146,7 @@
   let pointerX = 0;
 
   const images = new Map<number, HTMLImageElement>();
+  const failures = new Map<number, number>();
   let imageTick = $state(0);
 
   function thumbImage(i: number): HTMLImageElement | null {
@@ -154,18 +156,24 @@
       img = new Image();
       img.onload = () => imageTick++;
       img.onerror = () => {
-        images.delete(i);
-        setTimeout(() => imageTick++, 500);
+        const n = (failures.get(i) ?? 0) + 1;
+        failures.set(i, n);
+        if (n < 3) {
+          images.delete(i);
+          setTimeout(() => imageTick++, 500);
+        }
       };
-      const base = /Windows|Android/.test(navigator.userAgent) ? 'http://sc.localhost/thumb' : 'sc://thumb';
-      img.src = `${base}/${thumbs.step_ms}/${i}.png`;
+      img.src = `${scUrl('thumb')}/${thumbs.step_ms}/${i}.png`;
       images.set(i, img);
     }
     return img.complete && img.naturalWidth > 0 ? img : null;
   }
 
   $effect(() => {
-    if (thumbs === null) images.clear();
+    if (thumbs === null) {
+      images.clear();
+      failures.clear();
+    }
   });
 
   function snapTargets(): number[] {
@@ -397,8 +405,10 @@
     const wave = lane === 'camera' ? cameraPeaks : peaks;
     const dpr = window.devicePixelRatio || 1;
     const w = Math.max(1, viewW);
-    cv.width = Math.round(w * dpr);
-    cv.height = Math.round(H * dpr);
+    const pw = Math.round(w * dpr);
+    const ph = Math.round(H * dpr);
+    if (cv.width !== pw) cv.width = pw;
+    if (cv.height !== ph) cv.height = ph;
     const g = cv.getContext('2d');
     if (!g) return;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);

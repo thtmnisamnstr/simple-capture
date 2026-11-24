@@ -48,6 +48,15 @@ fn encoder_props(encoder: &str, kbps: u32, gop: u32) -> String {
     }
 }
 
+/// A frame handed to GStreamer without copying it; gap fill pushes the same frame many times.
+struct SharedBytes(Arc<Vec<u8>>);
+
+impl AsRef<[u8]> for SharedBytes {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 fn frame_bytes(size: SizePx) -> u64 {
     u64::from(size.w) * u64::from(size.h) * 3 / 2
 }
@@ -209,7 +218,7 @@ impl Pipe {
 
     /// Waits for room in the queue instead of blocking inside appsrc, so a pipeline that errors
     /// or stalls is noticed rather than hanging the writer.
-    fn push(&self, bytes: &[u8], pts_ns: u64, dur_ns: u64) -> Result<()> {
+    fn push(&self, bytes: &Arc<Vec<u8>>, pts_ns: u64, dur_ns: u64) -> Result<()> {
         let since = Instant::now();
         loop {
             if let Some(e) = self.bus_error() {
@@ -225,7 +234,7 @@ impl Pipe {
             }
             std::thread::sleep(std::time::Duration::from_millis(2));
         }
-        let mut buf = gst::Buffer::from_slice(bytes.to_vec());
+        let mut buf = gst::Buffer::from_slice(SharedBytes(bytes.clone()));
         {
             let b = buf
                 .get_mut()
@@ -333,7 +342,7 @@ fn video_loop(
     let mut next = 0u64;
     let mut last: Option<Arc<Vec<u8>>> = None;
     let mut error = None;
-    let fill = |upto: u64, with: &[u8], next: &mut u64| -> Result<()> {
+    let fill = |upto: u64, with: &Arc<Vec<u8>>, next: &mut u64| -> Result<()> {
         while *next < upto {
             pipe.push(with, at(*next), dur)?;
             *next += 1;

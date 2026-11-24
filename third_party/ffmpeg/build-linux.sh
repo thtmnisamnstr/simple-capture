@@ -83,17 +83,6 @@ WEBP_OPTS=(
     -DWEBP_BUILD_LIBWEBPMUX=ON
 )
 
-build_zlib() {
-    stamp_ok zlib && return 0
-    prepare zlib
-    cmake -S . -B build "${CMAKE_COMMON[@]}" -DZLIB_BUILD_SHARED=OFF -DZLIB_BUILD_TESTING=OFF
-    cmake --build build -j"$JOBS"
-    cmake --install build
-    # zlib names its static library libzs.a on Windows; zlib.pc and FFmpeg ask for -lz.
-    $WIN && cp "$PREFIX/lib/libzs.a" "$PREFIX/lib/libz.a"
-    stamp_set zlib
-}
-
 build_libwebp() {
     stamp_ok libwebp && return 0
     prepare libwebp
@@ -183,12 +172,11 @@ FFMPEG_CONFIGURE=(
     --prefix=/opt/simple-capture-helper
     --arch="$FF_ARCH"
     --pkg-config=pkg-config --pkg-config-flags=--static
-    --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib"
     --extra-version=simple-capture
     --enable-gpl
     --disable-shared --enable-static
     --disable-autodetect --disable-network --disable-ffplay --disable-doc --disable-debug
-    --disable-sdl2 --disable-xlib --disable-iconv --enable-zlib --disable-bzlib --disable-lzma
+    --disable-sdl2 --disable-xlib --disable-iconv --disable-zlib --disable-bzlib --disable-lzma
     --enable-pthreads
     --enable-libx264 --enable-libx265 --enable-libsvtav1 --enable-libvpx
     --enable-libopus --enable-libvorbis --enable-libwebp
@@ -197,12 +185,12 @@ FFMPEG_CONFIGURE=(
     --enable-protocol=file,pipe
     --enable-encoder=libx264,libx265,libsvtav1,libvpx_vp8,libvpx_vp9,prores_ks
     --enable-encoder=aac,libopus,libvorbis,flac,alac,pcm_s16le,pcm_s24le,pcm_f32le
-    --enable-encoder=gif,apng,png,libwebp_anim,rawvideo,wrapped_avframe
+    --enable-encoder=gif,libwebp_anim,rawvideo,wrapped_avframe
     --enable-encoder=h264_nvenc,hevc_nvenc
-    --enable-decoder=rawvideo,wrapped_avframe,h264,hevc,vp8,vp9,prores,gif,png,apng,webp
+    --enable-decoder=rawvideo,wrapped_avframe,h264,hevc,vp8,vp9,prores,gif
     --enable-decoder=aac,opus,vorbis,flac,alac,pcm_s16le,pcm_s24le,pcm_f32le
-    --enable-muxer=mov,mp4,webm,matroska,gif,apng,webp,wav,yuv4mpegpipe,rawvideo,null,framemd5
-    --enable-demuxer=mov,matroska,gif,apng,webp,wav,yuv4mpegpipe,rawvideo,pcm_f32le,pcm_s16le
+    --enable-muxer=mov,mp4,webm,matroska,gif,webp,wav,yuv4mpegpipe,rawvideo,null,framemd5
+    --enable-demuxer=mov,matroska,gif,wav,yuv4mpegpipe,rawvideo,pcm_f32le,pcm_s16le
     --enable-parser=h264,hevc,vp8,vp9,av1,aac,opus,vorbis,flac,gif,png
     --enable-bsfs
     --enable-indev=lavfi
@@ -250,7 +238,6 @@ collect_licenses() {
     cp "$SRC/opus/COPYING" "$d/opus-COPYING"
     cp "$SRC/libogg/COPYING" "$d/libogg-COPYING"
     cp "$SRC/libvorbis/COPYING" "$d/libvorbis-COPYING"
-    cp "$SRC/zlib/LICENSE" "$d/zlib-LICENSE"
     cp "$SRC/libwebp/COPYING" "$d/libwebp-COPYING"
     cp "$SRC/libwebp/PATENTS" "$d/libwebp-PATENTS"
     sed -n '1,/\*\//p' "$SRC/nv-codec-headers/include/ffnvcodec/nvEncodeAPI.h" > "$d/nv-codec-headers-LICENSE"
@@ -284,7 +271,6 @@ verify_linkage() {
 }
 
 log "building $PLAT (jobs $JOBS)"
-build_zlib
 build_libwebp
 build_libogg
 build_libvorbis
@@ -301,7 +287,7 @@ if ! $WIN; then
     "$OUT/ffmpeg" -hide_banner -buildconf > "$OUT/ffmpeg.buildconf.txt"
     "$OUT/ffmpeg" -hide_banner -version | head -1
 fi
-for sec in ffmpeg x264 x265 svt-av1 libvpx opus libogg libvorbis zlib libwebp; do
+for sec in ffmpeg x264 x265 svt-av1 libvpx opus libogg libvorbis libwebp; do
     printf '%s %s %s\n' "$sec" "$(pin "$sec" version)" "$(pin "$sec" sha256)"
 done > "$OUT/ffmpeg.sources.txt"
 log "done: $OUT/ffmpeg$EXE $OUT/ffprobe$EXE"

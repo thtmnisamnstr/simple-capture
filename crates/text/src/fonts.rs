@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::OnceLock;
 
 use sc_core::{Error, Result};
 use skia_safe::font_arguments::VariationPosition;
@@ -171,22 +171,6 @@ pub fn default_fonts_dir() -> PathBuf {
         .unwrap_or(repo)
 }
 
-fn font_bytes(path: &Path) -> Result<Arc<Vec<u8>>> {
-    static CACHE: OnceLock<Mutex<HashMap<PathBuf, Arc<Vec<u8>>>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(Default::default);
-    if let Some(b) = cache.lock().ok().and_then(|c| c.get(path).cloned()) {
-        return Ok(b);
-    }
-    let b = Arc::new(
-        std::fs::read(path)
-            .map_err(|e| Error::Other(format!("read font {}: {e}", path.display())))?,
-    );
-    if let Ok(mut c) = cache.lock() {
-        c.insert(path.to_path_buf(), b.clone());
-    }
-    Ok(b)
-}
-
 fn with_weight(tf: &Typeface, w: u32) -> Typeface {
     let coords = [Coordinate {
         axis: FourByteTag::from_chars('w', 'g', 'h', 't'),
@@ -254,9 +238,10 @@ impl FontLibrary {
     }
 
     fn load(&self, path: &Path, index: u32) -> Result<Typeface> {
-        let bytes = font_bytes(path)?;
+        let data = Data::from_filename(path)
+            .ok_or_else(|| Error::Other(format!("read font {}", path.display())))?;
         self.mgr
-            .new_from_data(Data::new_copy(&bytes), Some(index))
+            .new_from_data(data, Some(index))
             .ok_or_else(|| Error::Invalid(format!("sc_text: cannot load font {}", path.display())))
     }
 

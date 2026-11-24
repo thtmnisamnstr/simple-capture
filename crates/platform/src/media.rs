@@ -62,6 +62,30 @@ impl CpuNv12Frame {
         Self::filled(size, if full_range { 0 } else { 16 }, 128, 128, full_range)
     }
 
+    /// Limited-range NV12 from rows `stride` bytes apart, the UV plane starting at row
+    /// `uv_row`. Rows missing from `data` come out black.
+    pub fn from_padded(data: &[u8], size: SizePx, stride: usize, uv_row: usize) -> CpuNv12Frame {
+        let (w, h) = (size.w as usize, size.h as usize);
+        let (uv_w, uv_h) = (Self::uv_stride_for(size), Self::uv_rows_for(size));
+        let plane = |rows: usize, width: usize, first: usize, fill: u8| {
+            let mut out = Vec::with_capacity(rows * width);
+            for r in 0..rows {
+                let at = (first + r) * stride;
+                match data.get(at..at + width) {
+                    Some(row) => out.extend_from_slice(row),
+                    None => out.resize(out.len() + width, fill),
+                }
+            }
+            out
+        };
+        CpuNv12Frame {
+            size,
+            y: plane(h, w, 0, 16),
+            uv: plane(uv_h, uv_w, uv_row, 128),
+            full_range: false,
+        }
+    }
+
     /// Bytes per UV row: the width rounded up to even.
     pub fn uv_stride(&self) -> usize {
         Self::uv_stride_for(self.size)

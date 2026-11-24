@@ -213,13 +213,6 @@ button.link:active:not(:disabled) {
   opacity: 0.7;
 }
 
-button.large {
-  min-height: 28px;
-  padding: 4px 16px;
-  border-radius: 7px;
-  font-size: 13px;
-}
-
 button.icon {
   width: 24px;
   min-width: 24px;
@@ -514,11 +507,6 @@ input[type='range']::-webkit-slider-thumb {
 .badge.ok {
   background: color-mix(in srgb, var(--green) 16%, transparent);
   color: var(--green);
-}
-
-.badge.attention {
-  background: var(--warn-fill);
-  color: var(--warn-label);
 }
 
 .badge.bad {

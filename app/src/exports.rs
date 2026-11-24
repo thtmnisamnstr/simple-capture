@@ -50,13 +50,7 @@ fn save(data: &Path, s: &ExportStore) -> Result<(), String> {
     sc_core::fsio::atomic_write(&store_path(data), &bytes).map_err(|e| e.to_string())
 }
 
-fn arg<T: serde::de::DeserializeOwned>(args: &Value, name: &str) -> Result<T, String> {
-    let v = args
-        .get(name)
-        .filter(|v| !v.is_null())
-        .ok_or_else(|| format!("missing argument {name:?}"))?;
-    serde_json::from_value(v.clone()).map_err(|e| format!("argument {name:?}: {e}"))
-}
+use crate::commands::arg;
 
 impl Core {
     fn encoder_available(&self, name: &str) -> bool {

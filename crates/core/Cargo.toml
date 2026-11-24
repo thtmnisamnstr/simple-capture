@@ -15,7 +15,6 @@ simple-capture-geometry = { workspace = true, features = ["serde"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-tracing.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

@@ -36,6 +36,8 @@ pub struct TextEngine {
 }
 
 const KEEP: usize = 64;
+/// Composed bitmaps kept: a typewriter reveal makes one per character, each the size of the text.
+const KEEP_COMPOSED: usize = 32;
 
 impl TextEngine {
     pub fn new() -> Result<TextEngine> {
@@ -44,10 +46,6 @@ impl TextEngine {
             prepared: HashMap::new(),
             composed: HashMap::new(),
         })
-    }
-
-    pub fn fonts(&mut self) -> &mut FontLibrary {
-        &mut self.fonts
     }
 
     fn key(item: &TextItem, canvas: SizePx) -> u64 {
@@ -127,6 +125,9 @@ impl TextEngine {
             Some(i) => i.clone(),
             None => {
                 let i = Arc::new(p.compose(reveal));
+                if self.composed.len() >= KEEP_COMPOSED {
+                    self.composed.clear();
+                }
                 self.composed.insert((key, reveal), i.clone());
                 i
             }

@@ -1,8 +1,8 @@
 // The `app` command: About, licenses, the self-test and the Library.
 
 import { invoke } from '@tauri-apps/api/core';
-import { inTauri } from './api.ts';
-import { mockInvoke } from './mock.ts';
+import { inTauri, viaMock } from './api.ts';
+import { basename, scUrl } from './format.ts';
 
 export interface LicenseFile { name: string; path: string; html: boolean }
 export interface LicenseEntry { title: string; license: string; note: string; files: LicenseFile[] }
@@ -31,7 +31,7 @@ export interface LibraryItem {
 export interface Library { root: string; free_bytes: number | null; items: LibraryItem[] }
 
 export function call<T>(action: string, args: Record<string, unknown> = {}): Promise<T> {
-  return inTauri() ? invoke<T>('app', { action, args }) : mockInvoke<T>('app', { action, ...args });
+  return inTauri() ? invoke<T>('app', { action, args }) : viaMock<T>('app', { action, ...args });
 }
 
 export const appApi = {
@@ -56,14 +56,10 @@ export function lineKind(line: string): LineKind {
 }
 
 export function posterUrl(dir: string, ua: string = typeof navigator === 'undefined' ? '' : navigator.userAgent): string {
-  const name = dir.split(/[\\/]/).filter(Boolean).pop() ?? '';
-  const base = /Windows|Android/.test(ua) ? 'http://sc.localhost/poster' : 'sc://poster';
-  return `${base}/${encodeURIComponent(name)}.png`;
+  return `${scUrl('poster', ua)}/${encodeURIComponent(basename(dir))}.png`;
 }
 
-export function folderName(dir: string): string {
-  return dir.split(/[\\/]/).filter(Boolean).pop() ?? dir;
-}
+export const folderName = basename;
 
 /** "Today 10:47", "Yesterday 18:02" or "Nov 3, 2026 09:15" from an RFC 3339 time. */
 export function whenLabel(rfc3339: string, now: Date = new Date()): string {

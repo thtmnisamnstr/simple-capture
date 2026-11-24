@@ -123,17 +123,7 @@ fn yuyv_to_nv12(src: &[u8], stride: usize, size: SizePx) -> CpuNv12Frame {
 }
 
 pub(super) fn nv12_copy(src: &[u8], stride: usize, size: SizePx) -> CpuNv12Frame {
-    let (w, h) = (size.w as usize, size.h as usize);
-    let mut f = CpuNv12Frame::black(size, false);
-    let uv_stride = f.uv_stride();
-    for y in 0..h {
-        f.y[y * w..(y + 1) * w].copy_from_slice(&src[y * stride..y * stride + w]);
-    }
-    for y in 0..h.div_ceil(2) {
-        let o = (h + y) * stride;
-        f.uv[y * uv_stride..(y + 1) * uv_stride].copy_from_slice(&src[o..o + uv_stride]);
-    }
-    f
+    CpuNv12Frame::from_padded(src, size, stride, size.h as usize)
 }
 
 pub struct CameraStream {

@@ -519,9 +519,9 @@ pub struct SegmentFraming {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExportPresets {
-    /// `"mp4" | "webm" | "gif"`.
+    /// Kept for the file format; the app stores its export settings in its own `export.json`.
     pub last_format: String,
-    /// ExportSettings per format; the settings type arrives with M5.
+    /// Kept for the file format, like `last_format`.
     pub per_format: Map<String, Value>,
     pub named: Vec<NamedPreset>,
     #[serde(flatten)]

@@ -106,10 +106,6 @@ impl Playback {
         self.shared.playing.load(Ordering::SeqCst)
     }
 
-    pub fn has_device(&self) -> bool {
-        self.shared.device.load(Ordering::SeqCst)
-    }
-
     /// The timeline time being heard now. Before the device has played anything it stays at
     /// the start, so the picture waits for the sound.
     pub fn now_tl(&self) -> i64 {

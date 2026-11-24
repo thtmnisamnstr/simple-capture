@@ -29,6 +29,6 @@ pub use sources::{
 };
 pub use traits::{
     AudioReader, AudioSource, CameraSource, Decoder, Desktop, DeviceStream, FrameSink,
-    OverlayWindows, Permissions, Platform, Pointer, PreviewSink, ScreenSource, ScreenStream,
-    SourcePicker, SystemAudioSource, SystemAudioStream, TrackWriter, VideoReader, WriterFactory,
+    OverlayWindows, Permissions, Platform, Pointer, ScreenSource, ScreenStream, SourcePicker,
+    SystemAudioSource, SystemAudioStream, TrackWriter, VideoReader, WriterFactory,
 };

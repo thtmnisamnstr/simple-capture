@@ -78,9 +78,9 @@ fn find_input(id: &str) -> Result<cpal::Device> {
         .ok_or_else(|| Error::NotFound(format!("microphone {id}")))
 }
 
-fn to_f32(data: &Data) -> Option<Vec<f32>> {
+fn to_f32(data: &Data) -> Option<Arc<[f32]>> {
     Some(match data.sample_format() {
-        SampleFormat::F32 => data.as_slice::<f32>()?.to_vec(),
+        SampleFormat::F32 => Arc::from(data.as_slice::<f32>()?),
         SampleFormat::F64 => data.as_slice::<f64>()?.iter().map(|v| *v as f32).collect(),
         SampleFormat::I16 => data
             .as_slice::<i16>()?
@@ -170,7 +170,7 @@ fn run(
                                 sample_rate: rate,
                                 channels,
                                 frames,
-                                data: AudioData::F32Interleaved(samples.into()),
+                                data: AudioData::F32Interleaved(samples),
                             });
                         },
                         move |e| on_error(e.to_string()),

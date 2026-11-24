@@ -994,20 +994,7 @@ fn nv12_from(data: &[u8], size: SizePx, stride: Option<usize>) -> CpuNv12Frame {
     let stride = stride.unwrap_or(data.len() / (h + ch)).max(w);
     let rows = data.len() / stride;
     let y_rows = if rows > h + ch { rows * 2 / 3 } else { h };
-    let mut f = CpuNv12Frame::black(size, false);
-    let uv_stride = f.uv_stride();
-    for y in 0..h {
-        if let Some(src) = data.get(y * stride..y * stride + w) {
-            f.y[y * w..(y + 1) * w].copy_from_slice(src);
-        }
-    }
-    for y in 0..ch {
-        let o = (y_rows + y) * stride;
-        if let Some(src) = data.get(o..o + uv_stride) {
-            f.uv[y * uv_stride..(y + 1) * uv_stride].copy_from_slice(src);
-        }
-    }
-    f
+    CpuNv12Frame::from_padded(data, size, stride, y_rows)
 }
 
 impl MfVideoReader {

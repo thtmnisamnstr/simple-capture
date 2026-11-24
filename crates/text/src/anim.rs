@@ -7,27 +7,6 @@ use sc_core::project::{Anim, EmphasisKind, TextAnim};
 
 use crate::item::Reveal;
 
-pub const IN_KINDS: [&str; 9] = [
-    "fade",
-    "pop",
-    "slide_left",
-    "slide_right",
-    "slide_up",
-    "slide_down",
-    "typewriter",
-    "words",
-    "bounce",
-];
-pub const OUT_KINDS: [&str; 6] = [
-    "fade",
-    "pop",
-    "slide_left",
-    "slide_right",
-    "slide_up",
-    "slide_down",
-];
-pub const EASINGS: [&str; 5] = ["linear", "ease_in", "ease_out", "ease_in_out", "back"];
-
 const SLIDE_1080: f32 = 180.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]

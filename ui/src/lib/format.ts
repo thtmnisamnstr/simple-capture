@@ -16,6 +16,11 @@ export function formatBytes(n: number): string {
   return `${v >= 10 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
 }
 
+/** The app's own `sc://<host>` scheme; Windows (WebView2) serves it as `http://sc.localhost/<host>`. */
+export function scUrl(host: string, ua: string = typeof navigator === 'undefined' ? '' : navigator.userAgent): string {
+  return /Windows|Android/.test(ua) ? `http://sc.localhost/${host}` : `sc://${host}`;
+}
+
 export function basename(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? path;

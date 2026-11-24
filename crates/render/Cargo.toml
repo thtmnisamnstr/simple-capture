@@ -16,7 +16,6 @@ simple-capture-geometry.workspace = true
 simple-capture-platform.workspace = true
 wgpu.workspace = true
 pollster.workspace = true
-bytemuck.workspace = true
 tracing.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]

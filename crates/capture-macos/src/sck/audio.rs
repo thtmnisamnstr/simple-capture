@@ -38,15 +38,6 @@ impl MacSystemAudio {
         self.start_inner(mode, exclude, None, sink)
     }
 
-    /// Starts already filtered to `app` (instead of `follow_app` on a running stream).
-    pub fn start_following(
-        &self,
-        app: &AppRef,
-        sink: Arc<dyn FrameSink>,
-    ) -> Result<MacSystemAudioStream> {
-        self.start_inner(SystemAudioMode::App, &[], Some(app.pid), sink)
-    }
-
     fn start_inner(
         &self,
         mode: SystemAudioMode,
@@ -170,9 +161,7 @@ impl SystemAudioStream for MacSystemAudioStream {
 }
 
 pub(crate) fn asbd_rate_channels(sb: &CMSampleBuffer) -> Option<(u32, u16)> {
-    let fd = unsafe { sb.format_description() }?;
-    let asbd = unsafe { CMAudioFormatDescriptionGetStreamBasicDescription(&fd) };
-    let a = unsafe { asbd.as_ref() }?;
+    let a = crate::av::asbd_of(sb)?;
     Some((a.mSampleRate.round() as u32, a.mChannelsPerFrame as u16))
 }
 

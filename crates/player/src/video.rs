@@ -53,7 +53,6 @@ pub struct ClickMark {
 }
 
 pub struct Composed {
-    pub tl_ns: i64,
     pub rec_ns: i64,
     /// Recording time of the camera picture; `None` in a gap on an unlinked camera track.
     pub camera_rec_ns: Option<i64>,
@@ -117,10 +116,6 @@ impl TimelineVideo {
         self.starts = starts(&doc.edl);
         self.camera_starts = starts(doc.camera_clips());
         self.doc = doc;
-    }
-
-    pub fn doc(&self) -> &Doc {
-        &self.doc
     }
 
     pub fn duration(&self) -> i64 {
@@ -189,7 +184,6 @@ impl TimelineVideo {
             _ => Vec::new(),
         };
         Ok(Composed {
-            tl_ns: tl,
             rec_ns: rec,
             camera_rec_ns: camera_rec,
             screen,
@@ -259,10 +253,6 @@ impl TimelineVideo {
                 tracing::warn!("sc_player: text: {e}");
                 Vec::new()
             })
-    }
-
-    pub fn text_engine(&mut self) -> Option<&mut TextEngine> {
-        self.text.as_mut()
     }
 
     pub fn background(&mut self, canvas: SizePx) -> Result<Arc<RgbaImage>> {

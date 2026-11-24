@@ -180,17 +180,4 @@ export interface RecoveryReportDto {
 export interface PickedDto { purpose: Purpose; source: SourceSpecDto; via: Via }
 export interface RegionSelectedDto { purpose: Purpose; display_id: string; region_pt: RectPt }
 
-export const EVENTS = {
-  devicesChanged: 'devices-changed',
-  regionSelected: 'region-selected',
-  regionCancelled: 'region-cancelled',
-  sourcePicked: 'source-picked',
-  pickCancelled: 'pick-cancelled',
-  recordingState: 'recording-state',
-  health: 'health',
-  notice: 'notice',
-  exportProgress: 'export-progress',
-  exportState: 'export-state',
-} as const;
-
 export interface PreviewStateDto { shown: boolean; key: CameraKey | null; frame: number; camera_open: string | null }

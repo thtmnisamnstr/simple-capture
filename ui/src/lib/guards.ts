@@ -5,8 +5,6 @@ import type {
   ExportStateDto,
   HealthDto,
   NoticeDto,
-  PermissionStatus,
-  PermissionsDto,
   PickedDto,
   RecordingState,
   RectPt,
@@ -22,13 +20,6 @@ const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFin
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
 
-const PERMISSION_STATUSES = ['granted', 'denied', 'not_determined', 'restricted', 'unknown'];
-
-export const isPermissionStatus = (v: unknown): v is PermissionStatus =>
-  isStr(v) && PERMISSION_STATUSES.includes(v);
-
-export const isPermissions = (v: unknown): v is PermissionsDto =>
-  isObj(v) && isPermissionStatus(v.screen) && isPermissionStatus(v.camera) && isPermissionStatus(v.mic);
 
 export const isRectPt = (v: unknown): v is RectPt =>
   isObj(v) && isNum(v.x) && isNum(v.y) && isNum(v.w) && isNum(v.h) && v.w >= 0 && v.h >= 0;

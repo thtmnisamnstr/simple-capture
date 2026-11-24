@@ -72,7 +72,7 @@ pub enum JournalEvent {
         at_rec_ns: i64,
         dur_ns: i64,
     },
-    /// Written from M7; folded by recovery now.
+    /// Folded by recovery into the project's pauses.
     Pause {
         host_ns: i64,
     },

@@ -129,7 +129,6 @@ Built from source by `third_party/ffmpeg/build-macos.sh` (S1). Pins, URLs and SH
 | Opus | 1.6.1 | BSD-3-Clause | downloads.xiph.org | Upstream SHA256SUMS, Homebrew, markus-perl match. |
 | libogg | 1.3.6 | BSD-3-Clause | downloads.xiph.org | Upstream SHA256SUMS, markus-perl match. |
 | libvorbis | 1.3.7 | BSD-3-Clause | downloads.xiph.org | Upstream SHA256SUMS, Homebrew match. Darwin configure patched to drop `-force_cpusubtype_ALL`. |
-| zlib | 1.4 | Zlib | github.com/madler/zlib release v1.4 | GitHub asset digest and Homebrew match. For the PNG and APNG encoders. |
 | libwebp | 1.6.0 (with libwebpmux and libsharpyuv) | BSD-3-Clause (plus Google's PATENTS grant) | storage.googleapis.com/downloads.webmproject.org | Homebrew matches. **GPG signature not verified.** For animated WebP. |
 
 Configure flags (full line in `third_party/out/macos-arm64/ffmpeg.configure.txt`, `ffmpeg -buildconf` in `ffmpeg.buildconf.txt`). The licensing-relevant ones:
@@ -137,14 +136,14 @@ Configure flags (full line in `third_party/out/macos-arm64/ffmpeg.configure.txt`
 ```
 --enable-gpl --disable-shared --enable-static --disable-autodetect --disable-network
 --disable-ffplay --disable-doc --disable-debug --disable-sdl2 --disable-xlib
---disable-securetransport --disable-iconv --enable-zlib --disable-bzlib --disable-lzma
+--disable-securetransport --disable-iconv --disable-zlib --disable-bzlib --disable-lzma
 --disable-appkit --disable-avfoundation --disable-coreimage --disable-metal
 --enable-videotoolbox --enable-audiotoolbox --enable-pthreads
 --enable-libx264 --enable-libx265 --enable-libsvtav1 --enable-libvpx --enable-libopus --enable-libvorbis --enable-libwebp
 --disable-everything --enable-protocol=file,pipe
 --enable-encoder=libx264,libx265,libsvtav1,libvpx_vp8,libvpx_vp9,h264_videotoolbox,hevc_videotoolbox,prores_videotoolbox,prores_ks
 --enable-encoder=aac,aac_at,libopus,libvorbis,flac,alac,pcm_s16le,pcm_s24le,pcm_f32le
---enable-encoder=gif,apng,png,libwebp_anim,rawvideo,wrapped_avframe
+--enable-encoder=gif,libwebp_anim,rawvideo,wrapped_avframe
 (plus explicit decoder, muxer, demuxer, parser, hwaccel and filter allow lists)
 ```
 

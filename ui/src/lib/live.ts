@@ -2,6 +2,8 @@
 // little-endian u32), then premultiplied RGBA (format 0) or I420 planes in BT.709 limited range
 // (format 1). Format 2 has no pixels: a native layer under the page draws the frame.
 
+import { scUrl } from './format.ts';
+
 const HEADER = 16;
 const RGBA = 0;
 const I420 = 1;
@@ -36,7 +38,7 @@ void main() {
 }`;
 
 export function liveUrl(name: string, after: number): string {
-  const base = /Windows|Android/.test(navigator.userAgent) ? 'http://sc.localhost/live' : 'sc://live';
+  const base = scUrl('live');
   return `${base}/${name}?after=${after}`;
 }
 

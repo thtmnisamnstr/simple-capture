@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { revealLabel } from '../lib/format.ts';
+  import { revealLabel, scUrl } from '../lib/format.ts';
   import { api, errorText } from '../lib/api.ts';
   import { onEvent } from '../lib/events.ts';
   import { isExportProgress, isExportState, isObject } from '../lib/guards.ts';
@@ -194,7 +194,7 @@
   }
 
   async function loadPeaks() {
-    const base = /Windows|Android/.test(navigator.userAgent) ? 'http://sc.localhost/peaks' : 'sc://peaks';
+    const base = scUrl('peaks');
     const get = async (kind: string) => {
       try {
         const r = await fetch(`${base}/${kind}`, { cache: 'no-store' });
@@ -246,7 +246,7 @@
       .then((f) => {
         fonts = f.bundled;
         systemFonts = f.system;
-        const base = /Windows|Android/.test(navigator.userAgent) ? 'http://sc.localhost/font' : 'sc://font';
+        const base = scUrl('font');
         const style = document.createElement('style');
         style.textContent = fontFaceCss(f.bundled, base);
         document.head.appendChild(style);

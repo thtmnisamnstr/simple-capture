@@ -997,3 +997,18 @@ fn a_section_gets_its_own_framing_and_can_go_back_to_the_default() {
     let d2 = set(&d1, None);
     assert!(d2.output.segment_framing.is_none());
 }
+
+#[test]
+fn history_keeps_only_the_newest_undo_steps() {
+    let mut h = History::new(doc(vec![clip(0, 10 * S)]));
+    for k in 0..(MAX_UNDO + 20) {
+        let mut next = h.doc().clone();
+        next.edl.clips[0].src_out_rec_ns = 9 * S - k as i64;
+        assert!(h.commit(next, None));
+    }
+    let mut undone = 0;
+    while h.undo() {
+        undone += 1;
+    }
+    assert_eq!(undone, MAX_UNDO);
+}

@@ -71,16 +71,6 @@ WEBP_OPTS=(
     -DWEBP_BUILD_LIBWEBPMUX=ON
 )
 
-build_zlib() {
-    stamp_ok zlib && return 0
-    prepare zlib
-    cmake -S . -B build-$ARCH "${CMAKE_COMMON[@]}" \
-        -DZLIB_BUILD_SHARED=OFF -DZLIB_BUILD_TESTING=OFF
-    cmake --build build-$ARCH -j"$JOBS"
-    cmake --install build-$ARCH
-    stamp_set zlib
-}
-
 build_libwebp() {
     stamp_ok libwebp && return 0
     prepare libwebp
@@ -175,13 +165,13 @@ FFMPEG_CONFIGURE=(
     --prefix=/opt/simple-capture-helper
     --arch="$FF_ARCH" --target-os=darwin --cc=clang --cxx=clang++
     --pkg-config=pkgconf --pkg-config-flags=--static
-    --extra-cflags="$ARCHFLAGS -I$PREFIX/include" --extra-cxxflags="$ARCHFLAGS" --extra-ldflags="$ARCHFLAGS -L$PREFIX/lib"
+    --extra-cflags="$ARCHFLAGS" --extra-cxxflags="$ARCHFLAGS" --extra-ldflags="$ARCHFLAGS"
     --extra-version=simple-capture
     --enable-gpl
     --disable-shared --enable-static
     --disable-autodetect --disable-network --disable-ffplay --disable-doc --disable-debug
     --disable-sdl2 --disable-xlib --disable-securetransport --disable-iconv
-    --enable-zlib --disable-bzlib --disable-lzma
+    --disable-zlib --disable-bzlib --disable-lzma
     --disable-appkit --disable-avfoundation --disable-coreimage --disable-metal
     --enable-videotoolbox --enable-audiotoolbox --enable-pthreads
     --enable-libx264 --enable-libx265 --enable-libsvtav1 --enable-libvpx
@@ -190,12 +180,12 @@ FFMPEG_CONFIGURE=(
     --enable-protocol=file,pipe
     --enable-encoder=libx264,libx265,libsvtav1,libvpx_vp8,libvpx_vp9,h264_videotoolbox,hevc_videotoolbox,prores_videotoolbox,prores_ks
     --enable-encoder=aac,aac_at,libopus,libvorbis,flac,alac,pcm_s16le,pcm_s24le,pcm_f32le
-    --enable-encoder=gif,apng,png,libwebp_anim,rawvideo,wrapped_avframe
-    --enable-decoder=rawvideo,wrapped_avframe,h264,hevc,vp8,vp9,prores,gif,png,apng,webp
+    --enable-encoder=gif,libwebp_anim,rawvideo,wrapped_avframe
+    --enable-decoder=rawvideo,wrapped_avframe,h264,hevc,vp8,vp9,prores,gif
     --enable-decoder=aac,aac_at,opus,vorbis,flac,alac,pcm_s16le,pcm_s24le,pcm_f32le
     --enable-hwaccel=h264_videotoolbox,hevc_videotoolbox,prores_videotoolbox,vp9_videotoolbox
-    --enable-muxer=mov,mp4,webm,matroska,gif,apng,webp,wav,yuv4mpegpipe,rawvideo,null,framemd5
-    --enable-demuxer=mov,matroska,gif,apng,webp,wav,yuv4mpegpipe,rawvideo,pcm_f32le,pcm_s16le
+    --enable-muxer=mov,mp4,webm,matroska,gif,webp,wav,yuv4mpegpipe,rawvideo,null,framemd5
+    --enable-demuxer=mov,matroska,gif,wav,yuv4mpegpipe,rawvideo,pcm_f32le,pcm_s16le
     --enable-parser=h264,hevc,vp8,vp9,av1,aac,opus,vorbis,flac,gif,png
     --enable-bsfs
     --enable-indev=lavfi
@@ -229,7 +219,6 @@ collect_licenses() {
     cp "$SRC/opus/COPYING" "$d/opus-COPYING"
     cp "$SRC/libogg/COPYING" "$d/libogg-COPYING"
     cp "$SRC/libvorbis/COPYING" "$d/libvorbis-COPYING"
-    cp "$SRC/zlib/LICENSE" "$d/zlib-LICENSE"
     cp "$SRC/libwebp/COPYING" "$d/libwebp-COPYING"
     cp "$SRC/libwebp/PATENTS" "$d/libwebp-PATENTS"
 }
@@ -251,7 +240,6 @@ verify_linkage() {
 }
 
 log "building for macOS $ARCH (min $MACOS_MIN, jobs $JOBS, cross=$CROSS)"
-build_zlib
 build_libwebp
 build_libogg
 build_libvorbis
@@ -267,7 +255,7 @@ if ! $CROSS || [ "$ARCH" = x86_64 ]; then
     "$OUT/ffmpeg" -hide_banner -buildconf > "$OUT/ffmpeg.buildconf.txt"
     "$OUT/ffmpeg" -hide_banner -version | head -1
 fi
-for sec in ffmpeg x264 x265 svt-av1 libvpx opus libogg libvorbis zlib libwebp; do
+for sec in ffmpeg x264 x265 svt-av1 libvpx opus libogg libvorbis libwebp; do
     printf '%s %s %s\n' "$sec" "$(pin "$sec" version)" "$(pin "$sec" sha256)"
 done > "$OUT/ffmpeg.sources.txt"
 log "done: $OUT/ffmpeg $OUT/ffprobe"

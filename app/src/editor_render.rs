@@ -3,7 +3,7 @@
 //! playback clock picks the frame; otherwise the playhead does, and a frame is drawn only when
 //! something it shows changed.
 
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use sc_geometry::SizePx;
@@ -17,9 +17,7 @@ use crate::sink::Sink;
 const CLEAR: [u8; 3] = [0, 0, 0];
 const PLAYHEAD_EVERY: Duration = Duration::from_millis(33);
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|p| p.into_inner())
-}
+use crate::core::lock;
 
 #[derive(PartialEq, Clone, Copy)]
 struct Shown {

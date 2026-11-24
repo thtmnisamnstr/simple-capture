@@ -16,7 +16,6 @@ fn check(what: &str, live: Option<&str>, dev_host: Option<&str>) -> Result<()> {
 }
 
 /// Call before any TCC-touching API.
-#[allow(dead_code)]
 pub(crate) fn guard(what: &str) -> Result<()> {
     #[cfg(debug_assertions)]
     {

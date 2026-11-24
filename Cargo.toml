@@ -55,7 +55,7 @@ tauri = { version = "2.12.7", features = ["tray-icon"] }
 tauri-build = { version = "2.7.6", features = [] }
 tauri-plugin-global-shortcut = "2.4.1"
 
-# macOS bindings (ADR-006), cross-framework features as in spikes/03-macos-pipeline
+# macOS bindings (ADR-006)
 objc2 = "0.6.5"
 block2 = "0.6.2"
 dispatch2 = "0.3.1"

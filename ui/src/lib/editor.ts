@@ -2,8 +2,7 @@
 // model, and the `editor` command.
 
 import { invoke } from '@tauri-apps/api/core';
-import { inTauri } from './api.ts';
-import { mockInvoke } from './mock.ts';
+import { inTauri, viaMock } from './api.ts';
 import type { Background, CameraKey, PointF } from './types.ts';
 
 export const NS = 1_000_000_000;
@@ -175,7 +174,7 @@ export function dragRect(
 export interface Selection { ids?: string[]; a_tl_ns?: number; b_tl_ns?: number }
 
 function call<T>(action: string, args: Record<string, unknown> = {}): Promise<T> {
-  return inTauri() ? invoke<T>('editor', { action, args }) : mockInvoke<T>('editor', { action, ...args });
+  return inTauri() ? invoke<T>('editor', { action, args }) : viaMock<T>('editor', { action, ...args });
 }
 
 /** Times are whole nanoseconds; values worked out from seconds can come out fractional. */
@@ -203,7 +202,6 @@ export const editor = {
   pause: () => call<{ playhead_tl_ns: number; playing: boolean }>('pause'),
   seek: (t: number) => call<void>('seek', { tl_ns: Math.round(t) }),
   rect: (rect: { x: number; y: number; w: number; h: number } | null) => call<void>('rect', { rect }),
-  exportVideo: (size: string) => call<string>('export', { size }),
   backgroundImage: (path: string) => call<Background>('background_image', { path }),
   fonts: () => call<{ bundled: import('./text.ts').FontInfo[]; system: string[] }>('fonts'),
   pickColor: () => call<[number, number, number, number] | null>('pick_color'),
@@ -215,7 +213,6 @@ export const editor = {
   chooseFolder: () => call<string | null>('choose_folder'),
   copyFile: (path: string) => call<void>('copy_file', { path }),
   openFile: (path: string) => call<void>('open_file', { path }),
-  close: () => call<void>('close'),
   rename: (title: string) => call<string>('rename', { title }),
   silences: (thresholdDb: number | null, minMs: number) =>
     call<Silences>('silences', { threshold_db: thresholdDb, min_ms: minMs }),

@@ -60,6 +60,7 @@
   $effect(() => {
     if (tab !== 'iphone') return;
     const refresh = async () => {
+      if (document.visibilityState !== 'visible') return;
       const d = await api.listDevices().catch(() => null);
       if (d) devices = d;
       await loadSources();

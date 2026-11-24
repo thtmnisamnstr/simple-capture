@@ -355,8 +355,6 @@ pub(crate) struct DelegateState {
     sink: Arc<dyn FrameSink>,
     accepting: AtomicBool,
     clock: Mutex<Option<SendClock>>,
-    delivered: AtomicU64,
-    dropped: AtomicU64,
 }
 
 impl DelegateState {
@@ -407,7 +405,6 @@ impl DelegateState {
                 self.sink.on_audio(self.audio, a);
             }
         }
-        self.delivered.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -425,10 +422,6 @@ define_class!(
             self.ivars().on_sample(sb);
         }
 
-        #[unsafe(method(captureOutput:didDropSampleBuffer:fromConnection:))]
-        fn did_drop(&self, _o: &AVCaptureOutput, _sb: &CMSampleBuffer, _c: &AVCaptureConnection) {
-            self.ivars().dropped.fetch_add(1, Ordering::Relaxed);
-        }
     }
 
     unsafe impl AVCaptureAudioDataOutputSampleBufferDelegate for CaptureDelegate {}
@@ -469,13 +462,6 @@ pub(crate) struct AvDeviceStream {
 // SAFETY: AVCaptureSession is documented as thread-safe for start/stop; the stream is only
 // stopped once (`self: Box<Self>`).
 unsafe impl Send for AvDeviceStream {}
-
-impl AvDeviceStream {
-    #[allow(dead_code)]
-    pub(crate) fn delivered(&self) -> u64 {
-        self.state.delivered.load(Ordering::Relaxed)
-    }
-}
 
 impl DeviceStream for AvDeviceStream {
     fn format(&self) -> String {
@@ -587,8 +573,6 @@ pub(crate) fn start(
             sink: sink.clone(),
             accepting: AtomicBool::new(true),
             clock: Mutex::new(None),
-            delivered: AtomicU64::new(0),
-            dropped: AtomicU64::new(0),
         })
     });
     let state = Arc::new(DelegateState {
@@ -598,8 +582,6 @@ pub(crate) fn start(
         sink,
         accepting: AtomicBool::new(true),
         clock: Mutex::new(None),
-        delivered: AtomicU64::new(0),
-        dropped: AtomicU64::new(0),
     });
     let delegate = CaptureDelegate::new(state.clone());
     let queue = DispatchQueue::new(

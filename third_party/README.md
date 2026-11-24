@@ -46,7 +46,7 @@ Outputs in `third_party/out/macos-arm64/`:
 
 1. Change `version`/`url`/`file` in `versions.toml`, set `sha256` to the value you download.
 2. Cross-check against an upstream checksum or signature and describe it in `cross_check`.
-3. `CLEAN=1 third_party/ffmpeg/build-macos.sh arm64` and re-run `spikes/01-helpers/bench.sh`.
+3. `CLEAN=1 third_party/ffmpeg/build-macos.sh arm64` and re-run the export tests (`SC_REQUIRE_HELPERS=1 cargo test -p simple-capture-export`).
 
 ## Known gaps (open, see docs/LICENSES.md §3.2)
 

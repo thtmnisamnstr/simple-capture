@@ -4100,8 +4100,6 @@ name = "sc-devtools"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "block2",
- "dispatch2",
  "libc",
  "objc2",
  "objc2-app-kit",
@@ -4115,9 +4113,7 @@ dependencies = [
  "simple-capture-core",
  "simple-capture-decode",
  "simple-capture-geometry",
- "simple-capture-helpers",
  "simple-capture-platform",
- "simple-capture-record",
 ]
 
 [[package]]
@@ -4482,7 +4478,6 @@ checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 name = "simple-capture-app"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "libc",
  "serde",
  "serde_json",
@@ -4580,9 +4575,7 @@ dependencies = [
 name = "simple-capture-cli"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "libc",
- "serde",
  "serde_json",
  "simple-capture-capture-linux",
  "simple-capture-capture-macos",
@@ -4607,7 +4600,6 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "simple-capture-geometry",
- "tracing",
 ]
 
 [[package]]
@@ -4702,7 +4694,6 @@ dependencies = [
 name = "simple-capture-record"
 version = "0.1.0"
 dependencies = [
- "libc",
  "serde",
  "serde_json",
  "simple-capture-capture-macos",
@@ -4716,7 +4707,6 @@ dependencies = [
 name = "simple-capture-render"
 version = "0.1.0"
 dependencies = [
- "bytemuck",
  "objc2",
  "objc2-core-foundation",
  "objc2-core-video",
@@ -4741,14 +4731,12 @@ dependencies = [
  "simple-capture-core",
  "simple-capture-geometry",
  "skia-safe",
- "tracing",
 ]
 
 [[package]]
 name = "simple-capture-tracks"
 version = "0.1.0"
 dependencies = [
- "simple-capture-core",
  "simple-capture-geometry",
  "simple-capture-helpers",
  "simple-capture-platform",

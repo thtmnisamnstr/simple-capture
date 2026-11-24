@@ -156,11 +156,7 @@
   async function cancel() {
     rect = null;
     drag = null;
-    try {
-      await emitEvent('region-cancelled', { purpose });
-    } finally {
-      await hideSelf();
-    }
+    await hideSelf();
   }
 
   function onkeydown(e: KeyboardEvent) {

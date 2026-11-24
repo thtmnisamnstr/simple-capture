@@ -98,11 +98,7 @@
   async function cancel() {
     region = null;
     pressAt = null;
-    try {
-      await emitEvent('pick-cancelled', { purpose });
-    } finally {
-      await hideSelf();
-    }
+    await hideSelf();
   }
 
   async function useSystemPicker() {
