@@ -98,6 +98,8 @@ pub struct Core {
     last_export: Mutex<Option<String>>,
     ui_log: Mutex<Vec<String>>,
     exiting: AtomicBool,
+    /// The system picker was switched on (macOS then lists the app in its Sharing menu).
+    picker_on: AtomicBool,
     pub launch_done: AtomicBool,
     pub exit_done: AtomicBool,
     pub no_key_windows: bool,
@@ -154,6 +156,7 @@ impl Core {
             last_export: Mutex::new(None),
             ui_log: Mutex::new(Vec::new()),
             exiting: AtomicBool::new(false),
+            picker_on: AtomicBool::new(false),
             launch_done: AtomicBool::new(false),
             exit_done: AtomicBool::new(false),
             no_key_windows,
@@ -916,6 +919,7 @@ impl Core {
         self.set_purpose(purpose)?;
         let purpose = purpose.to_string();
         let core = Arc::downgrade(self);
+        self.picker_on.store(true, Ordering::SeqCst);
         self.platform.picker().present(
             PickerRequest {
                 exclude: self.window_ids(),
@@ -945,8 +949,22 @@ impl Core {
                     tracing::warn!("system picker switch: {e}");
                 }
             }
-            Ok(None) => {}
-            Err(e) => tracing::warn!("system picker: {e}"),
+            Ok(None) => self.release_picker(),
+            Err(e) => {
+                tracing::warn!("system picker: {e}");
+                self.release_picker();
+            }
+        }
+    }
+
+    /// Switches the system picker off when no recording needs it, so macOS drops the app from
+    /// its Sharing menu; macOS keeps a switched-on picker listed even after the app quits.
+    fn release_picker(&self) {
+        if self.phase().is_recording() || !self.picker_on.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        if let Err(e) = self.platform.picker().set_active(false) {
+            tracing::warn!("system picker off: {e}");
         }
     }
 
@@ -1217,6 +1235,7 @@ impl Core {
                     s.take();
                 }
                 self.on_failed(error);
+                self.release_picker();
                 return;
             }
             SessionState::Preparing => {}
@@ -1237,6 +1256,7 @@ impl Core {
         {
             return;
         }
+        self.release_picker();
         *lock(&self.rec_started) = None;
         *lock(&self.last_health) = None;
         *lock(&self.last_project) = Some(project_dir.clone());
@@ -1646,6 +1666,7 @@ impl Core {
         {
             tracing::warn!("stop system watcher: {e}");
         }
+        self.release_picker();
         self.exit_done.store(true, Ordering::SeqCst);
         self.app.exit(code);
     }
