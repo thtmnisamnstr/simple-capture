@@ -1,6 +1,7 @@
 mod camera;
 mod desktop;
 mod gst;
+mod mjpeg;
 mod portal;
 mod pw;
 mod sys;

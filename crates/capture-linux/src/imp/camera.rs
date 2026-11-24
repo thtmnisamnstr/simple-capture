@@ -1,4 +1,5 @@
-//! Cameras through V4L2: NV12 or YUYV formats (MJPEG-only modes are not offered yet).
+//! Cameras through V4L2: NV12 or YUYV formats, or MJPEG decoded by GStreamer when a camera
+//! offers no raw mode within the limit.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
@@ -21,6 +22,7 @@ use super::sys::host_now;
 
 const YUYV: [u8; 4] = *b"YUYV";
 const NV12: [u8; 4] = *b"NV12";
+const MJPG: [u8; 4] = *b"MJPG";
 
 fn is_capture(path: &std::path::Path) -> bool {
     Device::with_path(path)
@@ -62,8 +64,12 @@ fn best_fps(dev: &Device, fourcc: FourCC, w: u32, h: u32) -> Option<f64> {
 }
 
 fn choose(dev: &Device, limit: CameraLimit) -> Option<(FourCC, SizePx)> {
+    choose_from(dev, limit, &[NV12, YUYV]).or_else(|| choose_from(dev, limit, &[MJPG]))
+}
+
+fn choose_from(dev: &Device, limit: CameraLimit, codes: &[[u8; 4]]) -> Option<(FourCC, SizePx)> {
     let mut best: Option<(FourCC, SizePx, u64)> = None;
-    for code in [NV12, YUYV] {
+    for &code in codes {
         let fourcc = FourCC::new(&code);
         for fs in dev.enum_framesizes(fourcc).unwrap_or_default() {
             let sizes: Vec<(u32, u32)> = match fs.size {
@@ -116,7 +122,7 @@ fn yuyv_to_nv12(src: &[u8], stride: usize, size: SizePx) -> CpuNv12Frame {
     f
 }
 
-fn nv12_copy(src: &[u8], stride: usize, size: SizePx) -> CpuNv12Frame {
+pub(super) fn nv12_copy(src: &[u8], stride: usize, size: SizePx) -> CpuNv12Frame {
     let (w, h) = (size.w as usize, size.h as usize);
     let mut f = CpuNv12Frame::black(size, false);
     let uv_stride = f.uv_stride();
@@ -168,7 +174,7 @@ pub fn start(
             let opened = (|| -> Result<(Device, FourCC, SizePx, usize)> {
                 let dev = Device::with_path(&id)?;
                 let (fourcc, size) = choose(&dev, limit).ok_or(Error::Unsupported(
-                    "this camera offers no NV12 or YUYV mode within the limit",
+                    "this camera offers no NV12, YUYV or MJPEG mode within the limit",
                 ))?;
                 let mut fmt = dev.format()?;
                 fmt.width = size.w;
@@ -195,10 +201,26 @@ pub fn start(
                     return;
                 }
             };
+            let mut mjpeg = if fourcc == FourCC::new(&MJPG) {
+                match super::mjpeg::Mjpeg::new(size) {
+                    Ok(m) => Some(m),
+                    Err(e) => {
+                        let _ = tx.send(Err(e));
+                        return;
+                    }
+                }
+            } else {
+                None
+            };
             let _ = tx.send(Ok(format!("{id} {}x{} {fourcc}", size.w, size.h)));
             let yuyv = fourcc == FourCC::new(&YUYV);
             while !flag.load(Ordering::SeqCst) {
                 let frame = match stream.next() {
+                    Ok((buf, meta)) if mjpeg.is_some() => {
+                        let used = (meta.bytesused as usize).min(buf.len());
+                        let used = if used == 0 { buf.len() } else { used };
+                        mjpeg.as_mut().and_then(|m| m.decode(&buf[..used]))
+                    }
                     Ok((buf, _)) => {
                         let row = if yuyv {
                             size.w as usize * 2

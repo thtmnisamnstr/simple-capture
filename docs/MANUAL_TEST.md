@@ -807,7 +807,16 @@ In the editor with any recording, press ⌘E:
 | R26 | Region… and Click a Window | The screen stays visible (lightly dimmed) while choosing |
 | R27 | Screen only (no camera); open the Preview | No camera box or handles in it |
 | R28 | Grant Screen Recording in System Settings, return to Permissions | It reads Granted |
+| R29 | Panel open; plug in a USB camera or microphone, then unplug it | The menus gain and lose it within a few seconds, without reopening the panel |
+| R30 | Screen + Camera; click the Preview, press the arrow keys (and with Shift) | The camera moves a little (Shift: further) and stays where it lands |
+| R31 | Camera → Quality → 1080p, 60 fps (and 720p) | The Preview's camera changes format at once (Diagnostics/log shows the new format); recordings use it |
+| R32 | Record a window; resize it mid-recording; stop | The editor shows a new section from shortly after the resize, at the new size, with no black area or squashing |
+| Y13 | A recording that crashed (end the app from Activity Monitor while recording, start it again) → Library → What Was Recovered… | The sheet says what was kept and left out; Edit opens what was saved |
 | E36 | Record a 16:9 frame from one window, switch to a much wider window; in the editor put the playhead in the second part → Frame → This section → Fill, drag Keep to Left | Only that part changes: it fills the frame and keeps its left side; the first part is unchanged; the export matches |
+| E37 | J, J, L, L, L, K in the editor | J plays backwards at 1× then 2× (silent, with ◀◀ 2× by the time); L plays forward with sound, again 2×, again 4× (silent); K stops |
+| E38 | Turn Snap off (or press N), drag a text edge near a cut | It no longer jumps to the cut; Snap on again restores it and is remembered next time |
+| E39 | Two overlapping text items; Text tab → Bring to Front / Send to Back | The chosen one draws above or below the other in the preview and the export |
+| E40 | Frame tab → 4:5 | A portrait 4:5 frame in the preview and the export |
 
 ## 10g. Library, About and Diagnostics (M6, M7)
 
