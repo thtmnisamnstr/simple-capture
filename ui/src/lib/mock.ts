@@ -355,7 +355,10 @@ const library = [
   libItem('2026-11-21 10.00.00', 'Recording', 1.25, 182, true),
   libItem('2026-11-20 16.12.40', 'Q4 roadmap walkthrough', 7.5, 911, true),
   libItem('2026-11-19 09.03.11', 'Bug repro: export stalls', 0.6, 64, false),
-  libItem('2026-11-12 14.44.02', 'Onboarding demo', 3.2, 402, true, 'recovered'),
+  {
+    ...libItem('2026-11-12 14.44.02', 'Onboarding demo', 3.2, 402, true, 'recovered'),
+    recovery: { dropped: [{ track_id: 'camera', reason: 'empty file' }], notes: ['segment s1 ended at its last readable frame'] },
+  },
 ];
 const folderOf = (a: Record<string, unknown>) => library.find((i) => i.dir.endsWith(`/${String(a.name)}`));
 

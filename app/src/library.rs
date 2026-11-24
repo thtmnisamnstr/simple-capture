@@ -16,6 +16,9 @@ pub struct ProjectSummary {
     pub bytes: u64,
     pub has_camera: bool,
     pub modified_s: u64,
+    /// What the crash recovery dropped and noted, for recovered and damaged recordings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<serde_json::Value>,
 }
 
 fn folder_bytes(dir: &Path) -> u64 {
@@ -57,6 +60,7 @@ pub fn summarize(dir: &Path) -> Option<ProjectSummary> {
             .iter()
             .any(|t| t.kind == sc_core::project::TrackKind::Camera),
         modified_s,
+        recovery: p.recording.extra.get("recovery").cloned(),
     })
 }
 

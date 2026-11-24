@@ -26,6 +26,7 @@ export interface LibraryItem {
   bytes: number;
   has_camera: boolean;
   modified_s: number;
+  recovery?: { dropped?: { track_id?: string; segment_id?: string; reason?: string }[]; notes?: string[] };
 }
 export interface Library { root: string; free_bytes: number | null; items: LibraryItem[] }
 

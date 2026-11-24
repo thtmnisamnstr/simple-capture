@@ -27,6 +27,9 @@
   let selected = $state<string[]>([]);
   let anchor: string | null = null;
   let confirming = $state<LibraryItem[] | null>(null);
+  let recoveryOf = $state<LibraryItem | null>(null);
+  const TRACK_NAMES: Record<string, string> = { mic: 'Microphone', camera: 'Camera', system_audio: 'System audio' };
+  const trackName = (id = '') => TRACK_NAMES[id] ?? (id.startsWith('screen') ? 'Screen' : id || 'A track');
   let busy = $state(false);
   let sort = $state<LibrarySort>(loadSort());
   let renaming: string | null = $state(null);
@@ -270,6 +273,9 @@
       <span class="caption sel">{current.title}</span>
       <button disabled={busy || !editable(current)} onclick={() => (confirming = [current!])}><Icon name="trash" size={14} />Move to Trash</button>
       <button disabled={busy || !editable(current)} onclick={() => startRename(current!)}>Rename</button>
+      {#if current.state === 'recovered' || current.state === 'damaged'}
+        <button onclick={() => (recoveryOf = current)}>What Was Recovered…</button>
+      {/if}
       <button onclick={() => api.reveal(current!.dir)}>{revealLabel()}</button>
       <button disabled={busy || !editable(current)} onclick={() => run(() => appApi.exportFrom(folderName(current!.dir)))}><Icon name="export" size={14} />Export…</button>
       <button class="primary" disabled={busy || !editable(current)} onclick={() => run(() => editor.open(current!.dir))}>Edit</button>
@@ -280,6 +286,38 @@
       <span class="caption muted">Select a recording. Double-click to edit it; click its name to rename it.</span>
     {/if}
   </footer>
+
+  {#if recoveryOf}
+    {@const r = recoveryOf}
+    <div class="scrim" role="presentation" onclick={() => (recoveryOf = null)}></div>
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="rec-h">
+      <h2 id="rec-h">{r.state === 'damaged' ? `“${r.title}” is damaged` : `“${r.title}” was recovered`}</h2>
+      <p class="caption">
+        {r.state === 'damaged'
+          ? 'Simple Capture stopped unexpectedly during this recording, and some of it could not be read. What could be read is kept, and you can still edit and export it.'
+          : 'Simple Capture stopped unexpectedly during this recording. It was rebuilt from what was saved; at most the last second or so is missing.'}
+      </p>
+      {#if r.recovery?.dropped?.length}
+        <h3>Left out</h3>
+        <ul class="plainlist">
+          {#each r.recovery.dropped as d, i (i)}
+            <li class="caption">{trackName(d.track_id)}{d.reason ? `: ${d.reason}` : ''}</li>
+          {/each}
+        </ul>
+      {/if}
+      {#if r.recovery?.notes?.length}
+        <h3>Notes</h3>
+        <ul class="plainlist">
+          {#each r.recovery.notes as n, i (i)}<li class="caption">{n}</li>{/each}
+        </ul>
+      {/if}
+      <div class="row">
+        <button onclick={() => api.reveal(r.dir)}>{revealLabel()}</button>
+        <button onclick={() => ((confirming = [r]), (recoveryOf = null))}><Icon name="trash" size={14} />Move to Trash</button>
+        <button class="primary" disabled={!(r.duration_ns ?? 0)} onclick={() => run(() => editor.open(r.dir)).then(() => (recoveryOf = null))}>Edit</button>
+      </div>
+    </div>
+  {/if}
 
   {#if confirming && confirming.length}
     {@const list = confirming}
@@ -475,5 +513,15 @@
   }
   .danger {
     background: var(--red, #d93025);
+  }
+  .plainlist {
+    margin: 0 0 10px;
+    padding-left: 18px;
+    max-height: 160px;
+    overflow: auto;
+  }
+  h3 {
+    margin: 8px 0 4px;
+    font-size: 12px;
   }
 </style>
