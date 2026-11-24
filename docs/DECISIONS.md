@@ -92,7 +92,7 @@ they are not a substitute for an M1 run.
   - Grants held by the dev host do not carry over to the shipped app (ADR-003).
 
 ## ADR-003: Sign the shipped app with one stable Apple Development identity
-- **Status:** Accepted (spec Platform notes), **but blocked**: on 2026-11-19 the owner said they won't create an Apple Development identity for now ("I may in the future, but no promises"). See "Update 2026-11-19" at the end of this ADR.
+- **Status:** Accepted (spec Platform notes); **unblocked 2026-11-24** (see the update below). Was blocked: on 2026-11-19 the owner said they won't create an Apple Development identity for now ("I may in the future, but no promises"). See "Update 2026-11-19" at the end of this ADR.
 - **Context:** An ad-hoc signature ties TCC grants to the binary's hash, so every rebuild counts as a
   new app. A real signing identity ties grants to the identifier plus team, so they survive
   rebuilds [S3]. No signing identity exists on this machine yet.
@@ -123,6 +123,15 @@ they are not a substitute for an M1 run.
     across updates. It does not satisfy Gatekeeper for other people's Macs.
   - The ADR-028 picker test and the whole-app exclusion re-test (ADR-010) assumed a signed app;
     they run under the dev host instead, which cannot show signed-app behaviour.
+
+- **Update 2026-11-24 (unblocked):** the owner has a paid Developer Program membership and a
+  **Developer ID Application** certificate (team K9LZ5QLRFQ). `scripts/macos-sign.sh` signs the
+  helpers and then the app (hardened runtime, secure timestamps, no `--deep`), notarizes with
+  `notarytool` and staples; locally through the `simple-capture` keychain profile, in the
+  package workflow through an App Store Connect API key when the Apple secrets are set
+  (docs/RELEASING.md). First run: the app and a DMG were both Accepted with no issues, and
+  `spctl` reports "Notarized Developer ID". The self-signed "Simple Capture Local Signing"
+  certificate remains only as a fallback.
 
 ## ADR-004: Keep Tauri v2; do not switch to GPUI
 - **Status:** Accepted (the spec default, confirmed by [S2]).

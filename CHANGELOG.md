@@ -29,6 +29,10 @@ with no account and no network.
 - Quality presets, CRF or bitrate, or a file-size limit; destinations for email, Slack and
   Teams, YouTube, and vertical video; per-format frame rates, sizes, estimates and named presets.
 
+### Distribution
+- The macOS app and DMG are signed with a Developer ID and notarized, so permissions survive
+  updates.
+
 ### Library and diagnostics
 - A library of every recording with posters, Edit, Export, Show, Move to Trash, and what was
   recovered from damaged takes.
@@ -36,8 +40,7 @@ with no account and no network.
   it.
 
 ### Known limits
-- macOS builds are not notarized: right-click → Open the first time, and macOS asks again for
-  Screen Recording, Camera and Microphone after each update.
+- The Windows installers are not code-signed, so SmartScreen asks to confirm them.
 - The Windows and Linux builds are experimental: they pass CI but have not been tried on a real
   desktop yet.
 - Linux records what the system's share dialog picks (displays and windows), and hides the

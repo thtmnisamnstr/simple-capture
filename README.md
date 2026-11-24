@@ -42,9 +42,9 @@ pass their tests in CI, but have not yet been tried on a real desktop; see `docs
 
 Builds are made by the `package` workflow (GitHub Actions → package → a run → Artifacts):
 `.dmg` for macOS, an NSIS setup `.exe` and an `.msi` for Windows, `.deb` and `.AppImage` for
-Linux. They are not notarized or code-signed, so macOS needs right-click → Open the first time
-and Windows SmartScreen asks to confirm. Because an unsigned app's identity changes with each
-version, macOS asks again for Screen Recording, Camera and Microphone after an update.
+Linux. The macOS app is signed with a Developer ID and notarized by Apple, so it opens normally
+and keeps its Screen Recording, Camera and Microphone permissions across updates. The Windows
+installers are not code-signed yet, so SmartScreen asks to confirm.
 
 ## Build from source
 
