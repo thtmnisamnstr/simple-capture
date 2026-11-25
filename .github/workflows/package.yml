@@ -218,11 +218,11 @@ jobs:
           deb=$(ls "$CARGO_TARGET_DIR"/release/bundle/deb/*.deb)
           bins=$(dpkg-deb -c "$deb" | awk '{print $NF}' | grep -E '^\.?/?usr/bin/' || true)
           echo "$bins"
-          if grep -qE '/usr/bin/(ffmpeg|ffprobe|gifski)$' <<<"$bins"; then
+          if grep -qE '(^|/)usr/bin/(ffmpeg|ffprobe|gifski)$' <<<"$bins"; then
             echo "::error::the .deb installs a helper under a name the distro owns"
             exit 1
           fi
-          if ! grep -qE '/usr/bin/sc-ffmpeg$' <<<"$bins"; then
+          if ! grep -qE '(^|/)usr/bin/sc-ffmpeg$' <<<"$bins"; then
             echo "::error::the .deb has no usr/bin/sc-ffmpeg"
             exit 1
           fi
