@@ -40,6 +40,10 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "skia-*"
         update-types: ["version-update:semver-major"]
+      # The windows crate's #[implement] expands to ::windows_core paths, so windows-core must
+      # stay at the windows crate's version; bump it by hand in the same PR as windows.
+      - dependency-name: "windows-core"
+        update-types: ["version-update:semver-major"]
 
   # The Tauri CLI refuses to build when @tauri-apps/* and the tauri crates differ in major or
   # minor version, so merge the npm and cargo tauri group PRs together.
