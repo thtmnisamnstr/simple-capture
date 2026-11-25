@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Builds the macOS app bundle and signs it with the best identity in the login keychain:
-#   1. "Developer ID Application: …", through scripts/macos-sign.sh (notarized and stapled once
+# Builds the macOS app bundle (the sandboxed app with the LGPL helpers, as the DMG ships) and
+# signs it through scripts/macos-sign.sh with the best identity in the login keychain:
+#   1. "Developer ID Application: …" (notarized and stapled once
 #      `xcrun notarytool store-credentials simple-capture` has been run).
 #   2. "Simple Capture Local Signing", the self-signed certificate: grants survive rebuilds on
 #      this Mac only.
@@ -9,18 +10,24 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/target/skia}"
+if command -v cargo-about >/dev/null; then
+  scripts/ci/notices.sh --macos >/dev/null
+fi
 scripts/stage-helpers.sh >/dev/null
 pnpm --dir ui build >/dev/null
-(cd app && nice -n 19 ../ui/node_modules/.bin/tauri build --config tauri.bundle.conf.json --bundles app -- --locked -j 4)
+(cd app && nice -n 19 ../ui/node_modules/.bin/tauri build --config tauri.bundle.conf.json \
+  --config tauri.bundle.macos.conf.json --bundles app -- --locked -j 4)
 APP="$CARGO_TARGET_DIR/release/bundle/macos/Simple Capture.app"
 
+devid=0
 if security find-identity -v -p codesigning | grep -q '"Developer ID Application: '; then
+  devid=1
   scripts/macos-sign.sh "$APP"
 elif security find-certificate -c "Simple Capture Local Signing" >/dev/null 2>&1; then
-  codesign --force --deep --options runtime --entitlements app/macos/entitlements.plist \
-    -s "Simple Capture Local Signing" "$APP"
+  SC_SIGN_IDENTITY="Simple Capture Local Signing" scripts/macos-sign.sh "$APP"
 else
-  echo "local-bundle: no signing certificate; the bundle stays ad hoc signed" >&2
+  echo "local-bundle: no signing certificate; the bundle is signed ad hoc" >&2
+  SC_SIGN_IDENTITY=- scripts/macos-sign.sh "$APP"
 fi
 codesign -d -r- "$APP" 2>&1 | grep designated
 echo "$APP"
@@ -30,8 +37,6 @@ if [ "${1:-}" = --dmg ]; then
   DMG="$CARGO_TARGET_DIR/release/bundle/dmg/Simple Capture_${VERSION}_aarch64.dmg"
   mkdir -p "$(dirname "$DMG")"
   scripts/make-dmg.sh "$APP" "$DMG"
-  if security find-identity -v -p codesigning | grep -q '"Developer ID Application: '; then
-    scripts/macos-sign.sh "$DMG"
-  fi
+  [ $devid = 0 ] || scripts/macos-sign.sh "$DMG"
   echo "$DMG"
 fi

@@ -13,7 +13,6 @@ setup:
 helpers:
     third_party/fetch.sh
     third_party/ffmpeg/build-macos.sh arm64
-    test -x third_party/out/macos-arm64/gifski || third_party/gifski/build.sh arm64
     scripts/stage-helpers.sh
 
 build:
@@ -31,10 +30,7 @@ app-driver SCRIPT:
     SC_APP_SCRIPT="$(cd "$(dirname '{{SCRIPT}}')" && pwd)/$(basename '{{SCRIPT}}')" scripts/lib/live.sh tools/macos-dev-host/run.sh {{target_dir}}/debug/simple-capture-app
 
 bundle:
-    scripts/ci/notices.sh
-    scripts/stage-helpers.sh
-    pnpm --dir ui build
-    cd app && ../ui/node_modules/.bin/tauri build --config tauri.bundle.conf.json -- --locked
+    scripts/local-bundle.sh --dmg
 
 test:
     cargo test --locked --workspace

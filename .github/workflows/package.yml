@@ -1,10 +1,11 @@
 name: package
 
 # Installable builds for all three OSes (SPEC M6): the export helpers (FFmpeg with networking
-# off, gifski) built from the pinned sources in third_party/versions.toml, the app bundled with
-# them and every license text, and the corresponding source of the GPL/AGPL helpers.
-#   macOS   .dmg (Developer ID signed and notarized on v* tags and manual runs when the secrets
-#           are set, else ad hoc)
+# off; gifski on Windows and Linux) built from the pinned sources in third_party/versions.toml,
+# the app bundled with them and every license text, and the corresponding source of the helpers.
+#   macOS   .dmg: the sandboxed app with the LGPL FFmpeg helpers and no gifski, the same app as
+#           the Mac App Store edition (app-store.yml); Developer ID signed and notarized on v* tags
+#           and manual runs when the secrets are set, else ad hoc
 #   Windows NSIS setup .exe (per-user install)
 #   Linux   .deb and .AppImage
 # A v* tag also drafts a GitHub Release with SHA256SUMS.txt and build provenance attestations.
@@ -147,11 +148,6 @@ jobs:
       - name: macOS helpers
         if: runner.os == 'macOS'
         uses: ./.github/actions/macos-helpers
-      - name: gifski (macOS)
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          test -x third_party/out/macos-arm64/gifski || { third_party/fetch.sh; third_party/gifski/build.sh arm64; }
       - name: Windows or Linux helpers
         if: runner.os != 'macOS'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -174,8 +170,13 @@ jobs:
         shell: bash
         run: |
           chmod +x third_party/out/${{ matrix.plat }}/* 2>/dev/null || true
-          scripts/ci/notices.sh
+          if [ "$RUNNER_OS" = macOS ]; then
+            scripts/ci/notices.sh --macos
+          else
+            scripts/ci/notices.sh
+          fi
           scripts/stage-helpers.sh third_party/out/${{ matrix.plat }}
+          if [ "$RUNNER_OS" = macOS ]; then scripts/ci/notices.sh --check-macos app/gen/licenses; fi
       - name: Developer ID keychain and notary key (macOS)
         if: env.DEVID == 'true'
         shell: bash
@@ -207,24 +208,36 @@ jobs:
         shell: bash
         working-directory: app
         run: |
-          ../ui/node_modules/.bin/tauri build --config tauri.bundle.conf.json --bundles ${{ matrix.bundles }} -- --locked
+          config=(--config tauri.bundle.conf.json)
+          if [ "$RUNNER_OS" = macOS ]; then config+=(--config tauri.bundle.macos.conf.json); fi
+          ../ui/node_modules/.bin/tauri build "${config[@]}" --bundles ${{ matrix.bundles }} -- --locked
       - name: The .deb keeps its helpers off the system's names
         if: runner.os == 'Linux'
         shell: bash
         run: |
           deb=$(ls "$CARGO_TARGET_DIR"/release/bundle/deb/*.deb)
-          contents=$(dpkg-deb -c "$deb")
-          if grep -E '\./usr/bin/(ffmpeg|ffprobe|gifski)$' <<<"$contents"; then
+          bins=$(dpkg-deb -c "$deb" | awk '{print $NF}' | grep -E '^\.?/?usr/bin/' || true)
+          echo "$bins"
+          if grep -qE '/usr/bin/(ffmpeg|ffprobe|gifski)$' <<<"$bins"; then
             echo "::error::the .deb installs a helper under a name the distro owns"
             exit 1
           fi
-          grep -q '\./usr/bin/sc-ffmpeg$' <<<"$contents"
+          if ! grep -qE '/usr/bin/sc-ffmpeg$' <<<"$bins"; then
+            echo "::error::the .deb has no usr/bin/sc-ffmpeg"
+            exit 1
+          fi
       - name: Sign, notarize and package (macOS)
         if: runner.os == 'macOS'
         shell: bash
         run: |
           app="$CARGO_TARGET_DIR/release/bundle/macos/Simple Capture.app"
-          if [ "$DEVID" = true ]; then scripts/macos-sign.sh "$app"; fi
+          if [ "$DEVID" = true ]; then
+            scripts/macos-sign.sh "$app"
+            scripts/mas-check.sh --dmg "$app"
+          else
+            SC_SIGN_IDENTITY=- scripts/macos-sign.sh "$app"
+            scripts/mas-check.sh --dmg --adhoc "$app"
+          fi
           version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' app/tauri.conf.json)
           mkdir -p "$CARGO_TARGET_DIR/release/bundle/dmg"
           dmg="$CARGO_TARGET_DIR/release/bundle/dmg/Simple Capture_${version}_aarch64.dmg"

@@ -16,7 +16,6 @@ path = "src/main.rs"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
-mas = ["simple-capture-capture-macos/mas"]
 
 [build-dependencies]
 tauri-build.workspace = true

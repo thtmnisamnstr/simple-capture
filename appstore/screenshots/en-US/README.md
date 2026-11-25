@@ -28,8 +28,8 @@ To add one, give it the next number, or renumber the files to change the order.
 
 ## Content rules
 
-- Show the Mac App Store build's UI: no Windows or Linux windows, and no export options that
-  edition lacks (x264/x265 "Best Quality" for H.264 or HEVC, or gifski for GIF).
+- Show the Mac app's UI: no Windows or Linux windows, and no export options the Mac lacks
+  (x264/x265 "Best Quality" for H.264 or HEVC, or gifski for GIF).
 - Use made-up content only: no real names, email addresses, file paths with a real user name,
   or third-party logos, apps or copyrighted video in the recorded frame.
 - No notifications or other apps' windows overlapping ours.

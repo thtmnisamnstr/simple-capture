@@ -101,11 +101,15 @@ pub fn redact(s: &str) -> String {
 fn helpers(r: &mut Report) -> Option<PathBuf> {
     let mut v = serde_json::Map::new();
     let mut ffmpeg = None;
-    for kind in [
+    let kinds = [
         sc_helpers::HelperKind::Ffmpeg,
         sc_helpers::HelperKind::Ffprobe,
         sc_helpers::HelperKind::Gifski,
-    ] {
+    ];
+    for kind in kinds
+        .into_iter()
+        .filter(|k| !cfg!(target_os = "macos") || *k != sc_helpers::HelperKind::Gifski)
+    {
         let line = match sc_helpers::locate(kind) {
             Ok(p) => {
                 let version = sc_helpers::helper_info(&p)

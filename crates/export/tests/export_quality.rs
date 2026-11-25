@@ -1,5 +1,6 @@
 //! SPEC definition of done: on a text-heavy clip, x264 "Best quality" scores a higher SSIM than
-//! the hardware "Fast" encoder at the same file size. macOS only (VideoToolbox).
+//! the hardware "Fast" encoder at the same file size. Needs VideoToolbox and an x264 helper, so it
+//! runs only on a Mac with `SC_FFMPEG` naming a GPL build (third_party/out/macos-arm64-gpl).
 
 mod common;
 
@@ -154,6 +155,7 @@ fn x264_best_beats_hardware_fast_at_the_same_size_on_text() {
     if !cfg!(target_os = "macos")
         || !helpers_available()
         || std::env::var("SC_ALLOW_NO_HW_ENCODER").as_deref() == Ok("1")
+        || !encoder_built("libx264")
     {
         return;
     }

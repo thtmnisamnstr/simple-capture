@@ -34,10 +34,14 @@ cargo build --locked -p simple-capture-cli -p sc-devtools
 - `just run` keeps the Mac awake (`caffeinate`) while the app runs; an explicit Sleep still works.
 - Stop the app with tray → **Quit**. Ctrl-C in the `just run` terminal also quits gracefully.
 - To try the real app (`com.simplecapture.desktop`, its own grants) build it with
-  `scripts/local-bundle.sh` (release build in `target/skia/release/bundle/macos/`). It is signed
-  with the self-signed "Simple Capture Local Signing" certificate in the login keychain when
-  present, so Screen Recording, Camera and Microphone stay granted across rebuilds; without it
-  the bundle is ad hoc signed and every rebuild needs the grants again.
+  `scripts/local-bundle.sh` (release build in `target/skia/release/bundle/macos/`). It is the
+  sandboxed app the DMG and the Mac App Store ship (ADR-058). It is signed with the Developer ID
+  when the keychain has one, else with the self-signed "Simple Capture Local Signing"
+  certificate, so Screen Recording, Camera and Microphone stay granted across rebuilds; without
+  either the bundle is ad hoc signed and every rebuild needs the grants again. Being sandboxed,
+  it keeps its settings and logs in
+  `~/Library/Containers/com.simplecapture.desktop/Data/Library/Application Support/com.simplecapture.desktop/`
+  instead of the paths below.
 
 ### 0.2 Where to look
 
@@ -566,23 +570,26 @@ verdict      PASS|FAIL (list failed thresholds); ADR-010 frame copy: copy|no cop
 
 ## 10. Release bundle (owner only)
 
-The release bundle is `com.simplecapture.desktop`, ad-hoc signed, hardened runtime. It has never
+The release bundle is `com.simplecapture.desktop`, sandboxed, hardened runtime, signed as
+`scripts/local-bundle.sh` finds (Developer ID, the local certificate, or ad hoc). It has never
 been granted anything, so it **will** prompt; that is what this section tests (ADR-028, Q8).
 Agents never launch it. Quit the dev app (`just run`) first so only one tray icon is in the menu
 bar.
 
 **B0. Build and inspect**
-- Do: `just bundle`. The bundle is `target/release/bundle/macos/Simple Capture.app` (the path is
-  printed at the end). Then:
+- Do: `just bundle` (`scripts/local-bundle.sh --dmg`). The bundle is
+  `target/skia/release/bundle/macos/Simple Capture.app` (the path is printed). Then:
   ```bash
-  APP="target/release/bundle/macos/Simple Capture.app"
-  codesign -dv --entitlements - "$APP" 2>&1 | grep -E 'flags|Identifier|camera|audio-input'
+  APP="target/skia/release/bundle/macos/Simple Capture.app"
+  codesign -dv --entitlements - "$APP" 2>&1 | grep -E 'flags|Identifier|app-sandbox|camera|audio-input'
   plutil -p "$APP/Contents/Info.plist" | grep -E 'UsageDescription|CFBundleIdentifier'
-  for h in sc-ffmpeg sc-ffprobe sc-gifski; do codesign -dv "$APP/Contents/MacOS/$h" 2>&1 | grep -E 'Signature|flags'; done
+  ls "$APP/Contents/MacOS"
+  scripts/mas-check.sh --dmg --adhoc "$APP"   # drop --adhoc for a Developer ID build
   ```
-- Expect: `flags=0x10002(adhoc,runtime)` (hardened runtime), `Identifier=com.simplecapture.desktop`,
-  the camera and audio-input entitlements, the three usage strings (camera, microphone, system
-  audio), and signed sc-ffmpeg/sc-ffprobe/sc-gifski sidecars.
+- Expect: `runtime` in the flags (hardened runtime), `Identifier=com.simplecapture.desktop`, the
+  app-sandbox, camera and audio-input entitlements, the three usage strings (camera,
+  microphone, system audio), only `sc-ffmpeg` and `sc-ffprobe` beside the app (no
+  `sc-gifski`), and mas-check passing.
 - Look: the command output.
 
 **B1. Never-granted: onboarding and lists without a prompt**
@@ -781,7 +788,7 @@ In the editor with any recording, press ⌘E:
 | X5 | MP4 + AV1 + Opus | Marked "less compatible"; plays in Chrome and VLC |
 | X6 | WebM VP9 + Opus, then VP8 + Vorbis | Both play in Chrome and Firefox with the right colours |
 | X7 | MOV ProRes 422 + PCM | Plays in QuickTime; large file |
-| X8 | GIF (gifski) at 15 fps, 480p, loop 3 times | Plays in Safari, Chrome and Firefox at normal speed, three times then stops |
+| X8 | GIF (Palette on macOS, gifski on Windows and Linux) at 15 fps, 480p, loop 3 times | Plays in Safari, Chrome and Firefox at normal speed, three times then stops |
 | X9 | GIF palette mode, 64 colours, dither off | Visible banding; plays at the chosen speed |
 | X10 | Fast encoder on a 5K recording with H.264 at Original | A warning that hardware H.264 stops at 4096 px |
 | X11 | Save the settings as a preset, switch format, apply the preset | Every setting comes back; delete removes it |
@@ -866,40 +873,40 @@ In the editor with any recording, press ⌘E:
 | Y11 | After recording, type a name in the summary's Name field | The Library and the editor show that name; exports use it |
 | Y12 | Library: sort by Longest, Largest, Name; ⌘-click and ⇧-click several; ⌘A | Order changes and is remembered; the footer shows the count and size; Move N to Trash asks once |
 
-## 10h. Mac App Store edition (TestFlight, owner only)
+## 10h. Sandboxed Mac app: the DMG and the Mac App Store (owner only)
 
-The store build: `gh workflow run app-store.yml -f tag=v<version> -f submit=false` uploads it
-without submitting (docs/RELEASING.md, Mac App Store), and the TestFlight app installs it. It is
-sandboxed, has its own permission grants (an Apple Distribution signature) and keeps its
-settings in `~/Library/Containers/com.simplecapture.desktop`. Quit every other Simple Capture
-first; if the DMG edition is in /Applications, move it to the Trash (both are
-`Simple Capture.app` with the same ID). Write each prompt in §12 with "TestFlight" as the app.
-A failure here holds the submission: report it.
+The DMG and the store build are the same sandboxed app (ADR-058), so these rows apply to both.
+Run them on the DMG first (`just bundle`, or the release's DMG) and again on the store build
+before the first submission: `gh workflow run app-store.yml -f tag=v<version> -f submit=false`
+uploads it without submitting (docs/RELEASING.md, Mac App Store), and the TestFlight app
+installs it. Either keeps its settings in `~/Library/Containers/com.simplecapture.desktop`, and
+the two have separate permission grants (Developer ID and Apple Distribution signatures). Quit
+every other Simple Capture first, and keep only one copy in /Applications (both are
+`Simple Capture.app` with the same ID). Write each prompt in §12 with "DMG" or "TestFlight" as
+the app. A failure here holds the release or the submission: report it.
 
-AS0 can run on this Mac before the first upload: the `mas` build without the sandbox, under the
-dev host's grants. The next `just run` builds the normal app again.
+AS0 can run on this Mac with the dev app, which runs the same code without the sandbox under
+the dev host's grants:
 
 ```bash
-pnpm --dir ui build
-cargo build --locked -p simple-capture-app --features mas
-scripts/lib/live.sh tools/macos-dev-host/run.sh target/debug/simple-capture-app
+just run
 ```
 
 | # | Step | Expected |
 |---|---|---|
-| AS0 | Dev host, `mas` build: record a display with TextEdit frontmost; click the floating bar's pause and resume, then type in TextEdit | TextEdit stays frontmost and takes the typing after each click |
-| AS1 | Install from TestFlight and open it from Launchpad (first launch) | The recorder panel opens by itself; the menu-bar icon appears; no prompt yet |
+| AS0 | Dev host (`just run`): record a display with TextEdit frontmost; click the floating bar's pause and resume, then type in TextEdit | TextEdit stays frontmost and takes the typing after each click |
+| AS1 | Install (drag from the DMG, or from TestFlight) and open it from Launchpad (first launch) | The recorder panel opens by itself; the menu-bar icon appears; no prompt yet |
 | AS2 | Close the panel; open Simple Capture again from Finder (Applications) or Launchpad | The recorder panel comes back |
 | AS3 | "Permissions needed" → Allow… for Screen Recording; follow macOS (System Settings, Quit & Reopen); then Allow… for Camera and for Microphone | Each prompt names Simple Capture (Camera and Microphone with our usage strings); afterwards the Permissions window says Granted for all three and the banner is gone |
 | AS4 | Record a display 20 s with a camera, the mic and system audio (music playing) | The editor opens; screen, camera, voice and music play in step; the recording is in ~/Movies/Simple Capture |
 | AS5 | Record a window 15 s, resizing it once | Only that window is recorded, letterboxed after the resize; none of our windows in it |
 | AS6 | Plug in an iPhone or iPad (unlocked, trusted) → the recorder's iPhone tab → record 15 s with sound playing on it | It is listed and its screen and sound are recorded. If it is missing or black, report it: the build may need the `device.usb` entitlement |
-| AS7 | Record a display with TextEdit frontmost; click the floating bar (pause, resume) and drag the camera Preview window, typing in TextEdit after each | TextEdit stays frontmost and keeps the typing. The store build leaves out `_setPreventsActivation:`; if Simple Capture takes focus, report it |
+| AS7 | Record a display with TextEdit frontmost; click the floating bar (pause, resume) and drag the camera Preview window, typing in TextEdit after each | TextEdit stays frontmost and keeps the typing. No Mac build uses `_setPreventsActivation:` any more; if Simple Capture takes focus, report it |
 | AS8 | Export MP4 to the default folder | The file is in ~/Movies/Simple Capture and plays in QuickTime; Show in Finder finds it |
 | AS9 | Export → Choose… another folder (Desktop or Documents) → Export | The file is in that folder and plays |
 | AS10 | Tray → Quit; open the app again; export another recording without choosing the folder again | It saves to the folder from AS9, with no "Choose the folder again" message |
 | AS11 | Export: pick MP4 with H.264, then HEVC, then GIF, and look at the Encoder row each time | Without touching it, Fast is selected for H.264 and HEVC and Palette for GIF; Best Quality and Best Quality (gifski) are greyed out |
-| AS12 | Export MP4, H.264 (Fast) | It plays; `strings <file> \| grep -c x264` prints 0 (VideoToolbox; the DMG edition's Best Quality writes x264's settings into the file); nothing in the sheet mentions x264 or x265 |
+| AS12 | Export MP4, H.264 (Fast) | It plays; `strings <file> \| grep -c x264` prints 0 (VideoToolbox; x264 would write its settings into the file); nothing in the sheet mentions x264 or x265 |
 | AS13 | Export GIF (Palette) | The GIF (FFmpeg's palette) plays in a browser |
 | AS14 | Optional: export to a folder on another disk | It finishes after a short copy at 100%; it needs free space on the Movies disk, where it is encoded first |
 | AS15 | About Simple Capture → Privacy Policy | The browser opens docs/PRIVACY.md on GitHub |

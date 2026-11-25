@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Builds the Mac App Store edition from this checkout and packages it for upload: Rust notices for
-# feature `mas`, the LGPL helpers without gifski, the app with feature `mas` and
-# tauri.appstore.conf.json, App Sandbox signing with the provisioning profile embedded, a
-# productbuild .pkg, then scripts/mas-check.sh. Prints the .pkg path last.
+# Builds the Mac App Store edition from this checkout and packages it for upload. It is the same
+# app as the DMG (macOS notices, LGPL helpers, tauri.bundle.conf.json and
+# tauri.bundle.macos.conf.json) plus tauri.appstore.conf.json: the provisioning profile embedded,
+# scripts/macos-sign.sh with the Apple Distribution identity and
+# app/macos/entitlements.appstore.plist, a productbuild .pkg, then scripts/mas-check.sh. Prints
+# the .pkg path last.
 # The profile and identities are checked before the build (scripts/mas-check.sh --profile). The
-# Developer ID bundle and helpers that the shared target dir holds in release/bundle/macos and
-# release/ are moved aside during the build and put back afterwards, also when it fails.
+# Developer ID bundle that the shared target dir holds in release/bundle/macos is moved aside
+# during the build and put back afterwards, also when it fails.
 #   scripts/mas-build.sh [--adhoc] [--app PATH.app]
 #     --adhoc         or SC_MAS_ADHOC=1: sign ad hoc with the same entitlements and leave the .pkg
 #                     unsigned, to check the structure without certificates
@@ -17,7 +19,7 @@
 #   SC_MAS_PROFILE             the Mac App Store provisioning profile (required unless ad hoc)
 #   SC_MAS_BUILD_NUMBER        CFBundleVersion, above every earlier upload: the plain integer that
 #                              scripts/asc/asc.py next-build prints (default: the version)
-#   SC_MAS_HELPERS             the LGPL helpers (default third_party/out/macos-arm64-lgpl)
+#   SC_MAS_HELPERS             the LGPL helpers (default third_party/out/macos-arm64)
 #   SC_MAS_JOBS                cargo build jobs (default 4)
 #   CARGO_TARGET_DIR           default target/skia; output in $CARGO_TARGET_DIR/release/bundle/mas
 set -euo pipefail
@@ -79,7 +81,7 @@ else
 fi
 
 STASH="$REL/.mas-build-stash"
-SHARED=("bundle/macos/Simple Capture.app" sc-ffmpeg sc-ffprobe)
+SHARED=("bundle/macos/Simple Capture.app")
 absent=()
 restore_shared() {
   local p
@@ -106,8 +108,8 @@ if [ -z "$src_app" ]; then
       absent+=("$p")
     fi
   done
-  scripts/ci/notices.sh --mas target/notices/mas/THIRD_PARTY_RUST.html
-  scripts/stage-helpers.sh --mas ${HELPERS:+"$HELPERS"}
+  scripts/ci/notices.sh --macos
+  scripts/stage-helpers.sh ${HELPERS:+"$HELPERS"}
   pnpm --dir ui build >/dev/null
   gen="$CARGO_TARGET_DIR/tauri.mas.gen.json"
   mkdir -p "$CARGO_TARGET_DIR"
@@ -126,8 +128,9 @@ PY
   (cd app && env -u APPLE_CERTIFICATE -u APPLE_CERTIFICATE_PASSWORD -u APPLE_SIGNING_IDENTITY \
     -u APPLE_ID -u APPLE_PASSWORD -u APPLE_TEAM_ID -u APPLE_API_KEY -u APPLE_API_ISSUER \
     -u APPLE_API_KEY_PATH nice -n 19 ../ui/node_modules/.bin/tauri build \
-    --config tauri.bundle.conf.json --config tauri.appstore.conf.json --config "$gen" \
-    --bundles app -- --locked --features mas -j "${SC_MAS_JOBS:-4}")
+    --config tauri.bundle.conf.json --config tauri.bundle.macos.conf.json \
+    --config tauri.appstore.conf.json --config "$gen" \
+    --bundles app -- --locked -j "${SC_MAS_JOBS:-4}")
   rm -rf "$APP"
   mkdir -p "$OUT"
   mv "$REL/bundle/macos/Simple Capture.app" "$APP"
@@ -141,14 +144,8 @@ else
   [ -z "$BUILD_NUMBER" ] || plutil -replace CFBundleVersion -string "$BUILD_NUMBER" "$APP/Contents/Info.plist"
 fi
 
-sign() { codesign --force --options runtime --timestamp=none -s "$SIGNER" "$@"; }
-main=$(plutil -extract CFBundleExecutable raw "$APP/Contents/Info.plist")
-for exe in "$APP"/Contents/MacOS/*; do
-  name=$(basename "$exe")
-  [ "$name" = "$main" ] ||
-    sign -i "com.simplecapture.desktop.$name" --entitlements app/macos/helper.mas.entitlements.plist "$exe"
-done
-sign --entitlements app/macos/entitlements.mas.plist "$APP"
+SC_SIGN_IDENTITY=$SIGNER SC_ENTITLEMENTS=app/macos/entitlements.appstore.plist SC_NOTARIZE=0 \
+  scripts/macos-sign.sh "$APP" >&2
 
 VERSION=$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")
 PKG="$OUT/Simple Capture_${VERSION}_mas.pkg"

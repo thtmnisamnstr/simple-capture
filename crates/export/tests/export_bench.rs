@@ -89,7 +89,7 @@ fn bench_2160p_30s() {
 #[test]
 #[ignore = "bench"]
 fn bench_7680x2160_x264() {
-    if !helpers_available() {
+    if !helpers_available() || !encoder_built("libx264") {
         return;
     }
     let secs = 10i64;

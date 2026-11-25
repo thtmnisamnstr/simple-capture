@@ -70,6 +70,17 @@ pub fn helpers_available() -> bool {
     found
 }
 
+/// Whether the helper encodes with `name`; prints why the caller skips when it does not (x264,
+/// x265 and gifski ship only off macOS).
+pub fn encoder_built(name: &str) -> bool {
+    let built = sc_helpers::locate(sc_helpers::HelperKind::Ffmpeg)
+        .is_ok_and(|ff| sc_export::probe::encoder_works(&ff, name));
+    if !built {
+        eprintln!("SKIPPED: the helper has no {name}");
+    }
+    built
+}
+
 pub fn require_gpu() -> bool {
     std::env::var("SC_REQUIRE_GPU").as_deref() == Ok("1")
 }

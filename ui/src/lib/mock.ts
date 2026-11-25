@@ -1,6 +1,7 @@
 // Mock backend for the UI outside Tauri (Vite dev server, Browser pane, node tests).
 // Browser scenarios via the query string, e.g. `?screen=denied`, `?state=recording`,
-// `?notice=source_lost`, `?saved=1`, `?camera=1` (a camera chosen).
+// `?notice=source_lost`, `?saved=1`, `?camera=1` (a camera chosen). Exports offer what the macOS
+// helpers encode; `?helpers=full` offers the Windows and Linux set (x264, x265, gifski).
 
 import type {
   Background,
@@ -491,9 +492,9 @@ function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
     return {
       store: { last_format: 'mp4', per_format: {}, presets: [{ name: 'Web 720p', settings: { format: 'mp4' } }] },
       available:
-        q.get('edition') === 'mas'
-          ? { video: { h264: { best: false, fast: true }, hevc: { best: false, fast: true }, av1: { best: true, fast: false }, vp9: { best: true, fast: false }, vp8: { best: true, fast: false }, prores: ok }, gifski: false }
-          : { video: { h264: ok, hevc: ok, av1: { best: true, fast: false }, vp9: { best: true, fast: false }, vp8: { best: true, fast: false }, prores: ok }, gifski: true },
+        q.get('helpers') === 'full'
+          ? { video: { h264: ok, hevc: ok, av1: { best: true, fast: false }, vp9: { best: true, fast: false }, vp8: { best: true, fast: false }, prores: ok }, gifski: true }
+          : { video: { h264: { best: false, fast: true }, hevc: { best: false, fast: true }, av1: { best: true, fast: false }, vp9: { best: true, fast: false }, vp8: { best: true, fast: false }, prores: ok }, gifski: false },
       recording_fps: 30,
       reference: { w: 3024, h: 1964 },
       ratio: [16, 9],

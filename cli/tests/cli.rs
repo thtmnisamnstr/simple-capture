@@ -73,12 +73,9 @@ fn self_test_runs_and_writes_a_report() {
         .output()
         .expect("run simple-capture");
     let out = text(&st.stdout);
-    let helpers = [
-        sc_helpers::HelperKind::Ffmpeg,
-        sc_helpers::HelperKind::Gifski,
-    ]
-    .into_iter()
-    .all(|k| sc_helpers::locate(k).is_ok());
+    let helpers = sc_helpers::locate(sc_helpers::HelperKind::Ffmpeg).is_ok()
+        && (cfg!(target_os = "macos")
+            || sc_helpers::locate(sc_helpers::HelperKind::Gifski).is_ok());
     if helpers {
         assert_eq!(st.status.code(), Some(0), "{out}\n{}", text(&st.stderr));
         assert!(out.contains("0 failed"), "{out}");

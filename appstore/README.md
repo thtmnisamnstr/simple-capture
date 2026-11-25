@@ -1,17 +1,18 @@
 # Mac App Store listing
 
-The App Store Connect metadata for the Mac App Store edition of Simple Capture (bundle ID
+The App Store Connect metadata for the Mac App Store build of Simple Capture (bundle ID
 `com.simplecapture.desktop`, platform `MAC_OS`). The app-store workflow sends these files
 through the App Store Connect API (`scripts/asc/asc.py prepare`) on every run, so an edit made
 in App Store Connect is overwritten by the next run. Edit them here, so the listing stays under
 version control.
 
-The listing describes the Mac App Store build, which differs from the GitHub build: its FFmpeg
-is LGPL-only (no x264 or x265, so H.264 and HEVC are encoded by VideoToolbox), and it has no
-gifski (GIFs use FFmpeg's palette mode). Don't promise those encoders, other platforms, prices
-or "beta" anywhere in the listing. The app makes no network connections; say it that way, not
-"no network access": the store build carries the `network.client` entitlement because its
-WKWebView windows need it in the sandbox (`review.json` explains this to App Review).
+The listing describes the Mac app, which is the same sandboxed app as the GitHub DMG
+(DECISIONS ADR-058): its FFmpeg is LGPL-only (no x264 or x265, so H.264 and HEVC are encoded by
+VideoToolbox), and it has no gifski (GIFs use FFmpeg's palette mode). Don't promise those
+encoders, other platforms, prices or "beta" anywhere in the listing. The app makes no network
+connections; say it that way, not "no network access": the app carries the `network.client`
+entitlement because its WKWebView windows need it in the sandbox (`review.json` explains this
+to App Review).
 
 Check the listing after every edit:
 
@@ -45,7 +46,7 @@ python3 -I scripts/asc/asc.py check-metadata      # what the upload script accep
 
 There is no release-notes file here. What's New is the version's section of the repository's
 `CHANGELOG.md` (the `## 0.2.0` heading, or `## 0.2.0 (unreleased)`). `CHANGELOG.md` covers every
-edition, so `scripts/asc/asc.py` leaves out the headings, bullets and paragraphs about another
+platform, so `scripts/asc/asc.py` leaves out the headings, bullets and paragraphs about another
 one (those naming Linux, Android, iOS, gifski, x264 or x265, or Windows the operating system, as
 in "on Windows", "Windows:" or a `### Windows` heading; "Windows from another Space" stays) and
 logs how many. The rest becomes plain text: headings become plain lines, `- ` bullets become
@@ -67,8 +68,8 @@ pixels. There can be 1 to 10. They are uploaded in filename order, so name them 
 prefix. See `screenshots/en-US/README.md`.
 
 `screenshots/tools/make.sh` renders them again from the real UI running on its mock backend,
-with the store-edition flag (`edition=mas`), so the Export sheet shows what the store build
-offers. It needs Google Chrome and the UI's dependencies (`pnpm --dir ui install`).
+whose Export sheet offers what the macOS helpers encode by default (`helpers=full` would show
+the Windows and Linux set instead). It needs Google Chrome and the UI's dependencies (`pnpm --dir ui install`).
 
 ## Notes for the scripts
 

@@ -20,7 +20,7 @@ pub struct ExportStore {
     pub per_format: BTreeMap<String, ExportSettings>,
     pub presets: Vec<NamedSettings>,
     /// Security-scoped bookmarks (hex) of the export folders the person picked, by path.
-    #[cfg(all(feature = "mas", target_os = "macos"))]
+    #[cfg(target_os = "macos")]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub folder_bookmarks: BTreeMap<String, String>,
 }
@@ -118,7 +118,7 @@ impl Core {
                     out_path: None,
                     canvas: None,
                 };
-                #[cfg(all(feature = "mas", target_os = "macos"))]
+                #[cfg(target_os = "macos")]
                 if let Some(d) = settings.out_dir.as_deref() {
                     let _ = crate::sandbox::reach_export_folder(&self.data_dir, d);
                 }
@@ -157,9 +157,9 @@ impl Core {
                     .per_format
                     .insert(key(settings.format), settings.clone());
                 save(&self.data_dir, &store)?;
-                #[cfg(all(feature = "mas", target_os = "macos"))]
+                #[cfg(target_os = "macos")]
                 let stage = crate::sandbox::export_stage(&self.data_dir, &settings, &dir)?;
-                #[cfg(not(all(feature = "mas", target_os = "macos")))]
+                #[cfg(not(target_os = "macos"))]
                 let stage = None;
                 let platform = self.platform.clone();
                 let d = dir.clone();
@@ -201,7 +201,7 @@ impl Core {
                 let p = rx
                     .recv()
                     .map_err(|_| "the folder chooser went away".to_string())?;
-                #[cfg(all(feature = "mas", target_os = "macos"))]
+                #[cfg(target_os = "macos")]
                 if let Some(p) = &p {
                     crate::sandbox::remember_export_folder(&self.data_dir, p);
                 }
@@ -209,7 +209,7 @@ impl Core {
             }
             "copy_file" => {
                 let path: String = arg(args, "path")?;
-                #[cfg(all(feature = "mas", target_os = "macos"))]
+                #[cfg(target_os = "macos")]
                 let _ = crate::sandbox::reach_export_folder(&self.data_dir, Path::new(&path));
                 self.platform
                     .desktop()

@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Usage: third_party/ffmpeg/build-macos.sh [arm64|x86_64]
 # Env: JOBS (default: all cores), MACOS_MIN (default 14.0), CLEAN=1 to rebuild every library,
-#      SC_FFMPEG_LICENSE=gpl (default) or lgpl.
+#      SC_FFMPEG_LICENSE=lgpl (default) or gpl.
 #
-# Static FFmpeg export helper for Simple Capture, never nonfree. gpl: GPL-2.0-or-later with x264
-# and x265, into out/macos-<arch>. lgpl (Mac App Store edition): LGPL-2.1-or-later, the same
-# feature set without x264 and x265 (never built), in its own build tree and
-# out/macos-<arch>-lgpl. Every library is built from the pinned, checksum-verified sources in
-# third_party/versions.toml into a private prefix; pkg-config and CMake are fenced off from
-# Homebrew so nothing leaks in, and the finished binaries must link only Apple system
-# frameworks and libSystem (checked at the end).
+# Static FFmpeg export helper for Simple Capture, never nonfree. lgpl (every macOS build: the DMG
+# and the Mac App Store edition): LGPL-2.1-or-later without x264 and x265 (never built; H.264 and
+# HEVC come from VideoToolbox), into out/macos-<arch>. gpl (local experiments only, never
+# shipped): the same feature set plus x264 and x265, GPL-2.0-or-later, into out/macos-<arch>-gpl.
+# Each variant has its own build tree (build/macos-<arch>-<license>). Every library is built from
+# the pinned, checksum-verified sources in third_party/versions.toml into a private prefix;
+# pkg-config and CMake are fenced off from Homebrew so nothing leaks in, and the finished
+# binaries must link only Apple system frameworks and libSystem (checked at the end).
 # Recipe ideas (x265/libvorbis/libvpx Darwin quirks) come from markus-perl/ffmpeg-build-script
 # (MIT); see docs/THIRD_PARTY.md.
 set -euo pipefail
@@ -27,36 +28,36 @@ HOST_ARCH=$(uname -m)
 CROSS=false
 [ "$ARCH" = "$HOST_ARCH" ] || CROSS=true
 
-case "${SC_FFMPEG_LICENSE:-gpl}" in
-    gpl)
-        VARIANT=
-        X26X="x264 x265"
-        FF_LICENSE=(--extra-version=simple-capture --enable-gpl)
-        FF_X26X=(--enable-libx264 --enable-libx265)
-        FF_X26X_ENCODERS=libx264,libx265,
-        FF_PROTOCOLS=file,pipe
-        FF_COPYING=COPYING.GPLv2
-        FF_EXPECT="GPL version 2 or later"
-        ;;
+LICENSE=${SC_FFMPEG_LICENSE:-lgpl}
+case "$LICENSE" in
     lgpl)
-        VARIANT=-lgpl
+        OUT_SUFFIX=
         X26X=
         FF_LICENSE=(--extra-version=simple-capture-lgpl)
         FF_X26X=()
         FF_X26X_ENCODERS=
-        # fd: lets the sandboxed app hand the helper a seekable output it opened itself.
-        FF_PROTOCOLS=file,pipe,fd
         FF_COPYING=COPYING.LGPLv2.1
         FF_EXPECT="LGPL version 2.1 or later"
         ;;
-    *) die "unknown SC_FFMPEG_LICENSE $SC_FFMPEG_LICENSE (gpl|lgpl)" ;;
+    gpl)
+        OUT_SUFFIX=-gpl
+        X26X="x264 x265"
+        FF_LICENSE=(--extra-version=simple-capture-gpl --enable-gpl)
+        FF_X26X=(--enable-libx264 --enable-libx265)
+        FF_X26X_ENCODERS=libx264,libx265,
+        FF_COPYING=COPYING.GPLv2
+        FF_EXPECT="GPL version 2 or later"
+        ;;
+    *) die "unknown SC_FFMPEG_LICENSE $LICENSE (lgpl|gpl)" ;;
 esac
+# fd: lets the sandboxed app hand the helper a seekable output it opened itself.
+FF_PROTOCOLS=file,pipe,fd
 
-WORK="$TP_BUILD/macos-$ARCH$VARIANT"
+WORK="$TP_BUILD/macos-$ARCH-$LICENSE"
 SRC="$WORK/src"
 PREFIX="$WORK/prefix"
 STAMPS="$WORK/stamps"
-OUT="$TP_OUT/macos-$ARCH$VARIANT"
+OUT="$TP_OUT/macos-$ARCH$OUT_SUFFIX"
 [ "${CLEAN:-0}" = 1 ] && rm -rf "$WORK"
 mkdir -p "$SRC" "$PREFIX/lib/pkgconfig" "$STAMPS" "$OUT"
 
@@ -268,7 +269,7 @@ verify_linkage() {
     vtool -show-build "$OUT/ffmpeg" | tee "$OUT/ffmpeg.vtool.txt"
 }
 
-log "building ${SC_FFMPEG_LICENSE:-gpl} FFmpeg for macOS $ARCH (min $MACOS_MIN, jobs $JOBS, cross=$CROSS)"
+log "building $LICENSE FFmpeg for macOS $ARCH (min $MACOS_MIN, jobs $JOBS, cross=$CROSS)"
 build_libwebp
 build_libogg
 build_libvorbis

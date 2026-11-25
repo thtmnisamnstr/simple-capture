@@ -2,8 +2,8 @@
 
 Effective date: November 25, 2026
 
-Simple Capture is a screen recorder and editor. This policy covers every edition of the app: the
-one on the Mac App Store and the builds published on GitHub.
+Simple Capture is a screen recorder and editor. This policy covers every copy of the app: the
+one on the Mac App Store and the builds published on GitHub (and installed through Homebrew).
 
 ## In short
 
@@ -26,9 +26,8 @@ Simple Capture saves these files on your computer, and only there:
 - **Exports.** Saved next to the recordings, or in a folder you choose.
 - **Settings and logs.** Your settings, export presets, a record of which encoders work on your
   computer, and the app's logs. They are in this folder:
-  - Mac App Store edition:
+  - macOS (Mac App Store and GitHub alike):
     `~/Library/Containers/com.simplecapture.desktop/Data/Library/Application Support/com.simplecapture.desktop`
-  - GitHub edition for macOS: `~/Library/Application Support/com.simplecapture.desktop`
   - Windows: `%APPDATA%\com.simplecapture.desktop`
   - Linux: `$XDG_DATA_HOME/com.simplecapture.desktop`, or
     `~/.local/share/com.simplecapture.desktop` when `XDG_DATA_HOME` is not set
@@ -60,11 +59,11 @@ System Settings → Privacy & Security.
 ## Network
 
 Simple Capture makes no network connections. The FFmpeg helpers bundled with it are built with
-network support turned off. The app does not check for updates itself; the Mac App Store
-handles updates for that edition.
+network support turned off. The app does not check for updates itself; the Mac App Store or
+Homebrew handles updates when you install it that way.
 
-The Mac App Store edition carries Apple's outgoing-network entitlement only because the system
-web view that draws its windows needs it inside the App Sandbox, even though it loads them from
+On macOS the app carries Apple's outgoing-network entitlement only because the system web view
+that draws its windows needs it inside the App Sandbox, even though it loads them from
 files inside the app. The app never uses it to connect anywhere.
 
 ## Apple
@@ -88,7 +87,7 @@ Simple Capture collects no data from anyone, including children.
 
 Move recordings to the Trash from the Library, or delete the `Movies/Simple Capture` folder
 (`Videos/Simple Capture` on Windows and Linux). To remove everything, also delete the settings
-and logs folder listed above for your edition, and the app itself.
+and logs folder listed above for your system, and the app itself.
 
 ## Changes
 

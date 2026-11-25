@@ -28,21 +28,21 @@ with no account and no network connections.
   glow, boxes, gradients, layer order, and in, out and loop animations.
 
 ### Export
-- MP4 (H.264, HEVC, AV1), MOV (ProRes 422, H.264, HEVC), WebM (VP9, AV1, VP8), GIF (gifski or a
-  palette) and animated WebP.
+- MP4 (H.264, HEVC, AV1), MOV (ProRes 422, H.264, HEVC), WebM (VP9, AV1, VP8), GIF and
+  animated WebP.
+- On a Mac, H.264 and HEVC use Apple's VideoToolbox encoders and GIFs use FFmpeg's palette.
+- Windows and Linux add Best Quality encoders: x264, x265 and gifski.
 - Quality presets, CRF or bitrate, or a file-size limit; destinations for email, Slack and
   Teams, YouTube, and vertical video; per-format frame rates, sizes, estimates and named presets.
 
 ### Distribution
-- macOS: the DMG on GitHub Releases, or Homebrew:
-  `brew install --cask thtmnisamnstr/tap/simple-capture`. The app and DMG are signed with a
-  Developer ID and notarized, so permissions survive updates. The DMG opens on a
-  drag-to-Applications window.
-- A Mac App Store edition of the same version: sandboxed, with an LGPL-only FFmpeg and no gifski.
-  Best H.264 and HEVC exports use Apple's VideoToolbox encoders instead of x264 and x265, GIFs
-  use FFmpeg's palette instead of gifski, and media keys can't be shortcuts. In its About
-  window, the FFmpeg entry's Source code button opens the GitHub release that holds the FFmpeg
-  source. It installs as the same app as the DMG, so use one or the other.
+- macOS: the DMG on GitHub Releases, Homebrew
+  (`brew install --cask thtmnisamnstr/tap/simple-capture`), and the Mac App Store, all the same
+  sandboxed app with an LGPL-only FFmpeg. The DMG is signed with a Developer ID and notarized,
+  so permissions survive updates, and opens on a drag-to-Applications window. Media keys can't
+  be shortcuts on a Mac. The store and DMG copies replace each other, so use one or the other.
+- In About → Licenses, the FFmpeg entry's Source code button opens the GitHub release that holds
+  the helpers' source.
 - Release files carry SHA256SUMS.txt and build provenance attestations
   (`gh attestation verify <file> --repo thtmnisamnstr/simple-capture`).
 - Windows: one NSIS setup `.exe`, a per-user install, and no console window. Linux: `.deb` and

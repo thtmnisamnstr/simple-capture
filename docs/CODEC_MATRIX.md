@@ -32,8 +32,8 @@ Important caveats:
 | Editor decode | `AVAssetReader` producing IOSurface-backed NV12 (420v) | **verified** (S3) | 7680x2160 HEVC: 302 fps decode, 344 fps with import and preview render; seek median 54 ms, max 142 ms (three runs). Camera 1080p: 1599 fps, seek 11 ms. AVAssetReader reads a SIGKILLed fragmented `.mov` completely. Readers cannot seek: recreate on a keyframe (R-dec). |
 | Frames into wgpu | `CVMetalTextureCache` makes R8 (Y) and RG8 (CbCr) Metal textures from the IOSurface; `wgpu-hal` wraps them; WGSL BT.709 limited-range shader | **verified** (S3) | Zero-copy: IOSurface ids match on both planes, the same Metal texture object, 39 µs per 7680x2160 frame. PSNR against an ffmpeg reference conversion 79.3 dB (screen). Keep the source CVPixelBuffer alive until GPU work finishes (R-dec). |
 | Preview to UI | `CAMetalLayer` NSView under a transparent WKWebView (wgpu FIFO surface); fallback raw frames into WebGL2 | **verified** (S2) | Native path 60.1 fps of 60 at 20% total CPU; WebGL2 fallback 58.5-59.9 fps. Send webview frames at the preview's device-pixel size (S2). |
-| Export encode + mux | Bundled static GPL FFmpeg 9.1 helper (`third_party/ffmpeg/build-macos.sh`) | **verified** (S1) | arm64 built and benchmarked; x86_64 cross-built and only smoke-tested under Rosetta. See section 2. |
-| GIF | Bundled gifski 1.34.0 helper (Y4M on stdin) | **verified** (S1) | arm64 only; gifski x86_64 not built yet. FFmpeg palette mode as the alternative. |
+| Export encode + mux | Bundled static LGPL FFmpeg 9.1 helper (`third_party/ffmpeg/build-macos.sh`'s default; no x264 or x265, ADR-058) | **verified** (S1, on the GPL variant) | Every Mac build (DMG and Mac App Store). arm64 built and benchmarked; x86_64 cross-built and only smoke-tested under Rosetta. See section 2. |
+| GIF | FFmpeg palette mode | **verified** (S1) | No gifski on macOS since ADR-058 (S1 measured it; see §2.5). |
 
 ### Windows (M6)
 
@@ -76,6 +76,8 @@ Verified on macOS in S1:
 - Progress: frames written to the helper's stdin, plus `-nostats -progress` for the final flush and end. gifski prints no progress at all (S1, R-kap).
 
 ### 2.2 Video encoders
+
+On macOS (ADR-058) the helper has no `libx264` or `libx265`, so the H.264 and HEVC "Best" rows apply to Windows and Linux only; a Mac uses the VideoToolbox rows (H.264 frames over 4096 px go to Apple's software encoder at a bitrate from the quality preset).
 
 Speed: 1080p30, 10 s synthetic clip, Y4M input, **median of 3 quiet-machine runs** from the S1 verification (load average still about 6-7 on 11 cores). "4-thread" is `-threads 4`, or `lp` for SVT-AV1, which ignores `-threads`. The proxy ranges were partly taken from verifier runs that were not saved; over the five saved runs they are: x264 108.8-146.0, x265 83.0-95.8, SVT-AV1 lp=2 87.3-102.4 and lp=1 38.5-44.2, VP9 41.9-49.9. Speeds were measured at the bench settings in the "Measured at" column, **not** at the proposed tiers. The tiers are spike 1's proposal: only Balanced is close to what was measured, and **no tier has been checked visually on real screen recordings**.
 
@@ -120,11 +122,13 @@ Defaults are listed first in each cell. The compatibility columns are **expectat
 | WebM | AV1 | Opus | no (AV1 tested only in MP4) | no | yes | yes | yes |
 | WebM | VP8 | Vorbis | yes (BT.601 by design) | no | yes | yes | yes |
 | WebM | VP9/AV1/VP8 | Vorbis / Opus (swapped) | no | no | yes | yes | yes |
-| GIF | gifski or palette | none | yes | Quick Look/Preview animate it; QuickTime Player and VLC are not targets | yes | yes | – |
+| GIF | gifski (Windows, Linux) or palette | none | yes | Quick Look/Preview animate it; QuickTime Player and VLC are not targets | yes | yes | – |
 
 Helper gaps that affect this table (S1): the shipped ffmpeg has **no AV1 decoder** (it cannot decode its own AV1 output, so decode-back probes for AV1 need another decoder or must be skipped), and the **PNG decoder is silently missing** because zlib is disabled. Both need a decision before M5.
 
 ### 2.5 GIF
+
+gifski is Windows and Linux only since ADR-058; on macOS every GIF uses palette mode.
 
 | Mode | Exact helper and args | Small / Balanced / High | M3 Pro speed (960x540, 15 fps, 150 frames) | Notes |
 |---|---|---|---|---|
@@ -182,7 +186,7 @@ Run once per machine and cache the result keyed by OS version, helper version an
 6. **Hardware Fast encoders on Windows/Linux** (NVENC/QSV/AMF/MF/VAAPI, including AV1 and VP9 variants). Run risky ones in a child process, and mark an encoder "in use" while it runs so a crash quarantines it on next launch (R-rec).
 7. **Native recording headroom:** an HEVC (and H.264) encode at the display's native size and the chosen fps. Offer 60 fps only when it keeps up; S3 measured 46 fps HEVC at 7680x2160 on the M3 Pro, which rules out 60 fps there. **M1 probe v1 (the probe-size rule, ADR-009):** at launch, HEVC at 60 fps for every connected display's native and 1× size; 60 fps is offered for a source only if its display reached ≥ 78 fps (1.3 × 60). M3 Pro: 3024x1964 117.9 fps, 1512x982 386.8 fps; `h264_videotoolbox -allow_sw 0` opens at 3840 and 4096 x2160, fails at 4098 (M1:export). Delivered with `--fps 60` on a changing test screen: 50.8–52.5 fps (M1:e2e).
 8. **Native decode paths:** AVAssetReader for HEVC/H.264 on macOS; MF DXVA on Windows; VAAPI on Linux.
-9. **gifski** is present and is version 1.32 or later (needed for Y4M on stdin; we ship 1.34.0) (R-eco).
+9. **gifski** (Windows and Linux) is present and is version 1.32 or later (needed for Y4M on stdin; we ship 1.34.0) (R-eco).
 10. **Helper integrity:** binary present, version string matches the pinned build (`9.1-simple-capture`), with a clear error if missing (S1 tested the missing-helper message).
 
 ## 4. Open items
@@ -190,11 +194,11 @@ Run once per machine and cache the result keyed by OS version, helper version an
 - Run S1 and S3 on a real base M1 8 GB: x264/x265/VP9 speed, VideoToolbox throughput, HEVC headroom at the M1's native sizes. Also the M1 quick export and probe v1 (§2.7); every M1 number is from the M3 Pro.
 - Fragment interval for raw tracks (1 s loses up to about 1.08 s on a SIGKILL; ADR-008 owner question).
 - Quick export speed on real (not synthetic) screen content.
-- Decide the 5K/6K Fast path for H.264 (downscale, HEVC, or x264).
+- Decide the 5K/6K Fast path for H.264 (downscale, HEVC, or x264). On macOS, where there is no x264 (ADR-058), it is Apple's software encoder above 4096 px.
 - VP8 colour exception (ADR-029) needs the owner's OK.
 - The S3 evidence behind section 1 (summaries, analyses, logs) is un-ignored under `out/`; only the recordings are gitignored (STATUS §1).
 - Visual check of all quality tiers on real screen recordings; only synthetic content was encoded.
 - Playback test in QuickTime, Chrome, Firefox and VLC for every offered combination (section 2.4 is unverified; MANUAL_TEST §10e). ffprobe validation of every combination passes (`export_formats`, M5).
-- SSIM, text-heavy clip, 1280x720 30 fps: x264 Best 0.9365 at 134 KB vs `h264_videotoolbox` 0.9341 at 233 KB (`export_quality`, M5).
+- SSIM, text-heavy clip, 1280x720 30 fps: x264 Best 0.9365 at 134 KB vs `h264_videotoolbox` 0.9341 at 233 KB (`export_quality`, M5). The shipped Mac helper has no x264 (ADR-058), so the test now needs `SC_FFMPEG` naming the GPL build (`third_party/out/macos-arm64-gpl`) and skips otherwise; the product claim applies to Windows and Linux.
 - Decide on the helper's PNG decoder (enable zlib or drop it) and whether to add an AV1 decoder (`libdav1d`, BSD-2-Clause) for decode-back probes.
 - gifski x86_64, and all Windows/Linux helper builds, are not built yet.

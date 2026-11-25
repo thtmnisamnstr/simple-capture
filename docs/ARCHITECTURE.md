@@ -126,7 +126,7 @@ Notes:
 | Preview transport (ADR-007) | **Webview frames** (URI pull, WebGL2). Native CAMetalLayer under the webview works [S2] but is off | **Webview frames.** Native DirectComposition visual compiles [S5], never run | **Webview frames.** Wayland `wl_subsurface` passed in Docker with software rendering [S6]; X11 native child failed, so X11 stays on webview frames |
 | Own-UI exclusion | SCContentFilter with our windows listed one by one, on every stream (**verified [S3]**) | SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE), set when each window is created | Auto-hide overlapping overlays |
 | Hotkeys | tauri-plugin-global-shortcut | same | GlobalShortcuts portal on Wayland, global-hotkey on X11 |
-| Export | FFmpeg 9.1 static GPL sidecar + gifski sidecar (**verified [S1]**) | FFmpeg built by us from pinned sources with `--disable-network` + gifski built with cargo (ADR-013); not built yet | same as Windows |
+| Export | FFmpeg 9.1 static LGPL sidecar, no x264, x265 or gifski: VideoToolbox H.264/HEVC, palette GIFs (ADR-058; the GPL sidecar + gifski were **verified [S1]**) | FFmpeg built by us from pinned sources with `--disable-network` + gifski built with cargo (ADR-013); not built yet | same as Windows |
 
 M1 CI may skip helper builds on Windows and Linux; those helpers come later (ADR-013). The
 placeholder capture crates there must still compile and pass tests.
@@ -184,7 +184,7 @@ flowchart LR
   FILES --> MIX[audio mix in Rust to WAV]
   EXP --> FF[ffmpeg sidecar]
   MIX --> FF
-  EXP --> GS[gifski sidecar]
+  EXP --> GS[gifski sidecar, Windows and Linux]
   FF --> OUT[(OUT.part, then OUT)]
   GS --> OUT
 ```
@@ -988,7 +988,8 @@ sequenceDiagram
   rule (§7) holds frames, so output is constant frame rate.
 - **Video.** Y4M on stdin to the bundled FFmpeg: `libx264 -preset medium -profile:v high
   -pix_fmt yuv420p -crf 22` (Balanced, ADR-016), BT.709 limited range tagged on the frames with
-  `setparams` and in the output options (ADR-015), `-movflags +faststart`.
+  `setparams` and in the output options (ADR-015), `-movflags +faststart`. (Since ADR-058 the Mac
+  helper has no x264, so on macOS Quick Export uses VideoToolbox.)
 - **Audio.** Mic and system audio mixed in Rust at 0 dB into a temporary WAV, encoded with `aac_at`
   at 160k (Balanced). The tracks already have silence in every gap, so the mix needs no gap logic.
 - **Lifecycle.** `.part` then rename, cancel by SIGTERM → SIGKILL, and an ffprobe check of codec,
@@ -1038,6 +1039,7 @@ sequenceDiagram
   - VideoToolbox H.264: 191 fps on 10 s, 207–208 fps on 30 s.
   - VideoToolbox HEVC: 177 fps.
   - gifski q90 at 960×540: 41 fps.
+  - Since ADR-058 a Mac has only the VideoToolbox, SVT-AV1, VP9 and palette-GIF rows of this list.
   - Pipe transport ceiling: about 700 fps at 1080p, so the pipe is never the limit.
   - The `-threads 4` proxy is noisy (x264 medium ranged 109–146 fps over the five saved runs). An
     M1 run is needed.
@@ -1129,8 +1131,9 @@ in the app data folder and shown on the Diagnostics page and in `--self-test`.
 
 ## 13. Permissions and signing
 
-- **No signing identity** (ADR-003 update). The owner has no Apple Development identity and may not
-  create one. Everything below follows from that.
+- **Signing** (ADR-003 update 2026-11-24, ADR-057, ADR-058). The owner has a Developer ID; the
+  M1-era notes below about an ad hoc release bundle are kept as history, and the current release
+  signing is the "Release bundles" bullet.
 - **Development.** Every binary that needs a permission runs through `tools/macos-dev-host/run.sh`
   as a child of `Simple Capture Dev.app` (`com.simplecapture.dev`). That app is never renamed,
   rebuilt or re-signed (ADR-002, `CLAUDE.md`). Child processes, including helpers and kill-test
@@ -1145,18 +1148,21 @@ in the app data folder and shown on the Diagnostics page and in `--self-test`.
     `excludedBundleIDs` would also see the host's ID, so our own windows are excluded by window ID
     (`excludedWindowIDs`) in every build.
   - `SC_DEV_PID_FILE=path` records the child's pid for kill tests.
-- **Release bundles** (`com.simplecapture.desktop`) are **ad-hoc signed**. TCC keys an ad-hoc app
-  on its code hash, so after every update the user approves Screen Recording, Camera and Microphone
-  again. Onboarding explains this and links to System Settings.
-  - Hardened runtime with `com.apple.security.device.camera` and
-    `com.apple.security.device.audio-input`. Screen Recording has no entitlement and is granted in
-    TCC.
+- **Release bundles** (`com.simplecapture.desktop`) are one sandboxed app (ADR-058), signed by
+  `scripts/macos-sign.sh` with the hardened runtime: Developer ID, notarized, for the DMG and
+  Homebrew (`app/macos/entitlements.plist`); Apple Distribution with a provisioning profile for
+  the Mac App Store (`app/macos/entitlements.appstore.plist`, the same set plus the application
+  and team identifiers). Grants survive updates under either signature, but the two are separate
+  apps to TCC. Local builds without a Developer ID use the self-signed "Simple Capture Local
+  Signing" certificate, or ad hoc (TCC then keys the app on its code hash and every rebuild
+  re-prompts).
+  - App Sandbox, `com.apple.security.device.camera` and `com.apple.security.device.audio-input`,
+    Movies read/write, user-selected read/write with app-scoped bookmarks, and
+    `network.client` for WKWebView (ADR-057). Screen Recording has no entitlement and is granted
+    in TCC.
   - Info.plist usage strings for camera, microphone and audio capture.
-  - Sidecars are signed the same way (tauri-bundler signs them with the app's identity and
-    entitlements).
-  - Option for the owner, not done: a self-signed code-signing certificate from Keychain Access
-    gives a stable designated requirement without an Apple account, so the owner's own builds keep
-    their grants across updates. It needs the owner's go-ahead.
+  - Sidecars are signed first with only `app-sandbox` and `inherit`
+    (`app/macos/helper.entitlements.plist`), so they run in the app's sandbox.
   - Running the release bundle on this machine creates real `com.simplecapture.desktop` prompts, so
     every such test needs the owner's approval first.
 - **System picker path** (ADR-028). "System picker…" is a source next to our own chooser, in the

@@ -3,17 +3,12 @@
 # sc-<name>-<host triple> (Tauri externalBin drops the triple when bundling) and every license
 # text in app/gen/licenses (bundled as the `licenses` resource folder the About window reads).
 #   scripts/stage-helpers.sh [HELPERS_DIR]          default third_party/out/<os>-<arch>
-#   scripts/stage-helpers.sh --mas [HELPERS_DIR]    Mac App Store edition: LGPL ffmpeg and ffprobe
-#     only, default third_party/out/<os>-<arch>-lgpl, into app/binaries-mas and
-#     app/gen/licenses-mas (tauri.appstore.conf.json), Rust notices from
-#     target/notices/mas/THIRD_PARTY_RUST.html (scripts/ci/notices.sh --mas OUT)
+# macOS (the DMG and the Mac App Store edition alike): the LGPL ffmpeg and ffprobe only, no
+# gifski (tauri.bundle.macos.conf.json), and the Rust notices from
+# target/notices/macos/THIRD_PARTY_RUST.html (scripts/ci/notices.sh --macos). Windows and Linux:
+# ffmpeg, ffprobe and gifski, and target/notices/THIRD_PARTY_RUST.html (scripts/ci/notices.sh).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-mas=0
-if [ "${1:-}" = --mas ]; then
-  mas=1
-  shift
-fi
 triple=$(rustc -vV | sed -n 's/^host: //p')
 case "$triple" in
   aarch64-apple-darwin) plat=macos-arm64 ;;
@@ -23,40 +18,38 @@ case "$triple" in
   aarch64-unknown-linux-gnu) plat=linux-arm64 ;;
   *) echo "stage-helpers: unknown host $triple" >&2; exit 1 ;;
 esac
-if [ $mas = 1 ]; then
-  [[ $plat == macos-* ]] || { echo "stage-helpers: --mas needs a macOS host" >&2; exit 1; }
-  SRC=${1:-third_party/out/$plat-lgpl}
-  BIN=app/binaries-mas
-  LIC=app/gen/licenses-mas
-  NOTICES=target/notices/mas/THIRD_PARTY_RUST.html
+SRC=${1:-third_party/out/$plat}
+BIN=app/binaries
+LIC=app/gen/licenses
+if [[ $plat == macos-* ]]; then
+  mac=1
+  NOTICES=target/notices/macos/THIRD_PARTY_RUST.html
   helpers=(ffmpeg ffprobe)
 else
-  SRC=${1:-third_party/out/$plat}
-  BIN=app/binaries
-  LIC=app/gen/licenses
+  mac=0
   NOTICES=target/notices/THIRD_PARTY_RUST.html
   helpers=(ffmpeg ffprobe gifski)
 fi
 exe=""
 [[ $triple == *windows* ]] && exe=.exe
-rm -rf "$BIN"
+rm -rf "$BIN" app/binaries-mas
 mkdir -p "$BIN"
 for h in "${helpers[@]}"; do
   [ -f "$SRC/$h$exe" ] || { echo "stage-helpers: $SRC/$h$exe missing" >&2; exit 1; }
-  if [ $mas = 1 ] && { ! grep -qaF 'LGPL version 2.1 or later' "$SRC/$h" || grep -qaF -- '--enable-gpl' "$SRC/$h"; }; then
-    echo "stage-helpers: $SRC/$h is not an LGPL 2.1 build (SC_FFMPEG_LICENSE=lgpl third_party/ffmpeg/build-macos.sh)" >&2
+  if [ $mac = 1 ] && { ! grep -qaF 'LGPL version 2.1 or later' "$SRC/$h" || grep -qaF -- '--enable-gpl' "$SRC/$h"; }; then
+    echo "stage-helpers: $SRC/$h is not an LGPL 2.1 build (third_party/ffmpeg/build-macos.sh)" >&2
     exit 1
   fi
   cp "$SRC/$h$exe" "$BIN/sc-$h-$triple$exe"
 done
-rm -rf "$LIC"
+rm -rf "$LIC" app/gen/licenses-mas
 mkdir -p "$LIC/helpers"
 cp LICENSE "$LIC/LICENSE"
 [ -d "$SRC/licenses" ] && cp -R "$SRC/licenses/." "$LIC/helpers/"
-[ $mas = 0 ] && [ -f "$SRC/gifski.LICENSE" ] && cp "$SRC/gifski.LICENSE" "$LIC/helpers/gifski-LICENSE"
+[ $mac = 0 ] && [ -f "$SRC/gifski.LICENSE" ] && cp "$SRC/gifski.LICENSE" "$LIC/helpers/gifski-LICENSE"
 if [ -f "$NOTICES" ]; then
   cp "$NOTICES" "$LIC/THIRD_PARTY_RUST.html"
 else
-  echo "stage-helpers: no $NOTICES (run scripts/ci/notices.sh$([ $mas = 1 ] && echo " --mas $NOTICES")); the bundle will lack the Rust notices"
+  echo "stage-helpers: no $NOTICES (run scripts/ci/notices.sh$([ $mac = 1 ] && echo " --macos")); the bundle will lack the Rust notices"
 fi
-echo "stage-helpers: $plat$([ $mas = 1 ] && echo ' LGPL') helpers and $(find "$LIC" -type f | wc -l | tr -d ' ') license files staged"
+echo "stage-helpers: $plat$([ $mac = 1 ] && echo ' LGPL') helpers and $(find "$LIC" -type f | wc -l | tr -d ' ') license files staged"

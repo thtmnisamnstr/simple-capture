@@ -513,6 +513,10 @@ they are not a substitute for an M1 run.
   gifski builds `--locked` against `third_party/gifski/gifski-1.34.0.Cargo.lock`: the crate's own
   lockfile with crossbeam-epoch raised to 0.9.20 (RUSTSEC-2026-0204). Checksums and cross-checks
   are in `third_party/versions.toml`.
+- **Update 2026-11-25 (ADR-058):** the shipped macOS helper is now LGPL-2.1-or-later: the same
+  script and pins without `--enable-gpl`, x264 and x265 (`build-macos.sh`'s default, into
+  `third_party/out/macos-<arch>`). `SC_FFMPEG_LICENSE=gpl` still builds the GPL variant above
+  into `out/macos-<arch>-gpl` for local experiments; it is never shipped.
 
 ## ADR-014: gifski is a separate sidecar
 - **Status:** Accepted (spec).
@@ -525,6 +529,8 @@ they are not a substitute for an M1 run.
     gifsicle's lossy LZW code. Its upstream licensing needs review before M5 [S1 verification].
   - gifski prints no progress, so progress comes from frames written to its stdin.
   - gifski x86_64 has not been built.
+- **Update 2026-11-25 (ADR-058):** Windows and Linux only. No macOS build ships gifski; GIFs
+  there use FFmpeg's palette mode.
 
 ## ADR-015: Export pipe protocol, colour tagging and cancel
 - **Status:** Accepted (within the spec's export design; verified by [S1]), the VP8 colour handling
@@ -585,6 +591,8 @@ they are not a substitute for an M1 run.
   Palette mode is *slower* than gifski.
 - **Decision:** gifski stays the default. Present FFmpeg palette mode as "Palette (colours and
   dithering control)", not "Fast".
+- **Update 2026-11-25 (ADR-058):** on macOS there is no gifski, so palette mode is the only GIF
+  encoder there.
 
 ## ADR-018: Skia is built from source with FreeType on every OS
 - **Status:** Accepted (owner approved M0 on 2026-11-19 without objecting to this proposal).
@@ -1818,7 +1826,11 @@ they are not a substitute for an M1 run.
 ## ADR-057: Mac App Store edition
 
 - **Status:** Accepted (owner, 2026-11-24). Replaces the SPEC non-goal "App Store or notarized
-  distribution"; the notarized DMG already shipped under ADR-003.
+  distribution"; the notarized DMG already shipped under ADR-003. **Partly superseded by ADR-058
+  (2026-11-25):** the DMG is now the same sandboxed, LGPL-only app, so everything below about two
+  editions, the cargo feature `mas`, the `.mas` entitlement file names and "what store users lose"
+  now applies to every macOS build. Signing, the profile, automation, What's New and the
+  owner-only steps stand.
 - **Context:** the owner wants 0.1.0 on the Mac App Store as well as on GitHub Releases and the
   Homebrew tap. The DMG's contents can't go there as they are:
   1. **Licensing.** Its helpers are a GPL-2.0-or-later FFmpeg with x264 and x265, and an
@@ -1836,13 +1848,15 @@ they are not a substitute for an M1 run.
     Homebrew release, with the same bundle ID `com.simplecapture.desktop` (ADR-001) and version,
     arm64 only, `LSMinimumSystemVersion` 14.0. CI sets the build number (`CFBundleVersion`),
     because every upload needs a new one.
-  - **Sandboxed build behind the cargo feature `mas`.** The app crate's `mas` feature turns on
+  - **Sandboxed build behind the cargo feature `mas`** (superseded by ADR-058: the feature is
+    gone and this code is the macOS build). The app crate's `mas` feature turns on
     the feature of the same name in the crates under it (today only `capture-macos`) and gates
     everything the sandbox or App Review needs done differently: for example security-scoped
     access to a chosen export folder, NSWorkspace instead of spawning `/usr/bin/open`, and no
     private `_setPreventsActivation:` selector. Without the feature the Developer ID build
     behaves exactly as before. The helpers are signed with only `app-sandbox` and `inherit`.
-  - **Entitlements** (`app/macos/entitlements.mas.plist`): the App Sandbox; camera and
+  - **Entitlements** (`app/macos/entitlements.mas.plist`, now `entitlements.appstore.plist`;
+    ADR-058): the App Sandbox; camera and
     microphone (plus the hardened runtime's `audio-input`); Movies folder read/write, where
     recordings and default exports go; user-selected read/write with app-scoped bookmarks, so a
     chosen export folder stays usable after a relaunch; and `network.client`. The app makes no
@@ -1857,15 +1871,15 @@ they are not a substitute for an M1 run.
     recorder panel on its first launch (no `settings.json` yet) and, on macOS, when it is opened
     again from Finder or Launchpad while running; other launches show only the menu-bar icon.
     The review notes say so.
-  - **LGPL helpers, no gifski.** The store edition bundles `sc-ffmpeg` and `sc-ffprobe` built
-    from the same pinned sources and script without `--enable-gpl`, x264 and x265, and without
+  - **LGPL helpers, no gifski** (every macOS build since ADR-058). The store edition bundles
+    `sc-ffmpeg` and `sc-ffprobe` built from the same pinned sources and script without `--enable-gpl`, x264 and x265, and without
     `--enable-version3`, so they are LGPL-2.1-or-later. VideoToolbox (H.264, HEVC, ProRes),
     SVT-AV1, libvpx, Opus, Vorbis and libwebp stay, so every format (MP4, MOV, WebM, GIF, WebP)
     remains. `sc-gifski` is left out. The store build doesn't come from the GitHub release page,
     so About → Licenses carries the source offer: the FFmpeg entry has a Source code button
     that opens the GitHub release of the same tag (`releases/tag/v<version>`), which holds the
     helper sources archive. Details: docs/LICENSES.md §3.4.
-  - **What store users lose, and the fallbacks.** "Best" H.264 and HEVC (x264, x265) run on the
+  - **What store users lose, and the fallbacks** (all Mac users since ADR-058). "Best" H.264 and HEVC (x264, x265) run on the
     VideoToolbox encoder instead, with Apple's software encoder at a bitrate from the quality
     preset for H.264 frames over 4096 px (`pick_video_encoder` in crates/export). A gifski GIF
     is made in palette mode instead (`gif_mode`). Default settings and Quick Export therefore
@@ -1903,7 +1917,8 @@ they are not a substitute for an M1 run.
     that approves Screen Recording, Camera and Microphone. Steps in docs/RELEASING.md, "Mac App
     Store".
 - **Consequences:**
-  - Two macOS builds per release; the DMG and the Homebrew cask stay the full edition. Both
+  - Two macOS builds per release; the DMG and the Homebrew cask stay the full edition
+    (superseded by ADR-058: both are the sandboxed app, signed differently). Both
     install `Simple Capture.app` with the same ID, so one replaces the other. Switching asks
     for the permissions again (different signatures), and the store edition keeps its settings
     in its sandbox container.
@@ -1925,3 +1940,56 @@ they are not a substitute for an M1 run.
   - Unverified until the first TestFlight run (docs/MANUAL_TEST.md §10h): iPhone and iPad
     capture under the sandbox (it may need `com.apple.security.device.usb` after all), exports
     to a chosen folder after a relaunch, and the focus behaviour above.
+
+## ADR-058: One Mac app: the DMG is the sandboxed App Store build
+
+- **Status:** Accepted (owner, 2026-11-25). Supersedes the parts of ADR-057 that made the DMG and
+  the Mac App Store two editions; updates ADR-013, ADR-014 and ADR-017 for macOS.
+- **Context:** ADR-057 shipped two macOS builds from one tag: a Developer ID DMG with GPL FFmpeg
+  (x264, x265) and gifski, and a sandboxed store build with LGPL FFmpeg and no gifski, chosen by
+  the cargo feature `mas`. Two builds meant two sets of behaviour to test (sandbox paths, focus,
+  export folders, encoder lists), two license sets and two answers to "which one do I have".
+- **Decision:**
+  - **One app.** The DMG, the Homebrew cask and the Mac App Store all ship the same sandboxed
+    app. The cargo feature `mas` is gone: security-scoped export folders, NSWorkspace instead of
+    `/usr/bin/open`, no private `_setPreventsActivation:` and the real-home recordings folder
+    are simply the macOS code (`cfg(target_os = "macos")`).
+  - **One helper set.** Every macOS build bundles only `sc-ffmpeg` and `sc-ffprobe`,
+    LGPL-2.1-or-later (VideoToolbox H.264, HEVC and ProRes, `prores_ks`, SVT-AV1, libvpx, Opus,
+    Vorbis, libwebp), and no gifski. `third_party/ffmpeg/build-macos.sh` builds LGPL by default
+    into `third_party/out/macos-<arch>`; `SC_FFMPEG_LICENSE=gpl` builds into
+    `out/macos-<arch>-gpl` for experiments, and `scripts/stage-helpers.sh` refuses it.
+    `app/tauri.bundle.macos.conf.json` (the two helpers, the LGPL copyright line) is merged into
+    every macOS build, and `scripts/ci/notices.sh --macos` / `--check-macos` make and check the
+    one macOS license set.
+  - **Only signing differs.** `scripts/macos-sign.sh` is the one signing path (helpers with
+    `app/macos/helper.entitlements.plist`, app-sandbox and inherit; then the app; hardened
+    runtime throughout).
+    - DMG: Developer ID, secure timestamps, notarized and stapled, with
+      `app/macos/entitlements.plist` (the sandbox set). Built by `scripts/local-bundle.sh --dmg`
+      locally and `package.yml` in CI; checked by `scripts/mas-check.sh --dmg [--adhoc]`.
+    - App Store: Apple Distribution, the provisioning profile, a `.pkg`, with
+      `app/macos/entitlements.appstore.plist`: the same sandbox set plus
+      `com.apple.application-identifier` and `com.apple.developer.team-identifier` (a Developer
+      ID app with those and no profile would not launch). Built by `scripts/mas-build.sh`.
+    - `scripts/mas-check.sh --entitlements` (in CI) asserts the two app files differ by exactly
+      those two keys and the helper file is exactly app-sandbox + inherit.
+  - **Mac exports.** H.264 and HEVC use VideoToolbox (Apple's software encoder above 4096 px for
+    H.264), so "Best Quality" for H.264 and HEVC is unavailable on macOS; GIFs use palette mode;
+    media keys can't be shortcuts. Windows and Linux (experimental) keep GPL FFmpeg with x264
+    and x265, and gifski.
+- **Consequences:**
+  - One macOS build to test: docs/MANUAL_TEST.md §10h's sandbox rows apply to the DMG too, and
+    can be run before any store upload.
+  - The DMG keeps its settings, logs and self-test reports in the sandbox container
+    (`~/Library/Containers/com.simplecapture.desktop/`); recordings stay in `~/Movies`.
+  - DMG users lose x264/x265 "Best Quality" and gifski GIFs: less quality per byte at the same
+    size. The SPEC's SSIM check of x264 against Fast applies to Windows and Linux; its test
+    (`export_quality`) still runs on a Mac, against the unshipped GPL build named by
+    `SC_FFMPEG` (`third_party/out/macos-arm64-gpl`), and skips without it.
+  - The DMG and the store copy still replace each other (same bundle ID), and switching asks for
+    the permissions again (different signatures).
+  - The release's `simple-capture-helper-sources.tar.gz` still covers the GPL Windows and Linux
+    helpers; for macOS it is the LGPL source offer About → Licenses links to.
+  - Without `_setPreventsActivation:` in any build, the focus risk noted in ADR-057 applies to
+    the DMG too (MANUAL_TEST AS7).

@@ -120,18 +120,12 @@ pub fn free_disk_bytes(path: &Path) -> Result<u64> {
     Ok(u64::from(st.f_bavail) * st.f_frsize)
 }
 
-/// `~/Movies/Simple Capture` (not created here). The Mac App Store build takes the real home
-/// folder, not the sandbox container that `$HOME` names there.
+/// `~/Movies/Simple Capture` (not created here), under the real home folder rather than the
+/// sandbox container that `$HOME` names.
 pub fn default_projects_dir() -> Result<PathBuf> {
-    #[cfg(feature = "mas")]
-    let home = crate::workspace::real_home()?;
-    #[cfg(not(feature = "mas"))]
-    let home = PathBuf::from(
-        std::env::var_os("HOME")
-            .filter(|h| !h.is_empty())
-            .ok_or_else(|| Error::NotFound("HOME".into()))?,
-    );
-    Ok(home.join("Movies").join("Simple Capture"))
+    Ok(crate::workspace::real_home()?
+        .join("Movies")
+        .join("Simple Capture"))
 }
 
 pub fn local_now() -> LocalDateTime {

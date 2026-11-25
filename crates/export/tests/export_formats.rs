@@ -271,8 +271,11 @@ fn gif_delays(file: &Path) -> Vec<u16> {
 
 #[test]
 fn gifs_from_gifski_and_the_palette_play_at_the_chosen_rate() {
-    if !helpers_available() || sc_helpers::locate(sc_helpers::HelperKind::Gifski).is_err() {
+    if !helpers_available() {
         return;
+    }
+    if sc_helpers::locate(sc_helpers::HelperKind::Gifski).is_err() {
+        eprintln!("no gifski helper: the gifski cases check the palette fallback");
     }
     let t = TempDir::new("gifs");
     let dir = project(&t);

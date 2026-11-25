@@ -1,8 +1,9 @@
 name: app-store
 
 # The Mac App Store edition (docs/RELEASING.md): when a GitHub release is published, or on a manual
-# run, builds the sandboxed app from that release's tag with the LGPL helpers and without gifski,
-# signs it with the Apple Distribution identity and the Mac App Store profile, packages the .pkg,
+# run, builds the app from that release's tag exactly as package.yml builds the DMG (sandboxed, the
+# LGPL helpers, no gifski) plus tauri.appstore.conf.json, signs it with the Apple Distribution
+# identity, the App Store entitlements and the Mac App Store profile, packages the .pkg,
 # uploads it, waits for App Store Connect to process it, syncs the listing from appstore/ and
 # What's New from CHANGELOG.md, and submits the version for review. Without the MAS secrets
 # (scripts/appstore-setup.sh sets them) it skips with a notice.
@@ -192,8 +193,6 @@ jobs:
       - name: LGPL helpers (from main's cache when ci.yml saved one, else built from source)
         id: helpers
         uses: ./.github/actions/macos-helpers
-        with:
-          variant: lgpl
       - name: cargo-about
         shell: bash
         run: cargo install --locked cargo-about@0.9.3 --features cli

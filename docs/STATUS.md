@@ -8,6 +8,11 @@ merged to `main` (35b7d3e); M2 is on `m2` and also contained in `m3`.
 > The M0 spikes (`spikes/`, prototypes and their reports) were removed before 0.1.0; paths to them
 > in these docs refer to commit d05da49 and earlier.
 
+> **One Mac app (2026-11-25, ADR-058):** the DMG, Homebrew and Mac App Store builds are the same
+> sandboxed app with the LGPL FFmpeg and no gifski, so on macOS H.264 and HEVC exports use
+> VideoToolbox and GIFs use palette mode. Mac numbers below for x264, x265 and gifski were
+> measured with the earlier GPL helpers; they now describe Windows and Linux.
+
 ## After M7: the owner's requests (2026-11-21, ADR-050)
 
 | Feature | Where to try it | Verified here |

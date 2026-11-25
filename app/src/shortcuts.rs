@@ -60,8 +60,8 @@ pub fn check(keys: &str) -> Result<Shortcut, String> {
     if !held.iter().any(|m| lower.split('+').any(|p| p == *m)) {
         return Err("Add ⌘, ⌃ or ⌥ so typing doesn’t trigger it".into());
     }
-    if cfg!(feature = "mas") && lower.split('+').any(|p| p.starts_with("media")) {
-        return Err("Media keys can’t be shortcuts in the App Store version".into());
+    if cfg!(target_os = "macos") && lower.split('+').any(|p| p.starts_with("media")) {
+        return Err("Media keys can’t be shortcuts on a Mac".into());
     }
     Ok(s)
 }

@@ -10,9 +10,6 @@ publish.workspace = true
 [lib]
 name = "sc_capture_macos"
 
-[features]
-mas = []
-
 [dependencies]
 simple-capture-core.workspace = true
 simple-capture-geometry.workspace = true

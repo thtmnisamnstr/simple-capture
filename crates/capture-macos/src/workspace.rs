@@ -1,6 +1,6 @@
 //! Opening files, web pages, System Settings panes and apps through NSWorkspace, the account's
-//! real home folder and, in the Mac App Store build, security-scoped bookmarks of folders the
-//! person picked. A spawned `/usr/bin/open` would not be allowed inside the App Sandbox.
+//! real home folder and security-scoped bookmarks of folders the person picked. A spawned
+//! `/usr/bin/open` would not be allowed inside the App Sandbox.
 
 use std::ffi::{CStr, OsStr};
 use std::os::unix::ffi::OsStrExt;
@@ -76,13 +76,10 @@ pub fn real_home() -> Result<PathBuf> {
     }
 }
 
-#[cfg(feature = "mas")]
 pub use scoped::{bookmark, start_access};
 
-#[cfg(feature = "mas")]
 pub(crate) use scoped::remember_pick;
 
-#[cfg(feature = "mas")]
 mod scoped {
     use std::path::{Path, PathBuf};
     use std::sync::{Mutex, PoisonError};
@@ -188,7 +185,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "mas")]
     #[test]
     fn a_bookmark_resolves_to_its_folder() {
         let dir = std::env::temp_dir().join(format!("sc-bookmark-{}", std::process::id()));

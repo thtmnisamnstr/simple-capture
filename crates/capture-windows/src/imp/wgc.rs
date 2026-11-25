@@ -510,7 +510,7 @@ pub fn snapshot(plan: Plan, max: SizePx) -> Result<RgbaImage> {
         h: ((f64::from(h) * k).round() as u32).max(1),
     };
     let (mut fit, _) = fit_packed(&bytes, pitch, SizePx { w, h }, out);
-    for px in fit.chunks_exact_mut(4) {
+    for px in fit.as_chunks_mut::<4>().0 {
         px.swap(0, 2);
         px[3] = 255;
     }

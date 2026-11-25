@@ -20,7 +20,7 @@ mod meter;
 mod objc;
 mod preview;
 mod protocol;
-#[cfg(all(feature = "mas", target_os = "macos"))]
+#[cfg(target_os = "macos")]
 mod sandbox;
 mod settings;
 mod shortcuts;

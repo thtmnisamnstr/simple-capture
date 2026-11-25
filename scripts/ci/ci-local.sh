@@ -31,10 +31,12 @@ ci_files() {
     local rc=0
     if command -v actionlint >/dev/null; then actionlint || rc=1; else echo "actionlint not installed: skipped"; fi
     if command -v shellcheck >/dev/null; then
-        shellcheck -S warning scripts/ci/*.sh scripts/mas-build.sh scripts/mas-check.sh scripts/appstore-setup.sh || rc=1
+        shellcheck -S warning scripts/ci/*.sh scripts/mas-build.sh scripts/mas-check.sh scripts/appstore-setup.sh \
+            scripts/macos-sign.sh scripts/local-bundle.sh scripts/stage-helpers.sh scripts/make-dmg.sh || rc=1
     else
         echo "shellcheck not installed: skipped"
     fi
+    scripts/mas-check.sh --entitlements || rc=1
     node --test scripts/ci/npm-licenses.test.mjs || rc=1
     python3 -I scripts/asc/test_asc.py || rc=1
     python3 -I scripts/asc/asc.py check-metadata || rc=1
@@ -46,18 +48,11 @@ ui() {
     pnpm --dir ui install --frozen-lockfile && pnpm --dir ui check && pnpm --dir ui build && pnpm --dir ui test
 }
 
-mas_feature() {
-    cargo clippy --locked -p simple-capture-app -p simple-capture-capture-macos \
-        --features simple-capture-app/mas --all-targets -- -D warnings &&
-        cargo test --locked -p simple-capture-capture-macos --features mas --lib
-}
-
 step ci-files ci_files
 step ui ui
 step lint scripts/ci/lint.sh
 step test cargo test --locked --workspace
 step kill-synth cargo test --locked -p simple-capture-record --features test-hooks --test kill_synth
-step mas mas_feature
 step deny scripts/ci/deny.sh
 step licenses scripts/ci/licenses.sh
 step notices scripts/ci/notices.sh

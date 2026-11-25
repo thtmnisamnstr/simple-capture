@@ -6,6 +6,14 @@ Releases are signed with the owner's **Developer ID Application** certificate an
 macOS opens them without warnings and keeps Screen Recording, Camera and Microphone grants across
 updates. Without the secrets below, the package workflow still builds an ad hoc signed DMG.
 
+The DMG and the Mac App Store build are the same sandboxed app with the LGPL helpers and no
+gifski (DECISIONS ADR-058); only the signing differs. `scripts/macos-sign.sh` signs both: the
+helpers with `app/macos/helper.entitlements.plist` (App Sandbox, inherited), then the app with
+the hardened runtime and `app/macos/entitlements.plist` (the DMG) or
+`app/macos/entitlements.appstore.plist` (the store: the same sandbox set plus the application
+and team identifiers). `scripts/mas-check.sh --entitlements`, run in CI, keeps the two files in
+step.
+
 ### On this Mac (local builds)
 
 1. The certificate and its private key are in the login keychain, with Apple's **Developer ID -
@@ -14,8 +22,18 @@ updates. Without the secrets below, the package workflow still builds an ad hoc 
 2. Notarization credentials, stored once in the keychain (it asks for an app-specific password
    from account.apple.com → Sign-In and Security):
    `xcrun notarytool store-credentials "simple-capture" --apple-id <Apple ID> --team-id <Team ID>`
-3. `scripts/local-bundle.sh` then signs, notarizes and staples the app (`scripts/macos-sign.sh`);
-   `scripts/local-bundle.sh --dmg` also builds the installer DMG and notarizes that too.
+3. `scripts/local-bundle.sh` (or `just bundle`, which adds `--dmg`) then builds the sandboxed
+   app as the DMG ships it: `scripts/ci/notices.sh --macos` (when cargo-about is installed),
+   `scripts/stage-helpers.sh` (the LGPL `sc-ffmpeg` and `sc-ffprobe` from
+   `third_party/out/macos-arm64`, built by `third_party/ffmpeg/build-macos.sh arm64` or
+   `just helpers`; it refuses a GPL build there, such as one made before ADR-058), and `tauri build` with `app/tauri.bundle.conf.json` and
+   `app/tauri.bundle.macos.conf.json`. It signs, notarizes and staples the app
+   (`scripts/macos-sign.sh`); `--dmg` also builds the installer DMG and notarizes that too.
+   Without a Developer ID it signs with the self-signed "Simple Capture Local Signing"
+   certificate, or ad hoc. `scripts/mas-check.sh --dmg "<app>"` checks the result (`--adhoc`
+   for a local or ad hoc signature): signatures and hardened runtime, each executable's exact
+   entitlements, Info.plist, LGPL-only helpers and the license set. The app runs sandboxed, so
+   its settings and logs are in `~/Library/Containers/com.simplecapture.desktop/`.
 
 ### The DMG
 
@@ -42,8 +60,9 @@ Set these repository secrets yourself; their values never go into the repository
 the password, and sends each value straight to `gh secret set`. Delete the `.p12` afterwards.
 
 The `bundle (macos-26)` job then imports the certificate into a temporary keychain, signs the
-app and its helpers, notarizes and staples it, builds the DMG, and signs, notarizes and staples
-that too. It signs only for `v*` tags and manual runs; pull-request builds are ad hoc signed, so
+app and its helpers, notarizes and staples it, checks it with `scripts/mas-check.sh --dmg`,
+builds the DMG, and signs, notarizes and staples that too. Its licenses are checked with
+`scripts/ci/notices.sh --check-macos app/gen/licenses`. It signs only for `v*` tags and manual runs; pull-request builds are ad hoc signed, so
 pull-request code never runs with the identity. A manual run signs whatever branch it is started
 on, so start manual runs from `main` or a tag.
 
@@ -67,10 +86,11 @@ on.
 
 ## Mac App Store
 
-The store edition (DECISIONS ADR-057) is built from the same tag as the GitHub release by
-`.github/workflows/app-store.yml`: sandboxed (`--features mas`), LGPL helpers and no gifski,
-signed with Apple Distribution plus a Mac App Store provisioning profile, and packed as a `.pkg`
-signed with Mac Installer Distribution. The same workflow keeps the store listing in step with
+The store build (DECISIONS ADR-057, ADR-058) is built from the same tag as the GitHub release by
+`.github/workflows/app-store.yml`: the same app as the DMG (sandboxed, LGPL helpers, no gifski)
+plus `app/tauri.appstore.conf.json`, signed with Apple Distribution,
+`app/macos/entitlements.appstore.plist` and a Mac App Store provisioning profile, and packed as
+a `.pkg` signed with Mac Installer Distribution. The same workflow keeps the store listing in step with
 `appstore/`. Only the steps below need you; key files, passwords and your contact details never
 go into the repository or a chat.
 
@@ -160,12 +180,12 @@ go into the repository or a chat.
 ### Each release
 
 1. Publishing the GitHub release (Cutting a version, step 4) starts `app-store.yml` on the tag;
-   a prerelease is skipped. It builds and uploads the store edition, waits until App Store
+   a prerelease is skipped. It builds and uploads the store build, waits until App Store
    Connect has processed it, creates the App Store version (the same version string) or reuses
    the open one, attaches the build, syncs the listing, sets What's New and submits for review.
    Follow it under Actions → app-store, or with `gh run watch`.
 2. **What's New** is the version's section of `CHANGELOG.md` (under its `## <version>` heading,
-   such as `## 0.2.0`). `CHANGELOG.md` covers every edition, so the headings, bullets and
+   such as `## 0.2.0`). `CHANGELOG.md` covers every platform, so the headings, bullets and
    paragraphs about another one are left out: those naming Linux, Android, iOS, gifski, x264 or
    x265, or Windows the operating system ("on Windows", "Windows:", "Windows installer", a
    `### Windows` heading; app windows, as in "Windows from another Space", stay), and headings
@@ -174,7 +194,7 @@ go into the repository or a chat.
    The app's first store version (normally 0.1.0) sends none, since the store shows What's New only
    for updates. For every later version, `appstore/check.py` checks that text before anything is
    built (in the plan job, and again in `asc.py preflight`), and the run fails if the section is
-   missing or only about other editions, is over 4000 characters, or contains beta, x264, x265,
+   missing or only about other platforms, is over 4000 characters, or contains beta, x264, x265,
    gifski, a price (price, prices, pricing, a `$` amount) or the word free (crash-free,
    free-form and free disk space are fine), or says "no network" without "connections". The
    workflow reads `CHANGELOG.md` at the tag, so check the section before tagging (Cutting a
@@ -210,23 +230,22 @@ limit is reached, revoke one you no longer use (developer.apple.com → Certific
 
 ### Building it on this Mac
 
-`scripts/mas-build.sh --adhoc` builds the store edition and checks it without certificates
-(signed ad hoc with the store entitlements, the `.pkg` unsigned). It runs
-`scripts/ci/notices.sh --mas`, `scripts/stage-helpers.sh --mas` (the LGPL `sc-ffmpeg` and
-`sc-ffprobe` from `third_party/out/macos-arm64-lgpl`, built by
-`SC_FFMPEG_LICENSE=lgpl third_party/ffmpeg/build-macos.sh arm64`, into `app/binaries-mas`, and
-their licenses into `app/gen/licenses-mas`), `tauri build --features mas` with
-`app/tauri.appstore.conf.json`, the signing, `productbuild`, and finally `scripts/mas-check.sh`
+`scripts/mas-build.sh --adhoc` builds the store build and checks it without certificates
+(signed ad hoc with the store entitlements, the `.pkg` unsigned). It runs the same steps as
+`scripts/local-bundle.sh` (`scripts/ci/notices.sh --macos`, `scripts/stage-helpers.sh` with the
+LGPL `sc-ffmpeg` and `sc-ffprobe` from `third_party/out/macos-arm64`, and `tauri build` with
+`app/tauri.bundle.conf.json` and `app/tauri.bundle.macos.conf.json`) plus
+`app/tauri.appstore.conf.json`, then `scripts/macos-sign.sh` with
+`app/macos/entitlements.appstore.plist`, `productbuild`, and finally `scripts/mas-check.sh`
 (signatures, each executable's exact entitlements, the profile, Info.plist, LGPL-only helpers,
 the license set and the package). The `.pkg` path is the last line it prints; the output is in
 `target/skia/release/bundle/mas`. Signed like CI, it needs `SC_MAS_PROFILE` and both
 identities in the keychain; the header of `scripts/mas-build.sh` lists its other variables. It
 shares `target/skia` with `scripts/local-bundle.sh`: while it builds, it moves that script's
-Developer ID app (`release/bundle/macos/Simple Capture.app`) and the GPL `sc-ffmpeg` and
-`sc-ffprobe` in `release/` into `target/skia/release/.mas-build-stash`, and puts them back when
-it ends, also when it fails. If a run is killed, they stay in that folder and the next run
-refuses to start: move them back into `target/skia/release` (the app into `bundle/macos`), or
-delete the folder.
+Developer ID app (`release/bundle/macos/Simple Capture.app`) into
+`target/skia/release/.mas-build-stash`, and puts it back when it ends, also when it fails. If a
+run is killed, it stays in that folder and the next run refuses to start: move it back into
+`target/skia/release/bundle/macos`, or delete the folder.
 
 ## Cutting a version
 
@@ -243,4 +262,4 @@ delete the folder.
    `gh attestation verify <file> --repo thtmnisamnstr/simple-capture`.
 4. Check the draft's files, then press Publish.
 5. Homebrew follows within about an hour (see Homebrew).
-6. The Mac App Store edition is built, uploaded and submitted for review (see Mac App Store).
+6. The Mac App Store build is built, uploaded and submitted for review (see Mac App Store).

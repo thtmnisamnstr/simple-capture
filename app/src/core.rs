@@ -880,7 +880,7 @@ impl Core {
             let _ = tx.send(p);
         }));
         let p = rx.recv().map_err(|_| "image chooser dropped".to_string())?;
-        #[cfg(all(feature = "mas", target_os = "macos"))]
+        #[cfg(target_os = "macos")]
         let p = p.map(|p| {
             let keep = self.settings.load().canvas.background_image;
             crate::sandbox::keep_background_image(&self.data_dir, &p, keep.as_deref())
@@ -894,14 +894,14 @@ impl Core {
         if !exported && !crate::about::is_license_file(&self.app, path) {
             return Err("Only a finished export or a license file can be opened.".into());
         }
-        #[cfg(all(feature = "mas", target_os = "macos"))]
+        #[cfg(target_os = "macos")]
         let _ = crate::sandbox::reach_export_folder(&self.data_dir, path);
         open_path(path)?;
         Ok(Value::Null)
     }
 
     pub fn reveal(&self, path: &str) -> Reply {
-        #[cfg(all(feature = "mas", target_os = "macos"))]
+        #[cfg(target_os = "macos")]
         let _ = crate::sandbox::reach_export_folder(&self.data_dir, Path::new(path));
         self.platform
             .desktop()
@@ -1496,9 +1496,9 @@ impl Core {
             .cloned()
             .unwrap_or_else(|| sc_export::settings::ExportSettings::for_format(format))
             .normalized();
-        #[cfg(all(feature = "mas", target_os = "macos"))]
+        #[cfg(target_os = "macos")]
         let stage = crate::sandbox::export_stage(&self.data_dir, &settings, project_dir)?;
-        #[cfg(not(all(feature = "mas", target_os = "macos")))]
+        #[cfg(not(target_os = "macos"))]
         let stage = None;
         let platform = self.platform.clone();
         let d = project_dir.to_path_buf();

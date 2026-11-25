@@ -1,4 +1,4 @@
-//! The Mac App Store build's App Sandbox. Export folders the person picked stay reachable after a
+//! The App Sandbox the macOS app runs in. Export folders the person picked stay reachable after a
 //! relaunch through security-scoped bookmarks kept in export.json; exports to them are staged in
 //! the project folder, because the FFmpeg helper's inherited sandbox reaches ~/Movies (a static
 //! entitlement) but not a folder granted at run time; and a picked background image is copied

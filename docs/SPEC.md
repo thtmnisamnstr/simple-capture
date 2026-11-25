@@ -54,26 +54,25 @@ These are the defaults. Validate them with the M0 spikes (small throwaway protot
 | Recording encode (raw tracks) | AVAssetWriter: VideoToolbox HEVC/H.264 + AudioToolbox AAC, zero-copy | Media Foundation hardware encoder (MFT), zero-copy D3D11 | FFmpeg VAAPI/NVENC (LGPL libraries in-process); x264 via the helper if there's no hardware encoder |
 | Editor decode | AVAssetReader / VideoToolbox | Media Foundation (DXVA) | FFmpeg LGPL libraries + VAAPI |
 | Frames into wgpu | IOSurface → Metal texture | shared D3D11 texture | dmabuf or CPU upload |
-| Export encode + mux | bundled FFmpeg helper (GPL build) | same | same |
-| GIF | bundled gifski helper | same | same |
+| Export encode + mux | bundled FFmpeg helper (LGPL build, ADR-058) | bundled FFmpeg helper (GPL build) | same as Windows |
+| GIF | FFmpeg palette mode | bundled gifski helper, or palette mode | same as Windows |
 
 - Export encoders all run through the FFmpeg helper, each with a "Best quality" and a "Fast" option:
-  - H.264: x264 by default (best quality for the file size, CRF-based presets); hardware encoders (VideoToolbox/MF/NVENC/QSV/AMF/VAAPI) for Fast.
-  - HEVC: x265 or hardware, tagged hvc1.
+  - H.264: x264 by default (best quality for the file size, CRF-based presets); hardware encoders (VideoToolbox/MF/NVENC/QSV/AMF/VAAPI) for Fast. macOS has no x264 (ADR-058): VideoToolbox only, so "Best quality" is unavailable there.
+  - HEVC: x265 or hardware, tagged hvc1 (VideoToolbox only on macOS).
   - AV1: SVT-AV1, or hardware AV1 where available.
   - VP9 and VP8: libvpx.
   - Audio: AAC (aac_at on macOS; Media Foundation or FFmpeg's AAC elsewhere), Opus, Vorbis, FLAC, ALAC.
-- GIF: gifski by default. It gives the best quality, reads Y4M video from stdin, and exposes quality, motion-quality, and lossy settings. FFmpeg's palettegen/paletteuse (Kap's approach) is the Fast option.
+- GIF: gifski by default on Windows and Linux. It gives the best quality, reads Y4M video from stdin, and exposes quality, motion-quality, and lossy settings. FFmpeg's palettegen/paletteuse (Kap's approach) is the Fast option, and the only one on macOS (ADR-058).
 - How export works: the renderer streams frames to the helper over a pipe (Y4M, or raw NV12 video). Mixed audio goes through a temporary WAV file or a second pipe. Parse the helper's progress output; Cancel stops the helper cleanly.
 
 ## Licensing
 - The app binary contains only permissive code (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode, CC0; MPL-2.0 only if unavoidable), plus dynamically linked LGPL code (the Linux FFmpeg libraries). Enforce this with cargo-deny and an npm license check in CI.
 - GPL/AGPL encoders run only as separate bundled executables (Tauri sidecars), never linked into the app. Kap (MIT) ships a GPL FFmpeg binary the same way.
-  - ffmpeg, GPL build: x264, x265, SVT-AV1, libvpx, Opus, Vorbis, plus hardware encoders. Never --enable-nonfree.
-    - macOS: build static arm64 + x86_64 binaries from source with a pinned script. markus-perl/ffmpeg-build-script (MIT) is a good reference; skip its non-free options.
+  - ffmpeg, GPL build (Windows, Linux): x264, x265, SVT-AV1, libvpx, Opus, Vorbis, plus hardware encoders. Never --enable-nonfree.
+    - macOS (owner 2026-11-25, ADR-058): an LGPL-2.1-or-later build (no --enable-gpl, x264 or x265) for every Mac build, DMG and Mac App Store alike, because the store's terms conflict with the GPL and AGPL. Static binaries from source with a pinned script; markus-perl/ffmpeg-build-script (MIT) is a good reference; skip its non-free options.
     - Windows/Linux (owner decision 2026-11-19): build our own from pinned sources with --disable-network, like macOS (FFmpeg-Builds' MIT scripts may be adapted). Prebuilt BtbN releases are not used, because they include network protocols.
-  - gifski (AGPL-3.0): built from source with cargo in CI for each target.
-  - Mac App Store edition (owner 2026-11-24, ADR-057): the store's terms conflict with the GPL and AGPL, so it ships an LGPL-2.1-or-later ffmpeg and ffprobe (no --enable-gpl, x264 or x265) and no gifski. Best H.264/HEVC falls back to VideoToolbox and GIF to palette mode.
+  - gifski (AGPL-3.0): built from source with cargo in CI for Windows and Linux. Not shipped on macOS (ADR-058).
   - Linux in-process decoding and hardware encoding: LGPL shared FFmpeg libraries, also built by us with --disable-network.
 - Never link x264, x265, gifski, or libimagequant into the app. No fdk-aac or anything else nonfree.
 - Every release includes each helper's license, version, build flags, and exact source (or a link to it). Add an About → Licenses screen and third-party notices (cargo-about plus an npm license tool).
@@ -168,10 +167,10 @@ Opens automatically after recording. It must stay light and fast.
 - Formats. The video and audio codecs are chosen separately within each container. Only show options the capability probe has confirmed work:
   - MP4. Video: H.264 (default), HEVC, AV1. Audio: AAC (default), Opus, FLAC, ALAC. Label the less-compatible choices.
   - WebM. Video: VP9 (default), AV1, VP8. Audio: Opus (default), Vorbis.
-  - GIF: gifski (default) or Fast palette mode; no audio.
+  - GIF: gifski (default) or Fast palette mode; palette mode only on macOS; no audio.
   - MOV (ProRes 422 + PCM) for editing.
   - Animated WebP (libwebp, Small/Balanced/High); no audio, GIF frame rates and sizes, a loop setting. The sheet offers MP4, MOV, WebM, GIF, WebP in that order.
-- Encoder: "Best quality" (x264/x265/SVT-AV1/libvpx/gifski) or "Fast" (hardware/palette), with estimated time and file size.
+- Encoder: "Best quality" (x264/x265/SVT-AV1/libvpx/gifski) or "Fast" (hardware/palette), with estimated time and file size. On macOS, H.264 and HEVC are Fast (VideoToolbox) only and GIF is palette only.
 - FPS per format. Each format has its own fps picker and remembers its own last value, capped at the recording's fps (adapt Kap's fpsHistory):
   - Video formats: 15/24/25/30/50/60.
   - GIF: 5/8/10/12/15 (default)/20/25/30/50. GIF frame timing is in hundredths of a second, and browsers slow down anything faster than 50 fps, so cap at 50 and note that 30 is approximate.
@@ -181,7 +180,7 @@ Opens automatically after recording. It must stay light and fast.
   - Round to even numbers (except GIF). Don't upscale by default.
   - Check encoder limits (hardware H.264 tops out around 4K).
 - Quality: Small / Balanced / High / Custom (CRF or bitrate).
-- GIF settings: quality, motion quality, and lossy (gifski), or colors and dithering (palette mode); loop (forever/once/N); default maximum width 960 px; size estimate.
+- GIF settings: quality, motion quality, and lossy (gifski, Windows and Linux), or colors and dithering (palette mode); loop (forever/once/N); default maximum width 960 px; size estimate.
 - Output folder and filename template; progress with Cancel; then Reveal / Copy file / Open. Remember the last settings per format and support named presets.
 
 ### Library and safety
@@ -254,7 +253,7 @@ Other references:
   - Hardened runtime with camera/mic entitlements; sign the helpers too.
   - Sign every build with one stable Apple Development identity (a free personal team works). Ad-hoc signing makes macOS forget the Screen Recording permission on every build. Document "tccutil reset ScreenCapture <bundle-id>". (2026-11-19: the owner has no identity and may not create one. Until one exists, run development builds of the app through the Simple Capture Dev host, and expect ad-hoc-signed release builds to ask for permissions again after each update. See DECISIONS ADR-003.)
   - macOS 15+ may periodically re-ask permission for apps that don't use the system screen picker (SCContentSharingPicker). Owner decision 2026-11-19: use the system picker only if equivalent system pickers can be used on Windows and Linux too (ADR-028).
-  - Distribution (owner 2026-11-24, ADR-003, ADR-057): a Developer ID-signed, notarized DMG on GitHub Releases and through the Homebrew tap, and a sandboxed Mac App Store edition built from the same tag with the cargo feature `mas`, LGPL-only helpers and no gifski. The store edition's sandbox entitlements include `com.apple.security.network.client`, because WKWebView's WebContent and Networking processes need it in any sandboxed app, even for local content; the app itself still makes no network connections.
+  - Distribution (owner 2026-11-24 and 2026-11-25, ADR-003, ADR-057, ADR-058): one sandboxed app with LGPL-only helpers and no gifski, built from one tag and shipped two ways. The DMG on GitHub Releases and through the Homebrew tap is signed with a Developer ID (hardened runtime, notarized, `app/macos/entitlements.plist`); the Mac App Store build is signed with Apple Distribution and a provisioning profile and packed as a .pkg (`app/macos/entitlements.appstore.plist`, the same sandbox set plus the application and team identifiers). The sandbox entitlements include `com.apple.security.network.client`, because WKWebView's WebContent and Networking processes need it in any sandboxed app, even for local content; the app itself still makes no network connections.
   - Development (decided 2026-11-19): every dev/spike/test binary that needs a privacy permission runs as a child of one fixed host app, "Simple Capture Dev" (com.simplecapture.dev, tools/macos-dev-host), which is signed once and never rebuilt, so the owner approves each permission once. No per-spike bundles or bundle IDs.
 - Windows:
   - Disable the yellow capture border where Windows 11 allows it. Region capture = a cropped display capture.
@@ -317,7 +316,7 @@ At each ★, stop, summarize, tell me what to test, and wait for my OK.
 - The bubble matches the output. No app UI appears in captures on macOS/Windows; auto-hide works on Linux.
 - Editor: opens in under 2 seconds for a 10-minute recording, plays smoothly across cuts, and every edit operation plus undo/redo is covered by tests.
 - Every text style and animation looks identical in the preview and in every export format.
-- Every export combination offered passes ffprobe validation and plays in QuickTime, Chrome, Firefox, or VLC as appropriate. GIFs play at the chosen fps in browsers. x264 "Best quality" scores higher on SSIM (an image-quality metric) than hardware "Fast" at the same file size on a text-heavy test clip.
+- Every export combination offered passes ffprobe validation and plays in QuickTime, Chrome, Firefox, or VLC as appropriate. GIFs play at the chosen fps in browsers. x264 "Best quality" scores higher on SSIM (an image-quality metric) than hardware "Fast" at the same file size on a text-heavy test clip (Windows and Linux; macOS has no x264, ADR-058).
 - Force-quitting mid-recording is recoverable, and unplugging the camera or mic doesn't stop the recording.
 - CI is green on all three OSes, with downloadable builds. The app binary contains no GPL/AGPL code, and the helpers' license and source files are included.
 - No networking code anywhere.

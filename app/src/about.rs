@@ -27,16 +27,16 @@ fn repo() -> PathBuf {
 const PRIVACY_POLICY: &str =
     "https://github.com/thtmnisamnstr/simple-capture/blob/main/docs/PRIVACY.md";
 
-#[cfg(not(feature = "mas"))]
+#[cfg(not(target_os = "macos"))]
 const FFMPEG_LICENSE: &str = "GPL-2.0-or-later";
-#[cfg(not(feature = "mas"))]
+#[cfg(not(target_os = "macos"))]
 const FFMPEG_NOTE: &str = "A separate program the app runs to encode exports, built with x264, x265, SVT-AV1, libvpx, \
      Opus and Vorbis, and with networking turned off. Its complete source code is attached to \
      this version's release on GitHub.";
 
-#[cfg(feature = "mas")]
+#[cfg(target_os = "macos")]
 const FFMPEG_LICENSE: &str = "LGPL-2.1-or-later";
-#[cfg(feature = "mas")]
+#[cfg(target_os = "macos")]
 const FFMPEG_NOTE: &str = "A separate program the app runs to encode exports, built with SVT-AV1, libvpx, Opus and \
      Vorbis, and with networking turned off. Its complete source code is attached to this \
      version's release on GitHub.";
@@ -94,7 +94,7 @@ fn entries(bundled: Option<PathBuf>) -> Vec<Entry> {
         files: files_in(&helpers, |n| !n.starts_with("gifski")),
         source: true,
     });
-    if !cfg!(feature = "mas") {
+    if !cfg!(target_os = "macos") {
         let mut gifski = files_in(&helpers, |n| n.starts_with("gifski"));
         if gifski.is_empty() {
             let dev = repo()

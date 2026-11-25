@@ -124,7 +124,6 @@ impl Desktop for MacDesktop {
             let p2 = panel.clone();
             let blk = block2::RcBlock::new(move |resp: isize| {
                 let url = (resp == NSModalResponseOK).then(|| p2.URL()).flatten();
-                #[cfg(feature = "mas")]
                 if let Some(u) = &url {
                     crate::workspace::remember_pick(u);
                 }
