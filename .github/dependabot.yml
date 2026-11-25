@@ -1,0 +1,76 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      tauri:
+        patterns: ["tauri*"]
+      wgpu:
+        patterns: ["wgpu", "wgpu-hal"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # These majors move only together with Tauri 3 or a planned Skia bump (ADR-004, ADR-006,
+      # ADR-018): the objc2 family must match Tauri's, and a single bump cannot build. Every other
+      # major is an ordinary PR to review on its own.
+      - dependency-name: "tauri*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "wry"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tao"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "objc2*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "block2"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "dispatch2"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "skia-*"
+        update-types: ["version-update:semver-major"]
+
+  # The Tauri CLI refuses to build when @tauri-apps/* and the tauri crates differ in major or
+  # minor version, so merge the npm and cargo tauri group PRs together.
+  - package-ecosystem: npm
+    directory: "/ui"
+    schedule:
+      interval: weekly
+    groups:
+      tauri:
+        patterns: ["@tauri-apps/*"]
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # svelte-check 4.7 loads TypeScript's classic API, which TypeScript 7 no longer exports.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@tauri-apps/*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: docker
+    directories:
+      - "/scripts/ci/linux"
+      - "/tools/linux-dev"
+    schedule:
+      interval: weekly
+    ignore:
+      # Both images mirror the ubuntu-24.04 CI runners; only the digest should move.
+      - dependency-name: "ubuntu"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: rust-toolchain
+    directory: "/"
+    schedule:
+      interval: weekly

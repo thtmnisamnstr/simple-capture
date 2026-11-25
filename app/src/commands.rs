@@ -10,7 +10,7 @@ use tauri::State;
 use crate::core::{Core, Reply};
 
 #[cfg(test)]
-const COMMANDS: [&str; 23] = [
+const COMMANDS: [&str; 30] = [
     "get_permissions",
     "request_permission",
     "open_permission_settings",
@@ -34,6 +34,13 @@ const COMMANDS: [&str; 23] = [
     "cancel_export",
     "reveal",
     "recovery_report",
+    "camera_preview",
+    "preview_state",
+    "camera_key_live",
+    "show_video_effects",
+    "bar_drag",
+    "editor",
+    "app",
 ];
 
 fn snake_to_camel(s: &str) -> String {
@@ -59,12 +66,12 @@ fn arg_value<'a>(args: &'a Value, name: &str) -> Option<&'a Value> {
         .filter(|v| !v.is_null())
 }
 
-fn arg<T: DeserializeOwned>(args: &Value, name: &str) -> Result<T, String> {
+pub(crate) fn arg<T: DeserializeOwned>(args: &Value, name: &str) -> Result<T, String> {
     let v = arg_value(args, name).ok_or_else(|| format!("missing argument {name:?}"))?;
     serde_json::from_value(v.clone()).map_err(|e| format!("argument {name:?}: {e}"))
 }
 
-fn opt_arg<T: DeserializeOwned>(args: &Value, name: &str) -> Result<Option<T>, String> {
+pub(crate) fn opt_arg<T: DeserializeOwned>(args: &Value, name: &str) -> Result<Option<T>, String> {
     arg_value(args, name)
         .map(|v| serde_json::from_value(v.clone()).map_err(|e| format!("argument {name:?}: {e}")))
         .transpose()
@@ -82,7 +89,11 @@ pub fn dispatch(core: &Arc<Core>, name: &str, args: &Value) -> Reply {
         "get_settings" => core.get_settings(),
         "set_settings" => core.set_settings(arg(args, "settings")?),
         "get_capabilities" => core.get_capabilities(),
-        "preview_still" => core.preview_still(arg(args, "source")?, arg(args, "canvas")?),
+        "preview_still" => core.preview_still(
+            arg(args, "source")?,
+            arg(args, "canvas")?,
+            opt_arg(args, "camera_key")?,
+        ),
         "choose_background_image" => core.choose_background_image(),
         "begin_region_select" => core.begin_region_select(
             &arg::<String>(args, "purpose")?,
@@ -101,6 +112,19 @@ pub fn dispatch(core: &Arc<Core>, name: &str, args: &Value) -> Reply {
         "cancel_export" => core.cancel_export(&arg::<String>(args, "id")?),
         "reveal" => core.reveal(&arg::<String>(args, "path")?),
         "recovery_report" => core.recovery_report(),
+        "camera_preview" => core.camera_preview(arg(args, "active")?),
+        "preview_state" => core.preview_state(),
+        "camera_key_live" => {
+            core.camera_key_live(arg(args, "key")?, opt_arg(args, "last")?.unwrap_or(false))
+        }
+        "show_video_effects" => core.show_video_effects(),
+        "bar_drag" => core.bar_drag(
+            &arg::<String>(args, "phase")?,
+            arg(args, "x")?,
+            arg(args, "y")?,
+        ),
+        "editor" => core.editor(&arg::<String>(args, "action")?, args),
+        "app" => core.app_action(&arg::<String>(args, "action")?, args),
         other => Err(format!("unknown command {other:?}")),
     }
 }
@@ -169,11 +193,16 @@ pub async fn get_capabilities(core: State<'_, Arc<Core>>) -> Reply {
 }
 
 #[tauri::command]
-pub async fn preview_still(core: State<'_, Arc<Core>>, source: Value, canvas: Value) -> Reply {
+pub async fn preview_still(
+    core: State<'_, Arc<Core>>,
+    source: Value,
+    canvas: Value,
+    camera_key: Option<Value>,
+) -> Reply {
     run(
         core,
         "preview_still",
-        json!({ "source": source, "canvas": canvas }),
+        json!({ "source": source, "canvas": canvas, "camera_key": camera_key }),
     )
     .await
 }
@@ -244,6 +273,49 @@ pub async fn recovery_report(core: State<'_, Arc<Core>>) -> Reply {
     run(core, "recovery_report", Value::Null).await
 }
 
+#[tauri::command]
+pub async fn camera_preview(core: State<'_, Arc<Core>>, active: bool) -> Reply {
+    run(core, "camera_preview", json!({ "active": active })).await
+}
+
+#[tauri::command]
+pub async fn preview_state(core: State<'_, Arc<Core>>) -> Reply {
+    run(core, "preview_state", Value::Null).await
+}
+
+#[tauri::command]
+pub async fn bar_drag(core: State<'_, Arc<Core>>, phase: String, x: f64, y: f64) -> Reply {
+    run(core, "bar_drag", json!({ "phase": phase, "x": x, "y": y })).await
+}
+
+#[tauri::command]
+pub async fn show_video_effects(core: State<'_, Arc<Core>>) -> Reply {
+    run(core, "show_video_effects", Value::Null).await
+}
+
+#[tauri::command]
+pub async fn camera_key_live(core: State<'_, Arc<Core>>, key: Value, last: Option<bool>) -> Reply {
+    run(core, "camera_key_live", json!({ "key": key, "last": last })).await
+}
+
+#[tauri::command]
+pub async fn editor(core: State<'_, Arc<Core>>, action: String, args: Option<Value>) -> Reply {
+    let mut a = args.unwrap_or_else(|| json!({}));
+    if let Some(o) = a.as_object_mut() {
+        o.insert("action".into(), Value::String(action));
+    }
+    run(core, "editor", a).await
+}
+
+#[tauri::command]
+pub async fn app(core: State<'_, Arc<Core>>, action: String, args: Option<Value>) -> Reply {
+    let mut a = args.unwrap_or_else(|| json!({}));
+    if let Some(o) = a.as_object_mut() {
+        o.insert("action".into(), Value::String(action));
+    }
+    run(core, "app", a).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +345,18 @@ mod tests {
             .filter_map(|(i, s)| (i % 2 == 1).then_some(s))
             .collect();
         assert_eq!(names, COMMANDS.to_vec());
+    }
+
+    #[test]
+    fn every_command_is_registered_with_tauri() {
+        let main = include_str!("main.rs");
+        let handler = &main[main.find("generate_handler![").expect("invoke handler")..];
+        let handler = &handler[..handler.find("])").expect("end of handler")];
+        for name in COMMANDS {
+            assert!(
+                handler.contains(&format!("commands::{name},")),
+                "{name} is dispatched but not in generate_handler!"
+            );
+        }
     }
 }

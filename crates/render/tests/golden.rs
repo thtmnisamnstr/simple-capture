@@ -8,7 +8,8 @@ use sc_core::image::RgbaImage;
 use sc_geometry::{Aspect, Ratio, RectPx, SizePx, contain_fit, even_round, reference_canvas_size};
 use sc_platform::{CpuNv12Frame, FrameBuffer};
 use sc_render::{
-    Backend, Compositor, DiffStats, FrameJob, OutputFormat, RenderedFrame, ScreenLayer, cpu, diff,
+    Backend, Compositor, DiffStats, FrameJob, OutputFormat, Redact, RenderedFrame, ScreenLayer,
+    cpu, diff,
 };
 
 fn sz(w: u32, h: u32) -> SizePx {
@@ -186,12 +187,16 @@ fn gpu_matches_cpu_every_aspect_and_scale() {
             let dst = contain_fit(canvas, content);
             let bg = background(canvas);
             let job = FrameJob {
+                text: &[],
+                background_key: None,
+                camera: None,
                 canvas,
                 background: &bg,
                 screen: Some(ScreenLayer {
                     frame: &frame,
                     src,
                     dst,
+                    redact: &[],
                 }),
             };
             let label = format!(
@@ -239,6 +244,9 @@ fn worked_examples_7680x2160() {
     for canvas in [sz(1920, 1080), sz(1080, 1920), sz(3840, 2160)] {
         let bg = background(canvas);
         let job = FrameJob {
+            text: &[],
+            background_key: None,
+            camera: None,
             canvas,
             background: &bg,
             screen: Some(ScreenLayer {
@@ -250,6 +258,7 @@ fn worked_examples_7680x2160() {
                     h: content.h,
                 },
                 dst: contain_fit(canvas, content),
+                redact: &[],
             }),
         };
         for out in [OutputFormat::Rgba8, OutputFormat::I420Bt709Limited] {
@@ -270,6 +279,9 @@ fn full_range_input_matches() {
     let canvas = sz(480, 270);
     let bg = background(canvas);
     let job = FrameJob {
+        text: &[],
+        background_key: None,
+        camera: None,
         canvas,
         background: &bg,
         screen: Some(ScreenLayer {
@@ -281,6 +293,7 @@ fn full_range_input_matches() {
                 h: 361,
             },
             dst: contain_fit(canvas, sz(641, 361)),
+            redact: &[],
         }),
     };
     compare(&mut gpu, &job, OutputFormat::Rgba8, "full range 641x361");
@@ -291,6 +304,9 @@ fn background_only_is_copied_exactly() {
     let canvas = sz(322, 180);
     let bg = background(canvas);
     let job = FrameJob {
+        text: &[],
+        background_key: None,
+        camera: None,
         canvas,
         background: &bg,
         screen: None,
@@ -329,6 +345,9 @@ fn round_trip(r: &mut dyn FnMut(&FrameJob) -> RenderedFrame, label: &str) {
     let frame = buffer(src);
     let bg = background(size);
     let job = FrameJob {
+        text: &[],
+        background_key: None,
+        camera: None,
         canvas: size,
         background: &bg,
         screen: Some(ScreenLayer {
@@ -345,6 +364,7 @@ fn round_trip(r: &mut dyn FnMut(&FrameJob) -> RenderedFrame, label: &str) {
                 w: size.w,
                 h: size.h,
             },
+            redact: &[],
         }),
     };
     let out = r(&job);
@@ -441,6 +461,9 @@ fn letterbox(r: &mut dyn FnMut(&FrameJob) -> RenderedFrame, label: &str) {
         let bg = background(canvas);
         let dst = contain_fit(canvas, content);
         let job = FrameJob {
+            text: &[],
+            background_key: None,
+            camera: None,
             canvas,
             background: &bg,
             screen: Some(ScreenLayer {
@@ -452,9 +475,13 @@ fn letterbox(r: &mut dyn FnMut(&FrameJob) -> RenderedFrame, label: &str) {
                     h: content.h,
                 },
                 dst,
+                redact: &[],
             }),
         };
         let one = FrameJob {
+            text: &[],
+            background_key: None,
+            camera: None,
             canvas: sz(2, 2),
             background: &background(sz(2, 2)),
             screen: Some(ScreenLayer {
@@ -471,6 +498,7 @@ fn letterbox(r: &mut dyn FnMut(&FrameJob) -> RenderedFrame, label: &str) {
                     w: 2,
                     h: 2,
                 },
+                redact: &[],
             }),
         };
         let reference = cpu::render_cpu(&one, OutputFormat::Rgba8).expect("cpu");
@@ -511,6 +539,9 @@ fn cpu_only_backend_renders_the_reference() {
     let frame = buffer(pattern(sz(640, 400), false, 1));
     let bg = background(canvas);
     let job = FrameJob {
+        text: &[],
+        background_key: None,
+        camera: None,
         canvas,
         background: &bg,
         screen: Some(ScreenLayer {
@@ -522,6 +553,7 @@ fn cpu_only_backend_renders_the_reference() {
                 h: 400,
             },
             dst: contain_fit(canvas, sz(640, 400)),
+            redact: &[],
         }),
     };
     let a = c
@@ -535,6 +567,9 @@ fn cpu_only_backend_renders_the_reference() {
 fn invalid_jobs_are_errors() {
     let bg = background(sz(10, 10));
     let odd = FrameJob {
+        text: &[],
+        background_key: None,
+        camera: None,
         canvas: sz(11, 10),
         background: &bg,
         screen: None,
@@ -545,6 +580,9 @@ fn invalid_jobs_are_errors() {
     );
     let bg = background(sz(11, 10));
     let odd = FrameJob {
+        text: &[],
+        background_key: None,
+        camera: None,
         canvas: sz(11, 10),
         background: &bg,
         screen: None,
@@ -575,6 +613,9 @@ fn bench_render_readback() {
         let frame = buffer(pattern(content, false, 9));
         let bg = background(canvas);
         let job = FrameJob {
+            text: &[],
+            background_key: None,
+            camera: None,
             canvas,
             background: &bg,
             screen: Some(ScreenLayer {
@@ -586,6 +627,7 @@ fn bench_render_readback() {
                     h: content.h,
                 },
                 dst: contain_fit(canvas, content),
+                redact: &[],
             }),
         };
         for out in [OutputFormat::Rgba8, OutputFormat::I420Bt709Limited] {
@@ -622,6 +664,9 @@ fn integer_box_matches_float_average() {
     let canvas = sz(256, 128);
     let bg = background(canvas);
     let job = FrameJob {
+        text: &[],
+        background_key: None,
+        camera: None,
         canvas,
         background: &bg,
         screen: Some(ScreenLayer {
@@ -638,6 +683,7 @@ fn integer_box_matches_float_average() {
                 w: canvas.w,
                 h: canvas.h,
             },
+            redact: &[],
         }),
     };
     let out = cpu::render_cpu(&job, OutputFormat::Rgba8).expect("cpu");
@@ -685,4 +731,74 @@ fn compositor_is_send() {
     assert!(Backend::parse("METAL") == Some(Backend::Metal));
     assert!(Backend::parse("cpu") == Some(Backend::CpuOnly));
     assert!(Backend::parse("opengl-ish").is_none());
+}
+
+#[test]
+fn redaction_hides_the_boxes_the_same_on_gpu_and_cpu() {
+    let frame = buffer(pattern(sz(1280, 720), false, 11));
+    let canvas = sz(960, 540);
+    let bg = background(canvas);
+    let boxes = [
+        Redact {
+            rect: [0.1, 0.1, 0.4, 0.3],
+            black: false,
+        },
+        Redact {
+            rect: [0.35, 0.3, 0.3, 0.3],
+            black: true,
+        },
+        Redact {
+            rect: [0.9, 0.85, 0.5, 0.5],
+            black: false,
+        },
+    ];
+    let layer = |redact| ScreenLayer {
+        frame: &frame,
+        src: RectPx {
+            x: 0,
+            y: 0,
+            w: 1280,
+            h: 720,
+        },
+        dst: contain_fit(canvas, sz(1280, 720)),
+        redact,
+    };
+    let job = |redact| FrameJob {
+        text: &[],
+        background_key: None,
+        camera: None,
+        canvas,
+        background: &bg,
+        screen: Some(layer(redact)),
+    };
+    let plain = cpu::render_cpu(&job(&[]), OutputFormat::Rgba8).expect("plain");
+    let hidden = cpu::render_cpu(&job(&boxes), OutputFormat::Rgba8).expect("redacted");
+    let at = |f: &RenderedFrame, x: u32, y: u32| {
+        let i = ((y * canvas.w + x) * 4) as usize;
+        [f.data[i], f.data[i + 1], f.data[i + 2]]
+    };
+    assert_eq!(at(&hidden, 480, 270), [0, 0, 0], "inside the black box");
+    assert_eq!(at(&hidden, 20, 20), at(&plain, 20, 20), "outside every box");
+    let row = |f: &RenderedFrame, y: u32| (100..380).map(|x| at(f, x, y)).collect::<Vec<_>>();
+    let distinct = |v: Vec<[u8; 3]>| {
+        let mut v = v;
+        v.dedup();
+        v.len()
+    };
+    assert!(
+        distinct(row(&hidden, 80)) * 4 < distinct(row(&plain, 80)),
+        "the mosaic flattens detail: {} vs {}",
+        distinct(row(&hidden, 80)),
+        distinct(row(&plain, 80))
+    );
+    if let Some(mut gpu) = gpu() {
+        compare(&mut gpu, &job(&boxes), OutputFormat::Rgba8, "redacted");
+        compare(
+            &mut gpu,
+            &job(&boxes),
+            OutputFormat::I420Bt709Limited,
+            "redacted",
+        );
+        compare(&mut gpu, &job(&[]), OutputFormat::Rgba8, "after redaction");
+    }
 }

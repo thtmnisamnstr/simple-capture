@@ -2,7 +2,7 @@
 //! `extra`, so a rewrite never drops data written by a newer version.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use sc_geometry::{Aspect, PointF, Ratio, RectPt, RectPx, SizePx};
 use serde::{Deserialize, Serialize};
@@ -24,8 +24,13 @@ pub struct ProjectV1 {
     pub recording: Recording,
     pub camera_layout: CameraLayout,
     pub edl: Edl,
+    /// The camera's own clips once it is unlinked from the screen; `None` while it follows `edl`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub camera_edl: Option<Edl>,
     pub audio_mix: BTreeMap<String, AudioMixEntry>,
     pub text: Vec<TextItem>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redactions: Vec<Redaction>,
     pub output: Output,
     pub export_presets: ExportPresets,
     pub fonts: Vec<FontRef>,
@@ -40,6 +45,37 @@ pub enum ProjectState {
     Finalized,
     Recovered,
     Damaged,
+}
+
+/// A box over the screen picture that hides what is under it. Its span is in recording time,
+/// like camera keyframes, so it stays on the content it hides through every cut, move, paste,
+/// duplicate and speed change.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Redaction {
+    pub id: String,
+    pub start_rec_ns: i64,
+    pub end_rec_ns: i64,
+    /// Left, top, width and height as fractions of the screen picture, so the box stays on the
+    /// same content when the frame shape or background changes.
+    pub rect_norm: RectNorm,
+    pub style: RedactStyle,
+    #[serde(flatten)]
+    pub extra: Extra,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RectNorm {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RedactStyle {
+    Pixelate,
+    Black,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -180,6 +216,12 @@ pub enum SourceDescriptor {
         region_pt: RectPt,
         method: RegionMethod,
     },
+    /// A camera recorded as the main picture (camera-only recordings and spans).
+    Camera {
+        device_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        device_name: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -274,6 +316,46 @@ pub enum TrackKind {
     Camera,
     Mic,
     SystemAudio,
+    /// The sound of a plugged-in device whose screen is recorded (an iPhone over USB).
+    DeviceAudio,
+}
+
+impl Track {
+    /// The track's file inside `dir`; an error when `file` is not [`is_project_relative`].
+    pub fn path_in(&self, dir: &Path) -> Result<PathBuf> {
+        file_in(dir, &self.file)
+    }
+}
+
+/// True when `rel` is a non-empty relative path of plain names: no root, drive, `.` or `..`.
+/// Files named in project.json and the journal must pass, so a copied or damaged project
+/// can't make the app read outside its own folder.
+pub fn is_project_relative(rel: &str) -> bool {
+    !rel.is_empty()
+        && !rel.contains('\0')
+        && Path::new(rel)
+            .components()
+            .all(|c| matches!(c, Component::Normal(_)))
+}
+
+/// `rel` inside the project folder `dir`; an error when it is not [`is_project_relative`].
+pub fn file_in(dir: &Path, rel: &str) -> Result<PathBuf> {
+    if is_project_relative(rel) {
+        Ok(dir.join(rel))
+    } else {
+        Err(Error::Invalid(format!(
+            "{rel:?} is not a file inside the project folder"
+        )))
+    }
+}
+
+impl TrackKind {
+    pub fn is_audio(self) -> bool {
+        matches!(
+            self,
+            TrackKind::Mic | TrackKind::SystemAudio | TrackKind::DeviceAudio
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -424,6 +506,9 @@ pub struct Clip {
     pub src_out_rec_ns: i64,
     pub speed: Speed,
     pub muted: bool,
+    /// A gap on its track: it keeps its length but shows and plays nothing.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -451,7 +536,8 @@ pub struct Output {
     pub extra: Extra,
 }
 
-/// Reserved for cover + pan (M3+).
+/// How one recorded section's picture sits in the frame, instead of the canvas default: fitted
+/// inside, or filling it with the crop centred on `focus_norm` (fractions of the picture).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SegmentFraming {
     pub fit: Fit,
@@ -462,9 +548,9 @@ pub struct SegmentFraming {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExportPresets {
-    /// `"mp4" | "webm" | "gif"`.
+    /// Kept for the file format; the app stores its export settings in its own `export.json`.
     pub last_format: String,
-    /// ExportSettings per format; the settings type arrives with M5.
+    /// Kept for the file format, like `last_format`.
     pub per_format: Map<String, Value>,
     pub named: Vec<NamedPreset>,
     #[serde(flatten)]
@@ -601,6 +687,7 @@ pub struct TextBackground {
 pub enum TextBackgroundKind {
     PerLine,
     Merged,
+    /// Saved by early builds; drawn as `Merged`.
     Inverted,
 }
 
@@ -696,8 +783,10 @@ impl ProjectV1 {
                 clips: Vec::new(),
                 extra: Extra::new(),
             },
+            camera_edl: None,
             audio_mix: BTreeMap::new(),
             text: Vec::new(),
+            redactions: Vec::new(),
             output: Output {
                 canvas: Canvas {
                     aspect: Aspect::Original,
@@ -722,7 +811,8 @@ impl ProjectV1 {
         }
     }
 
-    /// Reads `<dir>/project.json`. Unknown fields are kept in each struct's `extra`.
+    /// Reads `<dir>/project.json`. Unknown fields are kept in each struct's `extra`. A track
+    /// whose file is not [`is_project_relative`] makes the whole project an error.
     pub fn load(dir: &Path) -> Result<ProjectV1> {
         let path = dir.join(Self::FILE_NAME);
         let bytes = std::fs::read(&path).map_err(|e| Error::io_at(e, "read", &path))?;
@@ -737,7 +827,22 @@ impl ProjectV1 {
                 Self::SCHEMA_VERSION
             )));
         }
-        serde_json::from_slice(&bytes).map_err(|e| Error::Json(format!("{}: {e}", path.display())))
+        let project: ProjectV1 = serde_json::from_slice(&bytes)
+            .map_err(|e| Error::Json(format!("{}: {e}", path.display())))?;
+        if let Some(t) = project
+            .recording
+            .tracks
+            .iter()
+            .find(|t| !is_project_relative(&t.file))
+        {
+            return Err(Error::Invalid(format!(
+                "{}: track {} names {:?}, which is not a file inside the project folder",
+                path.display(),
+                t.id,
+                t.file
+            )));
+        }
+        Ok(project)
     }
 
     /// Writes `<dir>/project.json` atomically (temp, fsync, rename, fsync folder).
@@ -763,15 +868,12 @@ impl ProjectV1 {
         }
     }
 
-    /// Recording length in RecTime: `stop − start − pauses` once stopped, otherwise the latest
-    /// closed segment end. `None` while nothing is known.
+    /// Recording length in RecTime: `stop − start` once stopped, otherwise the latest closed
+    /// segment end. `None` while nothing is known. Paused spans stay in the tracks (ADR-048);
+    /// the EDL leaves them out.
     pub fn duration_ns(&self) -> Option<i64> {
         if let Some(stop) = self.recording.stop_host_ns {
-            let clock = self.rec_clock();
-            let d = stop
-                .saturating_sub(self.recording.start_host_ns)
-                .saturating_sub(clock.pause_total_before(HostTime(stop)));
-            return Some(d.max(0));
+            return Some(stop.saturating_sub(self.recording.start_host_ns).max(0));
         }
         self.recording
             .screen
@@ -797,8 +899,46 @@ impl ProjectV1 {
 /// Copies a PNG/JPEG (recognised by its magic bytes) into
 /// `<project_dir>/assets/background-<sha256[0..12]>.<png|jpg>` and returns the cover-fit, centred
 /// image background that points at it. Copying the same image twice reuses the file.
+/// The largest background image accepted, in bytes.
+pub const MAX_BACKGROUND_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Reads a background image file: a regular file of at most [`MAX_BACKGROUND_BYTES`], so a
+/// device or pipe chosen by mistake can't exhaust memory or block.
+pub fn read_background_file(path: &Path) -> Result<Vec<u8>> {
+    use std::io::Read;
+    let file =
+        std::fs::File::open(path).map_err(|e| Error::io_at(e, "read background image", path))?;
+    let meta = file
+        .metadata()
+        .map_err(|e| Error::io_at(e, "read background image", path))?;
+    if !meta.is_file() {
+        return Err(Error::Invalid(format!(
+            "background image is not a file: {}",
+            path.display()
+        )));
+    }
+    let too_big = || {
+        Error::Invalid(format!(
+            "background image is larger than {} MB: {}",
+            MAX_BACKGROUND_BYTES / (1024 * 1024),
+            path.display()
+        ))
+    };
+    if meta.len() > MAX_BACKGROUND_BYTES {
+        return Err(too_big());
+    }
+    let mut bytes = Vec::with_capacity(meta.len() as usize);
+    file.take(MAX_BACKGROUND_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| Error::io_at(e, "read background image", path))?;
+    if bytes.len() as u64 > MAX_BACKGROUND_BYTES {
+        return Err(too_big());
+    }
+    Ok(bytes)
+}
+
 pub fn copy_background_asset(src: &Path, project_dir: &Path) -> Result<Background> {
-    let bytes = std::fs::read(src).map_err(|e| Error::io_at(e, "read background image", src))?;
+    let bytes = read_background_file(src)?;
     let ext = image_ext(&bytes).ok_or_else(|| {
         Error::Invalid(format!(
             "background image must be PNG or JPEG: {}",
@@ -830,5 +970,102 @@ fn image_ext(bytes: &[u8]) -> Option<&'static str> {
         Some("jpg")
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const EXAMPLE: &str = include_str!("../tests/data/architecture_example.json");
+
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new() -> Scratch {
+            let dir = std::env::temp_dir().join(format!(
+                "sc-core-project-{}-{}",
+                std::process::id(),
+                crate::ids::new_id()
+            ));
+            std::fs::create_dir_all(&dir).expect("scratch dir");
+            Scratch(dir)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn with_track_file(file: &str) -> Scratch {
+        let dir = Scratch::new();
+        let mut v: Value = serde_json::from_str(EXAMPLE).expect("example parses");
+        v["recording"]["tracks"][1]["file"] = Value::String(file.to_string());
+        std::fs::write(
+            dir.0.join(ProjectV1::FILE_NAME),
+            serde_json::to_vec(&v).expect("ser"),
+        )
+        .expect("write");
+        dir
+    }
+
+    #[test]
+    fn plain_relative_names_are_project_files() {
+        for ok in ["tracks/screen-000.mov", "camera.mov", "a/./b.mov"] {
+            assert!(is_project_relative(ok), "{ok}");
+        }
+        let root = Path::new("/projects/x.sc");
+        assert_eq!(
+            file_in(root, "tracks/mic.mov").expect("inside"),
+            root.join("tracks/mic.mov")
+        );
+    }
+
+    #[test]
+    fn absolute_parent_and_dot_paths_are_refused() {
+        for bad in [
+            "",
+            "/etc/passwd",
+            "../secret.mov",
+            "tracks/../../secret.mov",
+            "./tracks/mic.mov",
+            "..",
+            "tracks/mic\0.mov",
+        ] {
+            assert!(!is_project_relative(bad), "{bad:?}");
+            assert!(matches!(
+                file_in(Path::new("/p"), bad),
+                Err(Error::Invalid(_))
+            ));
+        }
+        #[cfg(windows)]
+        for bad in ["C:\\secret.mov", "D:secret.mov", "\\\\server\\share\\x.mov"] {
+            assert!(!is_project_relative(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn load_refuses_a_track_outside_the_folder() {
+        let dir = with_track_file("../../elsewhere/secret.mov");
+        let err = ProjectV1::load(&dir.0).expect_err("outside track refused");
+        assert!(
+            matches!(&err, Error::Invalid(m) if m.contains("screen-1")),
+            "{err}"
+        );
+        let abs = with_track_file("/Users/x/secret.mov");
+        assert!(matches!(ProjectV1::load(&abs.0), Err(Error::Invalid(_))));
+    }
+
+    #[test]
+    fn load_keeps_tracks_inside_the_folder() {
+        let dir = with_track_file("tracks/screen-001.mov");
+        let p = ProjectV1::load(&dir.0).expect("load");
+        let t = &p.recording.tracks[1];
+        assert_eq!(
+            t.path_in(&dir.0).expect("inside"),
+            dir.0.join("tracks/screen-001.mov")
+        );
     }
 }

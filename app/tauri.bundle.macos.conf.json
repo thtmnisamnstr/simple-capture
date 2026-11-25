@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "externalBin": [
+      "binaries/sc-ffmpeg",
+      "binaries/sc-ffprobe"
+    ],
+    "copyright": "Copyright © 2026 Gavin Johnson. MIT License; the bundled FFmpeg export helpers are LGPL-2.1-or-later."
+  }
+}

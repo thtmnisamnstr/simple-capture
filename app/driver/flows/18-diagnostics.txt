@@ -1,0 +1,8 @@
+# Diagnostics (M6) and About (M7): the self-test run from the app (a synthetic recording, then
+# 2 s of the main display, both deleted), the licenses list and one license text.
+show diagnostics
+cmd app {"action":"diagnostics_run"}
+wait 45000
+cmd app {"action":"about"}
+show about
+wait 800

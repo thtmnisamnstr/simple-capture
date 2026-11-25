@@ -1,14 +1,42 @@
 {
   "bundle": {
     "active": true,
-    "targets": ["app"],
-    "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"],
+    "targets": [
+      "app"
+    ],
+    "externalBin": [
+      "binaries/sc-ffmpeg",
+      "binaries/sc-ffprobe",
+      "binaries/sc-gifski"
+    ],
     "macOS": {
       "signingIdentity": "-",
       "hardenedRuntime": true,
       "entitlements": "macos/entitlements.plist",
       "infoPlist": "macos/Info.bundle.plist",
       "minimumSystemVersion": "14.0"
-    }
+    },
+    "resources": {
+      "../assets/fonts/": "fonts/",
+      "gen/licenses/": "licenses/"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libpipewire-0.3-0",
+          "xdg-desktop-portal"
+        ]
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "category": "Video",
+    "shortDescription": "Record your screen, camera and voice, edit, and export. Everything stays on this computer.",
+    "copyright": "Copyright © 2026 Gavin Johnson. MIT License; the bundled export helpers are GPL/AGPL."
   }
 }

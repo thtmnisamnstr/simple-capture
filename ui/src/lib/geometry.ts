@@ -255,3 +255,75 @@ export function smallContent(canvas: Size, content: Size): boolean {
 export function rectContains(r: RectPt, p: PointF): boolean {
   return p.x >= r.x && p.y >= r.y && p.x < r.x + r.w && p.y < r.y + r.h;
 }
+
+// Camera overlay geometry: mirror of sc_geometry::camera (M2_PLAN §3.2), same case table.
+
+export const CAMERA_SIZE_PRESETS = [0.18, 0.26, 0.36] as const;
+export const CAMERA_SIZE_MIN = 0.08;
+export const CAMERA_SIZE_MAX = 0.9;
+export const CAMERA_MARGIN = 0.03;
+export const CAMERA_ZOOM_MAX = 4;
+
+export interface CameraPose { center: PointF; size: number; zoom: number; pan: PointF; radius: number }
+export interface CameraRects { dst: RectPt; src: RectPt; radius_px: number }
+export type Corner = 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
+
+export function shapeSize(short: number, aspect: Ratio): Size {
+  const a = ratioF(aspect);
+  return a >= 1 ? { w: short * a, h: short } : { w: short, h: short / a };
+}
+
+export function cameraRects(canvas: Size, camera: Size, aspect: Ratio, pose: CameraPose): CameraRects {
+  const short = Math.min(canvas.w, canvas.h) * clamp(pose.size, CAMERA_SIZE_MIN, CAMERA_SIZE_MAX);
+  const { w, h } = shapeSize(short, aspect);
+  const inside = (c: number, len: number, side: number) => (len >= side ? side / 2 : clamp(c * side, len / 2, side - len / 2));
+  const dst = { x: inside(pose.center.x, w, canvas.w) - w / 2, y: inside(pose.center.y, h, canvas.h) - h / 2, w, h };
+  const fw = Math.max(camera.w, 1);
+  const fh = Math.max(camera.h, 1);
+  const a = ratioF(aspect);
+  const [fillW, fillH] = fw / fh > a ? [fh * a, fh] : [fw, fw / a];
+  const zoom = clamp(pose.zoom, 1, CAMERA_ZOOM_MAX);
+  const sw = fillW / zoom;
+  const sh = fillH / zoom;
+  const src = {
+    x: ((fw - sw) / 2) * (1 + clamp(pose.pan.x, -1, 1)),
+    y: ((fh - sh) / 2) * (1 + clamp(pose.pan.y, -1, 1)),
+    w: sw,
+    h: sh,
+  };
+  return { dst, src, radius_px: (clamp(pose.radius, 0, 1) * Math.min(w, h)) / 2 };
+}
+
+export function cornerCenter(canvas: Size, aspect: Ratio, size: number, corner: Corner): PointF {
+  const short = Math.min(canvas.w, canvas.h);
+  const { w, h } = shapeSize(short * size, aspect);
+  const m = short * CAMERA_MARGIN;
+  const x = corner.endsWith('left') ? m + w / 2 : canvas.w - m - w / 2;
+  const y = corner.startsWith('top') ? m + h / 2 : canvas.h - m - h / 2;
+  return { x: x / canvas.w, y: y / canvas.h };
+}
+
+export function clampCenter(canvas: Size, aspect: Ratio, size: number, center: PointF): PointF {
+  const { w, h } = shapeSize(Math.min(canvas.w, canvas.h) * size, aspect);
+  const fx = Math.min(w / 2 / canvas.w, 0.5);
+  const fy = Math.min(h / 2 / canvas.h, 0.5);
+  return { x: clamp(center.x, fx, 1 - fx), y: clamp(center.y, fy, 1 - fy) };
+}
+
+export function snapCenter(canvas: Size, aspect: Ratio, size: number, center: PointF, thresholdPx: number): PointF {
+  const short = Math.min(canvas.w, canvas.h);
+  const { w, h } = shapeSize(short * size, aspect);
+  const m = short * CAMERA_MARGIN;
+  const snap = (v: number, targets: number[]) => {
+    let best: number | null = null;
+    let bestD = Infinity;
+    for (const t of targets) {
+      const d = Math.abs(t - v);
+      if (d <= thresholdPx && d < bestD) [best, bestD] = [t, d];
+    }
+    return best ?? v;
+  };
+  const x = snap(center.x * canvas.w, [m + w / 2, canvas.w / 2, canvas.w - m - w / 2]);
+  const y = snap(center.y * canvas.h, [m + h / 2, canvas.h / 2, canvas.h - m - h / 2]);
+  return clampCenter(canvas, aspect, size, { x: x / canvas.w, y: y / canvas.h });
+}

@@ -8,7 +8,9 @@ use std::time::Instant;
 
 use common::*;
 use sc_decode::cfr_frame_times;
-use sc_export::recipe::{FrameRenderer, quick_canvas, x264_quick};
+use sc_export::encode::video_args;
+use sc_export::recipe::{FrameRenderer, quick_canvas};
+use sc_export::settings::{ExportSettings, Format};
 use sc_export::validate::{Expect, ffprobe_check};
 use sc_export::{ExportJob, ExportSize, QuickExportRequest};
 use sc_geometry::{Aspect, SizePx};
@@ -87,7 +89,7 @@ fn bench_2160p_30s() {
 #[test]
 #[ignore = "bench"]
 fn bench_7680x2160_x264() {
-    if !helpers_available() {
+    if !helpers_available() || !encoder_built("libx264") {
         return;
     }
     let secs = 10i64;
@@ -108,7 +110,7 @@ fn bench_7680x2160_x264() {
     let out = t.path().join("wide.mp4");
     let helper = HelperProcess::spawn(SpawnSpec {
         program: sc_helpers::locate(HelperKind::Ffmpeg).expect("ffmpeg"),
-        args: x264_quick(canvas, 30, false, &out),
+        args: video_args(&ExportSettings::for_format(Format::Mp4), None, &out).expect("x264 args"),
         frame_bytes: y4m::FRAME.len() + y4m::i420_frame_bytes(canvas),
         queue_frames: 3,
     })

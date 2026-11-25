@@ -6,10 +6,10 @@ use sc_core::journal::{
 };
 use sc_core::project::{
     ColorInfo, DeviceInfo, Extra, GapRecord, PauseRecord, ProjectState, ProjectV1, Resolution,
-    ScreenSegment, Speed, Track, TrackHealth, TrackKind, VideoInfo,
+    ScreenSegment, Track, TrackHealth, TrackKind, VideoInfo, is_project_relative,
 };
 use sc_core::sessionlog::Level;
-use sc_core::{ClockKind, project::Clip, project::SystemAudioMode};
+use sc_core::{ClockKind, project::SystemAudioMode};
 use sc_geometry::{Ratio, SizePx};
 use sc_platform::Decoder;
 use serde_json::{Value, json};
@@ -53,6 +53,7 @@ struct Folded {
     health: BTreeMap<String, HealthEntry>,
     finished: BTreeMap<String, (Option<i64>, u64)>,
     gaps: Vec<(String, i64, i64)>,
+    camera_keys: Vec<sc_core::project::CameraKey>,
 }
 
 /// `None` when there is neither a `project.json` nor a journal `start` to build from.
@@ -112,13 +113,16 @@ pub(super) fn rebuild(
     };
     let had_segments = !p.recording.screen.segments.is_empty();
     let f = fold_events(&mut p, journal, &mut n);
+    if !f.camera_keys.is_empty() {
+        crate::session::set_camera_layout(&mut p, f.camera_keys.clone());
+    }
 
     for (seg, file) in &f.prepared {
         if !f.opened.contains(seg) {
-            let exists = if dir.join(file).exists() {
-                "file kept"
-            } else {
-                "no file"
+            let exists = match sc_core::project::file_in(dir, file) {
+                Ok(path) if path.exists() => "file kept",
+                Ok(_) => "no file",
+                Err(_) => "not a file inside the project folder",
             };
             n.add(
                 Level::Info,
@@ -167,14 +171,14 @@ pub(super) fn rebuild(
     if p.edl.clips.is_empty()
         && let Some(d) = p.duration_ns().filter(|d| *d > 0)
     {
-        p.edl.clips.push(Clip {
-            id: "c0".to_string(),
-            src_in_rec_ns: 0,
-            src_out_rec_ns: d,
-            speed: Speed { num: 1, den: 1 },
-            muted: false,
-            extra: Extra::new(),
-        });
+        let start = p.recording.start_host_ns;
+        let pauses: Vec<(i64, i64)> = p
+            .recording
+            .pauses
+            .iter()
+            .map(|q| (q.start_host_ns - start, q.end_host_ns - start))
+            .collect();
+        p.edl = sc_core::edit::edl_between_pauses(d, &pauses);
     }
     p.state = if damaged {
         ProjectState::Damaged
@@ -253,7 +257,14 @@ fn fold_events(p: &mut ProjectV1, journal: &JournalRead, n: &mut Notes) -> Folde
                 content_px,
             } => {
                 f.opened.insert(seg.clone());
-                f.seg_files.insert(track_id.clone(), file.clone());
+                if is_project_relative(file) {
+                    f.seg_files.insert(track_id.clone(), file.clone());
+                } else {
+                    n.add(
+                        Level::Error,
+                        format!("segment {seg}: track file {file:?} is not inside the project folder, ignored"),
+                    );
+                }
                 if f.first_open_content.is_none() {
                     f.first_open_content = Some(SizePx {
                         w: content_px.w,
@@ -365,6 +376,7 @@ fn fold_events(p: &mut ProjectV1, journal: &JournalRead, n: &mut Notes) -> Folde
                 }
             }
             JournalEvent::Stop { stop_host_ns, .. } => f.stop_host_ns = Some(*stop_host_ns),
+            JournalEvent::CameraKeys { keys } => f.camera_keys.extend(keys.iter().cloned()),
             _ => {}
         }
     }
@@ -421,6 +433,12 @@ fn screen_track(template: Option<&Track>, seg: &ScreenSegment, file: &str, fps: 
     let (container, codec) = match template {
         Some(t) => (t.container.clone(), t.codec.clone()),
         None if sctrk => ("sctrk".to_string(), "sctrk".to_string()),
+        None if Path::new(file)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("mkv")) =>
+        {
+            ("matroska".to_string(), "hevc_or_h264".to_string())
+        }
         None => ("mov_fragmented".to_string(), "hevc".to_string()),
     };
     let video = match template.and_then(|t| t.video.clone()) {
@@ -628,11 +646,130 @@ fn stop_from_tracks(p: &ProjectV1) -> i64 {
         .filter_map(|t| t.duration_ns.map(|d| t.first_sample_offset_ns + d))
         .max();
     let rec_end = seg_end.max(track_end).unwrap_or(0).max(0);
-    let mut host = p.recording.start_host_ns + rec_end;
-    for pause in &p.recording.pauses {
-        if pause.start_host_ns <= host {
-            host += pause.end_host_ns - pause.start_host_ns;
+    p.recording.start_host_ns + rec_end
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    use sc_core::project::{SourceDescriptor, StartReason, Via};
+    use sc_geometry::RectPx;
+    use sc_platform::{AudioReader, Error, TrackProbe, VideoReader};
+
+    use super::*;
+
+    #[derive(Default)]
+    struct Probes(Mutex<Vec<PathBuf>>);
+
+    impl Decoder for Probes {
+        fn open_video(&self, path: &Path) -> sc_platform::Result<Box<dyn VideoReader>> {
+            Err(Error::Other(format!("open_video {}", path.display())))
+        }
+
+        fn open_audio(
+            &self,
+            path: &Path,
+            _rate: u32,
+            _channels: u16,
+        ) -> sc_platform::Result<Box<dyn AudioReader>> {
+            Err(Error::Other(format!("open_audio {}", path.display())))
+        }
+
+        fn probe(&self, path: &Path) -> sc_platform::Result<TrackProbe> {
+            if let Ok(mut seen) = self.0.lock() {
+                seen.push(path.to_path_buf());
+            }
+            Ok(TrackProbe {
+                readable: true,
+                duration_ns: Some(1_000_000_000),
+                samples: 30,
+                size: None,
+                error: None,
+            })
         }
     }
-    host
+
+    fn open(idx: u32, file: &str) -> JournalEvent {
+        JournalEvent::SegmentOpen {
+            seg: format!("s{idx}"),
+            track_id: format!("screen-{idx}"),
+            start_rec_ns: i64::from(idx) * 1_000_000_000,
+            file: file.to_string(),
+            via: Via::OwnChooser,
+            reason: StartReason::RecordStart,
+            source: SourceDescriptor::Display {
+                display_id: "1".to_string(),
+                display_name: None,
+                scale: 1.0,
+                frame_pt: None,
+            },
+            frame_px: SizePx { w: 64, h: 36 },
+            content_px: RectPx {
+                x: 0,
+                y: 0,
+                w: 64,
+                h: 36,
+            },
+        }
+    }
+
+    #[test]
+    fn journal_files_outside_the_project_are_never_probed() {
+        let dir = Path::new("/nowhere/2026-11-19 10.00.00 Test.sc");
+        let journal = JournalRead {
+            events: vec![
+                JournalEvent::Start {
+                    start_host_ns: 1_000,
+                    clock: ClockKind::MachHost,
+                    fps_requested: 30,
+                    resolution: "native".to_string(),
+                    system_audio: SystemAudioMode::Off,
+                },
+                open(0, "tracks/screen-000.sctrk"),
+                open(1, "../../elsewhere/secret.mov"),
+                open(2, "/etc/hosts"),
+                JournalEvent::SegmentPrepare {
+                    seg: "s3".to_string(),
+                    file: "/etc/passwd".to_string(),
+                    host_ns: 2_000,
+                },
+            ],
+            torn_tail: false,
+            unknown_lines: 0,
+        };
+        let probes = Probes::default();
+        let out = rebuild(dir, None, &journal, &probes).expect("rebuilt");
+
+        let seen = probes.0.lock().expect("probes").clone();
+        assert_eq!(seen, vec![dir.join("tracks/screen-000.sctrk")]);
+        assert_eq!(out.project.state, ProjectState::Damaged);
+        assert_eq!(out.dropped_segments, vec!["s1", "s2"]);
+        let files: Vec<&str> = out
+            .project
+            .recording
+            .tracks
+            .iter()
+            .map(|t| t.file.as_str())
+            .collect();
+        assert_eq!(files, vec!["tracks/screen-000.sctrk"]);
+        for seg in ["s1", "s2"] {
+            assert!(
+                out.notes
+                    .iter()
+                    .any(|m| m.starts_with(&format!("segment {seg}: track file"))
+                        && m.contains("not inside the project folder")),
+                "{:?}",
+                out.notes
+            );
+        }
+        assert!(
+            out.notes
+                .iter()
+                .any(|m| m.contains("s3") && m.contains("not a file inside the project folder")),
+            "{:?}",
+            out.notes
+        );
+    }
 }

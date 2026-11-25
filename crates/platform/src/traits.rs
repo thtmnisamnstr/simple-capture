@@ -100,6 +100,10 @@ pub trait CameraSource: Send + Sync {
         limit: CameraLimit,
         sink: Arc<dyn FrameSink>,
     ) -> Result<Box<dyn DeviceStream>>;
+    /// The system's camera effects panel (macOS Video Effects); main-queue hop.
+    fn show_video_effects(&self) -> Result<()> {
+        Err(crate::Error::Unsupported("camera video effects"))
+    }
 }
 
 pub trait SourcePicker: Send + Sync {
@@ -152,6 +156,25 @@ pub trait Decoder: Send + Sync {
     fn open_video(&self, path: &Path) -> Result<Box<dyn VideoReader>>;
     fn open_audio(&self, path: &Path, rate: u32, channels: u16) -> Result<Box<dyn AudioReader>>;
     fn probe(&self, path: &Path) -> Result<TrackProbe>;
+
+    /// A reader whose first frame is at or before `from_file_ns` (the frame shown then, when
+    /// there is one), so a seek decodes from the nearest keyframe instead of the file start.
+    fn open_video_at(&self, path: &Path, from_file_ns: i64) -> Result<Box<dyn VideoReader>> {
+        let _ = from_file_ns;
+        self.open_video(path)
+    }
+
+    /// A reader starting at or before `from_file_ns`; `first_sample_file_ns` says where.
+    fn open_audio_at(
+        &self,
+        path: &Path,
+        rate: u32,
+        channels: u16,
+        from_file_ns: i64,
+    ) -> Result<Box<dyn AudioReader>> {
+        let _ = from_file_ns;
+        self.open_audio(path, rate, channels)
+    }
 }
 
 pub trait Permissions: Send + Sync {
@@ -178,10 +201,36 @@ pub trait Desktop: Send + Sync {
     fn reveal(&self, path: &Path) -> Result<()>;
     /// PNG/JPEG.
     fn choose_image(&self, done: Box<dyn FnOnce(Option<PathBuf>) + Send>);
+    /// The system eyedropper: a colour from anywhere on screen (sRGB, straight alpha), or `None`
+    /// when cancelled or not available.
+    fn pick_color(&self, done: Box<dyn FnOnce(Option<[f64; 4]>) + Send>) {
+        done(None);
+    }
+    fn choose_folder(&self, done: Box<dyn FnOnce(Option<PathBuf>) + Send>) {
+        done(None);
+    }
+    /// Puts the file on the clipboard, as a file (paste into Finder, Mail or a chat app).
+    fn copy_file(&self, path: &Path) -> Result<()> {
+        let _ = path;
+        Err(crate::Error::Unsupported("copy a file to the clipboard"))
+    }
+    /// Moves a file or folder to the Trash (Recycle Bin), where the person can restore it.
+    fn trash(&self, path: &Path) -> Result<()> {
+        let _ = path;
+        Err(crate::Error::Unsupported("move to the Trash"))
+    }
+    /// Where the pointer is (global points, top-left of the main display) and which buttons are
+    /// down (bit 0 left, bit 1 right). Never needs a permission.
+    fn pointer(&self) -> Result<Pointer> {
+        Err(crate::Error::Unsupported("read the pointer"))
+    }
 }
 
-/// M3; kept for ADR-007.
-pub trait PreviewSink: Send + Sync {}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Pointer {
+    pub at: sc_geometry::PointF,
+    pub buttons: u8,
+}
 
 pub trait Platform: Send + Sync {
     fn name(&self) -> &'static str;
@@ -195,6 +244,11 @@ pub trait Platform: Send + Sync {
     fn system_audio(&self) -> &dyn SystemAudioSource;
     fn mic(&self) -> &dyn AudioSource;
     fn camera(&self) -> &dyn CameraSource;
+    /// Screens of plugged-in devices (iPhone, iPad), opened like cameras but kept apart from
+    /// the corner camera so both can run at once.
+    fn device_screens(&self) -> &dyn CameraSource {
+        self.camera()
+    }
     fn picker(&self) -> &dyn SourcePicker;
     fn writers(&self) -> Arc<dyn WriterFactory>;
     fn decoder(&self) -> Arc<dyn Decoder>;

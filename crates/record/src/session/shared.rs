@@ -26,8 +26,15 @@ pub(crate) enum Ctl {
     Discard(Sender<Result<()>>),
     Event(SourceEvent),
     Cut(Opened),
-    OpenFailed { tag: StreamTag, error: String },
+    OpenFailed {
+        tag: StreamTag,
+        error: String,
+    },
     DiskStop(u64),
+    Pause(Sender<Result<()>>),
+    Resume(Sender<Result<()>>),
+    /// The key and the host time it was sent at.
+    CameraKey(sc_core::project::CameraKey, i64),
 }
 
 pub(crate) struct Recorder {
@@ -161,6 +168,11 @@ pub(crate) struct Shared {
     pub tuning: Tuning,
     pub ctl: Sender<Ctl>,
     pub screen_stats: Mutex<Option<Arc<TrackStats>>>,
+    /// While set, the sink drops every frame and buffer; the writers see a gap, which the
+    /// finished project's clips leave out.
+    pub paused: std::sync::atomic::AtomicBool,
+    /// Counts resumes, so a track can tell the silence that a pause left from a real gap.
+    pub resumes: AtomicU64,
 }
 
 impl Shared {

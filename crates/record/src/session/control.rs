@@ -13,9 +13,9 @@ use sc_core::journal::{
     DeviceChange, DeviceKindJ, JournalEvent, JournalWriter, StopReason, SwitchNext,
 };
 use sc_core::project::{
-    AudioInfo, AudioMixEntry, Clip, ColorInfo, DeviceInfo, Edl, EndReason, Extra, ProjectState,
-    ProjectV1, ScreenSegment, Speed, StartReason, Track, TrackHealth, TrackKind, Via, VideoInfo,
-    copy_background_asset,
+    AudioInfo, AudioMixEntry, CameraKey, ColorInfo, DeviceInfo, Easing, EndReason, Extra,
+    PauseRecord, ProjectState, ProjectV1, ScreenSegment, StartReason, Track, TrackHealth,
+    TrackKind, Via, VideoInfo, copy_background_asset,
 };
 use sc_core::sessionlog::{Level, SessionLog};
 use sc_geometry::{Aspect, Ratio, SizePx};
@@ -76,6 +76,8 @@ struct Switch {
     stage: Stage,
     stream: Option<Box<dyn ScreenStream>>,
     error: String,
+    /// A new section for the same source after it changed size, not the user's switch.
+    resize: bool,
 }
 
 struct Cont {
@@ -101,14 +103,95 @@ struct Control {
     screen: Option<Live>,
     cur: Option<Cur>,
     active: Option<(StreamTag, String)>,
+    /// Frame size of the active section, to tell a real resize from a no-op.
+    active_px: Option<SizePx>,
+    /// When a resized source gets its new section, once its size has held still.
+    resized_at: Option<Instant>,
     switch: Option<Switch>,
     queued: Option<(SourceSpec, Via)>,
     cont: Vec<Cont>,
     sys_stream: Option<Box<dyn SystemAudioStream>>,
     watch: Option<Box<dyn DeviceStream>>,
     health: Option<(Sender<()>, JoinHandle<()>)>,
+    pointer: Option<super::pointer::PointerLog>,
     results: Vec<TrackResult>,
     finished: Option<std::result::Result<StopSummary, String>>,
+    camera_keys: Vec<CameraKey>,
+    pauses: Vec<(i64, Option<i64>)>,
+    pending_keys: Vec<CameraKey>,
+    pending_since: Option<Instant>,
+}
+
+/// Camera keys reach the journal in batches: every append fsyncs, and a drag sends up to 30 keys
+/// a second. A crash loses at most this much camera motion.
+const KEY_FLUSH: Duration = Duration::from_millis(200);
+/// Where a section's picture was on screen when it started, in global points, so a click there
+/// can be found in the picture.
+fn screen_rect(p: &dyn Platform, src: &SourceDescriptor) -> Option<sc_geometry::RectPt> {
+    let display = |id: &str| {
+        p.screen()
+            .displays()
+            .ok()?
+            .into_iter()
+            .find(|d| d.id.0 == id)
+            .map(|d| d.frame_pt)
+    };
+    let offset = |base: sc_geometry::RectPt, r: sc_geometry::RectPt| sc_geometry::RectPt {
+        x: base.x + r.x,
+        y: base.y + r.y,
+        w: r.w,
+        h: r.h,
+    };
+    match src {
+        SourceDescriptor::Display {
+            display_id,
+            frame_pt,
+            ..
+        } => frame_pt.or_else(|| display(display_id)),
+        SourceDescriptor::Region {
+            display_id,
+            region_pt,
+            ..
+        } => display(display_id).map(|d| offset(d, *region_pt)),
+        SourceDescriptor::Application {
+            display_id,
+            crop_pt,
+            ..
+        } => {
+            let d = display(display_id)?;
+            Some(crop_pt.map_or(d, |c| offset(d, c)))
+        }
+        SourceDescriptor::Window { window_id, .. } => p
+            .screen()
+            .list(&[])
+            .ok()?
+            .windows
+            .into_iter()
+            .find(|w| w.id.0 == *window_id)
+            .map(|w| w.frame_pt),
+        SourceDescriptor::Camera { .. } => None,
+    }
+}
+
+/// How long a source's new size must hold before it gets its own section.
+const RESIZE_SETTLE: Duration = Duration::from_millis(600);
+
+/// The content is now `w` × `h` frame pixels: more than 2% off the section's frame either way.
+fn changed(frame: SizePx, w: f64, h: f64) -> bool {
+    let off = |a: u32, b: f64| (f64::from(a) - b).abs() > f64::from(a) * 0.02;
+    w.is_finite() && h.is_finite() && w >= 2.0 && h >= 2.0 && (off(frame.w, w) || off(frame.h, h))
+}
+/// Drags send keys about every 33 ms; a key after a longer pause is a jump, not motion.
+const KEY_MOTION_GAP_NS: i64 = 100_000_000;
+
+/// A key that follows the previous one within a drag keeps its easing (the motion is replayed);
+/// one after a pause holds the old placement until it, then jumps.
+fn key_easing(sent: Easing, gap_ns: i64) -> Easing {
+    if sent == Easing::Linear && gap_ns > KEY_MOTION_GAP_NS {
+        Easing::Step
+    } else {
+        sent
+    }
 }
 
 fn check_permission(p: &dyn Platform, k: PermissionKind) -> Result<()> {
@@ -121,6 +204,16 @@ fn check_permission(p: &dyn Platform, k: PermissionKind) -> Result<()> {
 fn container_codec(ext: &str, video: bool) -> (String, String) {
     if ext == "sctrk" {
         ("sctrk".into(), "sctrk".into())
+    } else if ext == "mp4" {
+        (
+            "mp4_fragmented".into(),
+            if video { "h264" } else { "aac" }.into(),
+        )
+    } else if ext == "mkv" {
+        (
+            "matroska".into(),
+            if video { "hevc_or_h264" } else { "aac" }.into(),
+        )
     } else if video {
         ("mov_fragmented".into(), "hevc".into())
     } else {
@@ -255,6 +348,8 @@ pub(crate) fn start(
         tuning: req.tuning.clone(),
         ctl: ctl_tx,
         screen_stats: Mutex::new(None),
+        paused: std::sync::atomic::AtomicBool::new(false),
+        resumes: std::sync::atomic::AtomicU64::new(0),
     });
     sh.set_state(SessionState::Preparing);
     let vspec = VideoWriterSpec {
@@ -286,14 +381,21 @@ pub(crate) fn start(
         screen: None,
         cur: None,
         active: None,
+        active_px: None,
+        resized_at: None,
         switch: None,
         queued: None,
         cont: Vec::new(),
         sys_stream: None,
         watch: None,
         health: None,
+        pointer: None,
         results: Vec::new(),
         finished: None,
+        camera_keys: Vec::new(),
+        pauses: Vec::new(),
+        pending_keys: Vec::new(),
+        pending_since: None,
     };
     if let Err(e) = c.begin() {
         sh.rec.log(Level::Error, &format!("start failed: {e}"));
@@ -385,7 +487,7 @@ impl Control {
         }
         let cfg = self.cfg();
         let spec = self.req.source.clone();
-        let (desc, size) = platform.screen().describe(&spec, &cfg)?;
+        let (desc, size) = super::sources::describe(&*platform, &spec, &cfg)?;
         let tag = self.tag();
         let (seg, track_id, file) = self.seg_names();
         self.router(RouterCmd::Prepare(Box::new(Prepared {
@@ -400,7 +502,7 @@ impl Control {
             source: desc,
             closes_old_with: EndReason::RecordStop,
         })));
-        let stream = platform.screen().start(tag, &spec, &cfg, sink.clone())?;
+        let stream = super::sources::start(&*platform, tag, &spec, &cfg, sink.clone())?;
         self.screen = Some(Live { tag, stream });
         self.cur = Some(Cur {
             spec,
@@ -440,7 +542,12 @@ impl Control {
         let want_cam = self.req.camera.is_some();
         let want_mic = self.req.mic.is_some();
         let want_sys = self.sys_stream.is_some();
-        let timeout_ms = self.req.tuning.start_timeout_ms;
+        let device = matches!(self.req.source, SourceSpec::Device { .. });
+        let timeout_ms = if device {
+            self.req.tuning.start_timeout_ms.max(10_000)
+        } else {
+            self.req.tuning.start_timeout_ms
+        };
         let firsts = self
             .sink
             .wait_firsts(
@@ -465,6 +572,14 @@ impl Control {
                 }
                 if want_sys && f.sys.is_none() {
                     missing.push("system audio");
+                }
+                if device && !f.screen {
+                    return Error::Platform(sc_platform::Error::Timeout(
+                        "the iPhone or iPad sent no picture. Unlock it and keep it unlocked; if it \
+                         still sends nothing (QuickTime too), restart the Mac, as macOS's iPhone \
+                         screen helper can get stuck"
+                            .into(),
+                    ));
                 }
                 Error::Platform(sc_platform::Error::Timeout(format!(
                     "no first sample from {} within {timeout_ms} ms",
@@ -514,6 +629,15 @@ impl Control {
                 extra: Extra::new(),
             });
             self.project.recording.tracks.push(track);
+            if kind == TrackKind::Camera
+                && let Some(mut k) = self.req.camera_key.clone()
+            {
+                k.t_rec_ns = 0;
+                self.camera_keys.push(k.clone());
+                self.sh
+                    .rec
+                    .journal(&JournalEvent::CameraKeys { keys: vec![k] });
+            }
             let c = self.spawn_track(track_id, kind, writer)?;
             self.cont.push(Cont {
                 device: Some((dkind, id, name)),
@@ -537,8 +661,24 @@ impl Control {
             let c = self.spawn_track("system_audio", TrackKind::SystemAudio, writer)?;
             self.cont.push(c);
         }
+        if device {
+            let file = format!("tracks/device_audio.{}", self.ext);
+            let (rate, ch) = firsts.dev.unwrap_or((48_000, 2));
+            let writer =
+                writers.audio(&self.sh.dir.join(&file), &audio_spec(rate, ch, &self.req))?;
+            let t = self.track(
+                "device_audio",
+                TrackKind::DeviceAudio,
+                &file,
+                None,
+                Some((rate, ch)),
+            );
+            self.project.recording.tracks.push(t);
+            let c = self.spawn_track("device_audio", TrackKind::DeviceAudio, writer)?;
+            self.cont.push(c);
+        }
         for t in &self.project.recording.tracks {
-            if matches!(t.kind, TrackKind::Mic | TrackKind::SystemAudio) {
+            if t.kind.is_audio() {
                 self.project.audio_mix.insert(
                     t.id.clone(),
                     AudioMixEntry {
@@ -572,6 +712,22 @@ impl Control {
         let h = health::spawn(self.sh.clone(), hrx)
             .map_err(|e| Error::State(format!("spawn the health thread: {e}")))?;
         self.health = Some((htx, h));
+        if self.req.click_highlight && !platform.capabilities().show_clicks {
+            self.pointer = super::pointer::PointerLog::spawn(self.sh.clone());
+            if self.pointer.is_some() {
+                self.project
+                    .recording
+                    .screen
+                    .extra
+                    .insert("own_clicks".into(), serde_json::Value::Bool(true));
+                for seg in &mut self.project.recording.screen.segments {
+                    if let Some(r) = screen_rect(&*self.sh.platform, &seg.source) {
+                        seg.extra.insert("screen_pt".into(), serde_json::json!(r));
+                    }
+                }
+                self.save();
+            }
+        }
         self.sh.set_state(SessionState::Recording);
         Ok(())
     }
@@ -616,6 +772,7 @@ impl Control {
         let feed = match kind {
             TrackKind::Camera => &self.sink.camera,
             TrackKind::Mic => &self.sink.mic,
+            TrackKind::DeviceAudio => &self.sink.dev,
             _ => &self.sink.sys,
         };
         let video = kind == TrackKind::Camera;
@@ -652,19 +809,27 @@ impl Control {
 
     fn run(mut self) {
         loop {
-            let wait = self
+            let mut wait = self
                 .switch
                 .as_ref()
                 .map_or(Duration::from_millis(250), |s| {
                     s.deadline.saturating_duration_since(Instant::now())
                 });
+            if let Some(at) = self.resized_at {
+                wait = wait.min(at.saturating_duration_since(Instant::now()));
+            }
             match self.rx.recv_timeout(wait) {
                 Ok(m) => {
                     if self.handle(m) {
                         return;
                     }
+                    self.check_resize();
                 }
-                Err(RecvTimeoutError::Timeout) => self.check_deadline(),
+                Err(RecvTimeoutError::Timeout) => {
+                    self.flush_keys();
+                    self.check_deadline();
+                    self.check_resize();
+                }
                 Err(RecvTimeoutError::Disconnected) => {
                     let _ = self.finalize(StopReason::Quit);
                     return;
@@ -726,6 +891,49 @@ impl Control {
                     let _ = self.finalize(StopReason::Error);
                 }
             }
+            Ctl::Pause(reply) => {
+                let r = if !self.live() {
+                    Err(Error::State("the recording has ended".into()))
+                } else if self.pauses.last().is_some_and(|p| p.1.is_none()) {
+                    Ok(())
+                } else {
+                    let now = self.sh.now();
+                    self.sh
+                        .paused
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                    self.journal(JournalEvent::Pause { host_ns: now });
+                    self.pauses.push((now, None));
+                    self.sh.obs.on_notice(&Notice::Paused { paused: true });
+                    Ok(())
+                };
+                let _ = reply.send(r);
+            }
+            Ctl::Resume(reply) => {
+                let live = self.live();
+                let now = self.sh.now();
+                let r = match self.pauses.last_mut() {
+                    Some(p) if p.1.is_none() && live => {
+                        p.1 = Some(now);
+                        self.journal(JournalEvent::Resume { host_ns: now });
+                        self.sh
+                            .resumes
+                            .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                        self.sh
+                            .paused
+                            .store(false, std::sync::atomic::Ordering::SeqCst);
+                        self.sink.resume_held(now);
+                        self.sh.obs.on_notice(&Notice::Paused { paused: false });
+                        Ok(())
+                    }
+                    _ => Ok(()),
+                };
+                let _ = reply.send(r);
+            }
+            Ctl::CameraKey(k, sent) => {
+                if self.live() {
+                    self.on_camera_key(k, sent);
+                }
+            }
             Ctl::DiskStop(free) => {
                 if self.live() {
                     self.log(
@@ -737,6 +945,34 @@ impl Control {
             }
         }
         false
+    }
+
+    fn on_camera_key(&mut self, mut k: CameraKey, sent_host: i64) {
+        if self.camera_keys.is_empty() {
+            return;
+        }
+        let last = self.camera_keys.last().map_or(0, |l| l.t_rec_ns);
+        k.t_rec_ns = (sent_host - self.sh.start_host()).max(last);
+        k.easing = key_easing(k.easing, k.t_rec_ns - last);
+        self.camera_keys.push(k.clone());
+        self.pending_keys.push(k);
+        if self
+            .pending_since
+            .get_or_insert_with(Instant::now)
+            .elapsed()
+            >= KEY_FLUSH
+        {
+            self.flush_keys();
+        }
+    }
+
+    fn flush_keys(&mut self) {
+        self.pending_since = None;
+        if self.pending_keys.is_empty() {
+            return;
+        }
+        let keys = std::mem::take(&mut self.pending_keys);
+        self.sh.rec.journal(&JournalEvent::CameraKeys { keys });
     }
 
     fn update_exclusions(&self) -> Result<()> {
@@ -859,6 +1095,13 @@ impl Control {
         t.segment_id = Some(seg.id.clone());
         t.first_sample_offset_ns = seg.start_rec_ns;
         self.project.recording.tracks.push(t);
+        self.active_px = Some(seg.frame_px);
+        let mut seg = seg;
+        if self.pointer.is_some()
+            && let Some(r) = screen_rect(&*self.sh.platform, &seg.source)
+        {
+            seg.extra.insert("screen_pt".into(), serde_json::json!(r));
+        }
         self.project.recording.screen.segments.push(seg);
         self.save();
         self.follow_app();
@@ -880,13 +1123,36 @@ impl Control {
         }
     }
 
-    fn request_switch(&mut self, spec: SourceSpec, via: Via) {
-        if self.switch.is_some() {
-            self.queued = Some((spec, via));
+    /// Starts the current source again as a new section once a resize has settled.
+    fn check_resize(&mut self) {
+        let due = self.resized_at.is_some_and(|at| Instant::now() >= at);
+        if !due || self.switch.is_some() || !self.live() {
             return;
         }
+        self.resized_at = None;
+        if let Some(c) = self.cur.as_ref() {
+            let (spec, via) = (c.spec.clone(), c.via);
+            self.log(Level::Info, "source resized: starting a new section");
+            self.request_switch_as(spec, via, true);
+        }
+    }
+
+    fn request_switch(&mut self, spec: SourceSpec, via: Via) {
+        self.request_switch_as(spec, via, false);
+    }
+
+    fn request_switch_as(&mut self, spec: SourceSpec, via: Via, resize: bool) {
+        if self.switch.is_some() {
+            if !resize {
+                self.queued = Some((spec, via));
+            }
+            return;
+        }
+        if !resize {
+            self.resized_at = None;
+        }
         let host = self.sh.now();
-        let (desc, size) = match self.platform().screen().describe(&spec, &self.cfg()) {
+        let (desc, size) = match super::sources::describe(self.platform(), &spec, &self.cfg()) {
             Ok(x) => x,
             Err(e) => {
                 let error = format!("describe the new source: {e}");
@@ -908,7 +1174,9 @@ impl Control {
             via,
         });
         hold(HoldPoint::AfterSwitchBegin);
-        self.sh.set_state(SessionState::Switching);
+        if !resize {
+            self.sh.set_state(SessionState::Switching);
+        }
         let mut sw = Switch {
             spec,
             via,
@@ -919,6 +1187,7 @@ impl Control {
             stage: Stage::First,
             stream: None,
             error: String::new(),
+            resize,
         };
         if let Err(e) = self.prepare(&mut sw) {
             let error = e.to_string();
@@ -968,9 +1237,17 @@ impl Control {
             writer: Some(writer),
             size: sw.size,
             via: sw.via,
-            reason: StartReason::UserSwitch,
+            reason: if sw.resize {
+                StartReason::SourceResized
+            } else {
+                StartReason::UserSwitch
+            },
             source: sw.desc.clone(),
-            closes_old_with: EndReason::UserSwitch,
+            closes_old_with: if sw.resize {
+                EndReason::SourceResized
+            } else {
+                EndReason::UserSwitch
+            },
         })));
         Ok(())
     }
@@ -984,12 +1261,7 @@ impl Control {
         let Some(sw) = self.switch.as_mut() else {
             return;
         };
-        match self
-            .sh
-            .platform
-            .screen()
-            .start(sw.tag, &sw.spec, &cfg, sink)
-        {
+        match super::sources::start(&*self.sh.platform, sw.tag, &sw.spec, &cfg, sink) {
             Ok(s) => {
                 sw.stream = Some(s);
                 sw.deadline = Instant::now() + timeout;
@@ -1008,8 +1280,12 @@ impl Control {
             return;
         };
         sw.error = error.clone();
+        let camera = matches!(
+            sw.spec,
+            SourceSpec::Camera { .. } | SourceSpec::Device { .. }
+        );
         match sw.stage {
-            Stage::First if self.screen.is_some() => {
+            Stage::First if self.screen.is_some() && !camera => {
                 self.journal(JournalEvent::SwitchFailed {
                     host_ns: self.sh.now(),
                     error,
@@ -1085,7 +1361,7 @@ impl Control {
         let Some(cur) = self.cur.clone() else {
             return self.lose(sw, error);
         };
-        let (desc, size) = match self.platform().screen().describe(&cur.spec, &self.cfg()) {
+        let (desc, size) = match super::sources::describe(self.platform(), &cur.spec, &self.cfg()) {
             Ok(x) => x,
             Err(e) => return self.lose(sw, format!("{error}; describe the old source: {e}")),
         };
@@ -1099,6 +1375,7 @@ impl Control {
             stage: Stage::Restore,
             stream: None,
             error,
+            resize: false,
         };
         if let Err(e) = self.prepare(&mut nsw) {
             let error = format!("{}; {e}", nsw.error);
@@ -1179,6 +1456,19 @@ impl Control {
                         content_rect_pt,
                         content_scale,
                     });
+                    let resizable = self.cur.as_ref().is_some_and(|c| {
+                        !matches!(
+                            c.spec,
+                            SourceSpec::Camera { .. } | SourceSpec::Device { .. }
+                        )
+                    });
+                    if resizable
+                        && let (Some(r), Some(k), Some(px)) =
+                            (content_rect_pt, content_scale, self.active_px)
+                        && changed(px, r.w * k, r.h * k)
+                    {
+                        self.resized_at = Some(Instant::now() + RESIZE_SETTLE);
+                    }
                 }
             }
             SourceEvent::DeviceLost { kind, device_id } => self.device_lost(kind, &device_id),
@@ -1217,6 +1507,18 @@ impl Control {
     }
 
     fn device_lost(&mut self, kind: DeviceKind, device_id: &str) {
+        let main_camera = kind == DeviceKind::Camera
+            && self.cur.as_ref().is_some_and(
+                |c| matches!(&c.spec, SourceSpec::Camera { device } | SourceSpec::Device { device } if device == device_id),
+            );
+        if main_camera && let Some(tag) = self.screen.as_ref().map(|l| l.tag) {
+            let reason = "the camera was disconnected".to_string();
+            let ev = SourceEvent::SourceLost {
+                stream: tag,
+                reason: reason.clone(),
+            };
+            self.stream_lost(tag, reason, ev);
+        }
         let Some(i) = self.cont.iter().position(|c| {
             c.device
                 .as_ref()
@@ -1293,6 +1595,9 @@ impl Control {
         for c in std::mem::take(&mut self.cont) {
             self.finish_cont(c, Some(stop_host));
         }
+        if let Some(p) = self.pointer.take() {
+            p.stop();
+        }
         if let Some((tx, j)) = self.health.take() {
             drop(tx);
             let _ = j.join();
@@ -1358,20 +1663,31 @@ impl Control {
                 0.0
             }
         });
+        self.flush_keys();
+        let keys = std::mem::take(&mut self.camera_keys);
         let p = &mut self.project;
+        if !keys.is_empty() {
+            super::set_camera_layout(p, keys);
+        }
         p.state = ProjectState::Finalized;
         p.recording.stop_host_ns = Some(stop_host);
-        p.edl = Edl {
-            clips: vec![Clip {
-                id: "c0".into(),
-                src_in_rec_ns: 0,
-                src_out_rec_ns: duration,
-                speed: Speed { num: 1, den: 1 },
-                muted: false,
+        let pauses: Vec<(i64, i64)> = self
+            .pauses
+            .iter()
+            .map(|(a, b)| (*a, b.unwrap_or(stop_host).min(stop_host)))
+            .filter(|(a, b)| b > a)
+            .collect();
+        p.recording.pauses = pauses
+            .iter()
+            .map(|(a, b)| PauseRecord {
+                start_host_ns: *a,
+                end_host_ns: *b,
                 extra: Extra::new(),
-            }],
-            extra: Extra::new(),
-        };
+            })
+            .collect();
+        let pauses_rec: Vec<(i64, i64)> =
+            pauses.iter().map(|(a, b)| (a - start, b - start)).collect();
+        p.edl = sc_core::edit::edl_between_pauses(duration, &pauses_rec);
         let saved = self.project.save(&self.sh.dir);
         self.lock.take();
         let result = match saved {
@@ -1437,6 +1753,30 @@ impl Control {
             t.health.writer_not_ready = snap.writer_not_ready;
             t.health.gaps = r.gaps.clone();
         }
+        let silent: Vec<String> = self
+            .project
+            .recording
+            .tracks
+            .iter()
+            .filter(|t| t.kind == TrackKind::DeviceAudio)
+            .filter(|t| {
+                self.results
+                    .iter()
+                    .any(|r| r.track_id == t.id && r.first_host.is_none())
+            })
+            .map(|t| t.id.clone())
+            .collect();
+        for id in silent {
+            self.log(
+                Level::Info,
+                "the device sent no sound; its audio track is left out",
+            );
+            if let Some(t) = self.project.recording.tracks.iter().find(|t| t.id == id) {
+                let _ = std::fs::remove_file(self.sh.dir.join(&t.file));
+            }
+            self.project.recording.tracks.retain(|t| t.id != id);
+            self.project.audio_mix.remove(&id);
+        }
     }
 }
 
@@ -1444,7 +1784,7 @@ fn audio_spec(rate: u32, channels: u16, req: &RecordRequest) -> AudioWriterSpec 
     AudioWriterSpec {
         sample_rate: rate,
         channels,
-        bitrate: 96_000 * u32::from(channels.clamp(1, 2)),
+        bitrate: AudioWriterSpec::aac_bitrate(rate, channels),
         fragment_interval_s: req.tuning.fragment_interval_s,
     }
 }

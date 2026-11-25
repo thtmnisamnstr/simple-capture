@@ -123,6 +123,18 @@ impl std::fmt::Debug for HelperProcess {
     }
 }
 
+/// Makes `cmd` start without a console window of its own (`CREATE_NO_WINDOW`), so a console
+/// helper launched from the Windows GUI build never flashes one. Does nothing on other platforms.
+pub fn hide_console(cmd: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 fn spawn_error(program: &Path, e: &std::io::Error) -> Error {
     let msg = match e.kind() {
         std::io::ErrorKind::NotFound => format!("helper not found: {}", program.display()),
@@ -149,12 +161,7 @@ impl HelperProcess {
             use std::os::unix::process::CommandExt;
             cmd.process_group(0);
         }
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
-        }
+        hide_console(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| spawn_error(&spec.program, &e))?;
         let pid = child.id();
         tracing::info!(pid, program = %spec.program.display(), args = ?spec.args, "helper spawned");
@@ -287,6 +294,12 @@ impl HelperProcess {
             self.program.display(),
             self.shared.tail().join(" | ")
         ))
+    }
+
+    /// Whether a `write_frame` now would return without waiting.
+    pub fn has_room(&self) -> bool {
+        let q = lock(&self.shared.q);
+        q.items.len() + q.reserved < self.shared.depth
     }
 
     pub fn progress(&self) -> Option<Progress> {

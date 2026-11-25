@@ -156,11 +156,7 @@
   async function cancel() {
     rect = null;
     drag = null;
-    try {
-      await emitEvent('region-cancelled', { purpose });
-    } finally {
-      await hideSelf();
-    }
+    await hideSelf();
   }
 
   function onkeydown(e: KeyboardEvent) {
@@ -278,11 +274,10 @@
     white-space: nowrap;
     max-width: calc(100vw - 20px);
     padding: 6px 8px;
-    border-radius: 9px;
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    background: var(--window);
+    color: var(--label);
+    box-shadow: var(--shadow-pop);
     cursor: default;
   }
   .toolbar label {
@@ -299,17 +294,23 @@
     top: 50%;
     transform: translate(-50%, -50%);
     padding: 10px 16px;
-    border-radius: 10px;
-    background: rgba(30, 30, 32, 0.85);
+    border-radius: 12px;
+    background: rgba(30, 30, 32, 0.82);
+    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+    backdrop-filter: blur(20px) saturate(1.6);
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.15), 0 8px 30px rgba(0, 0, 0, 0.35);
     color: #fff;
-    font-size: 14px;
+    font-size: 13px;
+    white-space: nowrap;
     pointer-events: none;
   }
   kbd {
     font: inherit;
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 4px;
-    padding: 0 4px;
+    font-size: 12px;
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.3);
   }
   .err {
     position: absolute;

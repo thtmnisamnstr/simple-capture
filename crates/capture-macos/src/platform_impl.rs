@@ -33,6 +33,7 @@ pub(crate) struct MacPlatform {
 
 impl MacPlatform {
     pub(crate) fn new() -> MacPlatform {
+        av::allow_screen_devices();
         MacPlatform {
             screen: sck::MacScreenSource::new(),
             system_audio: sck::MacSystemAudio::new(),

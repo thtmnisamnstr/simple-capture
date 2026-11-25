@@ -1,6 +1,7 @@
 // Mock backend for the UI outside Tauri (Vite dev server, Browser pane, node tests).
 // Browser scenarios via the query string, e.g. `?screen=denied`, `?state=recording`,
-// `?notice=source_lost`, `?saved=1`.
+// `?notice=source_lost`, `?saved=1`, `?camera=1` (a camera chosen). Exports offer what the macOS
+// helpers encode; `?helpers=full` offers the Windows and Linux set (x264, x265, gifski).
 
 import type {
   Background,
@@ -78,13 +79,31 @@ const devices: DevicesDto = {
 let settings: RecorderSettings = {
   source: { kind: 'display', display_id: '1' },
   canvas: { aspect: 'original', background: { kind: 'solid', color: [0.07, 0.07, 0.08, 1] }, background_image: null },
-  camera: null,
+  camera: q.get('camera') ? 'cam-1' : null,
   mic: 'mic-1',
   system_audio: 'off',
   fps: 30,
   resolution: 'native',
   cursor: true,
   click_highlight: false,
+  camera_key: {
+    t_rec_ns: 0,
+    visible: true,
+    shape: 'circle',
+    corner_radius: 0,
+    center_norm: { x: 0.91, y: 0.84 },
+    size_norm: 0.26,
+    zoom: 1,
+    pan_norm: { x: 0, y: 0 },
+    mirror: false,
+    border: null,
+    shadow: null,
+    easing: 'linear',
+  },
+  preview_shown: true,
+  countdown_s: 3,
+  delete_raw_after_export: false,
+  debug_overlay: false,
 };
 
 const permissions: PermissionsDto = {
@@ -311,7 +330,263 @@ const handlers: Record<string, Handler> = {
   },
   reveal: () => null,
   recovery_report: () => recovery,
+  camera_preview: () => null,
+  preview_state: () => ({ shown: false, key: settings.camera_key, frame: 0, camera_open: null }),
+  camera_key_live: () => null,
+  show_video_effects: () => null,
+  bar_drag: () => null,
+  editor: (a) => mockEditor(String(a.action ?? 'state'), a),
+  app: (a) => mockApp(String(a.action ?? 'about'), a),
 };
+
+const S = 1_000_000_000;
+const LIB_ROOT = '/Users/me/Movies/Simple Capture';
+const libItem = (stamp: string, title: string, mins: number, mb: number, camera: boolean, state = 'finalized') => ({
+  dir: `${LIB_ROOT}/${stamp} ${title}.sc`,
+  title,
+  created_at: `${stamp.slice(0, 10)}T${stamp.slice(11).replace(/\./g, ':')}-08:00`,
+  state,
+  duration_ns: mins * 60 * S,
+  edited_ns: 0,
+  bytes: mb * 1_000_000,
+  has_camera: camera,
+  modified_s: 0,
+});
+const library = [
+  libItem('2026-11-21 10.00.00', 'Recording', 1.25, 182, true),
+  libItem('2026-11-20 16.12.40', 'Q4 roadmap walkthrough', 7.5, 911, true),
+  libItem('2026-11-19 09.03.11', 'Bug repro: export stalls', 0.6, 64, false),
+  {
+    ...libItem('2026-11-12 14.44.02', 'Onboarding demo', 3.2, 402, true, 'recovered'),
+    recovery: { dropped: [{ track_id: 'camera', reason: 'empty file' }], notes: ['segment s1 ended at its last readable frame'] },
+  },
+];
+const folderOf = (a: Record<string, unknown>) => library.find((i) => i.dir.endsWith(`/${String(a.name)}`));
+
+const SHORTCUT_ACTIONS: [string, string, string][] = [
+  ['record', 'Start or stop recording', 'Alt+Shift+KeyR'],
+  ['pause', 'Pause or resume', 'Alt+Shift+KeyP'],
+  ['switch', 'Switch source', 'Alt+Shift+KeyS'],
+  ['camera', 'Show or hide the camera', 'Alt+Shift+KeyC'],
+  ['open', 'Open the recorder', 'Alt+Shift+KeyO'],
+];
+const mockShortcuts: Record<string, string> = Object.fromEntries(SHORTCUT_ACTIONS.map(([id, , k]) => [id, k]));
+function shortcutRows() {
+  const seen = new Map<string, string>();
+  return SHORTCUT_ACTIONS.map(([id, label, def]) => {
+    const keys = mockShortcuts[id];
+    const other = keys ? seen.get(keys) : undefined;
+    if (keys && !other) seen.set(keys, label);
+    return { id, label, keys, default: def, error: other ? `Also used for “${other}”` : null };
+  });
+}
+
+function mockApp(action: string, a: Record<string, unknown> = {}): unknown {
+  switch (action) {
+    case 'about':
+      return {
+        version: '0.1.0',
+        os: 'macos',
+        arch: 'aarch64',
+        licenses: [
+          { title: 'Simple Capture', license: 'MIT', note: 'This app.', files: [{ name: 'LICENSE', path: '/LICENSE', html: false }] },
+        ],
+      };
+    case 'license_text':
+      return 'MIT License';
+    case 'shortcuts':
+    case 'shortcuts_pause':
+      return shortcutRows();
+    case 'shortcut_set': {
+      const id = String(a.id);
+      const keys = String(a.keys ?? '');
+      if (keys && !/(Alt|Control|Super)\+/.test(keys)) throw new Error('Add ⌘, ⌃ or ⌥ so typing doesn’t trigger it');
+      mockShortcuts[id] = keys;
+      return shortcutRows();
+    }
+    case 'library':
+      return { root: LIB_ROOT, free_bytes: 212_000_000_000, items: library.map((i) => ({ ...i })) };
+    case 'library_item':
+      return folderOf(a) ?? null;
+    case 'library_rename': {
+      const it = folderOf(a);
+      const title = String(a.title ?? '').trim();
+      if (!it) throw new Error('no such recording in the library');
+      if (!title) throw new Error('A recording needs a name.');
+      it.title = title;
+      it.dir = `${LIB_ROOT}/${it.dir.split('/').pop()!.slice(0, 19)} ${title}.sc`;
+      return { dir: it.dir };
+    }
+    case 'library_trash': {
+      const i = library.findIndex((x) => x.dir.endsWith(`/${String(a.name)}`));
+      if (i >= 0) library.splice(i, 1);
+      return null;
+    }
+    default:
+      return null;
+  }
+}
+
+const mockDoc = {
+  edl: {
+    clips: [
+      { id: 'c1', src_in_rec_ns: 0, src_out_rec_ns: 24 * S, speed: { num: 1, den: 1 }, muted: false },
+      { id: 'c2', src_in_rec_ns: 30 * S, src_out_rec_ns: 50 * S, speed: { num: 2, den: 1 }, muted: false },
+      { id: 'c3', src_in_rec_ns: 52 * S, src_out_rec_ns: 75 * S, speed: { num: 1, den: 1 }, muted: true },
+    ],
+  },
+  text: [
+    {
+      id: 't1',
+      start_tl_ns: 2 * S,
+      end_tl_ns: 8 * S,
+      layer: 0,
+      content: 'Welcome to the demo',
+      style: {
+        font_family: 'Montserrat',
+        size_1080: 72,
+        weight: 900,
+        italic: false,
+        uppercase: false,
+        align: 'center',
+        line_height: 1.15,
+        letter_spacing: 0,
+        opacity: 1,
+        fill: { solid: [1, 1, 1, 1] },
+        outline: { width_1080: 6, color: [0, 0, 0, 1] },
+      },
+      transform: { center_norm: { x: 0.5, y: 0.78 }, scale: 1, rotation_deg: 0 },
+      anim: { in: { kind: 'pop', duration_s: 0.35, easing: 'ease_out' } },
+    },
+  ],
+  camera_layout: { overlays: [{ id: 'cam', track_id: 'camera', keyframes: [{ ...settings.camera_key, t_rec_ns: 0 }, { ...settings.camera_key, t_rec_ns: 40 * S }] }] },
+  audio_mix: { mic: { gain_db: -3, muted: false } },
+  output: { canvas: { aspect: '16:9', ratio: { num: 16, den: 9 }, fit: 'contain', background: { kind: 'solid', color: [0.07, 0.07, 0.08, 1] } } },
+};
+
+let editorTitle = 'Recording';
+let mockRevision = 3;
+
+function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
+  if (action === 'silences') {
+    const t = typeof a.threshold_db === 'number' ? a.threshold_db : -44;
+    const min = typeof a.min_ms === 'number' ? a.min_ms : 1000;
+    const all: [number, number][] = [
+      [0, 1.4 * S],
+      [9.2 * S, 10.6 * S],
+      [21 * S, 23.5 * S],
+      [31 * S, 31.8 * S],
+      [44 * S, 47 * S],
+    ];
+    const ranges = all.filter(([x, y]) => y - x >= (min / 1000) * S * (1 + (t + 44) / 30));
+    return { ranges, removed_ns: ranges.reduce((n, [x, y]) => n + y - x, 0), duration_ns: 57 * S, threshold_db: t, suggested_db: -44 };
+  }
+  if (action === 'rename') {
+    const t = String(a.title ?? '').trim();
+    if (!t) throw new Error('A recording needs a name.');
+    editorTitle = t;
+    return '/Users/me/Movies/Simple Capture/2026-11-21 10.00.00 Recording.sc';
+  }
+  if (action === 'export_options') {
+    const ok = { best: true, fast: true };
+    return {
+      store: { last_format: 'mp4', per_format: {}, presets: [{ name: 'Web 720p', settings: { format: 'mp4' } }] },
+      available:
+        q.get('helpers') === 'full'
+          ? { video: { h264: ok, hevc: ok, av1: { best: true, fast: false }, vp9: { best: true, fast: false }, vp8: { best: true, fast: false }, prores: ok }, gifski: true }
+          : { video: { h264: { best: false, fast: true }, hevc: { best: false, fast: true }, av1: { best: true, fast: false }, vp9: { best: true, fast: false }, vp8: { best: true, fast: false }, prores: ok }, gifski: false },
+      recording_fps: 30,
+      reference: { w: 3024, h: 1964 },
+      ratio: [16, 9],
+      default_dir: '/Users/me/Movies/Simple Capture',
+    };
+  }
+  if (action === 'export_estimate') {
+    return {
+      canvas: { w: 3492, h: 1964 },
+      fps: 30,
+      frames: 1710,
+      duration_ns: 57 * S,
+      file: '/Users/me/Movies/Simple Capture/2026-11-21 10.00.00 Recording.mp4',
+      bytes_low: 48_000_000,
+      bytes_high: 172_000_000,
+      seconds: 26,
+      audio: true,
+      less_compatible: null,
+      too_large_for_fast: false,
+    };
+  }
+  if (action === 'fonts') {
+    const face = (file: string, lo: number, hi: number) => ({ file, italic: false, weights: [lo, hi] });
+    return {
+      bundled: [
+        { name: 'Inter', kind: 'Modern', default_weight: 700, weights: [100, 900], static_weights: [100, 900], italic: true, variable: true, faces: [face('Inter[opsz,wght].ttf', 100, 900)] },
+        { name: 'Montserrat', kind: 'Geometric', default_weight: 800, weights: [100, 900], static_weights: [100, 900], italic: true, variable: true, faces: [face('Montserrat[wght].ttf', 100, 900)] },
+        { name: 'Bebas Neue', kind: 'Poster', default_weight: 400, weights: [400, 400], static_weights: [400], italic: false, variable: false, faces: [face('BebasNeue-Regular.ttf', 400, 400)] },
+      ],
+      system: ['Helvetica Neue', 'Georgia'],
+    };
+  }
+  if (action === 'state' || action === 'open') {
+    return {
+      project_dir: '/Users/me/Movies/Simple Capture/2026-11-21 10.00.00 Recording.sc',
+      title: editorTitle,
+      rec_len_ns: 75 * S,
+      fps: 30,
+      tracks: [
+        { id: 'screen', kind: 'screen' },
+        { id: 'camera', kind: 'camera' },
+        { id: 'mic', kind: 'mic' },
+        { id: 'system_audio', kind: 'system_audio' },
+      ],
+      segments: [{ id: 's1', start_rec_ns: 0, end_rec_ns: 75 * S }],
+      doc: mockDoc,
+      revision: 3,
+      can_undo: true,
+      can_redo: false,
+      playhead_tl_ns: 12 * S,
+      playing: false,
+      clipboard_ns: 0,
+    };
+  }
+  if (action === 'play' || action === 'pause') return { playhead_tl_ns: 12 * S, playing: action === 'play' };
+  if (action === 'rect' && a.rect && typeof a.rect === 'object') {
+    const r = a.rect as { x: number; y: number; w: number; h: number };
+    const f0 = containFit(r, { w: 16, h: 9 });
+    const fit = { x: r.x + f0.x, y: r.y + f0.y, w: f0.w, h: f0.h };
+    busEmit('editor-frame', {
+      text: [],
+      native: false,
+      canvas_px: { w: 1920, h: 1080 },
+      rect: fit,
+      camera: null,
+      screen: { x: fit.w * 0.05, y: fit.h * 0.05, w: fit.w * 0.9, h: fit.h * 0.9 },
+      rec_ns: 12 * S,
+    });
+    return null;
+  }
+  if (action === 'edit' && a.op && typeof a.op === 'object') {
+    const op = JSON.parse(JSON.stringify(a.op)) as { op: string; item?: { id: string }; ids?: string[] };
+    const list = (mockDoc as { redactions?: { id: string }[] }).redactions ?? [];
+    if (op.op === 'upsert_redaction' && op.item) {
+      const i = list.findIndex((r) => r.id === op.item!.id);
+      if (i >= 0) list[i] = op.item;
+      else list.push(op.item);
+    }
+    if (op.op === 'delete_redactions') list.splice(0, list.length, ...list.filter((r) => !op.ids?.includes(r.id)));
+    const texts = (mockDoc as { text: { id: string }[] }).text;
+    if (op.op === 'upsert_text' && op.item) {
+      const i = texts.findIndex((t) => t.id === op.item!.id);
+      if (i >= 0) texts[i] = op.item;
+      else texts.push(op.item);
+    }
+    if (op.op === 'delete_text') texts.splice(0, texts.length, ...texts.filter((t) => !op.ids?.includes(t.id)));
+    (mockDoc as { redactions?: unknown[] }).redactions = list;
+    mockRevision += 1;
+    return { doc: JSON.parse(JSON.stringify(mockDoc)), revision: mockRevision, can_undo: true, can_redo: false };
+  }
+  return { revision: 3 };
+}
 
 export const MOCK_COMMANDS = Object.keys(handlers);
 

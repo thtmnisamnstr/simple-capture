@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use sc_core::project::{Background, Rgba};
+use sc_core::project::{Background, CameraKey, Fit, Rgba};
 use sc_geometry::Aspect;
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,13 @@ pub struct CanvasDto {
     pub background: Background,
     #[serde(default)]
     pub background_image: Option<String>,
+    /// Fill crops the main picture to the frame's shape instead of fitting it inside.
+    #[serde(default = "contain")]
+    pub fit: Fit,
+}
+
+fn contain() -> Fit {
+    Fit::Contain
 }
 
 impl Default for CanvasDto {
@@ -25,6 +32,7 @@ impl Default for CanvasDto {
                 color: Rgba([0.07, 0.07, 0.08, 1.0]),
             },
             background_image: None,
+            fit: Fit::Contain,
         }
     }
 }
@@ -47,18 +55,77 @@ pub enum ResolutionDto {
     OneX,
 }
 
+/// What opens when a recording is saved (SPEC Recording flow).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AfterRecording {
+    #[default]
+    Editor,
+    Saved,
+    /// Export with the settings the export sheet used last, then show the Saved window.
+    QuickExport,
+}
+
+/// The camera format to aim for; Auto is the best format up to 1080p at 30 fps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CameraQuality {
+    #[default]
+    Auto,
+    P720,
+    P1080x60,
+    P2160,
+}
+
+impl CameraQuality {
+    pub fn limit(self) -> sc_platform::CameraLimit {
+        let (w, h, fps) = match self {
+            CameraQuality::Auto => (1920, 1080, 30),
+            CameraQuality::P720 => (1280, 720, 30),
+            CameraQuality::P1080x60 => (1920, 1080, 60),
+            CameraQuality::P2160 => (3840, 2160, 30),
+        };
+        sc_platform::CameraLimit {
+            max: sc_geometry::SizePx { w, h },
+            max_fps: fps,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RecorderSettings {
     pub source: Option<SourceSpecDto>,
     pub canvas: CanvasDto,
     pub camera: Option<String>,
+    pub camera_quality: CameraQuality,
     pub mic: Option<String>,
     pub system_audio: SystemAudioDto,
     pub fps: u32,
     pub resolution: ResolutionDto,
     pub cursor: bool,
     pub click_highlight: bool,
+    pub camera_key: CameraKey,
+    #[serde(alias = "bubble_shown")]
+    pub preview_shown: bool,
+    /// Where the preview window was last moved to (global points, top-left).
+    pub preview_at: Option<sc_geometry::PointF>,
+    /// Where the recording control bar was last moved to (global points, top-left).
+    pub bar_at: Option<sc_geometry::PointF>,
+    pub after_recording: AfterRecording,
+    /// Seconds of 3-2-1 before recording starts (0 = none).
+    pub countdown_s: u32,
+    /// After an export made from the Saved window (or right after recording), move the
+    /// recording's raw files to the Trash.
+    pub delete_raw_after_export: bool,
+    /// Frame rate, drops and drift in the recording bar.
+    pub debug_overlay: bool,
+    /// Keys per global shortcut action (`""` = none); see `shortcuts::ACTIONS`.
+    pub shortcuts: std::collections::BTreeMap<String, String>,
+}
+
+pub fn default_camera_key() -> CameraKey {
+    CameraKey::default_placement()
 }
 
 impl Default for RecorderSettings {
@@ -67,12 +134,22 @@ impl Default for RecorderSettings {
             source: None,
             canvas: CanvasDto::default(),
             camera: None,
+            camera_quality: CameraQuality::Auto,
             mic: None,
             system_audio: SystemAudioDto::Off,
             fps: 30,
             resolution: ResolutionDto::Native,
             cursor: true,
             click_highlight: false,
+            camera_key: default_camera_key(),
+            preview_shown: true,
+            preview_at: None,
+            bar_at: None,
+            after_recording: AfterRecording::Editor,
+            countdown_s: 3,
+            delete_raw_after_export: false,
+            debug_overlay: false,
+            shortcuts: crate::shortcuts::defaults(),
         }
     }
 }
@@ -82,6 +159,25 @@ impl RecorderSettings {
     pub fn validate(&self) -> Result<(), String> {
         if self.fps != 30 && self.fps != 60 {
             return Err(format!("fps must be 30 or 60, got {}", self.fps));
+        }
+        if self.countdown_s > 10 {
+            return Err(format!(
+                "countdown_s must be 0 to 10, got {}",
+                self.countdown_s
+            ));
+        }
+        let k = &self.camera_key;
+        let finite = [
+            k.center_norm.x,
+            k.center_norm.y,
+            k.size_norm,
+            k.zoom,
+            k.pan_norm.x,
+            k.pan_norm.y,
+            k.corner_radius,
+        ];
+        if finite.iter().any(|v| !v.is_finite()) {
+            return Err("camera_key has a non-finite value".into());
         }
         Ok(())
     }
@@ -175,14 +271,29 @@ mod tests {
                     radius_norm: 0.7,
                 },
                 background_image: Some("/tmp/bg.png".into()),
+                fit: Fit::Cover,
             },
             camera: Some("cam-1".into()),
+            camera_quality: CameraQuality::P1080x60,
             mic: None,
             system_audio: SystemAudioDto::App,
             fps: 60,
             resolution: ResolutionDto::OneX,
             cursor: false,
             click_highlight: true,
+            camera_key: CameraKey {
+                mirror: true,
+                zoom: 1.5,
+                ..default_camera_key()
+            },
+            preview_shown: false,
+            preview_at: None,
+            bar_at: Some(sc_geometry::PointF { x: 10.0, y: 20.0 }),
+            after_recording: AfterRecording::QuickExport,
+            countdown_s: 5,
+            delete_raw_after_export: true,
+            debug_overlay: true,
+            shortcuts: [("record".to_string(), "Control+Alt+KeyR".to_string())].into(),
         };
         store.save(&s).expect("save");
         assert_eq!(store.load(), s);

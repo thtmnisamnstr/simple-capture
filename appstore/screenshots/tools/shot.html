@@ -1,0 +1,77 @@
+<!doctype html><html><head><meta charset="utf-8"><title>shot</title><style>
+*{box-sizing:border-box;margin:0}
+html,body{width:1440px;height:900px;overflow:hidden}
+body{font-family:-apple-system,"SF Pro Display","Helvetica Neue",sans-serif;background:
+ radial-gradient(1100px 700px at 15% 10%,#3a8f73 0%,transparent 60%),
+ radial-gradient(900px 700px at 90% 90%,#5b4bb7 0%,transparent 60%),
+ linear-gradient(135deg,#123c33,#1f2350);position:relative}
+.cap{position:absolute;left:0;right:0;top:46px;text-align:center;color:#fff}
+.cap h1{font-size:46px;font-weight:700;letter-spacing:-.8px}
+.cap p{font-size:20px;opacity:.82;margin-top:12px}
+.win{position:absolute;border-radius:12px;overflow:hidden;background:#1e1e1e;box-shadow:0 30px 80px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.10)}
+.bar{height:28px;background:#2a2a2c;display:flex;align-items:center;padding-left:12px;gap:8px;position:relative}
+.bar i{width:12px;height:12px;border-radius:50%;display:block}
+.bar span{position:absolute;left:0;right:0;text-align:center;font-size:13px;color:#bbb;font-weight:600;pointer-events:none}
+iframe{display:block;border:0;background:#1e1e1e}
+.img{display:block;width:100%}
+</style></head><body>
+<div class="cap"><h1 id="h"></h1><p id="p"></p></div>
+<script>
+const n = new URLSearchParams(location.search).get('n') || '1';
+const Q = '?camera=granted&mic=granted';
+function win(title, x, y, w, h, src, id) {
+  const d = document.createElement('div');
+  d.className = 'win';
+  Object.assign(d.style, { left: x + 'px', top: y + 'px', width: w + 'px' });
+  d.innerHTML = '<div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span>' + title + '</span></div>';
+  if (src.endsWith('.png')) {
+    const im = document.createElement('img'); im.src = src; im.className = 'img'; im.style.height = h + 'px'; im.style.objectFit = 'cover'; d.appendChild(im);
+  } else {
+    const f = document.createElement('iframe'); f.src = src; f.width = w; f.height = h; if (id) f.id = id; d.appendChild(f);
+  }
+  document.body.appendChild(d);
+  return d;
+}
+function doc(id) { const f = document.getElementById(id); return f && f.contentDocument; }
+function demoInViewer(id) {
+  const dd = doc(id); if (!dd) return;
+  const c = dd.querySelector('.preview canvas.live'); if (!c) return;
+  const im = dd.createElement('img'); im.src = '/__shots/demo-frame.png';
+  im.style.cssText = c.style.cssText + ';position:absolute;object-fit:cover';
+  c.parentElement.appendChild(im);
+}
+function click(id, text) {
+  const dd = doc(id); if (!dd) return;
+  const b = [...dd.querySelectorAll('button')].find(x => x.textContent.trim().startsWith(text));
+  if (b) b.click();
+}
+const H = document.getElementById('h'), P = document.getElementById('p');
+if (n === '1') {
+  H.textContent = 'Record your screen, camera and voice';
+  P.textContent = 'Pick a display, a window, an app or a region, and press Record.';
+  win('Preview', 140, 250, 600, 338, '/__shots/demo-frame.png');
+  win('Simple Capture', 900, 175, 380, 640, '/' + Q + '#/panel', 'f');
+  win('', 180, 640, 520, 56, '/' + Q + '&state=recording#/bar', 'b');
+} else if (n === '2' || n === '3') {
+  H.textContent = n === '2' ? 'Trim, split, speed up and add text' : 'Export MP4, MOV, WebM, GIF or WebP';
+  P.textContent = n === '2' ? 'Edit on a timeline with separate screen, camera and text tracks.' : 'Size, quality and frame rate presets, with an estimate before you export.';
+  win('Q4 roadmap walkthrough', 130, 170, 1180, 700, '/' + Q + '#/editor', 'e');
+  setTimeout(() => { demoInViewer('e'); if (n === '2') click('e', 'Text'); else click('e', 'Export'); }, 2500);
+  setTimeout(() => demoInViewer('e'), 4000);
+} else if (n === '4') {
+  H.textContent = 'Every recording stays on your Mac';
+  P.textContent = 'No account and no uploads. Crash-safe recording recovers a take after a force quit.';
+  win('Library', 220, 200, 1000, 520, '/' + Q + '#/library', 'l');
+  setTimeout(() => {
+    const dd = doc('l'); if (!dd) return;
+    const boxes = [...dd.querySelectorAll('.poster, .thumb, figure, [class*="poster"]')];
+    const hues = [0, 140, 260, 40];
+    boxes.slice(0, 8).forEach((bx, i) => {
+      const im = dd.createElement('img'); im.src = '/__shots/demo-frame.png';
+      im.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:hue-rotate(' + hues[i % 4] + 'deg)';
+      bx.style.position = bx.style.position || 'relative';
+      bx.prepend(im);
+    });
+  }, 2500);
+}
+</script></body></html>

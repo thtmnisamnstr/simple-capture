@@ -48,9 +48,49 @@ fn usage_and_self_test_exit_codes() {
     let help = cli(&["--help"]);
     assert_eq!(help.status.code(), Some(0));
     assert!(text(&help.stdout).contains("SPEC :="));
+}
+
+#[cfg(not(feature = "export"))]
+#[test]
+fn self_test_needs_the_export_feature() {
     let st = cli(&["--self-test"]);
     assert_eq!(st.status.code(), Some(3));
-    assert!(text(&st.stderr).contains("not implemented until M6"));
+    assert!(text(&st.stderr).contains("needs the export feature"));
+}
+
+/// The synthetic platform: record, cut, export and the "real" capture all run without touching
+/// the screen; the report lands in the data folder given.
+#[cfg(feature = "export")]
+#[test]
+fn self_test_runs_and_writes_a_report() {
+    let data = std::env::temp_dir().join(format!("sc-cli-selftest-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let st = Command::new(env!("CARGO_BIN_EXE_simple-capture"))
+        .args(["--platform", "synthetic", "--self-test"])
+        .env("SC_DATA_DIR", &data)
+        .env_remove("SC_DEV_HOST")
+        .env_remove("SC_LIVE")
+        .output()
+        .expect("run simple-capture");
+    let out = text(&st.stdout);
+    let helpers = sc_helpers::locate(sc_helpers::HelperKind::Ffmpeg).is_ok()
+        && (cfg!(target_os = "macos")
+            || sc_helpers::locate(sc_helpers::HelperKind::Gifski).is_ok());
+    if helpers {
+        assert_eq!(st.status.code(), Some(0), "{out}\n{}", text(&st.stderr));
+        assert!(out.contains("0 failed"), "{out}");
+    }
+    assert!(
+        out.contains("PASS record 3 s from a synthetic source"),
+        "{out}"
+    );
+    let reports: Vec<_> = std::fs::read_dir(data.join("self-test"))
+        .expect("report folder")
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    assert_eq!(reports.len(), 2, "{reports:?}");
+    let _ = std::fs::remove_dir_all(&data);
 }
 
 #[test]

@@ -15,7 +15,8 @@ use objc2_av_foundation::{
     AVCaptureDeviceTypeExternal, AVCaptureDeviceTypeMicrophone,
     AVCaptureDeviceWasConnectedNotification, AVCaptureDeviceWasDisconnectedNotification,
     AVCaptureOutput, AVCaptureSession, AVCaptureSystemUserInterface, AVCaptureVideoDataOutput,
-    AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaTypeAudio, AVMediaTypeVideo,
+    AVCaptureVideoDataOutputSampleBufferDelegate, AVMediaTypeAudio, AVMediaTypeMuxed,
+    AVMediaTypeVideo,
 };
 use objc2_core_foundation::CFType;
 use objc2_core_media::{
@@ -55,7 +56,124 @@ fn media_type(kind: DeviceKind) -> Result<&'static NSString> {
     }
 }
 
+#[repr(C)]
+struct CmioAddress {
+    selector: u32,
+    scope: u32,
+    element: u32,
+}
+
+#[link(name = "CoreMediaIO", kind = "framework")]
+unsafe extern "C" {
+    fn CMIOObjectSetPropertyData(
+        object: u32,
+        address: *const CmioAddress,
+        qualifier_size: u32,
+        qualifier: *const std::ffi::c_void,
+        data_size: u32,
+        data: *const std::ffi::c_void,
+    ) -> i32;
+}
+
+static CAMERA_SYSTEM_UP: (Mutex<bool>, std::sync::Condvar) =
+    (Mutex::new(false), std::sync::Condvar::new());
+
+/// Lets plugged-in iPhones and iPads show up as capture devices (their screens, as QuickTime
+/// records them). They appear a moment later, with a device-connected notification. It is also
+/// the first call into the camera system, which starts it; that can hang for good when a camera
+/// extension stops answering, so it runs on its own thread and [`camera_system_ready`] says when
+/// it is safe to touch AVFoundation's devices (which would otherwise hang the main thread too).
+pub(crate) fn allow_screen_devices() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let spawned = std::thread::Builder::new()
+            .name("allow-device-screens".into())
+            .spawn(|| {
+                let address = CmioAddress {
+                    selector: u32::from_be_bytes(*b"yes "),
+                    scope: u32::from_be_bytes(*b"glob"),
+                    element: 0,
+                };
+                let allow: u32 = 1;
+                // SAFETY: the system object (1) takes a UInt32 for this property.
+                let status = unsafe {
+                    CMIOObjectSetPropertyData(
+                        1,
+                        &address,
+                        0,
+                        std::ptr::null(),
+                        4,
+                        (&raw const allow).cast(),
+                    )
+                };
+                if status != 0 {
+                    tracing::warn!(status, "could not allow device screens");
+                }
+                *CAMERA_SYSTEM_UP.0.lock().unwrap_or_else(|p| p.into_inner()) = true;
+                CAMERA_SYSTEM_UP.1.notify_all();
+            });
+        if let Err(e) = spawned {
+            tracing::warn!("allow device screens: {e}");
+        }
+    });
+}
+
+pub(crate) fn camera_system_ready() -> Result<()> {
+    allow_screen_devices();
+    static WAITED: AtomicBool = AtomicBool::new(false);
+    let wait = if WAITED.swap(true, Ordering::Relaxed) {
+        std::time::Duration::ZERO
+    } else {
+        CAMERA_SYSTEM_WAIT
+    };
+    let up = CAMERA_SYSTEM_UP.0.lock().unwrap_or_else(|p| p.into_inner());
+    let (up, _) = CAMERA_SYSTEM_UP
+        .1
+        .wait_timeout_while(up, wait, |u| !*u)
+        .unwrap_or_else(|p| p.into_inner());
+    if *up {
+        Ok(())
+    } else {
+        Err(Error::Other(CAMERA_SYSTEM_STUCK.into()))
+    }
+}
+
+const CAMERA_SYSTEM_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
+const CAMERA_SYSTEM_STUCK: &str = "macOS's camera system isn't responding, so cameras and microphones can't be used. Restarting the Mac fixes it";
+
+/// Plugged-in devices whose screen can be recorded.
+fn screen_devices() -> Vec<Retained<AVCaptureDevice>> {
+    // SAFETY: framework constants; discovery needs no permission and never prompts.
+    unsafe {
+        let Some(muxed) = AVMediaTypeMuxed else {
+            return Vec::new();
+        };
+        let arr = NSArray::from_slice(&[AVCaptureDeviceTypeExternal]);
+        AVCaptureDeviceDiscoverySession::discoverySessionWithDeviceTypes_mediaType_position(
+            &arr,
+            Some(muxed),
+            AVCaptureDevicePosition::Unspecified,
+        )
+        .devices()
+        .iter()
+        .collect()
+    }
+}
+
+fn is_screen_device(dev: &AVCaptureDevice) -> bool {
+    // SAFETY: plain getter; framework constant.
+    unsafe { AVMediaTypeMuxed.is_some_and(|m| dev.hasMediaType(m)) }
+}
+
+/// The device gives `kind`; a device screen counts as a camera.
+fn offers(dev: &AVCaptureDevice, kind: DeviceKind) -> Result<bool> {
+    // SAFETY: plain getter.
+    let direct = unsafe { dev.hasMediaType(media_type(kind)?) };
+    Ok(direct || (kind == DeviceKind::Camera && is_screen_device(dev)))
+}
+
 fn discover(kind: DeviceKind) -> Result<Vec<Retained<AVCaptureDevice>>> {
+    camera_system_ready()?;
     // SAFETY: framework constants; discovery needs no permission and never prompts.
     unsafe {
         let types: Vec<&NSString> = match kind {
@@ -74,7 +192,11 @@ fn discover(kind: DeviceKind) -> Result<Vec<Retained<AVCaptureDevice>>> {
                 Some(media_type(kind)?),
                 AVCaptureDevicePosition::Unspecified,
             );
-        Ok(ds.devices().iter().collect())
+        let mut found: Vec<Retained<AVCaptureDevice>> = ds.devices().iter().collect();
+        if kind == DeviceKind::Camera {
+            found.extend(screen_devices());
+        }
+        Ok(found)
     }
 }
 
@@ -82,7 +204,9 @@ fn kind_hint(dev: &AVCaptureDevice) -> Option<String> {
     // SAFETY: plain getters; framework constants.
     unsafe {
         let t = dev.deviceType();
-        let hint = if dev.isContinuityCamera() || &*t == AVCaptureDeviceTypeContinuityCamera {
+        let hint = if is_screen_device(dev) {
+            "screen"
+        } else if dev.isContinuityCamera() || &*t == AVCaptureDeviceTypeContinuityCamera {
             "continuity"
         } else if &*t == AVCaptureDeviceTypeDeskViewCamera {
             "desk_view"
@@ -99,7 +223,93 @@ fn kind_hint(dev: &AVCaptureDevice) -> Option<String> {
     }
 }
 
+const IPHONE_MIRRORING: &str = "com.apple.ScreenContinuity";
+
+fn iphone_mirroring_open() -> bool {
+    let id = NSString::from_str(IPHONE_MIRRORING);
+    let apps: Retained<NSArray<objc2_app_kit::NSRunningApplication>> =
+        objc2_app_kit::NSRunningApplication::runningApplicationsWithBundleIdentifier(&id);
+    !apps.is_empty()
+}
+
+/// A camera or microphone that lives on an iPhone or iPad nearby (Continuity), rather than one
+/// plugged into the Mac.
+fn on_a_phone(hint: Option<&str>, model: &str, name: &str) -> bool {
+    matches!(hint, Some("continuity" | "desk_view"))
+        || model.starts_with("iPhone")
+        || model.starts_with("iPad")
+        || name.contains("iPhone")
+}
+
+/// How long a capture session may take to start. A Continuity Camera that is busy (with iPhone
+/// Mirroring, say) or stuck can leave `startRunning` waiting forever.
+const START_LIMIT: std::time::Duration = std::time::Duration::from_secs(8);
+
+struct SendSession(Retained<AVCaptureSession>);
+// SAFETY: AVCaptureSession may be started and stopped from any thread.
+unsafe impl Send for SendSession {}
+
+#[derive(Default)]
+struct Start {
+    done: Option<bool>,
+    gave_up: bool,
+}
+
+/// Starts `session` and says whether it runs, giving up after `limit`. A session that starts
+/// after that is stopped again.
+fn start_within(
+    session: &Retained<AVCaptureSession>,
+    what: String,
+    limit: std::time::Duration,
+) -> bool {
+    let shared = Arc::new((Mutex::new(Start::default()), std::sync::Condvar::new()));
+    let s = SendSession(session.clone());
+    let theirs = shared.clone();
+    let label = what.clone();
+    let spawned = std::thread::Builder::new()
+        .name("capture-start".into())
+        .spawn(move || {
+            let s = s;
+            // SAFETY: blocks until running; off the main thread per the threading contract.
+            let ok = objc_try(&format!("starting {label}"), || unsafe {
+                s.0.startRunning();
+                s.0.isRunning()
+            })
+            .unwrap_or(false);
+            let mut st = theirs.0.lock().unwrap_or_else(|p| p.into_inner());
+            if st.gave_up {
+                if ok {
+                    // SAFETY: as above.
+                    unsafe { s.0.stopRunning() };
+                }
+                tracing::info!("{label} started late and was stopped");
+                return;
+            }
+            st.done = Some(ok);
+            theirs.1.notify_all();
+        });
+    if let Err(e) = spawned {
+        tracing::warn!("starting {what}: {e}");
+        return false;
+    }
+    let st = shared.0.lock().unwrap_or_else(|p| p.into_inner());
+    let (mut st, _) = shared
+        .1
+        .wait_timeout_while(st, limit, |st| st.done.is_none())
+        .unwrap_or_else(|p| p.into_inner());
+    match st.done {
+        Some(ok) => ok,
+        None => {
+            st.gave_up = true;
+            tracing::warn!("{what} did not start within {limit:?}");
+            false
+        }
+    }
+}
+
 pub(crate) fn list(kind: DeviceKind) -> Result<Vec<CaptureDevice>> {
+    camera_system_ready()?;
+    let mirroring = iphone_mirroring_open();
     // SAFETY: plain getters.
     let default_id = unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media_type(kind)?) }
         .map(|d| unsafe { d.uniqueID() }.to_string());
@@ -116,23 +326,29 @@ pub(crate) fn list(kind: DeviceKind) -> Result<Vec<CaptureDevice>> {
         if out.iter().any(|c| c.id == id) {
             continue;
         }
+        let hint = kind_hint(&d);
+        let unavailable = (mirroring
+            && hint.as_deref() != Some("screen")
+            && on_a_phone(hint.as_deref(), &model, &name))
+        .then(|| "In use by iPhone Mirroring".to_string());
         out.push(CaptureDevice {
             is_default: default_id.as_deref() == Some(id.as_str()),
             id,
             name,
             model_id: (!model.is_empty()).then_some(model),
-            kind_hint: kind_hint(&d),
+            kind_hint: hint,
+            unavailable,
         });
     }
     Ok(out)
 }
 
 fn find(kind: DeviceKind, id: &str) -> Result<Retained<AVCaptureDevice>> {
+    camera_system_ready()?;
     // SAFETY: plain lookup.
     let dev = unsafe { AVCaptureDevice::deviceWithUniqueID(&nsstr(id)) }
         .ok_or_else(|| Error::NotFound(format!("{kind:?} device {id}")))?;
-    // SAFETY: plain getter.
-    if !unsafe { dev.hasMediaType(media_type(kind)?) } {
+    if !offers(&dev, kind)? {
         return Err(Error::NotFound(format!("{id} is not a {kind:?} device")));
     }
     Ok(dev)
@@ -158,12 +374,14 @@ pub(crate) struct FormatChoice {
     pub max_fps: f64,
 }
 
-/// Largest format within `limit` that reaches `limit.max_fps`, preferring 420v/420f.
+/// Largest format within `limit` that reaches `limit.max_fps`, preferring 420v/420f; when none
+/// reaches that rate, the fastest one within the size, then the largest.
 pub(crate) fn best_format(
     dev: &AVCaptureDevice,
     limit: CameraLimit,
 ) -> Option<(Retained<AVCaptureDeviceFormat>, FormatChoice)> {
-    let mut best: Option<(Retained<AVCaptureDeviceFormat>, FormatChoice, i64)> = None;
+    let mut fast: Option<(Retained<AVCaptureDeviceFormat>, FormatChoice, i64)> = None;
+    let mut slow: Option<(Retained<AVCaptureDeviceFormat>, FormatChoice, (i64, i64))> = None;
     // SAFETY: plain getters on a device and its formats.
     unsafe {
         for f in dev.formats().iter() {
@@ -181,23 +399,28 @@ pub(crate) fn best_format(
                 .iter()
                 .map(|r| r.maxFrameRate())
                 .fold(0.0, f64::max);
-            if max_fps + 0.01 < f64::from(limit.max_fps) {
-                continue;
-            }
             let sub = fd.media_sub_type();
             let nv12 = i64::from(sub == PIX_420V || sub == PIX_420F);
-            let score = i64::from(w) * i64::from(h) * 4 + nv12 * 2 - i64::from(max_fps > 60.0);
-            if best.as_ref().is_none_or(|b| score > b.2) {
-                let choice = FormatChoice {
-                    size: SizePx { w, h },
-                    subtype: sub,
-                    max_fps,
-                };
-                best = Some((f.clone(), choice, score));
+            let area = i64::from(w) * i64::from(h);
+            let choice = FormatChoice {
+                size: SizePx { w, h },
+                subtype: sub,
+                max_fps,
+            };
+            if max_fps + 0.01 >= f64::from(limit.max_fps) {
+                let score = area * 4 + nv12 * 2 - i64::from(max_fps > 60.0);
+                if fast.as_ref().is_none_or(|b| score > b.2) {
+                    fast = Some((f.clone(), choice, score));
+                }
+            } else {
+                let score = ((max_fps * 100.0) as i64, area * 4 + nv12 * 2);
+                if slow.as_ref().is_none_or(|b| score > b.2) {
+                    slow = Some((f.clone(), choice, score));
+                }
             }
         }
     }
-    best.map(|b| (b.0, b.1))
+    fast.map(|b| (b.0, b.1)).or(slow.map(|b| (b.0, b.1)))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -258,12 +481,11 @@ unsafe impl Send for SendClock {}
 
 pub(crate) struct DelegateState {
     kind: DeviceKind,
+    audio: AudioTrackKind,
     tag: StreamTag,
     sink: Arc<dyn FrameSink>,
     accepting: AtomicBool,
     clock: Mutex<Option<SendClock>>,
-    delivered: AtomicU64,
-    dropped: AtomicU64,
 }
 
 impl DelegateState {
@@ -311,10 +533,9 @@ impl DelegateState {
                     return;
                 };
                 a.pts = HostTime(pts);
-                self.sink.on_audio(AudioTrackKind::Mic, a);
+                self.sink.on_audio(self.audio, a);
             }
         }
-        self.delivered.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -332,10 +553,6 @@ define_class!(
             self.ivars().on_sample(sb);
         }
 
-        #[unsafe(method(captureOutput:didDropSampleBuffer:fromConnection:))]
-        fn did_drop(&self, _o: &AVCaptureOutput, _sb: &CMSampleBuffer, _c: &AVCaptureConnection) {
-            self.ivars().dropped.fetch_add(1, Ordering::Relaxed);
-        }
     }
 
     unsafe impl AVCaptureAudioDataOutputSampleBufferDelegate for CaptureDelegate {}
@@ -354,9 +571,18 @@ enum Output {
     Audio(Retained<AVCaptureAudioDataOutput>),
 }
 
+/// The sound output a plugged-in device's screen session also carries.
+struct Sound {
+    output: Retained<AVCaptureAudioDataOutput>,
+    state: Arc<DelegateState>,
+    _delegate: Retained<CaptureDelegate>,
+    _queue: DispatchRetained<DispatchQueue>,
+}
+
 pub(crate) struct AvDeviceStream {
     session: Retained<AVCaptureSession>,
     output: Output,
+    sound: Option<Sound>,
     state: Arc<DelegateState>,
     _delegate: Retained<CaptureDelegate>,
     _queue: DispatchRetained<DispatchQueue>,
@@ -368,13 +594,6 @@ pub(crate) struct AvDeviceStream {
 // stopped once (`self: Box<Self>`).
 unsafe impl Send for AvDeviceStream {}
 
-impl AvDeviceStream {
-    #[allow(dead_code)]
-    pub(crate) fn delivered(&self) -> u64 {
-        self.state.delivered.load(Ordering::Relaxed)
-    }
-}
-
 impl DeviceStream for AvDeviceStream {
     fn format(&self) -> String {
         self.format.clone()
@@ -382,12 +601,18 @@ impl DeviceStream for AvDeviceStream {
 
     fn stop(self: Box<Self>) -> Result<()> {
         self.state.accepting.store(false, Ordering::Release);
-        // SAFETY: stopping a configured session; detaching the delegate afterwards.
+        if let Some(s) = &self.sound {
+            s.state.accepting.store(false, Ordering::Release);
+        }
+        // SAFETY: stopping a configured session; detaching the delegates afterwards.
         unsafe {
             self.session.stopRunning();
             match &self.output {
                 Output::Video(o) => o.setSampleBufferDelegate_queue(None, None),
                 Output::Audio(o) => o.setSampleBufferDelegate_queue(None, None),
+            }
+            if let Some(s) = &self.sound {
+                s.output.setSampleBufferDelegate_queue(None, None);
             }
         }
         let kind = self.state.kind;
@@ -470,14 +695,24 @@ pub(crate) fn start(
         DeviceKind::Camera => StreamTag(NEXT_CAMERA_TAG.fetch_add(1, Ordering::Relaxed)),
         DeviceKind::Mic => StreamTag(0),
     };
+    let screen_device = kind == DeviceKind::Camera && is_screen_device(&dev);
+    let sound_state = screen_device.then(|| {
+        Arc::new(DelegateState {
+            kind: DeviceKind::Mic,
+            audio: AudioTrackKind::DeviceAudio,
+            tag: StreamTag(0),
+            sink: sink.clone(),
+            accepting: AtomicBool::new(true),
+            clock: Mutex::new(None),
+        })
+    });
     let state = Arc::new(DelegateState {
         kind,
+        audio: AudioTrackKind::Mic,
         tag,
         sink,
         accepting: AtomicBool::new(true),
         clock: Mutex::new(None),
-        delivered: AtomicU64::new(0),
-        dropped: AtomicU64::new(0),
     });
     let delegate = CaptureDelegate::new(state.clone());
     let queue = DispatchQueue::new(
@@ -578,25 +813,49 @@ pub(crate) fn start(
                     (Output::Audio(out), format)
                 }
             };
+            let sound = sound_state.clone().and_then(|st| {
+                let delegate = CaptureDelegate::new(st.clone());
+                let queue = DispatchQueue::new(
+                    "com.simplecapture.av.device-sound",
+                    DispatchQueueAttr::SERIAL,
+                );
+                let out = AVCaptureAudioDataOutput::new();
+                out.setSampleBufferDelegate_queue(
+                    Some(ProtocolObject::from_ref(&*delegate)),
+                    Some(&queue),
+                );
+                if !session.canAddOutput(&out) {
+                    tracing::info!("{device_id}: the device offers no sound output");
+                    return None;
+                }
+                session.addOutput(&out);
+                Some(Sound {
+                    output: out,
+                    state: st,
+                    _delegate: delegate,
+                    _queue: queue,
+                })
+            });
             session.commitConfiguration();
-            (session, output, format)
+            (session, output, sound, format)
         };
         Ok(configured)
     };
-    let (session, output, format) =
+    let (session, output, sound, format) =
         objc_try(&format!("configuring {kind:?} {device_id}"), configure)??;
     // SAFETY: plain getter.
     if let Some(c) = unsafe { session.synchronizationClock() } {
+        if let Some(s) = &sound {
+            *s.state.clock.lock().unwrap_or_else(|p| p.into_inner()) = Some(SendClock(c.clone()));
+        }
         *state.clock.lock().unwrap_or_else(|p| p.into_inner()) = Some(SendClock(c));
     }
-    // SAFETY: blocks until running; called off the main thread per the threading contract.
-    let ok = objc_try(&format!("starting {kind:?} {device_id}"), || unsafe {
-        session.startRunning();
-        session.isRunning()
-    })
-    .unwrap_or(false);
+    let ok = start_within(&session, format!("{kind:?} {device_id}"), START_LIMIT);
     if !ok {
         state.accepting.store(false, Ordering::Release);
+        if let Some(s) = &sound {
+            s.state.accepting.store(false, Ordering::Release);
+        }
         return Err(Error::Other(format!(
             "{kind:?} {device_id}: the capture session did not start"
         )));
@@ -605,6 +864,7 @@ pub(crate) fn start(
     Ok(Box::new(AvDeviceStream {
         session,
         output,
+        sound,
         state,
         _delegate: delegate,
         _queue: queue,
@@ -614,11 +874,14 @@ pub(crate) fn start(
 }
 
 pub(crate) fn show_mic_modes() -> Result<()> {
-    let show = || {
+    show_system_ui(AVCaptureSystemUserInterface::MicrophoneModes)
+}
+
+pub(crate) fn show_system_ui(ui: AVCaptureSystemUserInterface) -> Result<()> {
+    camera_system_ready()?;
+    let show = move || {
         // SAFETY: AppKit-side system UI request; on the main thread here.
-        unsafe {
-            AVCaptureDevice::showSystemUserInterface(AVCaptureSystemUserInterface::MicrophoneModes)
-        }
+        unsafe { AVCaptureDevice::showSystemUserInterface(ui) }
     };
     if MainThreadMarker::new().is_some() {
         show();
@@ -659,11 +922,7 @@ fn on_device_note(note: &NSNotification, connected: bool, sink: &Arc<dyn FrameSi
         return;
     };
     for kind in [DeviceKind::Camera, DeviceKind::Mic] {
-        let Ok(mt) = media_type(kind) else {
-            continue;
-        };
-        // SAFETY: plain getter.
-        if !unsafe { dev.hasMediaType(mt) } {
+        if !offers(&dev, kind).unwrap_or(false) {
             continue;
         }
         sink.on_event(SourceEvent::DevicesChanged { kind });
@@ -682,6 +941,7 @@ fn on_device_note(note: &NSNotification, connected: bool, sink: &Arc<dyn FrameSi
 }
 
 pub(crate) fn watch(sink: Arc<dyn FrameSink>) -> Result<Box<dyn DeviceStream>> {
+    allow_screen_devices();
     let center = NSNotificationCenter::defaultCenter();
     let mut observers = Vec::new();
     // SAFETY: framework notification names.

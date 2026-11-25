@@ -249,6 +249,8 @@ pub enum ScriptedEvent {
     DeviceLost(DeviceKind),
     DevicesChanged(DeviceKind),
     OwnWindowsChanged,
+    /// The newest screen stream's content becomes this size (points at scale 1).
+    Resize(SizePx),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -258,6 +260,7 @@ pub struct Scenario {
     camera: Option<VideoScript>,
     mic: Option<AudioScript>,
     system_audio: Option<AudioScript>,
+    device_audio: Option<AudioScript>,
     permissions: [PermissionStatus; 3],
     disk: DiskScript,
     events: Vec<(i64, ScriptedEvent)>,
@@ -278,6 +281,7 @@ impl Scenario {
             camera: None,
             mic: None,
             system_audio: None,
+            device_audio: None,
             permissions: [PermissionStatus::Granted; 3],
             disk: DiskScript::Constant(u64::MAX / 2),
             events: Vec::new(),
@@ -308,6 +312,12 @@ impl Scenario {
 
     pub fn system_audio(mut self, a: Option<AudioScript>) -> Self {
         self.system_audio = a;
+        self
+    }
+
+    /// Sound the camera device sends with its pictures, like an iPhone's screen over USB.
+    pub fn device_audio(mut self, a: Option<AudioScript>) -> Self {
+        self.device_audio = a;
         self
     }
 

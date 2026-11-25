@@ -521,3 +521,208 @@ fn audio_writer_refuses_more_than_two_channels_without_raising() {
         assert!(AudioWriter::create(&d.join(format!("mic-{channels}.mov")), &spec).is_err());
     }
 }
+
+fn write_coded_track(path: &std::path::Path, size: SizePx, times_ms: &[u32]) -> Option<()> {
+    let spec = VideoWriterSpec {
+        size,
+        fps: 30,
+        codec: VideoCodec::H264,
+        keyframe_interval_s: 1.0,
+        fragment_interval_s: 1.0,
+        bits_per_pixel: super::DEFAULT_BITS_PER_PIXEL,
+    };
+    let mut w = hw_ok(VideoWriter::create(path, &spec))?;
+    for (i, ms) in times_ms.iter().enumerate() {
+        let code = FrameCode {
+            source_hash: 9,
+            index: i as u32,
+            pts_ms: *ms,
+        };
+        let src = coded_frame(size, code, true);
+        let pb = w.new_pixel_buffer().expect("pool buffer");
+        let mut r = Ok(());
+        src.with_nv12(&mut |v| r = write_nv12(&pb, &v))
+            .expect("view");
+        r.expect("write_nv12");
+        let f = VideoFrame {
+            stream: StreamTag(1),
+            pts: HostTime(0),
+            size,
+            content_rect_pt: None,
+            content_scale: None,
+            buffer: FrameBuffer(Arc::new(MacPixelFrame::from_pixel_buffer(pb))),
+        };
+        while w
+            .append_video(&f, i64::from(*ms) * 1_000_000)
+            .expect("append")
+            == Append::NotReady
+        {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+    let end = i64::from(*times_ms.last()?) * 1_000_000 + 33_333_333;
+    Box::new(w).finish(Some(end)).expect("finish");
+    Some(())
+}
+
+fn first_index_from(path: &std::path::Path, from_ns: i64) -> (u32, i64) {
+    let mut r = MacDecoder::new()
+        .open_video_at(path, from_ns)
+        .expect("open_video_at");
+    let d = r.next_frame().expect("decode").expect("a frame");
+    let mut c = None;
+    d.frame
+        .0
+        .with_nv12(&mut |v| c = read_code(&v))
+        .expect("nv12");
+    (c.expect("code").index, d.file_ns)
+}
+
+#[test]
+fn seeking_starts_at_the_frame_shown_at_that_time() {
+    let dir = tmp("seek");
+    let path = dir.join("screen.mov");
+    let mut times: Vec<u32> = (0..10).map(|i| i * 33).collect();
+    times.push(3000);
+    times.extend((1..60).map(|i| 3000 + i * 33));
+    if write_coded_track(&path, SizePx { w: 320, h: 192 }, &times).is_none() {
+        return;
+    }
+    for (from_ms, want) in [
+        (0u32, 0u32),
+        (100, 3),
+        (2000, 9),
+        (2999, 9),
+        (3000, 10),
+        (4010, 40),
+    ] {
+        let (got, file_ns) = first_index_from(&path, i64::from(from_ms) * 1_000_000);
+        assert!(
+            got <= want,
+            "seek to {from_ms} ms gave frame {got}, want the frame shown then ({want})"
+        );
+        assert!(file_ns <= i64::from(from_ms) * 1_000_000 + 1_000_000);
+        let mut r = MacDecoder::new()
+            .open_video_at(&path, i64::from(from_ms) * 1_000_000)
+            .expect("reopen");
+        let mut shown = None;
+        while let Some(d) = r.next_frame().expect("decode") {
+            if d.file_ns > i64::from(from_ms) * 1_000_000 {
+                break;
+            }
+            let mut c = None;
+            d.frame
+                .0
+                .with_nv12(&mut |v| c = read_code(&v))
+                .expect("nv12");
+            shown = c.map(|c| c.index);
+        }
+        assert_eq!(shown, Some(want), "frame shown at {from_ms} ms");
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+fn read_n(r: &mut Box<dyn sc_platform::AudioReader>, n: usize) -> Vec<f32> {
+    let mut out = Vec::new();
+    let mut buf = vec![0f32; 4096];
+    while out.len() < n {
+        let k = r.read(&mut buf).expect("read");
+        if k == 0 {
+            break;
+        }
+        out.extend_from_slice(&buf[..k]);
+    }
+    out.truncate(n);
+    out
+}
+
+#[test]
+fn audio_seek_continues_the_same_samples() {
+    let dir = tmp("audio-seek");
+    let spec = AudioWriterSpec {
+        sample_rate: 48_000,
+        channels: 1,
+        bitrate: 160_000,
+        fragment_interval_s: 1.0,
+    };
+    let mono = PcmFormat::from_asbd(AudioStreamBasicDescription {
+        mSampleRate: 48_000.0,
+        mFormatID: LPCM,
+        mFormatFlags: FLAG_FLOAT | FLAG_PACKED,
+        mBytesPerPacket: 4,
+        mFramesPerPacket: 1,
+        mBytesPerFrame: 4,
+        mChannelsPerFrame: 1,
+        mBitsPerChannel: 32,
+        mReserved: 0,
+    })
+    .expect("mono format");
+    let path = dir.join("mic.mov");
+    let mut w = AudioWriter::create(&path, &spec).expect("writer");
+    for k in 0..150i64 {
+        let tone: Vec<f32> = (0..960)
+            .map(|i| {
+                let n = (k * 960 + i) as f32;
+                (n * 2.0 * std::f32::consts::PI * 440.0 / 48_000.0).sin() * 0.4
+            })
+            .collect();
+        let a = native(&mono, vec![f32_bytes(&tone)], 960);
+        w.append_audio(&a, k * 20_000_000, 0).expect("append");
+    }
+    Box::new(w).finish(None).expect("finish");
+    let dec = MacDecoder::new();
+    let mut whole = dec.open_audio(&path, 48_000, 1).expect("open");
+    let base = whole.first_sample_file_ns();
+    let all = read_n(&mut whole, 150 * 960);
+    for from_ms in [500i64, 1234, 2500] {
+        let from_ns = base + from_ms * 1_000_000;
+        let mut r = dec.open_audio_at(&path, 48_000, 1, from_ns).expect("seek");
+        let first = r.first_sample_file_ns();
+        assert!(first <= from_ns, "first sample {first} after {from_ns}");
+        let skip = ((from_ns - first) as f64 * 48e-6).round() as usize;
+        let got = read_n(&mut r, skip + 4800);
+        let at = (from_ms * 48) as usize;
+        let worst = got[skip..]
+            .iter()
+            .zip(&all[at..at + 4800])
+            .map(|(a, b)| (a - b).abs())
+            .fold(0f32, f32::max);
+        assert!(worst < 0.01, "seek to {from_ms} ms differs by {worst}");
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn headset_rates_encode_at_their_bitrate() {
+    for rate in [16_000u32, 24_000, 44_100, 48_000] {
+        let dir = tmp(&format!("rate-{rate}"));
+        let spec = AudioWriterSpec {
+            sample_rate: rate,
+            channels: 1,
+            bitrate: AudioWriterSpec::aac_bitrate(rate, 1),
+            fragment_interval_s: 1.0,
+        };
+        let mut w = AudioWriter::create(&dir.join("a.mov"), &spec).expect("writer");
+        let frames = rate / 10;
+        for k in 0..10u32 {
+            let samples: Vec<f32> = (0..frames)
+                .map(|i| {
+                    0.3 * ((k * frames + i) as f32 * 440.0 * std::f32::consts::TAU / rate as f32)
+                        .sin()
+                })
+                .collect();
+            let a = AudioBuffer {
+                pts: HostTime(0),
+                sample_rate: rate,
+                channels: 1,
+                frames,
+                data: AudioData::F32Interleaved(samples.into()),
+            };
+            w.append_audio(&a, i64::from(k) * 100_000_000, 0)
+                .unwrap_or_else(|e| panic!("{rate} Hz: {e}"));
+        }
+        let fin = Box::new(w).finish(None).expect("finish");
+        assert!(fin.samples > 0, "{rate} Hz wrote nothing");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}

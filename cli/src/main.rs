@@ -9,6 +9,8 @@ mod host;
 #[cfg(all(target_os = "macos", debug_assertions))]
 mod ownwin;
 mod record;
+#[cfg(feature = "export")]
+mod selftest;
 mod spec;
 
 use std::process::ExitCode;

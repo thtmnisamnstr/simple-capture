@@ -10,6 +10,7 @@ use sc_core::journal::StopReason;
 use sc_geometry::RectPt;
 use sc_platform::SourceEvent;
 use serde_json::{Value, json};
+use tauri::Manager;
 
 use crate::core::{Core, Reply};
 use crate::dto::SourceSpecDto;
@@ -25,10 +26,12 @@ pub enum Step {
     Pick { kind: String, id: String },
     Show(String),
     LogWindowRects,
+    Shot { label: String, path: String },
     Sim(String),
     WaitPhase { phase: String, ms: u64 },
     WaitLaunch(u64),
     Eval { label: String, js: String },
+    Resize { label: String, w: f64, h: f64 },
     UiLog,
     Quit,
 }
@@ -79,6 +82,13 @@ pub fn parse_line(line: &str) -> Result<Option<Step>, String> {
         }
         "show" if !rest.is_empty() => Step::Show(rest.to_string()),
         "log-window-rects" => Step::LogWindowRects,
+        "shot" => match rest.split_once(' ') {
+            Some((label, path)) if !path.trim().is_empty() => Step::Shot {
+                label: label.to_string(),
+                path: path.trim().to_string(),
+            },
+            _ => return Err(format!("shot: expected WINDOW PATH in {line:?}")),
+        },
         "wait-phase" => {
             let mut it = rest.split_whitespace();
             match (it.next(), it.next().map(str::parse::<u64>)) {
@@ -100,6 +110,21 @@ pub fn parse_line(line: &str) -> Result<Option<Step>, String> {
             },
             _ => return Err(format!("eval: expected WINDOW JS in {line:?}")),
         },
+        "resize" => {
+            let mut it = rest.split_whitespace();
+            match (
+                it.next(),
+                it.next().map(str::parse::<f64>),
+                it.next().map(str::parse::<f64>),
+            ) {
+                (Some(label), Some(Ok(w)), Some(Ok(h))) if w > 0.0 && h > 0.0 => Step::Resize {
+                    label: label.to_string(),
+                    w,
+                    h,
+                },
+                _ => return Err(format!("resize: expected WINDOW W H in {line:?}")),
+            }
+        }
         "ui-log" if rest.is_empty() => Step::UiLog,
         "sim" if rest == "sleep" || rest == "wake" => Step::Sim(rest.to_string()),
         "quit" => Step::Quit,
@@ -153,10 +178,60 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
             let project = core
                 .last_project()
                 .map(|p| p.to_string_lossy().into_owned());
-            let json = substitute(&json, project.as_deref(), core.last_export().as_deref())?;
+            let mut json = substitute(&json, project.as_deref(), core.last_export().as_deref())?;
+            if json.contains("$PHONE") {
+                let find = || {
+                    core.platform
+                        .camera()
+                        .devices()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .find(|d| d.kind_hint.as_deref() == Some("screen"))
+                };
+                let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                let phone = loop {
+                    match find() {
+                        Some(p) => break p,
+                        None if std::time::Instant::now() < deadline => {
+                            std::thread::sleep(Duration::from_millis(250));
+                        }
+                        None => return Err("no iPhone or iPad on USB".into()),
+                    }
+                };
+                json = json.replace("$PHONE", &phone.id);
+            }
+            for (i, id) in core.editor_segment_ids().iter().enumerate().rev() {
+                json = json.replace(&format!("$SEG{i}"), id);
+            }
+            for (i, id) in core.editor_clip_ids(true).iter().enumerate().rev() {
+                json = json.replace(&format!("$CAMCLIP{i}"), id);
+            }
+            for (i, id) in core.editor_clip_ids(false).iter().enumerate().rev() {
+                json = json.replace(&format!("$CLIP{i}"), id);
+            }
             let args: Value = serde_json::from_str(&json)
                 .map_err(|e| format!("cmd {name}: bad JSON {json:?}: {e}"))?;
             crate::commands::dispatch(core, &name, &args)
+        }
+        Step::TrayOpenMenu if core.phase().is_recording() => {
+            let opened = core.rec_ns_now();
+            crate::tray::show_recording_menu(core);
+            std::thread::sleep(Duration::from_millis(600));
+            let rects = core.window_rects();
+            std::thread::sleep(Duration::from_millis(600));
+            if let Some(w) = core.app.get_webview_window("traymenu") {
+                let _ = w.hide();
+            }
+            let menu = rects
+                .as_array()
+                .and_then(|a| a.iter().find(|r| r["label"] == "traymenu"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            Ok(json!({
+                "menu_window": menu,
+                "opened_rec_ns": opened,
+                "closed_rec_ns": core.rec_ns_now(),
+            }))
         }
         Step::TrayOpenMenu => {
             let t = core.tray.get().ok_or("no tray")?;
@@ -186,6 +261,7 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
         }
         Step::Show(label) => core.show_window(&label, false).map(|_| Value::Null),
         Step::LogWindowRects => Ok(core.window_rects()),
+        Step::Shot { label, path } => core.shot_window(&label, std::path::Path::new(&path)),
         Step::Sim(what) => {
             core.on_system_event(if what == "sleep" {
                 SourceEvent::SystemWillSleep
@@ -227,6 +303,16 @@ fn run_step(core: &Arc<Core>, step: Step) -> Reply {
                 .get_webview_window(&label)
                 .ok_or_else(|| format!("no window {label:?}"))?;
             w.eval(&js).map_err(|e| format!("eval in {label}: {e}"))?;
+            Ok(Value::Null)
+        }
+        Step::Resize { label, w, h } => {
+            use tauri::Manager;
+            let win = core
+                .app
+                .get_webview_window(&label)
+                .ok_or_else(|| format!("no window {label:?}"))?;
+            win.set_size(tauri::LogicalSize::new(w, h))
+                .map_err(|e| format!("resize {label}: {e}"))?;
             Ok(Value::Null)
         }
         Step::UiLog => Ok(json!(core.take_ui_log())),
@@ -349,6 +435,16 @@ mod tests {
             }))
         );
         assert_eq!(parse_line("ui-log"), Ok(Some(Step::UiLog)));
+        assert_eq!(
+            parse_line("resize stage 720 480"),
+            Ok(Some(Step::Resize {
+                label: "stage".into(),
+                w: 720.0,
+                h: 480.0
+            }))
+        );
+        assert!(parse_line("resize stage 720").is_err());
+        assert!(parse_line("resize stage 0 480").is_err());
         assert_eq!(
             parse_line("wait-launch 9000"),
             Ok(Some(Step::WaitLaunch(9000)))

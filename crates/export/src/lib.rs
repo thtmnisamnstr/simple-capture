@@ -3,8 +3,11 @@
 mod job;
 
 pub mod audio;
+pub mod encode;
+pub mod plan;
 pub mod probe;
 pub mod recipe;
+pub mod settings;
 pub mod validate;
 
 pub use job::{

@@ -1,6 +1,0 @@
-[native] placement=below-webview webview_h=820 viewport_h=788 parent=wry::wkwebview::class::wry_web_view_parent::WryWebViewParent0.57.3 flipped=false frame=(24,450 480x270) scale=2 subview order (back->front)=["NSView", "..NSKVONotifying_wry::wkwebview::class::wry_web_view::WryWebView0.57.3"]
-[js] native view: placement=below-webview webview_h=820 viewport_h=788 parent=wry::wkwebview::class::wry_web_view_parent::WryWebViewParent0.57.3 flipped=false frame=(24,450 480x270) scale=2 subview order (back->front)=["NSView", "..NSKVONotifying_wry::wkwebview::class::wry_web_view::WryWebView0.57.3"]
-[js] snapshot: {"button_center_rgb":[255,255,255],"decoded_frame_id":792,"decoded_ts_age_ms":-98,"html_over_preview":true,"image_px":[2720,1640],"png":"/Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/default/c-native-540.png","preview_visible":true,"scale":2,"titlebar_px":64}
-[bench] wrote /Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/default/c-native-540.json
-[js] report written: /Users/gavin/Documents/Development/simple-capture/spikes/02-preview-transport/results/default/c-native-540.json
-[bench] event loop exit

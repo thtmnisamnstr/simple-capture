@@ -228,3 +228,37 @@ pub(crate) fn make_sample(
 pub(crate) fn f32_bytes(samples: &[f32]) -> Vec<u8> {
     samples.iter().flat_map(|s| s.to_le_bytes()).collect()
 }
+
+/// Every frame of an LPCM sample buffer as interleaved f32 (float32 or int16 sources).
+pub(crate) fn to_f32(sb: &CMSampleBuffer) -> Option<Vec<f32>> {
+    // SAFETY: valid sample buffer.
+    let desc = unsafe { sb.format_description() }?;
+    let fmt = PcmFormat::from_desc(desc).ok()?;
+    // SAFETY: valid sample buffer.
+    let frames = u32::try_from(unsafe { sb.num_samples() }).ok()?;
+    let bufs = copy_frames(sb, &fmt, 0, frames).ok()?;
+    let ch = fmt.asbd.mChannelsPerFrame as usize;
+    let float = fmt.asbd.mFormatFlags & FLAG_FLOAT != 0;
+    let bits = fmt.asbd.mBitsPerChannel;
+    let sample = |b: &[u8], i: usize| -> f32 {
+        if float && bits == 32 {
+            f32::from_le_bytes([b[i * 4], b[i * 4 + 1], b[i * 4 + 2], b[i * 4 + 3]])
+        } else if bits == 16 {
+            f32::from(i16::from_le_bytes([b[i * 2], b[i * 2 + 1]])) / 32_768.0
+        } else {
+            0.0
+        }
+    };
+    let n = frames as usize;
+    let mut out = Vec::with_capacity(n * ch);
+    for f in 0..n {
+        for c in 0..ch {
+            out.push(if fmt.non_interleaved() {
+                sample(&bufs[c], f)
+            } else {
+                sample(&bufs[0], f * ch + c)
+            });
+        }
+    }
+    Some(out)
+}

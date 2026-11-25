@@ -120,12 +120,12 @@ pub fn free_disk_bytes(path: &Path) -> Result<u64> {
     Ok(u64::from(st.f_bavail) * st.f_frsize)
 }
 
-/// `~/Movies/Simple Capture` (not created here).
+/// `~/Movies/Simple Capture` (not created here), under the real home folder rather than the
+/// sandbox container that `$HOME` names.
 pub fn default_projects_dir() -> Result<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .ok_or_else(|| Error::NotFound("HOME".into()))?;
-    Ok(PathBuf::from(home).join("Movies").join("Simple Capture"))
+    Ok(crate::workspace::real_home()?
+        .join("Movies")
+        .join("Simple Capture"))
 }
 
 pub fn local_now() -> LocalDateTime {

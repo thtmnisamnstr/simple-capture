@@ -10,8 +10,9 @@ use objc2_app_kit::{NSApplicationActivationPolicy, NSRunningApplication, NSScree
 use objc2_core_foundation::{CFArray, CGRect};
 use objc2_core_graphics::{
     CGDisplayBounds, CGDisplayCopyDisplayMode, CGDisplayIsBuiltin, CGDisplayMode,
-    CGGetActiveDisplayList, CGMainDisplayID, CGWindowListCopyWindowInfo, CGWindowListOption,
-    kCGWindowNumber,
+    CGGetActiveDisplayList, CGMainDisplayID, CGPreflightScreenCaptureAccess,
+    CGWindowListCopyWindowInfo, CGWindowListOption, kCGWindowLayer, kCGWindowName, kCGWindowNumber,
+    kCGWindowOwnerPID,
 };
 use objc2_foundation::{NSArray, NSDictionary, NSError, NSNumber, NSString};
 use objc2_screen_capture_kit::{SCDisplay, SCRunningApplication, SCShareableContent, SCWindow};
@@ -59,6 +60,9 @@ fn content_block(
 /// Every window (`onScreenWindowsOnly = false` when `on_screen_only` is false), no desktop windows.
 pub(crate) fn shareable(on_screen_only: bool) -> Result<Retained<SCShareableContent>> {
     tcc::guard("SCShareableContent")?;
+    if !screen_allowed() {
+        return Err(Error::PermissionDenied(sc_platform::PermissionKind::Screen));
+    }
     let (tx, rx) = mpsc::channel();
     let blk = content_block(tx);
     unsafe {
@@ -395,6 +399,50 @@ pub(crate) fn z_order() -> HashMap<u32, u32> {
         }
     }
     out
+}
+
+/// Screen Recording is allowed, checked without prompting. Fetching shareable content while it is
+/// not raises the system prompt on every call, so only an explicit request may ask.
+pub(crate) fn screen_allowed() -> bool {
+    CGPreflightScreenCaptureAccess() || can_read_other_window_titles()
+}
+
+/// Another app's window title is readable only with Screen Recording allowed; a check that never
+/// prompts, for when `CGPreflightScreenCaptureAccess` lags behind the setting. Only ordinary app
+/// windows count: system windows (menu bar extras, the Dock, permission alerts) show their names
+/// either way.
+pub(crate) fn can_read_other_window_titles() -> bool {
+    let Some(arr) = CGWindowListCopyWindowInfo(
+        CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements,
+        0,
+    ) else {
+        return false;
+    };
+    let arr: &NSArray<NSDictionary<NSString, AnyObject>> =
+        unsafe { &*(&*arr as *const CFArray as *const NSArray<NSDictionary<NSString, AnyObject>>) };
+    let (pid_key, name_key, layer_key) = unsafe {
+        (
+            util::cfstr_as_ns(kCGWindowOwnerPID),
+            util::cfstr_as_ns(kCGWindowName),
+            util::cfstr_as_ns(kCGWindowLayer),
+        )
+    };
+    let num = |d: &NSDictionary<NSString, AnyObject>, k: &NSString| {
+        d.objectForKey(k)
+            .and_then(|o| o.downcast::<NSNumber>().ok())
+            .map(|n| n.intValue())
+    };
+    let me = std::process::id() as i32;
+    arr.iter().any(|d| {
+        let titled = d
+            .objectForKey(name_key)
+            .and_then(|o| o.downcast::<NSString>().ok())
+            .is_some_and(|s| s.length() > 0);
+        titled
+            && num(&d, layer_key) == Some(0)
+            && num(&d, pid_key)
+                .is_some_and(|p| p != me && activation_policy(p) == Some(ActivationPolicy::Regular))
+    })
 }
 
 fn display_of(frame: RectPt, displays: &[CgDisplay]) -> Option<DisplayId> {

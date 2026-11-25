@@ -136,6 +136,10 @@ impl Monitor {
 
     fn disk(&mut self, sh: &Shared, free: u64) {
         if free < sh.tuning.disk_stop_bytes {
+            if !self.disk_warned {
+                self.disk_warned = true;
+                sh.notice(Notice::DiskLow { bytes_left: free });
+            }
             if !self.disk_stop_sent {
                 self.disk_stop_sent = true;
                 sh.rec.log(

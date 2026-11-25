@@ -1,6 +1,6 @@
 [package]
 name = "simple-capture-capture-windows"
-description = "windows capture backend (placeholder until M6)"
+description = "Windows capture backend: Windows.Graphics.Capture, Media Foundation camera, WASAPI audio through cpal"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,6 +14,48 @@ name = "sc_capture_windows"
 simple-capture-core.workspace = true
 simple-capture-geometry.workspace = true
 simple-capture-platform.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+simple-capture-capture-common.workspace = true
+simple-capture-tracks.workspace = true
+simple-capture-helpers.workspace = true
+tracing.workspace = true
+windows-core = "0.62.2"
+windows = { version = "0.62.2", features = [
+    "Foundation",
+    "Graphics",
+    "Graphics_Capture",
+    "Graphics_DirectX",
+    "Graphics_DirectX_Direct3D11",
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_Media_MediaFoundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_Performance",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_System_WinRT",
+    "Win32_System_WinRT_Direct3D11",
+    "Win32_System_WinRT_Graphics_Capture",
+    "Win32_System_Time",
+    "Win32_System_Variant",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [lints]
 workspace = true

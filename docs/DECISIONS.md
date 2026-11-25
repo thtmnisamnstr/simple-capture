@@ -92,7 +92,7 @@ they are not a substitute for an M1 run.
   - Grants held by the dev host do not carry over to the shipped app (ADR-003).
 
 ## ADR-003: Sign the shipped app with one stable Apple Development identity
-- **Status:** Accepted (spec Platform notes), **but blocked**: on 2026-11-19 the owner said they won't create an Apple Development identity for now ("I may in the future, but no promises"). See "Update 2026-11-19" at the end of this ADR.
+- **Status:** Accepted (spec Platform notes); **unblocked 2026-11-24** (see the update below). Was blocked: on 2026-11-19 the owner said they won't create an Apple Development identity for now ("I may in the future, but no promises"). See "Update 2026-11-19" at the end of this ADR.
 - **Context:** An ad-hoc signature ties TCC grants to the binary's hash, so every rebuild counts as a
   new app. A real signing identity ties grants to the identifier plus team, so they survive
   rebuilds [S3]. No signing identity exists on this machine yet.
@@ -123,6 +123,15 @@ they are not a substitute for an M1 run.
     across updates. It does not satisfy Gatekeeper for other people's Macs.
   - The ADR-028 picker test and the whole-app exclusion re-test (ADR-010) assumed a signed app;
     they run under the dev host instead, which cannot show signed-app behaviour.
+
+- **Update 2026-11-24 (unblocked):** the owner has a paid Developer Program membership and a
+  **Developer ID Application** certificate (team K9LZ5QLRFQ). `scripts/macos-sign.sh` signs the
+  helpers and then the app (hardened runtime, secure timestamps, no `--deep`), notarizes with
+  `notarytool` and staples; locally through the `simple-capture` keychain profile, in the
+  package workflow through an App Store Connect API key when the Apple secrets are set
+  (docs/RELEASING.md). First run: the app and a DMG were both Accepted with no issues, and
+  `spctl` reports "Notarized Developer ID". The self-signed "Simple Capture Local Signing"
+  certificate remains only as a fallback.
 
 ## ADR-004: Keep Tauri v2; do not switch to GPUI
 - **Status:** Accepted (the spec default, confirmed by [S2]).
@@ -172,7 +181,7 @@ they are not a substitute for an M1 run.
     trim those features. No network code is called, but the shipped binary should not link them.
 
 ## ADR-007: Preview transport per OS
-- **Status:** **Conditional, condition not yet met** (owner 2026-11-19: "Yeah, but only if you can figure out ways to do this in Windows and Linux"). Until native paths are proven on real Windows and Linux hardware, **every OS, macOS included, uses webview frames** behind `PreviewSink`. See the 2026-11-19 update below.
+- **Status:** **Accepted for macOS** (owner 2026-11-20, choosing "Try native layer" to close the M2 Preview's CPU gap). Windows and Linux stay on webview frames until their native paths are proven on real hardware (owner 2026-11-19: "Yeah, but only if you can figure out ways to do this in Windows and Linux"). See the 2026-11-19 and 2026-11-20 updates below.
 - **Evidence [S2]**, quiet medians:
 
   | path | fps (of 60) | total CPU (% of one core) | WebContent memory |
@@ -222,6 +231,33 @@ they are not a substitute for an M1 run.
     after hardware runs (Windows 10/11 for spike 5's probe; GNOME/KDE Wayland and Xorg for spike 6)
     show Windows and at least Wayland working; X11 would then stay on webview frames.
   - Cost of the decision on macOS: about 47% vs 20% of one core at 1080 in spike 2.
+- **Update 2026-11-20 (macOS native layer on, M2 Preview window):**
+  - The owner lifted the condition for macOS. The Preview window draws into a `CAMetalLayer` in an
+    NSView just below its WKWebView (`sc_capture_macos::preview`). The view covers the page:
+    the content layout rectangle under a standard title bar (WebKit insets the page there), the
+    webview's whole frame under an overlay title bar (the editor), so page coordinates are layer
+    coordinates and the page's handles line up with what is drawn; it resizes with the window.
+  - The stage renderer draws at the display's pixel size with `Compositor::present` (the same
+    compositor passes, then a blit into the drawable; no readback, BT.709 values passed through as
+    sRGB, layer colour space sRGB to match WebKit). The page learns only the frame size, through a
+    pixel-less `sc://live/stage` frame (format 2), and turns its background transparent.
+  - The window gets `backgroundColor` in `tauri.conf.json`, which makes wry clear
+    `drawsBackground`. `SC_PREVIEW=webview`, or any failure to attach the layer, falls back to
+    webview frames.
+  - Measured (release, FaceTime HD at about 25 fps, same driver method as ADR-042): **about 18% of
+    one core** for the app and its WebKit processes (18.1–18.4% in three runs), down from 29.5%;
+    WebKit's share fell from 9.0% to 0.5%. Camera off: 4.3%. The rest is macOS's camera pipeline,
+    Metal's own threads and wgpu's per-frame work; the plan's 15% is still missed by about 3 points.
+  - Resizing: the window's `Resized`/`ScaleFactorChanged` events re-fit the view to the content
+    layout rectangle (so full screen, with no title bar, is covered too) and update the layer's
+    scale; the renderer redraws at the new size on its next wake (at most 30 ms later, or the next
+    camera frame). Flow 12 resizes the window and checks that the drawable equals the page's
+    viewport in pixels and that the page's camera outline is where the camera was drawn.
+  - Later the same day: the renderer waits for the next camera frame instead of polling every
+    8 ms, and snapshots reuse their capture filter for 3 s instead of enumerating every window and
+    app each second; measured 16.5–17.8% (within the run-to-run noise of the figure above).
+  - Not measured: photon latency.
+  - Windows and Linux: unchanged, webview frames.
 
 ## ADR-008: Raw tracks are fragmented QuickTime files from AVAssetWriter
 - **Status:** Accepted (within the spec: "fragmented MP4/MOV", HEVC screen, ~1 s keyframes; verified by [S3]). Amended 2026-11-19 by ADR-034: the screen track is a list of segment files, one per source.
@@ -270,6 +306,10 @@ they are not a substitute for an M1 run.
   - **Owner question (STATUS §5):** shorten `fragment_interval_s` (about 0.5 s should meet ≤ 1 s;
     the file-overhead cost is not measured) or restate the target as "≤ fragment interval +
     encoder latency".
+
+- **Update 2026-11-24 (owner, Q-a):** the measured loss of up to about 1.08 s with 1 s fragments
+  is accepted; it must not grow. `sc-devtools killtest live` fails above 1.1 s, and a test keeps
+  `fragment_interval_s` at 1 s or less.
 
 ## ADR-009: Frame-rate and resolution policy for recording
 - **Status:** Accepted (owner approved M0 on 2026-11-19 without objecting to this proposal).
@@ -361,6 +401,10 @@ they are not a substitute for an M1 run.
     `NSMenuDidBeginTracking` plus a filter update, so 0–1 frame can leak. Options: accept it, or
     exclude the whole app (`SC_EXCLUSION=app`), which fails under the dev host [S3] and is
     re-tested by the owner in the release bundle (MANUAL_TEST B4).
+  - **Update 2026-11-24 (owner: fix it):** while recording, the tray icon has no system menu; a
+    click opens `traymenu`, a menu-like window created hidden at launch and so excluded before
+    any recording starts (Stop, Pause/Resume, Switch Source…, Open Recorder, Quit). Flow 05
+    finds it in 0 of 37 frames with no grace period. Outside recording the tray keeps its menu.
   - The floating bar and switch popover were absent from the compared frames
     [M1:app-integration]; the CLI's own test window (magenta) was absent from all 963 checked
     frames [M1:e2e].
@@ -463,6 +507,16 @@ they are not a substitute for an M1 run.
      record an explicit exception here (see docs/LICENSES.md, "Networking"). Not checked yet.
 - **Consequences:** The FFmpeg GPG signature is unverified, because gpg is not installed. Whether to
   ship ffprobe (20 MB per architecture) is decided in M5.
+- **Update 2026-11-24 (pins refreshed):** FFmpeg 9.1, SVT-AV1 4.3.1 (now from GitHub, the
+  project's canonical home) and nv-codec-headers 11.1.5.4 (still the 11.1 line, so drivers 470+).
+  The FFmpeg 9.1 tarball's GPG signature is verified, which closes the first consequence above.
+  gifski builds `--locked` against `third_party/gifski/gifski-1.34.0.Cargo.lock`: the crate's own
+  lockfile with crossbeam-epoch raised to 0.9.20 (RUSTSEC-2026-0204). Checksums and cross-checks
+  are in `third_party/versions.toml`.
+- **Update 2026-11-25 (ADR-058):** the shipped macOS helper is now LGPL-2.1-or-later: the same
+  script and pins without `--enable-gpl`, x264 and x265 (`build-macos.sh`'s default, into
+  `third_party/out/macos-<arch>`). `SC_FFMPEG_LICENSE=gpl` still builds the GPL variant above
+  into `out/macos-<arch>-gpl` for local experiments; it is never shipped.
 
 ## ADR-014: gifski is a separate sidecar
 - **Status:** Accepted (spec).
@@ -475,6 +529,8 @@ they are not a substitute for an M1 run.
     gifsicle's lossy LZW code. Its upstream licensing needs review before M5 [S1 verification].
   - gifski prints no progress, so progress comes from frames written to its stdin.
   - gifski x86_64 has not been built.
+- **Update 2026-11-25 (ADR-058):** Windows and Linux only. No macOS build ships gifski; GIFs
+  there use FFmpeg's palette mode.
 
 ## ADR-015: Export pipe protocol, colour tagging and cancel
 - **Status:** Accepted (within the spec's export design; verified by [S1]), the VP8 colour handling
@@ -535,6 +591,8 @@ they are not a substitute for an M1 run.
   Palette mode is *slower* than gifski.
 - **Decision:** gifski stays the default. Present FFmpeg palette mode as "Palette (colours and
   dithering control)", not "Fast".
+- **Update 2026-11-25 (ADR-058):** on macOS there is no gifski, so palette mode is the only GIF
+  encoder there.
 
 ## ADR-018: Skia is built from source with FreeType on every OS
 - **Status:** Accepted (owner approved M0 on 2026-11-19 without objecting to this proposal).
@@ -1255,7 +1313,7 @@ they are not a substitute for an M1 run.
 
 ## ADR-041: M2 camera bubble: placement, defaults and build approach
 
-- **Status:** Accepted by the owner (2026-11-20).
+- **Status:** Accepted by the owner (2026-11-20); the placement part is superseded by ADR-043.
 - **Context:** M2 adds the live camera bubble (SPEC Camera overlay). The camera position is stored
   in the output frame (canvas-normalized `CameraKey`), but the screen shows that frame truthfully
   only for a whole-display source with the Original frame.
@@ -1272,3 +1330,666 @@ they are not a substitute for an M1 run.
   - M2 is built by one agent, package by package (docs/M2_PLAN.md §4), not a multi-agent workflow.
 - **Consequences:** an app-level camera hub feeds the bubble, the stage preview and the recording
   from one device session (M2_PLAN §3.1).
+
+## ADR-042: M2 camera implementation: geometry, shared camera, live frames, keyframes
+
+- **Status:** Accepted (M2 build, 2026-11-20).
+- **Context:** M2 needs the camera in the bubble, the stage preview, the panel still and the export,
+  all pixel-consistent (SPEC "what you see is what you get"), plus keyframes while recording.
+- **Decision:**
+  - **Geometry** (`sc_geometry::camera`, mirrored in ui/src/lib/geometry.ts with one shared case
+    table): `size_norm` is the shape's short side over the canvas short side; S/M/L = 0.18 / 0.26 /
+    0.36; margin 0.03 of the short side for snapping and corner presets; zoom 1–4 from
+    fill-the-shape; pan −1..1 inside the camera frame; corner radius as a fraction of half the
+    short side (a circle is 1). The shape is always kept inside the canvas, so a position chosen
+    for one frame shape is pulled in on another. Rounded = a rounded square.
+  - **Compositor:** one camera layer (`sc_render::CameraLayer`, built by `camera_layer` for every
+    consumer): rounded-rect signed distance in f32 quantized to 1/256 coverage, integer blending,
+    an inner border and a soft shadow; the GPU blends by reading a copy of the canvas, so the CPU
+    reference stays the golden (max difference 0 measured on the build Mac).
+  - **Shared camera** (`sc_platform::SharedCamera`): one device session feeds the live preview and
+    a recording, which attaches through the ordinary `CameraSource` trait (the record crate is
+    unchanged). The app opens it while the panel is shown or a recording is on.
+  - **Live frames:** the bubble and stage get compositor frames over `sc://live/<name>?after=<id>`
+    (long poll, latest wins, raw premultiplied RGBA) drawn with WebGL2 — spike 2 mode B, ADR-007.
+    The stage refreshes the source by snapshot twice a second; the camera is live.
+  - **Keyframes:** `Session::camera_key` stamps the current recording time; the journal gets them
+    in `camera_keys` batches at least every 200 ms (each append fsyncs); finalize and recovery
+    write `camera_layout`. The app sends drags at most 30 times a second plus the final position.
+- **Consequences:** a crash loses at most 0.2 s of camera motion. Keyframes are not editable until
+  the M3 editor.
+- **Update 2026-11-20 (CPU cut before the M2 hands-on):**
+  - Live frames carry a format code in the header's fourth word: the Preview gets I420 (BT.709
+    limited, what the encoder gets, 3/8 of the RGBA bytes), converted in its WebGL2 shader.
+  - The renderer draws a frame only when the camera frame, camera key, background, source
+    snapshot or window size changed; the snapshot refreshes once a second.
+  - Camera frames that are IOSurface-backed `CVPixelBuffer`s (live camera, decoded camera track)
+    are read in place through `CVMetalTextureCache` as `R8Uint` + `Rg8Uint` textures, so the M3
+    import (SPEC "Frames into wgpu") is in use for the camera; output is bit-identical to the
+    upload.
+  - Measured (release, camera at about 25 fps): 29.5% of one core for the app plus its WebKit
+    processes, against the 15% budget; 4.5% without a camera. About 5 points of that is macOS's own
+    camera pipeline inside the app's process.
+  - Superseded on macOS the same day by the native layer (ADR-007 update 2026-11-20): about 18%.
+- **Update 2026-11-20 (review fixes before the owner's second hands-on):**
+  - **Keyframe easing is decided when a key is recorded** (M2_PLAN §3.6): a key that arrives more
+    than 100 ms after the previous one is a `Step` (the camera holds its place until then and
+    jumps), a key within a drag (sent about every 33 ms) stays `Linear` (the motion is replayed).
+    Keys are timed when the app sends them, not when the session's control thread gets to them.
+    Before this, every key was `Linear`, so the export slid the camera across each idle stretch.
+  - The end of a drag is always sent as a key (it was sometimes dropped by the 30 Hz throttle).
+  - A camera attachment detaches when dropped, so a recording that fails to start no longer
+    leaves the shared camera "recording"; a recording camera that fails to open gives the preview
+    its camera back; an unplugged camera is closed (`DeviceLost`) and reopened when the devices
+    change.
+  - The export holds the camera's first frame until its first sample (frame 0 had no camera).
+  - Settings are written under one lock; the app keeps `bar_at`/`preview_at` itself (the panel's
+    copy no longer overwrites them) and announces changes in save order. The Preview's position
+    is saved off the main thread once the window comes to rest, and the automatic first
+    placement is not saved as the user's.
+  - The panel tells the app it is closing when it hides itself to record, so the camera and the
+    Preview turn off after that recording; the panel's still uses the camera key it shows.
+  - Picking Rounded gives the camera rounded corners (it kept the circle's radius 0).
+
+## ADR-043: The Preview window replaces the floating camera bubble
+
+- **Status:** Accepted (owner's M2 hands-on, 2026-11-20: "Having the camera bubble as its own
+  preview and the preview window w/ camera placement is confusing. The preview window is better.")
+- **Decision:** there is no floating camera bubble on screen. One Preview window (the former stage)
+  shows the composed output for every source and frame shape and is where the camera is placed,
+  sized and reframed. It opens with the recorder panel and stays during a recording, with or
+  without a camera; "Show the Preview window" in the panel (or its close button) turns it off; it
+  remembers where it was moved. It is excluded from capture like every app window.
+- **Consequences:** "the bubble matches the output" (SPEC) is met by showing the output itself.
+  The bubble window, its renderer, `bubble_drag`/`bubble_state` and `OverlayRole::Bubble` are
+  removed; `bubble_shown` in settings is read as `preview_shown`.
+
+## ADR-044: A macOS look for every window
+
+- **Status:** Accepted (owner 2026-11-20: "make the UI look better… more like a Mac tool-level UI
+  in terms of refinement, fit and finish").
+- **Decision:**
+  - One design system in `ui/src/app.css`:
+    - macOS semantic colours for light and dark, and the system accent colour (`AccentColor`) with
+      white text on it;
+    - controls drawn at AppKit sizes: push buttons, segmented controls, popup buttons with the
+      blue chevron box, switches, checkboxes, sliders and search fields;
+    - System Settings-style grouped forms (`.group` / `.grow`).
+  - A small set of SF Symbols-style line icons (`ui/src/components/Icon.svelte`, inline SVG; no
+    icon font or new dependency).
+  - The panel, Saved, Permissions and switcher windows are laid out as grouped forms and dialogs:
+    - the panel ends in a footer with the chosen source and a red Record button;
+    - Saved and Permissions hide their window titles (`hiddenTitle`), since their pages carry the
+      header.
+  - Native materials where windows float: `sc_capture_macos::material` puts an
+    `NSVisualEffectView` under the transparent webview:
+    - the HUD material (always dark) behind the control bar, as a rounded pill;
+    - the popover material behind the source switcher.
+
+    It makes those windows non-opaque through public AppKit API; Tauri's `macOSPrivateApi` stays
+    off (ADR-026).
+  - The panel, Saved, Permissions and Preview windows keep the standard title bar.
+- **Alternatives:** a component library (new dependency, still not native); Tauri's
+  `windowEffects` (needs `transparent` windows); real AppKit controls (a rewrite of the UI).
+- **Consequences:**
+  - The browser mock shows a solid stand-in for the materials (`:root[data-native]` marks the app).
+  - MANUAL_TEST uses the new labels: Region…, Click a Window, System…, Allow…, Show in Finder,
+    Export Video.
+  - Windows and Linux get the same CSS and no native material.
+
+## ADR-045: M3 editor: edit model, playback, preview and export of edits
+- **Status:** Accepted by the agent on 2026-11-21 under the owner's instruction "Build the rest of
+  it out. I'll test when i get a chance." (no ★ stop between M3 and M7). Open to change at the
+  owner's review.
+- **Decision:**
+  - **Edit model** (`sc_core::edit`): every edit is a pure function from one document (EDL, text,
+    camera layout, audio mix, output canvas) to the next. Undo/redo keeps whole-document snapshots
+    (a few KB each, unlimited); a slider or handle drag passes a coalesce key so it is one undo
+    step. Edits that would empty the timeline are refused. Text moves with ripple edits: deleted
+    ranges remove the text inside them and cut text across their edges; insertions shift text that
+    starts at or after the insertion point; speed changes rescale text inside the clip.
+  - **Seeking:** `Decoder::open_video_at` / `open_audio_at`. On macOS an AVAssetReader time range
+    starting at the seek time; tested to start on the frame shown at that time even across a
+    2.7 s gap with no frames, and AAC continues sample-for-sample (max difference < 0.01).
+  - **New crate `player`** (`sc_player`): `TimelineAudio` (all audio tracks through the clips,
+    per-track gain and mute, clip mute, pitch-kept speed with Signalsmith Stretch, a 5 ms
+    raised-cosine fade on both sides of every cut that is not a continuation), `TimelineVideo`
+    (the screen frame, camera frame and placement at any timeline time) and, with the `output`
+    feature, playback through cpal. The editor preview, thumbnails and every export use the same
+    two types, so the preview and the export agree.
+  - **Playback clock** (ADR-025 as built): the frames the output device has played, minus the
+    device's reported latency, plus the time since the last callback. Without an output device, a
+    wall clock. Video picks the frame for that time; audio runs 250 ms ahead in a ring buffer.
+  - **Editor window:** a normal (not panel) window, excluded from captures like every window of
+    ours (`OverlayRole::Editor`). The app turns into a regular Dock app while it is open and back
+    into a menu-bar app when it closes (not under the driver). The preview is drawn by the
+    compositor into the shared native layer (`sink.rs`, the Preview window's ADR-007 path) at the
+    preview's rectangle in the page; elsewhere webview frames.
+  - **One `editor` command** with an `action` (open, state, edit, undo, redo, copy, cut, paste,
+    play, pause, seek, rect, export, close, background_image) instead of 15 commands.
+  - **Autosave:** project.json is rewritten 400 ms after the last edit, and on close, export and
+    when another project opens.
+  - **Thumbnails and waveform** are made in the background and stored in the project's `thumbs/`
+    folder (SPEC: the project folder holds thumbnails), indexed by recording time so no edit makes
+    them stale. Thumbnails: one per second, or fewer for long recordings (at most 400), made
+    coarse-to-fine. Waveform: one byte per 10 ms, the loudest sample over the audio tracks on a
+    square-root scale. Served as `sc://thumb/<step>/<n>.png` and `sc://peaks/v1`. Driver runs
+    delete `thumbs/` with the media.
+  - **After recording** the editor opens by default; a panel setting ("When Recording Stops: Open
+    Editor / Show Summary") brings back the Saved window. The tray gains "Edit Last Recording";
+    the Saved window an "Edit…" button.
+  - **Export of edits:** the quick export (x264 MP4) renders and mixes the edited timeline. The
+    full export dialog is M5.
+  - **Shortcuts:** Space play/pause; K pause, L play, J back 2 s (no reverse playback); ←/→ one
+    frame, ⇧←/⇧→ one second; ↑/↓ previous/next cut; S split; I/O range; ⌫ delete (ripple); ⌘X/C/V
+    cut/copy/paste at the playhead; ⌘D duplicate; ⌘Z/⇧⌘Z undo/redo; ⌘A select all clips; ⌘+/⌘−
+    or ⌘-scroll zoom; Shift-drag a range.
+- **Dependencies added** (all in the SPEC tech stack): `cpal` 0.18.2 (Apache-2.0),
+  `signalsmith-stretch` 0.1.3 (MIT; its C++ library is MIT; builds with `cc` and `bindgen`, which
+  CI already has for Skia). Linux CI installs `libasound2-dev`. `rubato` was not needed: the
+  decoders resample.
+- **Not built / limits:** reverse shuttle (J jumps back); trimming shows the new length while
+  dragging but the preview frame only after release; the waveform is one combined lane, not one
+  per track; editor open time was measured only on short recordings.
+
+## ADR-046: M4 text overlays as built
+- **Status:** Accepted by the agent on 2026-11-21 under the owner's "Build the rest of it out"
+  (no ★ stop); open to change at the owner's review.
+- **Decision:**
+  - **Fonts:** the ADR-020 final list (13 families, 20 files, Noto Color Emoji COLRv1) is
+    committed in `assets/fonts` with license files (11 MB) and bundled in `Resources/fonts`.
+    Weights are variable-font instances; static families pick the nearest face; an italic falls
+    back to upright when a family has none. Installed families come through fontdb. Font fallback
+    is off (deterministic output); missing characters are counted and the Text tab warns.
+  - **Layout:** Skia paragraphs in 1080 units (1080 = the canvas's short side), wrapped at 90% of
+    the canvas width, rasterized at the output scale times the item's scale, so text is crisp at
+    any export size. The box layer and the text layer are separate images; reveals copy text tiles
+    over the full box.
+  - **Styles:** solid or two-stop linear gradient fill, outline, drop shadow, glow (two blurred
+    strokes), per-line or merged (TikTok) boxes (the Inverted preset is white text on a coloured
+    merged box; an `inverted` box saved by early builds draws as merged, with the text and box
+    colours the controls show), uppercase, opacity, alignment, line height, letter spacing (1080 units).
+  - **Animations** (pure functions of the time into the item, so every fps samples the same
+    curve): in fade, pop, slide ×4, typewriter, word by word, bounce; out fade, pop, slide ×4;
+    loops pulse, wiggle, float; each in or out may last the whole item, and when the two together
+    are longer both shrink in proportion so the in ends where the out starts; easings linear, ease in/out,
+    ease in and out, overshoot.
+  - **Compositing:** `TextLayer` (premultiplied image + affine + opacity) in the compositor, drawn
+    after the camera by a WGSL pass with integer bilinear sampling and blending, mirrored by the
+    CPU reference. GPU vs CPU max difference 2 (f32 coordinate maths may differ by one 1/256 step).
+  - **UI:** Text tab, ten presets (Classic, Outline, Box, Inverted, Neon, Headline, Typewriter,
+    Handwritten, Elegant, Marker), six recent styles (per-viewer local storage), the macOS
+    eyedropper (`NSColorSampler`; elsewhere hidden), direct manipulation on the preview with
+    centre/thirds/5% margin guides and 0/±15/±90° rotation snaps, and typing on the preview through
+    a transparent text area that uses the bundled fonts served as `sc://font/<file>`.
+- **Limits:** RTL and complex scripts untested; inline typing shows the browser's caret over
+  Skia's glyphs, so the caret can sit a little off on fonts the page has to substitute (system
+  fonts); per-character colours are not supported.
+
+## ADR-047: M5 export as built
+- **Status:** Accepted by the agent on 2026-11-21 under the owner's "Build the rest of it out"
+  (no ★ stop); open to change at the owner's review.
+- **Decision:**
+  - **Settings** (`sc_export::settings`): format (MP4, WebM, GIF, MOV), video and audio codec
+    chosen separately within the container (CODEC_MATRIX §2.4), encoder Best or Fast, quality
+    Small / Balanced / High / Custom (CRF or kbps), fps from the per-format list, size (Original,
+    a height class, a typed width or height, or a long side), upscale off by default, GIF settings
+    (gifski quality, motion quality, lossy; palette colours and dither; loop forever / once / N),
+    output folder and a file name template (`{title}`, `{date}`, `{time}`, `{size}`, `{fps}`, `{format}`).
+    `normalized()` repairs a codec pair the container cannot hold; `less_compatible()` names the
+    choices the UI labels.
+  - **FPS:** the effective fps is the largest list value not above min(chosen, recording fps)
+    with a 0.5 fps tolerance (Kap's rule), so a 30 fps recording never exports at 60.
+  - **Recipes** (`sc_export::encode`): every video recipe tags BT.709 through `setparams` and the
+    output flags; VP8 uses BT.601 (ADR-029); HEVC is tagged `hvc1`; MP4 and MOV get `+faststart`;
+    ProRes is `yuv422p10le`. Custom kbps uses `-b:v`/`-maxrate` with a 2× buffer.
+  - **GIF:** gifski reads Y4M on stdin. Palette mode runs two passes over the rendered frames:
+    pass 1 writes a 16×16 raw RGB32 palette (the helper has no PNG decoder), pass 2 maps the frames
+    onto it, so ffmpeg never buffers the whole clip (the single-pass graph needed about 1.9 GB per
+    minute, CODEC_MATRIX §2.5). Frame delays alternate so the total length stays exact.
+  - **Probe:** probe v1 records which encoders open on this machine (`lavfi` test pattern and
+    tone); the export sheet only offers those. A probe cached before this field existed is redone.
+  - **Sheet** (`app/src/exports.rs`, `ExportSheet.svelte`): settings remembered per format and
+    the last format; named presets; an estimate (size range, time, output size, warnings for less
+    compatible choices and the 4096 px hardware H.264 limit) refreshed as settings change;
+    progress and Cancel in the editor toolbar; then Show in Finder, Copy (the file on the
+    pasteboard) and Open.
+- **Verified:** `export_formats` exports every offered combination and checks codec, size, frame
+  count, duration, audio codec, `hvc1`, colour tags and the file extension; GIF frame delays at
+  10, 15 and 25 fps from both GIF modes. `export_quality`: on a text-heavy clip x264 Best scored
+  SSIM 0.9365 at 134 KB against VideoToolbox Fast 0.9341 at 233 KB. Live driver flow 17 exports
+  MP4, a 240p GIF and a VP9 + Opus WebM from the editor.
+- **Limits:** playback in Chrome, Firefox and VLC is still a manual check (MANUAL_TEST §10e);
+  animated WebP/APNG (nice-to-have) are not offered; Windows and Linux helper builds come in M6.
+
+
+## ADR-048: M6 Windows and Linux backends, helper tracks, our own helpers, packaging, self-test
+- **Status:** Accepted by the agent on 2026-11-21 under the owner's "Build the rest of it out"
+  (no ★ stop). **Needs the owner's OK** on the two architecture changes marked ⚑ below, which
+  depart from the SPEC's media table.
+- **Decision:**
+  - ⚑ **Raw tracks on Windows and Linux go through the FFmpeg helper process**
+    (`crates/tracks`), not Media Foundation MFTs or the LGPL FFmpeg libraries in-process. Video
+    is written at a constant rate: a frame lands in the slot nearest its time and the previous
+    image fills skipped slots, so frame `k` is at `k / fps` and readers need no index. Matroska
+    with clusters of at most 1 s, flushed as written: a killed app leaves the helper to read EOF
+    and finish the file; a killed helper leaves a file readable up to its last cluster (tested).
+    The encoder is the first that opens on this machine: NVENC, QSV, AMF or Media Foundation
+    (hardware only) on Windows, VAAPI or NVENC on Linux, else x264 (`veryfast`, `ultrafast`
+    above 1440p). Audio is AAC. Reading back also goes through the helper (NV12 frames, f32 WAV),
+    with `-hwaccel auto` and input seeking. Why: one code path for both OSes that can be tested
+    on every OS (it passes on macOS with VideoToolbox and x264, on Linux in CI and Docker), no
+    LGPL libraries to ship and load, and the hardware encoders still used through the helper.
+    Cost: frames cross a pipe (NV12, about 370 MB/s at 4K30), and the same paths stay as
+    capture → NV12 copies on the CPU.
+  - **Windows** (`crates/capture-windows`): Windows.Graphics.Capture for displays, windows,
+    regions and app crops (the crop is copied out of the frame on the GPU, then mapped and
+    converted to NV12 on 4 threads; a resized window letterboxes into its first size), Media
+    Foundation source readers for cameras (NV12, decoding MJPEG through MF), WASAPI mic and
+    loopback system audio through cpal, `WDA_EXCLUDEFROMCAPTURE` on every app window, the QPC
+    clock, `IFileOpenDialog`, `CF_HDROP` copy and Recycle Bin. Permissions read the privacy
+    ConsentStore; Windows has no prompt API for desktop apps.
+  - ⚑ **Linux** (`crates/capture-linux`): screens and windows come only from the
+    xdg-desktop-portal ScreenCast picker (the app's System… button and a single "Choose Screen or
+    Window…" button in the panel); frames arrive over PipeWire (BGRx/RGBx shared memory). The app
+    hides its own windows while recording (exclusion `AutoHide`). Cameras through V4L2 (NV12 or
+    YUYV; MJPEG-only modes are not offered yet). Mic and system audio through cpal's PipeWire host
+    (system audio is a sink capture). The portal FileChooser and OpenDirectory, `gio`/freedesktop
+    Trash. Raw tracks use x264 until a VAAPI helper is safe (VAAPI would make the static helper
+    need libva to start at all).
+  - **Shared** (`crates/capture-common`): cpal audio for both OSes and a polling device watcher.
+  - **Helpers:** `third_party/ffmpeg/build-linux.sh` builds the Linux helper natively and the
+    Windows helper with mingw-w64, from the same pinned sources as macOS, `--disable-network`,
+    checking that only system libraries are linked (Linux: glibc family; Windows: KERNEL32,
+    USER32, ADVAPI32, SHELL32, ole32, bcrypt, msvcrt). This settles LICENSES §3.3's networking
+    question without BtbN builds. gifski is built for both. `scripts/stage-helpers.sh` stages
+    helpers and every license text for the bundle.
+  - **Packaging** (`.github/workflows/package.yml`): helpers per OS (cached), a source archive of
+    the GPL/AGPL helpers' pinned sources and build scripts, then `.dmg`, NSIS `.exe` + `.msi`, and
+    `.deb` + `.AppImage`, each with the helpers and the `licenses` resource folder. The Windows and
+    Linux jobs first run the helper-track round trip with the built helper.
+  - **Self-test** (`crates/diagnostics`, `simple-capture --self-test`, Diagnostics window): what
+    the machine offers (capture APIs, permissions, devices, helpers and their network status,
+    encoders, a recording-encoder benchmark), a synthetic record → cut + text → MP4 and GIF
+    export, and 2 s of the main display recorded, decoded and exported when the screen grant is
+    already there (it never asks; Linux skips it because the portal would ask). The report goes
+    to the app data folder with the home folder redacted and holds no recordings.
+- **Verified:** Windows code type-checks from macOS (cross `cargo clippy`) and builds and runs
+  its tests on GitHub's Windows runner; Linux builds and runs its tests on Ubuntu (CI) and in
+  `tools/linux-dev` (PipeWire consumer: 36 frames in 2 s from a GStreamer source, converted
+  correctly). The self-test passes 7/7 on this Mac from the CLI and from the app.
+- **Not verified:** any real Windows or Linux desktop (no machine here). The portal start never
+  reached frames in the headless test session (xdg-desktop-portal-wlr could not read a format
+  from wlr_screencopy on headless sway); the PipeWire side it hands over to is tested.
+
+## ADR-049: M7 hardening and polish as built
+- **Status:** Accepted by the agent on 2026-11-21 under the owner's "Build the rest of it out";
+  open to change at the owner's review.
+- **Decision:**
+  - **Pause and resume:** while paused, the recorder's sink drops every frame and buffer, so the
+    raw tracks hold the last frame and silence over the pause (the file clocks keep running).
+    Pauses are journaled; the finished project lists them and starts with clips that leave the
+    paused spans out, so the editor and every export skip them, and the person can still drag a
+    paused stretch back in. Recording time is host time minus start, pauses included: tracks,
+    segments, camera keys and the EDL share one clock (`ProjectV1::duration_ns` no longer
+    subtracts pauses; nothing recorded before had pauses). A pause's silence is not reported as
+    an audio gap. Recovery cuts pauses the same way.
+  - **Recording bar:** Pause/Resume, Restart (discard this take, start again with the same
+    request, after a confirmation), Stop, Discard; a 3-2-1 countdown before the start (setting:
+    none, 3, 5 or 10 s; Escape or Cancel); optional frame rate, drops and drift. The timer and
+    the tray title leave paused time out; the tray has Pause Recording.
+  - **Shortcuts** (global): ⌥⇧R start/stop, ⌥⇧P pause/resume, ⌥⇧S switch source, ⌥⇧C camera
+    on/off from now on, ⌥⇧O open the recorder. Not configurable yet.
+  - **Library window:** every recording newest first, with a poster (the composed first second,
+    rendered on demand and cached in the project's thumbs folder), date, length and size; Edit,
+    Export (opens the editor's export sheet), Show in Finder/Explorer/Files, Move to Trash after a
+    confirmation. Deleting always goes to the Trash or Recycle Bin, never straight to deletion.
+  - **When Recording Stops** can also export with the export sheet's last settings. An opt-in
+    setting (off by default, per the SPEC) moves the raw recording to the Trash after an export
+    made from the summary or right after recording; editor exports never do.
+  - **About window:** version, the no-network statement, and the license texts of the app, the
+    FFmpeg and gifski helpers (with every library inside them), the fonts and the Rust crates.
+    **Diagnostics window:** runs the self-test (ADR-048) and offers its report.
+  - **Microphone level** in the recorder panel while it is open and nothing records.
+- **Already in place from M1–M2 and kept:** crash recovery at launch with the recovered notice
+  in the panel (now also a Recovered/Damaged badge in the Library), the low-disk notice and the
+  automatic stop when the disk fills, device hot-plug notices and fallbacks.
+- **Not done:** customizable shortcuts; a separate performance pass beyond the M2 CPU work (the
+  30-minute soak numbers in STATUS stand); per-OS onboarding text for Windows and Linux beyond
+  what the permission screens already say.
+
+## ADR-050: Owner requests after M7 (record modes, rename, silences, blur, shortcuts, built-in media)
+
+- **Status:** accepted (owner, 2026-11-21). Windows and Linux media parts are **experimental** until the
+  owner has tried them on his own machines.
+- **Record modes:** Screen, Screen + Camera and Camera Only. A camera can be the main picture
+  (`SourceSpec::Camera`), recorded as a screen segment, so camera-only takes and switches between
+  a screen and the camera stay one recording; the corner camera hides while the camera is the
+  main picture.
+- **Rename:** Library, editor title and summary. The project folder follows the title and keeps
+  its date; while the editor has it open, the folder moves when the editor closes. Quitting now
+  saves and closes the editor.
+- **Library tidy-up:** sort (newest, oldest, longest, largest, name), Finder-style multi-select,
+  Move N to Trash.
+- **Remove Silences:** loudness of the heard tracks (muted ones ignored) per 10 ms; pauses
+  quieter than a level for at least 0.5/1/2 s keep 150 ms each side, leading and trailing quiet go
+  whole; the level starts a third of the way from room tone to speech. One undoable
+  `delete_ranges` edit.
+- **Blur and black boxes:** spans in recording time, like camera keyframes, so a box stays on the
+  content it hides through every cut, move, paste, duplicate and speed change (timeline-time boxes
+  let pasted or moved footage escape the blur); placed as fractions of the screen picture so they
+  follow the content through frame changes; at most 8 at once. The renderer mosaics (cells a
+  twelfth of the box, at least a sixtieth of the picture) or blacks out the covered texels between
+  the prefilter and the composite, identical on GPU and CPU; the camera and text stay on top.
+- **Customizable shortcuts:** each global shortcut takes new keys from the recorder panel; keys
+  need ⌘, ⌃ or ⌥; clashes (between actions or with other apps) show next to the shortcut.
+- **Windows tracks (experimental):** Media Foundation in process: H.264 (hardware encoder when present,
+  1 s GOP, no B-frames) and AAC into fragmented MP4 through a sink writer, read with a source
+  reader that counts times from the first frame and uses the decoder's row pitch. Pictures over
+  4096 px and audio at rates other than 44.1/48 kHz go to the helper. `.mkv` tracks from older
+  recordings, and anything Media Foundation cannot open, still go through the helper;
+  `SC_MEDIA=helper` or a system without Media Foundation records with the helper.
+- **Linux screen track (experimental):** GStreamer in process (WebKitGTK already links it, so no new
+  runtime dependency): VA-API, NVENC or OpenH264 into the same Matroska the helper writes, so
+  reading, probing, recovery and audio stay with the helper. x264enc is never picked by the app
+  (GPL stays in the helper); with no such encoder, or `SC_MEDIA=helper`, the helper records as
+  before.
+- **NVENC in the helpers:** the Linux and Windows FFmpeg helpers gain `h264_nvenc` and
+  `hevc_nvenc` (nv-codec-headers 11.1 line, 11.1.5.4 since 2026-11-24, MIT, header only; the driver loads at run time, so
+  no new link dependency and drivers 470+ work). The helper's encoder probe already tries them
+  first, so Fast exports and helper-written tracks use an NVIDIA GPU when there is one.
+
+## ADR-051: Separate screen and camera tracks, linked by default
+
+- **Context:** the owner wants the editor to show the screen (with system audio) and the camera
+  (with the microphone) as their own tracks, locked together by default but separable with a
+  click, so the camera or the screen can be cut out of some parts or moved on its own.
+- **Decision:** the project keeps `edl` as the screen track and the timeline's length. An
+  optional `camera_edl` holds the camera's own clips; while it is absent the camera and the mic
+  follow `edl` exactly as before, so old projects and the default experience do not change.
+  Unlinking copies the screen's clips into `camera_edl` (new ids). A clip gains `hidden`: a gap
+  that keeps its length and shows and plays nothing, which is how one track keeps its place when
+  something is removed from the other.
+- **Edits once unlinked:** deleting a clip leaves a gap; deleting a camera gap closes it up;
+  deleting a screen gap takes its time out of every track (the screen track sets the length).
+  Trims stop at the neighbouring clips instead of rippling, a dragged clip slides along its track
+  (`slide_clip`), Split can target one track, a range delete still cuts every track, and a paste
+  puts a gap of the same length on the other track. Linking again drops `camera_edl` and closes
+  the screen's gaps; it is one undoable edit.
+- **Playback and export:** the picture comes from `edl` and the camera from its own clips; where
+  the screen has a gap the camera fills the frame. Audio plays in two lanes, system audio through
+  `edl` and the mic through `camera_edl`, each with its own cut fades and speed. Camera keyframes
+  stay in recording time, so a moved camera clip keeps its placement. Remove Silences cuts only
+  where both tracks are quiet.
+- **Waveforms:** the peaks cache gains one file per audio kind, so each lane draws its own sound.
+
+## ADR-052: iPhone and iPad screens as a source (macOS)
+
+- **Context:** the owner wants to record an iPhone's screen, wired and wireless. Android would be
+  welcome later; it needs scrcpy and adb as helpers and is not part of this.
+- **Wired:** the app sets CoreMediaIO's `kCMIOHardwarePropertyAllowScreenCaptureDevices` (what
+  QuickTime does), so a plugged-in, unlocked, trusting iPhone or iPad appears as an external
+  muxed AVCaptureDevice a moment later. It is listed with the cameras under the hint `screen`;
+  the UI moves such devices out of every camera menu into the panel's iPhone tab. The new
+  `SourceSpec::Device` records it as the main picture at its own size and shape, through a
+  second shared device feed (`Platform::device_screens`) so the Mac's camera can still be the
+  corner camera at the same time. The project describes the segment like a camera source.
+  CoreMediaIO links as a system framework; no new crate.
+- **Wireless:** through iPhone Mirroring (macOS 15+): its window is an ordinary window source,
+  listed in the iPhone tab with a button that opens the app. AVFoundation cannot record an
+  iPhone's screen over Wi-Fi; the phone camera and microphone that apps like Slack use wirelessly
+  are Continuity Camera, which the camera and microphone menus already offer.
+- **Not yet:** the phone's own sound over USB (the muxed device carries it) is not recorded; with
+  iPhone Mirroring, the phone's sound plays on the Mac and system audio records it.
+- **Update 2026-11-23 (tested with the owner's iPhone):** recording over USB works: the phone's
+  full screen (1206 × 2622 portrait) with the Mac's camera in the corner, first frame about 2 s
+  after the start. Before that every app, QuickTime included, got nothing: the system log showed
+  macOS's `iOSScreenCaptureAssistant` (running for five days) failing every start with "no such
+  device" for the phone's USB capture interface. Restarting that helper (`sudo killall
+  iOSScreenCaptureAssistant`, or restarting the Mac) fixed it. A device source now waits up to
+  10 s for its first picture and, if none comes, says to unlock the phone or restart the Mac.
+  CoreMediaIO also offers wireless screen devices (`kCMIOHardwarePropertyAllowWirelessScreenCaptureDevices`);
+  the owner's phone was not offered that way (only an Apple TV), so wireless stays with iPhone
+  Mirroring.
+- **Update 2026-11-24 (the phone's sound):** the device screen's capture session also gets an
+  audio output, in the device's own format (48 kHz stereo on the owner's iPhone), when the device
+  offers one, and its sound reaches the
+  recorder through the shared device feed as a new track kind, `device_audio` (file
+  `tracks/device_audio.mov`), opened when the recording starts on a device screen. It mixes,
+  mutes and plays like system audio: on the screen's lane when the camera is unlinked, in the
+  "system" waveform, in silence removal and in exports. A device that sends no sound leaves no
+  track. A recording that switches to the phone later in the take has no phone sound (the track
+  exists only when the take starts on the phone). Tested live with the owner's iPhone: taking
+  the sound moves it from the phone to the Mac, and iOS pauses whatever was playing, so the
+  track is silent until play is pressed again (then about -20 dBFS from a YouTube video, also in
+  the export). Copy-protected apps (Apple Music) send silence to every recorder, QuickTime
+  included. The iPhone tab says both.
+
+## ADR-053: Simple Balance branding (logo, menu bar icon, green accent)
+
+- **Context:** the owner wants Simple Capture to look like a sibling of Simple Balance: a simple
+  logo where the S is worked into a familiar indicator for what the app does (Simple Balance's S
+  becomes a $ in a coin), and its green rather than the system's blue accent. The plain red
+  record button identified nothing, and neither did the menu bar's record mark.
+- **Logo:** Simple Balance's rounded tile and gradient (#257a59 → #0d4b34) with the same white
+  2-unit line drawing on a 24-unit grid: a camera viewfinder (corner brackets) holding Simple
+  Balance's S, with a red REC dot in the top-right corner. Sources in `assets/brand/`
+  (`app-icon.svg` on the macOS 824/1024 grid, `mark.svg` for in-app use, the menu bar glyphs);
+  `app/icons/` is generated from `app/icons/source.png` with `tauri icon`.
+- **Menu bar:** the same glyph as a template image while idle; drawn in red while recording.
+- **Colour:** the accent is Simple Balance's green (#176b4b light; #1c7c58 fills and #58c795 text
+  in dark, `--accent-ink`), no longer the system accent; status green follows it. Red stays for
+  recording, stopping and destructive actions. Neutral surfaces stay macOS greys (ADR-044).
+
+## ADR-054: Fit or Fill per recorded section
+
+- **Context:** a recording that switches sources mixes shapes; one Fit/Fill choice for the whole
+  video crops one source's sides or leaves bands around another.
+- **Decision:** each screen segment (a section between source switches) can override the canvas
+  fit in `output.segment_framing` (reserved for this since M1): Fit, or Fill with a crop focus
+  (fractions of that picture, 0.5/0.5 is centred). The editor's Frame tab offers Default / Fit /
+  Fill and Keep sliders for the section under the playhead (`set_segment_framing`, undoable).
+  The player, editor preview, blur boxes, posters and every export use it; the recorder's live
+  Preview keeps the canvas default.
+
+## ADR-055: Our own click highlights where the system cannot draw them
+
+- **Context:** ScreenCaptureKit draws clicks only on macOS 15+; macOS 14, Windows and Linux had
+  none (`cursor.jsonl` was deferred to M7, ADR-018 item 7).
+- **Decision:** with Highlight clicks on and no system drawing, the recorder polls the pointer
+  every 16 ms (CoreGraphics' combined session state on macOS, GetCursorPos/GetAsyncKeyState on
+  Windows; no permission needed, no event tap) and writes `cursor.jsonl`: one line per change,
+  `{"t": rec_ns, "x", "y": global points, "b": buttons}`. Each section stores where its picture
+  was on screen at its start (`screen_pt`), and the project is marked `own_clicks`. The player
+  maps every press of the last 0.45 s into the picture (through the section's Fit/Fill) and draws a
+  fading yellow ring on top of the text, so preview, posters and exports match. Linux has no
+  global pointer under Wayland, so it offers no click highlight.
+- **Limits:** a window moved during its section keeps the place it had when the section began.
+
+
+## ADR-056: Animated WebP and APNG export
+
+- **Context:** SPEC lists animated WebP and APNG as nice-to-haves; the helper had no zlib (so no
+  PNG encoder) and no libwebp.
+- **Decision:** the FFmpeg helper adds zlib 1.4 and libwebp 1.6.0, both static, pinned and
+  checksum-verified in `third_party/versions.toml`, with the `apng`, `png` and `libwebp_anim`
+  encoders and the `apng` and `webp` muxers. Both formats behave like GIF in the sheet (no audio,
+  GIF frame rates, 960 long side by default, the same Loop setting written as the plays count).
+  Frames go to the encoders as RGB converted from BT.709 limited range, so libwebp's own
+  conversion and PNG's RGB both see the right colours. WebP offers Small/Balanced/High (libwebp
+  quality 60/75/90); APNG is lossless with mixed prediction. The format buttons stay disabled
+  when the helper lacks the encoder.
+- **Limits:** APNG files are large, and macOS Preview and Quick Look show only the first frame.
+- **Update 2026-11-24:** the owner does not want APNG; the app offers WebP only (the helper
+  keeps its APNG and PNG encoders, unused). The sheet's order is MP4, MOV, WebM, GIF, WebP.
+
+## ADR-057: Mac App Store edition
+
+- **Status:** Accepted (owner, 2026-11-24). Replaces the SPEC non-goal "App Store or notarized
+  distribution"; the notarized DMG already shipped under ADR-003. **Partly superseded by ADR-058
+  (2026-11-25):** the DMG is now the same sandboxed, LGPL-only app, so everything below about two
+  editions, the cargo feature `mas`, the `.mas` entitlement file names and "what store users lose"
+  now applies to every macOS build. Signing, the profile, automation, What's New and the
+  owner-only steps stand.
+- **Context:** the owner wants 0.1.0 on the Mac App Store as well as on GitHub Releases and the
+  Homebrew tap. The DMG's contents can't go there as they are:
+  1. **Licensing.** Its helpers are a GPL-2.0-or-later FFmpeg with x264 and x265, and an
+     AGPL-3.0-or-later gifski that contains GPL-3.0-or-later libimagequant. The FSF holds that the
+     App Store's usage rules add restrictions that GPLv2 §6 and GPLv3/AGPLv3 §10 forbid. GNU Go
+     was pulled in 2010 and VLC for iOS in 2011 after a copyright holder complained, and VLC
+     came back in 2013 only after libVLC moved to the LGPL. Any one copyright holder could have
+     the app removed.
+  2. **Sandbox.** The store requires the App Sandbox for the app and every executable inside it
+     (guideline 2.4.5), and public APIs only (2.5.1).
+  3. **Signing.** The store takes Apple Distribution signatures with a provisioning profile, not
+     Developer ID.
+- **Decision:**
+  - **One version, one tag.** The store edition is built from the same `v*` tag as the GitHub and
+    Homebrew release, with the same bundle ID `com.simplecapture.desktop` (ADR-001) and version,
+    arm64 only, `LSMinimumSystemVersion` 14.0. CI sets the build number (`CFBundleVersion`),
+    because every upload needs a new one.
+  - **Sandboxed build behind the cargo feature `mas`** (superseded by ADR-058: the feature is
+    gone and this code is the macOS build). The app crate's `mas` feature turns on
+    the feature of the same name in the crates under it (today only `capture-macos`) and gates
+    everything the sandbox or App Review needs done differently: for example security-scoped
+    access to a chosen export folder, NSWorkspace instead of spawning `/usr/bin/open`, and no
+    private `_setPreventsActivation:` selector. Without the feature the Developer ID build
+    behaves exactly as before. The helpers are signed with only `app-sandbox` and `inherit`.
+  - **Entitlements** (`app/macos/entitlements.mas.plist`, now `entitlements.appstore.plist`;
+    ADR-058): the App Sandbox; camera and
+    microphone (plus the hardened runtime's `audio-input`); Movies folder read/write, where
+    recordings and default exports go; user-selected read/write with app-scoped bookmarks, so a
+    chosen export folder stays usable after a relaunch; and `network.client`. The app makes no
+    network connections. WKWebView, which draws every window, runs its WebContent and
+    Networking XPC services under the host app's sandbox, and they need `network.client` even
+    for local content such as Tauri's custom protocol, so the entitlement stays. App Privacy
+    remains "Data Not Collected", and the review notes (`appstore/review.json`) explain the
+    entitlement. No `device.usb`: iPhone and iPad capture goes through Core Media I/O's screen
+    devices under `device.camera`.
+  - **Found at launch.** A menu-bar app shows nothing when it starts, and App Review rejects an
+    app the reviewer can't find (guideline 2.1). So the app, in every edition, opens the
+    recorder panel on its first launch (no `settings.json` yet) and, on macOS, when it is opened
+    again from Finder or Launchpad while running; other launches show only the menu-bar icon.
+    The review notes say so.
+  - **LGPL helpers, no gifski** (every macOS build since ADR-058). The store edition bundles
+    `sc-ffmpeg` and `sc-ffprobe` built from the same pinned sources and script without `--enable-gpl`, x264 and x265, and without
+    `--enable-version3`, so they are LGPL-2.1-or-later. VideoToolbox (H.264, HEVC, ProRes),
+    SVT-AV1, libvpx, Opus, Vorbis and libwebp stay, so every format (MP4, MOV, WebM, GIF, WebP)
+    remains. `sc-gifski` is left out. The store build doesn't come from the GitHub release page,
+    so About → Licenses carries the source offer: the FFmpeg entry has a Source code button
+    that opens the GitHub release of the same tag (`releases/tag/v<version>`), which holds the
+    helper sources archive. Details: docs/LICENSES.md §3.4.
+  - **What store users lose, and the fallbacks** (all Mac users since ADR-058). "Best" H.264 and HEVC (x264, x265) run on the
+    VideoToolbox encoder instead, with Apple's software encoder at a bitrate from the quality
+    preset for H.264 frames over 4096 px (`pick_video_encoder` in crates/export). A gifski GIF
+    is made in palette mode instead (`gif_mode`). Default settings and Quick Export therefore
+    work with either helper set, at less quality per byte than x264/x265. The SPEC's SSIM
+    check of x264 against Fast applies to the Developer ID edition. Media keys can't be global
+    shortcuts in the store edition: global-hotkey catches them with a CGEventTap, which needs
+    Input Monitoring, so the Shortcuts settings refuse them there.
+  - **Signing.** The app and helpers are signed with an Apple Distribution identity (team
+    K9LZ5QLRFQ) and a Mac App Store provisioning profile embedded as
+    `Contents/embedded.provisionprofile`; `productbuild` packs a `.pkg` signed with the Mac
+    Installer Distribution identity ("3rd Party Mac Developer Installer").
+  - **Automation.** `.github/workflows/app-store.yml` runs when a GitHub release is published
+    (and by hand, with the tag as input): it builds the LGPL helpers and the `mas` app from the
+    tag, signs, packs, uploads through the App Store Connect API (`scripts/asc/asc.py`), waits
+    for processing, creates or reuses the App Store version, attaches the build, and submits
+    for review. Every run also syncs the listing from `appstore/` (texts, URLs, screenshots,
+    categories, age rating, review notes), so App Store Connect is never edited by hand for
+    those; the first run makes the app free in every territory, and later runs leave price and
+    availability alone. Its API key has the **App Manager** role, because the Developer role
+    (the notarization key, `APPLE_API_KEY_*`) can upload but not submit. A temporary **Admin**
+    key lets `scripts/appstore-setup.sh` register the bundle ID, create the distribution
+    certificates and profile, store them as repository secrets and look up the app's ID; the
+    owner revokes it afterwards and reruns the script with `--renew-certs` when the
+    certificates expire.
+  - **What's New** comes from the version's section of CHANGELOG.md (`## <version>`), so release
+    notes are written once. CHANGELOG.md covers every edition, so the blocks about another one
+    (Linux, Android, iOS, gifski, x264, x265, Windows the operating system) are left out, and
+    the rest, as plain text, must pass `appstore/check.py` before the build (at most 4000
+    characters; no prices, "free", "beta" or GitHub-build encoders). The first version sends
+    none; for later ones a missing section fails the run instead of shipping stale text.
+  - **Owner-only steps** (no API exists, or they are the owner's personal data or legal
+    choices): create the app record (the API has no `POST /v1/apps`), App Privacy ("Data Not
+    Collected"), agreements, EU DSA trader status, generating API keys, the App Review contact
+    (typed once, or stored as `ASC_REVIEW_CONTACT_*` secrets), and the first TestFlight run
+    that approves Screen Recording, Camera and Microphone. Steps in docs/RELEASING.md, "Mac App
+    Store".
+- **Consequences:**
+  - Two macOS builds per release; the DMG and the Homebrew cask stay the full edition
+    (superseded by ADR-058: both are the sandboxed app, signed differently). Both
+    install `Simple Capture.app` with the same ID, so one replaces the other. Switching asks
+    for the permissions again (different signatures), and the store edition keeps its settings
+    in its sandbox container.
+  - The LGPL is not risk-free on the store either: Bradley Kuhn argued that the store terms
+    conflict with it just as with the GPL (LGPL-2.1 §10 also forbids further restrictions). In
+    practice LGPL FFmpeg ships in many store apps without enforcement. Open option: a custom
+    licence agreement in App Store Connect that leaves the LGPL rights intact.
+  - Arm64 only: since June 2026 App Store Connect accepts Mac apps without Intel code when
+    their minimum is macOS 13 or later. If the upload is still rejected (ITMS-90981), the
+    fallback is a universal build.
+  - wry sets two private WebKit keys by key-value coding (picture-in-picture and
+    `drawsBackground`); low risk, and they can't be removed without patching wry.
+  - Exports to a folder outside Movies are encoded in the recording's folder first and then
+    moved there (copied when it is on another disk): the helper's inherited sandbox reaches
+    Movies, a static entitlement, but not a folder granted at run time. Such an export needs
+    free space on the Movies disk.
+  - Without `_setPreventsActivation:`, clicking the floating bar or an overlay might activate
+    the app and take focus from the app being recorded.
+  - Unverified until the first TestFlight run (docs/MANUAL_TEST.md §10h): iPhone and iPad
+    capture under the sandbox (it may need `com.apple.security.device.usb` after all), exports
+    to a chosen folder after a relaunch, and the focus behaviour above.
+
+## ADR-058: One Mac app: the DMG is the sandboxed App Store build
+
+- **Status:** Accepted (owner, 2026-11-25). Supersedes the parts of ADR-057 that made the DMG and
+  the Mac App Store two editions; updates ADR-013, ADR-014 and ADR-017 for macOS.
+- **Context:** ADR-057 shipped two macOS builds from one tag: a Developer ID DMG with GPL FFmpeg
+  (x264, x265) and gifski, and a sandboxed store build with LGPL FFmpeg and no gifski, chosen by
+  the cargo feature `mas`. Two builds meant two sets of behaviour to test (sandbox paths, focus,
+  export folders, encoder lists), two license sets and two answers to "which one do I have".
+- **Decision:**
+  - **One app.** The DMG, the Homebrew cask and the Mac App Store all ship the same sandboxed
+    app. The cargo feature `mas` is gone: security-scoped export folders, NSWorkspace instead of
+    `/usr/bin/open`, no private `_setPreventsActivation:` and the real-home recordings folder
+    are simply the macOS code (`cfg(target_os = "macos")`).
+  - **One helper set.** Every macOS build bundles only `sc-ffmpeg` and `sc-ffprobe`,
+    LGPL-2.1-or-later (VideoToolbox H.264, HEVC and ProRes, `prores_ks`, SVT-AV1, libvpx, Opus,
+    Vorbis, libwebp), and no gifski. `third_party/ffmpeg/build-macos.sh` builds LGPL by default
+    into `third_party/out/macos-<arch>`; `SC_FFMPEG_LICENSE=gpl` builds into
+    `out/macos-<arch>-gpl` for experiments, and `scripts/stage-helpers.sh` refuses it.
+    `app/tauri.bundle.macos.conf.json` (the two helpers, the LGPL copyright line) is merged into
+    every macOS build, and `scripts/ci/notices.sh --macos` / `--check-macos` make and check the
+    one macOS license set.
+  - **Only signing differs.** `scripts/macos-sign.sh` is the one signing path (helpers with
+    `app/macos/helper.entitlements.plist`, app-sandbox and inherit; then the app; hardened
+    runtime throughout).
+    - DMG: Developer ID, secure timestamps, notarized and stapled, with
+      `app/macos/entitlements.plist` (the sandbox set). Built by `scripts/local-bundle.sh --dmg`
+      locally and `package.yml` in CI; checked by `scripts/mas-check.sh --dmg [--adhoc]`.
+    - App Store: Apple Distribution, the provisioning profile, a `.pkg`, with
+      `app/macos/entitlements.appstore.plist`: the same sandbox set plus
+      `com.apple.application-identifier` and `com.apple.developer.team-identifier` (a Developer
+      ID app with those and no profile would not launch). Built by `scripts/mas-build.sh`.
+    - `scripts/mas-check.sh --entitlements` (in CI) asserts the two app files differ by exactly
+      those two keys and the helper file is exactly app-sandbox + inherit.
+  - **Mac exports.** H.264 and HEVC use VideoToolbox (Apple's software encoder above 4096 px for
+    H.264), so "Best Quality" for H.264 and HEVC is unavailable on macOS; GIFs use palette mode;
+    media keys can't be shortcuts. Windows and Linux (experimental) keep GPL FFmpeg with x264
+    and x265, and gifski.
+- **Consequences:**
+  - One macOS build to test: docs/MANUAL_TEST.md §10h's sandbox rows apply to the DMG too, and
+    can be run before any store upload.
+  - The DMG keeps its settings, logs and self-test reports in the sandbox container
+    (`~/Library/Containers/com.simplecapture.desktop/`); recordings stay in `~/Movies`.
+  - DMG users lose x264/x265 "Best Quality" and gifski GIFs: less quality per byte at the same
+    size. The SPEC's SSIM check of x264 against Fast applies to Windows and Linux; its test
+    (`export_quality`) still runs on a Mac, against the unshipped GPL build named by
+    `SC_FFMPEG` (`third_party/out/macos-arm64-gpl`), and skips without it.
+  - The DMG and the store copy still replace each other (same bundle ID), and switching asks for
+    the permissions again (different signatures).
+  - The release's `simple-capture-helper-sources.tar.gz` still covers the GPL Windows and Linux
+    helpers; for macOS it is the LGPL source offer About → Licenses links to.
+  - Without `_setPreventsActivation:` in any build, the focus risk noted in ADR-057 applies to
+    the DMG too (MANUAL_TEST AS7).

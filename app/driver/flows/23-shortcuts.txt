@@ -1,0 +1,11 @@
+# Customizable shortcuts (M7): set one, catch a clash and a key without a modifier, pause while typing, restore.
+cmd app {"action":"shortcuts"}
+cmd app {"action":"shortcut_set","id":"pause","keys":"Control+Alt+KeyP"}
+cmd app {"action":"shortcut_set","id":"switch","keys":"Alt+Shift+KeyR"}
+cmd app {"action":"shortcut_set","id":"record","keys":"KeyR"}
+cmd app {"action":"shortcuts_pause","paused":true}
+cmd app {"action":"shortcuts_pause","paused":false}
+cmd app {"action":"shortcut_set","id":"switch","keys":"Alt+Shift+KeyS"}
+cmd app {"action":"shortcut_set","id":"pause","keys":""}
+cmd get_settings
+quit

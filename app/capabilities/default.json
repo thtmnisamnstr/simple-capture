@@ -1,6 +1,25 @@
 {
   "identifier": "default",
   "description": "Core IPC (events, window state) for our own windows, plus show/hide so the UI can open and close its own windows. App commands need no entry.",
-  "windows": ["panel", "onboarding", "bar", "switcher", "region", "pick", "saved"],
-  "permissions": ["core:default", "core:window:allow-show", "core:window:allow-hide"]
+  "windows": [
+    "panel",
+    "onboarding",
+    "bar",
+    "switcher",
+    "traymenu",
+    "region",
+    "pick",
+    "saved",
+    "stage",
+    "editor",
+    "library",
+    "diagnostics",
+    "about"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-start-dragging"
+  ]
 }

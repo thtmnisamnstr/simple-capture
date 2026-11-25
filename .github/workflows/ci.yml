@@ -4,17 +4,19 @@ name: ci
 #   fast      per OS: fmt, clippy and tests for every crate that links neither Skia nor Tauri,
 #             plus `cli --no-default-features`
 #   full      per OS: Skia FreeType source build (cached apart from target/), Tauri app, UI build,
-#             clippy and tests for the whole workspace
+#             clippy and tests for the whole workspace. On macOS the LGPL helper cache saved on
+#             main is the one app-store.yml restores (caches saved on main are visible to tag runs)
 #   licenses  cargo-deny (+ per-target HTTP-client and ffmpeg-next checks), npm licenses,
 #             network check, cargo-about notices
-#   ui        svelte-check, build, node tests
+#   ui        svelte-check, build, node tests; App Store Connect tooling tests, the store listing
+#             check, the macOS entitlement files and shellcheck of the macOS packaging scripts
 # Runner switches: macOS sets SC_ALLOW_NO_HW_ENCODER=1 (visible warning) and SC_REQUIRE_HELPERS=1
-# with the cached FFmpeg helper; Ubuntu sets SC_REQUIRE_GPU=1 (lavapipe). Windows and macOS
+# with the cached LGPL FFmpeg helper that every macOS build ships; Ubuntu sets SC_REQUIRE_GPU=1 (lavapipe). Windows and macOS
 # runners have no wgpu adapter we rely on, so GPU tests may print SKIPPED: there.
 
 on:
   push:
-    branches: [main, m1]
+    branches: [main, 'm[0-9]*']
   pull_request:
   workflow_dispatch:
 
@@ -29,12 +31,12 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
   NODE_VERSION: "26"
-  PNPM_VERSION: "12.21.0"
+  PNPM_VERSION: "12.23.0"
   FAST_PACKAGES: >-
     -p simple-capture-geometry -p simple-capture-core -p simple-capture-platform
     -p simple-capture-capture-macos -p simple-capture-capture-windows -p simple-capture-capture-linux
     -p simple-capture-record -p simple-capture-decode -p simple-capture-render
-    -p simple-capture-helpers -p sc-devtools
+    -p simple-capture-helpers -p simple-capture-tracks -p simple-capture-capture-common -p sc-devtools
   # Plan §6.2: the record Session tests run a few real seconds with one-frame tolerances, so CI
   # runs tests with --test-threads=2 (hosted runners have 3-4 vCPUs). One invocation for the
   # whole selection keeps Cargo's feature unification, and so the build, identical.
@@ -46,11 +48,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, windows-2025, ubuntu-24.04]
+        os: [macos-26, windows-2025, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
       - if: runner.os == 'macOS'
         uses: ./.github/actions/macos-helpers
@@ -75,12 +79,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, windows-2025, ubuntu-24.04]
+        os: [macos-26, windows-2025, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     # A cold Skia FreeType build takes 20-40 min on a hosted runner; cached runs are far shorter.
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
         with:
           full: "true"
@@ -133,6 +139,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
       - name: cargo-deny and cargo-about cache
         id: tools
@@ -141,11 +149,11 @@ jobs:
           path: |
             ~/.cargo/bin/cargo-deny
             ~/.cargo/bin/cargo-about
-          key: cargo-tools-${{ runner.os }}-deny-0.22.0-about-0.9.3
-      - name: Install cargo-deny 0.22.0 and cargo-about 0.9.3
+          key: cargo-tools-${{ runner.os }}-deny-0.22.1-about-0.9.3
+      - name: Install cargo-deny 0.22.1 and cargo-about 0.9.3
         if: steps.tools.outputs.cache-hit != 'true'
         run: |
-          cargo install --locked cargo-deny@0.22.0
+          cargo install --locked cargo-deny@0.22.1
           cargo install --locked cargo-about@0.9.3 --features cli
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -166,6 +174,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -174,3 +184,22 @@ jobs:
       - run: pnpm --dir ui check
       - run: pnpm --dir ui build
       - run: pnpm --dir ui test
+      - name: one version across Cargo, Tauri and the UI
+        run: scripts/ci/version-check.sh
+      - name: App Store Connect tooling and the store listing
+        run: |
+          python3 -I scripts/asc/test_asc.py
+          python3 -I scripts/asc/asc.py check-metadata
+          python3 -I appstore/check.py
+      - name: macOS entitlements (the DMG and App Store sandbox keys match)
+        run: scripts/mas-check.sh --entitlements
+      - name: shellcheck (macOS packaging scripts)
+        run: |
+          if ! command -v shellcheck >/dev/null; then
+            sudo apt-get update -q
+            sudo apt-get install -y --no-install-recommends shellcheck
+          fi
+          shellcheck --version | sed -n 2p
+          shellcheck -S warning scripts/mas-build.sh scripts/mas-check.sh scripts/appstore-setup.sh \
+            scripts/macos-sign.sh scripts/local-bundle.sh scripts/stage-helpers.sh scripts/make-dmg.sh \
+            scripts/ci/notices.sh

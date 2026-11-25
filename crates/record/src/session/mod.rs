@@ -7,9 +7,11 @@
 mod control;
 pub mod gapfill;
 mod health;
+mod pointer;
 mod router;
 mod shared;
 mod sink;
+mod sources;
 mod tracks;
 
 use std::path::{Path, PathBuf};
@@ -44,6 +46,8 @@ pub struct RecordRequest {
     /// Length of the recording on its own clock. Screen frames from then on are not recorded,
     /// and a `stop` that comes later still ends the recording there. The caller still stops it.
     pub duration_ns: Option<i64>,
+    /// The camera placement at the start; later changes come through `Session::camera_key`.
+    pub camera_key: Option<sc_core::project::CameraKey>,
     pub tuning: Tuning,
 }
 
@@ -116,6 +120,9 @@ pub enum Notice {
     },
     StoppedForSleep,
     StoppedForDisk,
+    Paused {
+        paused: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -142,6 +149,11 @@ pub trait SessionObserver: Send + Sync {
     fn on_state(&self, s: &SessionState);
     fn on_health(&self, h: &HealthSnapshot);
     fn on_notice(&self, n: &Notice);
+    /// The loudest sample (0–1) of an audio track since the last call, about 15 times a second
+    /// while recording (silence while paused).
+    fn on_level(&self, track: AudioTrackKind, peak: f32) {
+        let _ = (track, peak);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -193,6 +205,15 @@ impl Session {
         }
     }
 
+    /// A new camera placement from now on (stamped with the current recording time). Ignored
+    /// when the recording has no camera.
+    pub fn camera_key(&self, key: sc_core::project::CameraKey) -> Result<()> {
+        self.check_live()?;
+        self.ctl
+            .send(Ctl::CameraKey(key, self.sh.now()))
+            .map_err(|_| Error::State(ENDED.into()))
+    }
+
     /// Async; the result arrives through state and notices.
     pub fn switch_source(&self, spec: SourceSpec, via: Via) -> Result<()> {
         self.check_live()?;
@@ -201,14 +222,28 @@ impl Session {
             .map_err(|_| Error::State(ENDED.into()))
     }
 
-    /// M1: pause/resume is M7.
+    /// Stops taking frames and sound until [`Session::resume`]; the paused time is cut out of
+    /// the finished recording's timeline. Pausing twice is a no-op.
     pub fn pause(&self) -> Result<()> {
-        Err(Error::Unsupported("pause/resume is M7"))
+        self.check_live()?;
+        let (tx, rx) = mpsc::channel();
+        self.ctl
+            .send(Ctl::Pause(tx))
+            .map_err(|_| Error::State(ENDED.into()))?;
+        rx.recv().map_err(|_| Error::State(ENDED.into()))?
     }
 
-    /// M1: pause/resume is M7.
     pub fn resume(&self) -> Result<()> {
-        Err(Error::Unsupported("pause/resume is M7"))
+        self.check_live()?;
+        let (tx, rx) = mpsc::channel();
+        self.ctl
+            .send(Ctl::Resume(tx))
+            .map_err(|_| Error::State(ENDED.into()))?;
+        rx.recv().map_err(|_| Error::State(ENDED.into()))?
+    }
+
+    pub fn paused(&self) -> bool {
+        self.sh.paused.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn set_exclusions(&self, exclude: Vec<WindowId>) -> Result<()> {
@@ -268,4 +303,27 @@ impl Drop for Session {
             let _ = self.stop_inner(StopReason::Quit);
         }
     }
+}
+
+/// The camera overlay of `p`'s camera track, with `keys` sorted by time; no camera track, no
+/// overlay.
+pub(crate) fn set_camera_layout(
+    p: &mut sc_core::project::ProjectV1,
+    mut keys: Vec<sc_core::project::CameraKey>,
+) {
+    let Some(track) = p
+        .recording
+        .tracks
+        .iter()
+        .find(|t| t.kind == sc_core::project::TrackKind::Camera)
+    else {
+        return;
+    };
+    keys.sort_by_key(|k| k.t_rec_ns);
+    p.camera_layout.overlays = vec![sc_core::project::CameraOverlay {
+        id: "cam0".into(),
+        track_id: track.id.clone(),
+        keyframes: keys,
+        extra: Default::default(),
+    }];
 }

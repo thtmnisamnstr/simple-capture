@@ -35,6 +35,7 @@ export function liveRecent(list: RecentEntry[], windowIds: Set<number> | null, d
     const s = e.spec;
     if (s.kind === 'window') return windowIds ? windowIds.has(s.window_id) : false;
     if (s.kind === 'picked') return false;
+    if (s.kind === 'camera' || s.kind === 'device') return true;
     return displayIds.has(s.display_id);
   });
 }

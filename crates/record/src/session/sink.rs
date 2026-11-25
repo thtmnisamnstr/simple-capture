@@ -24,6 +24,7 @@ pub(crate) struct Firsts {
     pub camera: Option<SizePx>,
     pub mic: Option<(u32, u16)>,
     pub sys: Option<(u32, u16)>,
+    pub dev: Option<(u32, u16)>,
 }
 
 pub(crate) struct Feed {
@@ -38,12 +39,46 @@ pub(crate) struct SessionSink {
     pub camera: OnceLock<Feed>,
     pub mic: OnceLock<Feed>,
     pub sys: OnceLock<Feed>,
-    seen: [AtomicBool; 4],
+    pub dev: OnceLock<Feed>,
+    seen: [AtomicBool; 5],
     firsts: Mutex<Firsts>,
     cv: Condvar,
+    levels: Mutex<[std::time::Instant; 2]>,
+    held: Mutex<Option<VideoFrame>>,
 }
 
 impl SessionSink {
+    /// One buffer's peak per 66 ms: converting every buffer to read its peak costs more than the
+    /// meter is worth.
+    fn level(&self, track: AudioTrackKind, a: &AudioBuffer) {
+        let i = usize::from(track != AudioTrackKind::Mic);
+        {
+            let mut l = lock(&self.levels);
+            if l[i].elapsed() < std::time::Duration::from_millis(66) {
+                return;
+            }
+            l[i] = std::time::Instant::now();
+        }
+        let Some(samples) = a.data.samples() else {
+            return;
+        };
+        let peak = samples.iter().fold(0f32, |m, v| m.max(v.abs()));
+        self.sh.obs.on_level(track, peak);
+    }
+
+    /// The screen sends frames only when it changes: the last one seen while paused is recorded
+    /// at `now`, so an idle screen does not show the picture from before the pause.
+    pub(crate) fn resume_held(&self, now: i64) {
+        if let Some(mut f) = lock(&self.held).take() {
+            f.pts = sc_platform::HostTime(now.max(f.pts.0));
+            let _ = self.router.try_send(RouterIn::Frame(f));
+        }
+    }
+
+    fn paused(&self) -> bool {
+        self.sh.paused.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     pub(crate) fn new(sh: Arc<Shared>, router: SyncSender<RouterIn>) -> Arc<SessionSink> {
         Arc::new(SessionSink {
             sh,
@@ -51,9 +86,12 @@ impl SessionSink {
             camera: OnceLock::new(),
             mic: OnceLock::new(),
             sys: OnceLock::new(),
+            dev: OnceLock::new(),
             seen: Default::default(),
             firsts: Mutex::new(Firsts::default()),
             cv: Condvar::new(),
+            held: Mutex::new(None),
+            levels: Mutex::new([std::time::Instant::now(); 2]),
         })
     }
 
@@ -104,6 +142,10 @@ fn forward(feed: &OnceLock<Feed>, item: TrackIn, audio: bool) {
 impl FrameSink for SessionSink {
     fn on_screen(&self, f: VideoFrame) {
         self.first(0, |x| x.screen = true);
+        if self.paused() {
+            *lock(&self.held) = Some(f);
+            return;
+        }
         if let Err(TrySendError::Full(_)) = self.router.try_send(RouterIn::Frame(f))
             && let Some(s) = lock(&self.sh.screen_stats).as_ref()
         {
@@ -114,11 +156,18 @@ impl FrameSink for SessionSink {
     fn on_camera(&self, f: VideoFrame) {
         let size = f.buffer.0.size();
         self.first(1, |x| x.camera = Some(size));
+        if self.paused() {
+            return;
+        }
         forward(&self.camera, TrackIn::Video(f), false);
     }
 
     fn on_audio(&self, track: AudioTrackKind, a: AudioBuffer) {
         let fmt = (a.sample_rate, a.channels);
+        if self.paused() {
+            return;
+        }
+        self.level(track, &a);
         match track {
             AudioTrackKind::Mic => {
                 self.first(2, |x| x.mic = Some(fmt));
@@ -127,6 +176,10 @@ impl FrameSink for SessionSink {
             AudioTrackKind::SystemAudio => {
                 self.first(3, |x| x.sys = Some(fmt));
                 forward(&self.sys, TrackIn::Audio(a), true);
+            }
+            AudioTrackKind::DeviceAudio => {
+                self.first(4, |x| x.dev = Some(fmt));
+                forward(&self.dev, TrackIn::Audio(a), true);
             }
         }
     }

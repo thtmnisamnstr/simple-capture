@@ -39,6 +39,14 @@ pub enum SourceSpecDto {
         pick_id: String,
         region_pt: Option<RectPt>,
     },
+    /// Camera only: the camera is the main picture.
+    Camera {
+        device_id: String,
+    },
+    /// A plugged-in iPhone's or iPad's screen as the main picture.
+    Device {
+        device_id: String,
+    },
 }
 
 impl SourceSpecDto {
@@ -85,6 +93,17 @@ impl SourceSpecDto {
                 }
                 SourceSpec::Picked(p)
             }
+            SourceSpecDto::Camera { device_id } => {
+                if device_id.is_empty() {
+                    return Err("choose a camera to record camera only".into());
+                }
+                SourceSpec::Camera {
+                    device: device_id.clone(),
+                }
+            }
+            SourceSpecDto::Device { device_id } => SourceSpec::Device {
+                device: device_id.clone(),
+            },
         })
     }
 }
@@ -112,12 +131,14 @@ pub fn record_request(
 ) -> Result<RecordRequest, String> {
     let s = &dto.settings;
     s.validate()?;
+    let camera_only = matches!(source, SourceSpec::Camera { .. });
     let mut canvas = env.default_canvas;
     canvas.aspect = s.canvas.aspect;
     if let Some(r) = s.canvas.aspect.ratio() {
         canvas.ratio = r;
     }
     canvas.background = s.canvas.background.clone();
+    canvas.fit = s.canvas.fit;
     let title = dto
         .title
         .as_deref()
@@ -137,7 +158,11 @@ pub fn record_request(
         },
         show_cursor: s.cursor,
         click_highlight: s.click_highlight,
-        camera: s.camera.clone().filter(|c| !c.is_empty()),
+        camera: s
+            .camera
+            .clone()
+            .filter(|c| !c.is_empty())
+            .filter(|_| !camera_only),
         mic: s.mic.clone().filter(|m| !m.is_empty()),
         system_audio: match s.system_audio {
             SystemAudioDto::Off => SystemAudioMode::Off,
@@ -148,6 +173,7 @@ pub fn record_request(
         background_image: s.canvas.background_image.as_ref().map(PathBuf::from),
         exclude: env.exclude,
         duration_ns: None,
+        camera_key: Some(s.camera_key.clone()),
         tuning: Tuning::default(),
     })
 }
@@ -193,6 +219,7 @@ fn track_kind(k: AudioTrackKind) -> &'static str {
     match k {
         AudioTrackKind::Mic => "mic",
         AudioTrackKind::SystemAudio => "system_audio",
+        AudioTrackKind::DeviceAudio => "device_audio",
     }
 }
 
@@ -221,6 +248,7 @@ pub fn notice(n: &Notice) -> Value {
         }
         Notice::StoppedForSleep => json!({"kind": "stopped_for_sleep"}),
         Notice::StoppedForDisk => json!({"kind": "stopped_for_disk"}),
+        Notice::Paused { paused } => json!({"kind": "paused", "paused": paused}),
     }
 }
 
@@ -438,6 +466,34 @@ mod tests {
         assert_eq!(req.background_image, Some(PathBuf::from("/x/bg.png")));
         assert_eq!(req.exclude, vec![WindowId(3), WindowId(4)]);
         assert_eq!(req.via, Via::OwnChooser);
+    }
+
+    #[test]
+    fn camera_only_records_the_camera_as_the_main_picture_without_an_overlay() {
+        let json = r##"{"source":{"kind":"camera","device_id":"cam-1"},"via":"own_chooser","title":null,
+            "settings":{"source":null,"canvas":{"aspect":"original","background":{"kind":"solid","color":[1,1,1,1]}},
+            "camera":"cam-1","mic":null,"system_audio":"all","fps":30,"resolution":"native","cursor":true,
+            "click_highlight":false}}"##;
+        let dto: RecordRequestDto = serde_json::from_str(json).expect("parse");
+        let src = dto.source.to_spec(|_| None).expect("spec");
+        assert_eq!(
+            src,
+            SourceSpec::Camera {
+                device: "cam-1".into()
+            }
+        );
+        let env = RequestEnv {
+            projects_dir: PathBuf::from("/p"),
+            exclude: vec![],
+            default_canvas: default_canvas(),
+        };
+        let req = record_request(&dto, src, env).expect("request");
+        assert_eq!(req.camera, None);
+        assert_eq!(req.system_audio, SystemAudioMode::All);
+        let empty = SourceSpecDto::Camera {
+            device_id: String::new(),
+        };
+        assert!(empty.to_spec(|_| None).is_err());
     }
 
     #[test]

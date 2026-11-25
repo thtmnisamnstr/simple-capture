@@ -1,6 +1,6 @@
 [package]
 name = "simple-capture-capture-linux"
-description = "linux capture backend (placeholder until M6)"
+description = "Linux capture backend: xdg-desktop-portal ScreenCast over PipeWire, V4L2 cameras, PipeWire audio through cpal"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,6 +14,19 @@ name = "sc_capture_linux"
 simple-capture-core.workspace = true
 simple-capture-geometry.workspace = true
 simple-capture-platform.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+simple-capture-capture-common.workspace = true
+simple-capture-tracks.workspace = true
+simple-capture-helpers.workspace = true
+tracing.workspace = true
+libc.workspace = true
+ashpd = { version = "0.14.1", default-features = false, features = ["tokio", "screencast", "file_chooser", "open_uri"] }
+tokio = { version = "1.54.1", default-features = false, features = ["rt", "rt-multi-thread"] }
+pipewire = { version = "0.10.1", features = ["v0_3_53"] }
+v4l = "0.14.0"
+gstreamer = "0.25.4"
+gstreamer-app = "0.25.2"
 
 [lints]
 workspace = true

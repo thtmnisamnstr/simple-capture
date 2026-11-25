@@ -58,21 +58,81 @@ pub fn project_folder_name(t: &LocalDateTime, title: &str) -> String {
 }
 
 fn folder_name_n(t: &LocalDateTime, title: &str, n: u32) -> String {
+    let stamp = format!(
+        "{:04}-{:02}-{:02} {:02}.{:02}.{:02}",
+        t.y, t.mo, t.d, t.h, t.mi, t.s
+    );
+    stamped_name(&stamp, title, n)
+}
+
+fn stamped_name(stamp: &str, title: &str, n: u32) -> String {
     let collision = if n > 1 {
         format!(" {n}")
     } else {
         String::new()
     };
     format!(
-        "{:04}-{:02}-{:02} {:02}.{:02}.{:02} {}{collision}{PROJECT_SUFFIX}",
-        t.y,
-        t.mo,
-        t.d,
-        t.h,
-        t.mi,
-        t.s,
+        "{stamp} {}{collision}{PROJECT_SUFFIX}",
         sanitize_title(title)
     )
+}
+
+const STAMP_LEN: usize = "YYYY-MM-DD HH.MM.SS".len();
+
+/// On case-insensitive disks (APFS, NTFS) a name differing only in case is the same folder.
+fn same_folder(a: &Path, b: &Path) -> bool {
+    match (fs::canonicalize(a), fs::canonicalize(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => false,
+    }
+}
+
+fn folder_stamp(name: &str) -> Option<&str> {
+    let stamp = name.get(..STAMP_LEN)?;
+    let shape = stamp.bytes().enumerate().all(|(i, b)| match i {
+        4 | 7 => b == b'-',
+        10 => b == b' ',
+        13 | 16 => b == b'.',
+        _ => b.is_ascii_digit(),
+    });
+    (shape && name.as_bytes().get(STAMP_LEN) == Some(&b' ')).then_some(stamp)
+}
+
+/// The project's date and time (from its folder name) followed by its title, as the default
+/// export name; just the title for a folder without a date.
+pub fn titled_stem(dir: &Path, title: &str) -> String {
+    let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    match folder_stamp(name) {
+        Some(stamp) => format!("{stamp} {}", sanitize_title(title)),
+        None => sanitize_title(title),
+    }
+}
+
+/// Renames a project folder to match `title`, keeping its date and time. Returns the folder's
+/// path afterwards, unchanged when its name already fits or carries no date (a folder the user
+/// named). A name taken by another project gets `" 2"`, `" 3"`, ….
+pub fn rename_project_dir(dir: &Path, title: &str) -> Result<PathBuf> {
+    let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
+        return Ok(dir.to_path_buf());
+    };
+    let Some(stamp) = folder_stamp(name) else {
+        return Ok(dir.to_path_buf());
+    };
+    let parent = dir.parent().unwrap_or(Path::new("."));
+    for n in 1..=999 {
+        let candidate = stamped_name(stamp, title, n);
+        if candidate == name {
+            return Ok(dir.to_path_buf());
+        }
+        let to = parent.join(&candidate);
+        if to.exists() && !same_folder(&to, dir) {
+            continue;
+        }
+        fs::rename(dir, &to).map_err(|e| Error::io_at(e, "rename project folder", dir))?;
+        crate::fsio::fsync_dir(parent)?;
+        return Ok(to);
+    }
+    Ok(dir.to_path_buf())
 }
 
 /// Replaces characters that are invalid in a file name on any of the three OSes (and control

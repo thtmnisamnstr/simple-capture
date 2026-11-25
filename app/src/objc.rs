@@ -1,5 +1,7 @@
 //! The few AppKit calls the shell makes itself, through the Objective-C runtime (the app crate
 //! has no objc2 dependency).
+// Most of this module is window and menu introspection for the debug driver.
+#![cfg_attr(not(debug_assertions), allow(dead_code))]
 
 use std::ffi::{CStr, c_void};
 

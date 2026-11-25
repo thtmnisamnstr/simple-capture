@@ -49,8 +49,15 @@ simple-capture/
 │  │                          SCStream (ADR-035), SCContentSharingPicker, AVCaptureSession camera
 │  │                          + mic, AVAssetWriter writers, AVAssetReader decoder,
 │  │                          IOSurface → Metal import
-│  ├─ capture-windows/        placeholder until M6 (compiles, returns Unsupported, tests pass)
-│  ├─ capture-linux/          placeholder until M6
+│  ├─ capture-windows/        Windows.Graphics.Capture screens/windows/regions/app crops, Media
+│  │                          Foundation cameras, WDA_EXCLUDEFROMCAPTURE, dialogs, Recycle Bin
+│  │                          (ADR-048); a stub elsewhere
+│  ├─ capture-linux/          xdg-desktop-portal ScreenCast picker + PipeWire frames, V4L2
+│  │                          cameras, portal file chooser, Trash (ADR-048); a stub elsewhere
+│  ├─ capture-common/         Windows + Linux: cpal mic and system audio, device watcher
+│  ├─ tracks/                 raw tracks through the FFmpeg helper (constant-rate Matroska
+│  │                          video, AAC audio) and reading them back; NV12 conversions
+│  ├─ diagnostics/            the self-test behind --self-test and the Diagnostics window
 │  ├─ record/                 session orchestration (OS-independent; drives platform traits):
 │  │                          start gate, queues, health, pause, stop; the switch controller and
 │  │                          frame router (segments, make-before-break); audio gap filler
@@ -71,7 +78,8 @@ simple-capture/
 │                             bar, switch-source popover, pick-mode and region overlays), tray,
 │                             hotkeys
 ├─ ui/                        Svelte 5 + TypeScript + Vite (ADR-005)
-├─ cli/                       simple-capture (--self-test, probe dump)
+├─ cli/                       simple-capture: record, recover, export, validate, probe,
+│                             --self-test
 ├─ third_party/               helper build scripts, versions.toml (pinned + SHA-256), licenses
 └─ tools/macos-dev-host/      the single permission host for dev binaries (ADR-002)
 ```
@@ -118,7 +126,7 @@ Notes:
 | Preview transport (ADR-007) | **Webview frames** (URI pull, WebGL2). Native CAMetalLayer under the webview works [S2] but is off | **Webview frames.** Native DirectComposition visual compiles [S5], never run | **Webview frames.** Wayland `wl_subsurface` passed in Docker with software rendering [S6]; X11 native child failed, so X11 stays on webview frames |
 | Own-UI exclusion | SCContentFilter with our windows listed one by one, on every stream (**verified [S3]**) | SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE), set when each window is created | Auto-hide overlapping overlays |
 | Hotkeys | tauri-plugin-global-shortcut | same | GlobalShortcuts portal on Wayland, global-hotkey on X11 |
-| Export | FFmpeg 9.0.2 static GPL sidecar + gifski sidecar (**verified [S1]**) | FFmpeg built by us from pinned sources with `--disable-network` + gifski built with cargo (ADR-013); not built yet | same as Windows |
+| Export | FFmpeg 9.1 static LGPL sidecar, no x264, x265 or gifski: VideoToolbox H.264/HEVC, palette GIFs (ADR-058; the GPL sidecar + gifski were **verified [S1]**) | FFmpeg built by us from pinned sources with `--disable-network` + gifski built with cargo (ADR-013); not built yet | same as Windows |
 
 M1 CI may skip helper builds on Windows and Linux; those helpers come later (ADR-013). The
 placeholder capture crates there must still compile and pass tests.
@@ -171,19 +179,19 @@ flowchart LR
   DEC --> FS --> IMP[IOSurface to wgpu textures]
   BG[background raster: Skia, cached] --> COMP
   IMP --> COMP[compositor: background, screen fit, camera, text]
-  COMP --> PREV[PreviewSink: webview frames]
+  COMP --> PREV[PreviewSink: native layer on macOS, webview frames elsewhere]
   COMP --> EXP[export: NV12/Y4M over stdin]
   FILES --> MIX[audio mix in Rust to WAV]
   EXP --> FF[ffmpeg sidecar]
   MIX --> FF
-  EXP --> GS[gifski sidecar]
+  EXP --> GS[gifski sidecar, Windows and Linux]
   FF --> OUT[(OUT.part, then OUT)]
   GS --> OUT
 ```
 
 - Only the screen is segmented. Camera, mic and system audio are one continuous file each for the
   whole recording (ADR-034).
-- Thumbnails, the recorder panel's still mini preview and the live camera bubble use the same
+- Thumbnails, the recorder panel's still mini preview and the Preview window use the same
   compositor, so the preview always matches the output.
 
 ---
@@ -404,7 +412,7 @@ Movies/Simple Capture/<YYYY-MM-DD HH.MM.SS> <title>.sc/
   journal.jsonl         append-only recording events (fsync'd), folded into project.json on stop
   cursor.jsonl          cursor positions + clicks, per segment (for the optional click highlight)
   tracks/screen-000.mov  tracks/screen-001.mov  …   one file per screen segment (ADR-034)
-  tracks/camera.mov  tracks/mic.mov  tracks/system_audio.mov
+  tracks/camera.mov  tracks/mic.mov  tracks/system_audio.mov  tracks/device_audio.mov (iPhone over USB)
   assets/background-<sha256[0..12]>.<ext>             copied background images (ADR-033)
   thumbs/project.jpg    thumbs/strip/…  waveforms/…  (caches; safe to delete)
   session.log
@@ -458,8 +466,11 @@ type ProjectV1 = {
       src_in_rec_ns: number; src_out_rec_ns: number;   // RECORDING time
       speed: { num: number; den: number };             // 1/2, 1/1, 3/2, 2/1, 4/1
       muted: boolean;
+      hidden?: true;                // a gap: keeps its length, shows and plays nothing
     }[];
   };
+  camera_edl?: Edl;                 // the camera's own clips once unlinked (ADR-051); absent
+                                    // while the camera and mic follow `edl`
 
   audio_mix: { [track_id: string]: { gain_db: number; muted: boolean } };
 
@@ -467,7 +478,7 @@ type ProjectV1 = {
 
   output: {
     canvas: Canvas;                 // replaces the earlier output.aspect / screen_crop_norm
-    segment_framing?: {             // reserved for cover + pan (M3+), keyed by segment id
+    segment_framing?: {             // a section's own Fit/Fill and crop focus, keyed by segment id
       [segment_id: string]: { fit: "contain" | "cover"; focus_norm: Point };
     };
   };
@@ -525,7 +536,7 @@ type Background =
 type GradientStop = { at: number; color: Rgba };           // 2–4 stops
 
 type Track = {
-  id: string; kind: "screen" | "camera" | "mic" | "system_audio";
+  id: string; kind: "screen" | "camera" | "mic" | "system_audio" | "device_audio";
   segment_id?: string;              // screen tracks only
   file: string;                     // relative, e.g. "tracks/screen-000.mov"
   container: "mov_fragmented"; codec: "hevc" | "h264" | "aac";
@@ -843,8 +854,10 @@ Draw order per output frame: background → screen (src = `content_px`, dst = fi
   8-bit fixed-point bilinear step; pixel centres map to (rel+½)·s/(d·k)−½. The CPU reference shares
   the maths line for line, so GPU and CPU agree to the bit (ADR-022 M1 update). The CPU filter is
   within 1.25 code values of a float box average. Chroma is nearest 4:2:0 on input and the 2×2
-  average on I420 output. M1 uploads NV12 planes from mapped buffers (`R8Uint` + `Rg8Uint`); the
-  IOSurface import below is M3. Render time per frame on Metal (whole `render()` incl. background
+  average on I420 output. Screen frames are uploaded from mapped buffers (`R8Uint` + `Rg8Uint`).
+  Camera frames that are IOSurface-backed `CVPixelBuffer`s are read in place since M2
+  (`crates/render/src/iosurface.rs`, the same integer formats, bit-identical to the upload); the
+  screen import below is M3. Render time per frame on Metal (whole `render()` incl. background
   upload and readback): 1080p 6.3–9.7 ms, 2160p 17.4–18.7 ms.
 - **YUV import on macOS** [S3]:
   - CVMetalTextureCache wraps planes 0 and 1 of the IOSurface as R8 and RG8 Metal textures.
@@ -903,11 +916,29 @@ Draw order per output frame: background → screen (src = `content_px`, dst = fi
   a short idle. Channels between the engine and the UI are latest-wins [cap-render-decode].
 - The recorder panel's mini stage preview (M1) is a still: a screenshot of the selected source
   composited with the canvas and background by the real compositor, served through the same URI
-  protocol. The live stage preview with the camera is M2.
-- **Native slots, off until hardware proof.** `PreviewSink` keeps one native implementation slot
-  per OS. They are switched on only after hardware runs show Windows and at least Wayland working:
-  - macOS: CAMetalLayer under a transparent WKWebView (**verified [S2]**: 60.1 fps, about 20% CPU,
-    HTML composites on top). Relies on wry's private `drawsBackground` key.
+  protocol; since M2 it also includes the camera at the current placement.
+- **Preview window (M2, ADR-042/043).** `stage.rs` in the app runs a renderer thread that
+  composites the output (source snapshot once a second, letterbox background, live camera) with
+  the same `camera_layer` as the export, only when one of those or the window size changed; between
+  frames it waits on `SharedCamera::wait_newer` (one AVCaptureSession for preview and recording).
+  On macOS the snapshot reuses its resolved capture filter for 3 s. Where the
+  frame goes is the renderer's `Sink`:
+  - **macOS, native layer (ADR-007, on since 2026-11-20):** `sc_capture_macos::preview` puts a
+    `CAMetalLayer` view under the WKWebView, covering the page's viewport (the window's content
+    layout rectangle); `Compositor::present` draws the canvas at the display's pixel size, centred
+    on the `#111` letterbox, straight into it. The page gets a pixel-less frame (format 2) with the
+    canvas size, turns transparent and keeps only its HTML (camera outline and handles) on top.
+    The window's resize and scale events re-fit the view and update the page size the renderer
+    reads (`Core::stage_window_changed`).
+  - **Webview frames (other OSes, `SC_PREVIEW=webview`, or if the layer can't attach):** I420
+    frames at the window's point size go to `LiveHub`; the window pulls them from
+    `sc://live/stage` (long poll, latest wins, 16-byte header with a format code, then I420
+    planes) and converts them to RGB in a WebGL2 shader.
+- **Native slots.** `PreviewSink` keeps one native implementation slot per OS. Windows and Linux are
+  switched on only after hardware runs show Windows and at least Wayland working:
+  - macOS: CAMetalLayer under a transparent WKWebView: **in use** for the Preview window (spike 2
+    [S2]: 60.1 fps, about 20% CPU; M2: about 18% with the live camera, ADR-007). Relies on wry's
+    private `drawsBackground` key.
   - Windows: a non-topmost DirectComposition visual under the WebView2 child window [S5]. Compiles
     for `x86_64-pc-windows-msvc`; nothing has been composited on Windows.
   - Linux Wayland: wgpu on a `wl_subsurface` below a transparent toplevel; passed in Docker with
@@ -945,7 +976,8 @@ sequenceDiagram
 
 - **What it renders.** The whole recording (M1 has no editor; the EDL is one clip covering
   `[0, duration)`), composited on the canvas: background, then each screen segment contain-fit
-  (§8). No camera bubble (M2) and no text (M4).
+  (§8), then the camera from its track where `camera_layout` puts it (M2), and the mic and system
+  audio mixed. No text until M4.
 - **Size.** The reference canvas size (§8). Fixed aspects are at most 3840 px on the long side.
   The quick export caps the long side at 3840 (Q6), never upscales, and falls back to the
   reference when a size class is at least as large; the full-size Original export comes with M5's
@@ -956,7 +988,8 @@ sequenceDiagram
   rule (§7) holds frames, so output is constant frame rate.
 - **Video.** Y4M on stdin to the bundled FFmpeg: `libx264 -preset medium -profile:v high
   -pix_fmt yuv420p -crf 22` (Balanced, ADR-016), BT.709 limited range tagged on the frames with
-  `setparams` and in the output options (ADR-015), `-movflags +faststart`.
+  `setparams` and in the output options (ADR-015), `-movflags +faststart`. (Since ADR-058 the Mac
+  helper has no x264, so on macOS Quick Export uses VideoToolbox.)
 - **Audio.** Mic and system audio mixed in Rust at 0 dB into a temporary WAV, encoded with `aac_at`
   at 160k (Balanced). The tracks already have silence in every gap, so the mix needs no gap logic.
 - **Lifecycle.** `.part` then rename, cancel by SIGTERM → SIGKILL, and an ffprobe check of codec,
@@ -1006,6 +1039,7 @@ sequenceDiagram
   - VideoToolbox H.264: 191 fps on 10 s, 207–208 fps on 30 s.
   - VideoToolbox HEVC: 177 fps.
   - gifski q90 at 960×540: 41 fps.
+  - Since ADR-058 a Mac has only the VideoToolbox, SVT-AV1, VP9 and palette-GIF rows of this list.
   - Pipe transport ceiling: about 700 fps at 1080p, so the pipe is never the limit.
   - The `-threads 4` proxy is noisy (x264 medium ranged 109–146 fps over the five saved runs). An
     M1 run is needed.
@@ -1097,8 +1131,9 @@ in the app data folder and shown on the Diagnostics page and in `--self-test`.
 
 ## 13. Permissions and signing
 
-- **No signing identity** (ADR-003 update). The owner has no Apple Development identity and may not
-  create one. Everything below follows from that.
+- **Signing** (ADR-003 update 2026-11-24, ADR-057, ADR-058). The owner has a Developer ID; the
+  M1-era notes below about an ad hoc release bundle are kept as history, and the current release
+  signing is the "Release bundles" bullet.
 - **Development.** Every binary that needs a permission runs through `tools/macos-dev-host/run.sh`
   as a child of `Simple Capture Dev.app` (`com.simplecapture.dev`). That app is never renamed,
   rebuilt or re-signed (ADR-002, `CLAUDE.md`). Child processes, including helpers and kill-test
@@ -1113,18 +1148,21 @@ in the app data folder and shown on the Diagnostics page and in `--self-test`.
     `excludedBundleIDs` would also see the host's ID, so our own windows are excluded by window ID
     (`excludedWindowIDs`) in every build.
   - `SC_DEV_PID_FILE=path` records the child's pid for kill tests.
-- **Release bundles** (`com.simplecapture.desktop`) are **ad-hoc signed**. TCC keys an ad-hoc app
-  on its code hash, so after every update the user approves Screen Recording, Camera and Microphone
-  again. Onboarding explains this and links to System Settings.
-  - Hardened runtime with `com.apple.security.device.camera` and
-    `com.apple.security.device.audio-input`. Screen Recording has no entitlement and is granted in
-    TCC.
+- **Release bundles** (`com.simplecapture.desktop`) are one sandboxed app (ADR-058), signed by
+  `scripts/macos-sign.sh` with the hardened runtime: Developer ID, notarized, for the DMG and
+  Homebrew (`app/macos/entitlements.plist`); Apple Distribution with a provisioning profile for
+  the Mac App Store (`app/macos/entitlements.appstore.plist`, the same set plus the application
+  and team identifiers). Grants survive updates under either signature, but the two are separate
+  apps to TCC. Local builds without a Developer ID use the self-signed "Simple Capture Local
+  Signing" certificate, or ad hoc (TCC then keys the app on its code hash and every rebuild
+  re-prompts).
+  - App Sandbox, `com.apple.security.device.camera` and `com.apple.security.device.audio-input`,
+    Movies read/write, user-selected read/write with app-scoped bookmarks, and
+    `network.client` for WKWebView (ADR-057). Screen Recording has no entitlement and is granted
+    in TCC.
   - Info.plist usage strings for camera, microphone and audio capture.
-  - Sidecars are signed the same way (tauri-bundler signs them with the app's identity and
-    entitlements).
-  - Option for the owner, not done: a self-signed code-signing certificate from Keychain Access
-    gives a stable designated requirement without an Apple account, so the owner's own builds keep
-    their grants across updates. It needs the owner's go-ahead.
+  - Sidecars are signed first with only `app-sandbox` and `inherit`
+    (`app/macos/helper.entitlements.plist`), so they run in the app's sandbox.
   - Running the release bundle on this machine creates real `com.simplecapture.desktop` prompts, so
     every such test needs the owner's approval first.
 - **System picker path** (ADR-028). "System picker…" is a source next to our own chooser, in the

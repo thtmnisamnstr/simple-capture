@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use dispatch2::{DispatchQueue, DispatchQueueAttr, DispatchRetained};
 use objc2::rc::Retained;
@@ -39,13 +39,65 @@ use super::system::macos_version;
 use crate::{tcc, util};
 
 const START_TIMEOUT: Duration = Duration::from_secs(10);
+const SNAPSHOT_FILTER_TTL: Duration = Duration::from_secs(3);
 
-#[derive(Debug, Default)]
+struct SnapshotFilter {
+    spec: SourceSpec,
+    at: Instant,
+    built: SendBox<Built>,
+}
+
+#[derive(Default)]
 pub struct MacScreenSource {
-    _priv: (),
+    snapshot_filter: Mutex<Option<SnapshotFilter>>,
+}
+
+impl std::fmt::Debug for MacScreenSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MacScreenSource").finish_non_exhaustive()
+    }
 }
 
 impl MacScreenSource {
+    fn snapshot_now(&self, spec: &SourceSpec, max: SizePx) -> Result<sc_core::image::RgbaImage> {
+        tcc::guard("SCScreenshotManager")?;
+        let mut cached = self
+            .snapshot_filter
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let fresh = cached
+            .as_ref()
+            .is_some_and(|c| c.spec == *spec && c.at.elapsed() < SNAPSHOT_FILTER_TTL);
+        if !fresh {
+            *cached = None;
+            let content = match spec {
+                SourceSpec::Picked(_) => content::shareable(false).ok(),
+                _ => Some(content::shareable(false)?),
+            };
+            let cfg = ScreenStreamConfig {
+                fps: 1,
+                resolution: Resolution::Native,
+                show_cursor: false,
+                show_clicks: false,
+                queue_depth: 3,
+                exclude: Vec::new(),
+            };
+            *cached = Some(SnapshotFilter {
+                spec: spec.clone(),
+                at: Instant::now(),
+                built: SendBox(build(content.as_deref(), spec, &cfg)?),
+            });
+        }
+        let Some(filter) = cached.as_ref() else {
+            return Err(Error::Other("snapshot: no filter".into()));
+        };
+        let image = snapshot(&filter.built.0, max);
+        if image.is_err() {
+            *cached = None;
+        }
+        image
+    }
+
     pub fn new() -> MacScreenSource {
         MacScreenSource::default()
     }
@@ -127,18 +179,7 @@ impl ScreenSource for MacScreenSource {
     }
 
     fn snapshot(&self, spec: &SourceSpec, max: SizePx) -> Result<sc_core::image::RgbaImage> {
-        tcc::guard("SCScreenshotManager")?;
-        let content = content::shareable(false)?;
-        let cfg = ScreenStreamConfig {
-            fps: 1,
-            resolution: Resolution::Native,
-            show_cursor: false,
-            show_clicks: false,
-            queue_depth: 3,
-            exclude: Vec::new(),
-        };
-        let built = build(Some(&content), spec, &cfg)?;
-        snapshot(&built, max)
+        objc2::rc::autoreleasepool(|_| self.snapshot_now(spec, max))
     }
 }
 
@@ -395,6 +436,9 @@ pub(crate) fn build(
                 },
             })
         }
+        SourceSpec::Camera { .. } | SourceSpec::Device { .. } => Err(Error::Unsupported(
+            "camera sources go through the camera, not the screen",
+        )),
         SourceSpec::Picked(p) => {
             let pf = p
                 .handle

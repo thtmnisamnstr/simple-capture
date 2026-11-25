@@ -1,0 +1,33 @@
+# 30-minute soak (M2 review item 8): a recording of the display with the camera, mic and system
+# audio while the Preview window shows the live camera. Runs only when asked for by name:
+#   SC_DRV_PROFILE=release app/driver/run.sh 16-soak
+cmd set_settings {"settings":{"source":{"kind":"display","display_id":"@DISPLAY@"},"camera":"@CAMERA@","mic":"@MIC@","system_audio":"all","preview_shown":true}}
+show panel
+wait 3000
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv soak","settings":{"camera":"@CAMERA@","mic":"@MIC@","system_audio":"all","preview_shown":true}}}
+wait 5000
+cmd preview_state
+wait 300000
+cmd preview_state
+wait 300000
+cmd preview_state
+wait 300000
+cmd preview_state
+wait 300000
+cmd preview_state
+wait 300000
+cmd preview_state
+wait 295000
+cmd preview_state
+cmd stop_recording
+wait-phase saved 180000
+wait 3000
+cmd editor {"action":"state"}
+cmd editor {"action":"seek","tl_ns":1700000000000}
+wait 2000
+cmd editor {"action":"state"}
+cmd editor {"action":"export","size":"1080"}
+wait-phase saved 1800000
+cmd editor {"action":"close"}
+wait 500
+quit

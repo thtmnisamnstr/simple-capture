@@ -1,16 +1,20 @@
 name: skia-cache
 description: >-
   Cache the Skia FreeType source build (ADR-018) separately from target/: the skia-bindings crate
-  source (Skia plus the third-party sources its build syncs) and its build-script output, keyed by
-  skia-bindings version + skia-safe features (root Cargo.toml) + .cargo/config.toml
-  (FORCE_SKIA_BUILD, SKIA_GN_ARGS) + OS. Both halves
-  are restored together so ninja's timestamps stay consistent and the rebuild is a no-op.
+  source (Skia plus the third-party sources its build syncs) and its build-script output for one
+  Cargo profile, keyed by scripts/ci/skia-cache-key.sh (runner image, profile, toolchain,
+  skia-safe features, Cargo profiles, .cargo/config.toml and the Cargo.lock entries of
+  skia-bindings and its build dependencies). Both halves are restored together so ninja's
+  timestamps stay consistent and the rebuild is a no-op.
   mode=restore before the first cargo build; mode=save right after it (runs even if later steps
   fail, so a red test run still keeps the 20-40 min Skia build).
 inputs:
   mode:
     description: restore | save
     required: true
+  profile:
+    description: "Cargo profile directory that builds Skia: 'debug' (cargo build/test) or 'release' (tauri build)"
+    default: debug
 outputs:
   cache-hit:
     description: "'true' when restore found an exact match"
@@ -21,12 +25,9 @@ runs:
     - name: Cache key
       id: key
       shell: bash
-      run: |
-        v=$(grep -A1 '^name = "skia-bindings"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
-        test -n "$v"
-        f=$(grep -E '^skia-safe *=' Cargo.toml | git hash-object --stdin | cut -c1-12)
-        echo "version=$v" >> "$GITHUB_OUTPUT"
-        echo "key=skia-$RUNNER_OS-$RUNNER_ARCH-$v-$f-${{ hashFiles('.cargo/config.toml') }}" >> "$GITHUB_OUTPUT"
+      env:
+        PROFILE: ${{ inputs.profile }}
+      run: bash scripts/ci/skia-cache-key.sh "$PROFILE" >> "$GITHUB_OUTPUT"
 
     - name: Restore Skia build
       id: restore
@@ -35,7 +36,7 @@ runs:
       with:
         path: |
           ~/.cargo/registry/src/*/skia-bindings-${{ steps.key.outputs.version }}
-          ${{ env.CARGO_TARGET_DIR }}/debug/build/skia-bindings-*/out
+          ${{ env.CARGO_TARGET_DIR }}/${{ inputs.profile }}/build/skia-bindings-*/out
         key: ${{ steps.key.outputs.key }}
 
     - name: Save Skia build
@@ -44,5 +45,5 @@ runs:
       with:
         path: |
           ~/.cargo/registry/src/*/skia-bindings-${{ steps.key.outputs.version }}
-          ${{ env.CARGO_TARGET_DIR }}/debug/build/skia-bindings-*/out
+          ${{ env.CARGO_TARGET_DIR }}/${{ inputs.profile }}/build/skia-bindings-*/out
         key: ${{ steps.key.outputs.key }}

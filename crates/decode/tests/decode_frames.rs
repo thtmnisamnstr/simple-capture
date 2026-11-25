@@ -297,3 +297,18 @@ fn errors_name_the_segment() {
         Ok(_) => panic!("missing track accepted"),
     }
 }
+
+#[test]
+fn random_access_matches_the_frame_rule() {
+    let dir = TempDir::new("random-access");
+    let specs = three_with_gap();
+    let mut src = source(&dir, &specs);
+    let mut x: u64 = 0x2545_F491_4F6C_DD1D;
+    for _ in 0..300 {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        let t = (x % 3_600) as i64 * MS;
+        check(&mut src, &specs, t).unwrap();
+    }
+}

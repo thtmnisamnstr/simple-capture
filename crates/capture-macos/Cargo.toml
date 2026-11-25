@@ -31,6 +31,7 @@ objc2-io-surface.workspace = true
 objc2-screen-capture-kit.workspace = true
 objc2-av-foundation.workspace = true
 objc2-app-kit.workspace = true
+objc2-quartz-core.workspace = true
 
 [[test]]
 name = "sck_live"

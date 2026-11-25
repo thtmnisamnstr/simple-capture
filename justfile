@@ -13,9 +13,7 @@ setup:
 helpers:
     third_party/fetch.sh
     third_party/ffmpeg/build-macos.sh arm64
-    mkdir -p app/binaries
-    cp third_party/out/macos-arm64/ffmpeg app/binaries/ffmpeg-aarch64-apple-darwin
-    cp third_party/out/macos-arm64/ffprobe app/binaries/ffprobe-aarch64-apple-darwin
+    scripts/stage-helpers.sh
 
 build:
     pnpm --dir ui build
@@ -32,8 +30,7 @@ app-driver SCRIPT:
     SC_APP_SCRIPT="$(cd "$(dirname '{{SCRIPT}}')" && pwd)/$(basename '{{SCRIPT}}')" scripts/lib/live.sh tools/macos-dev-host/run.sh {{target_dir}}/debug/simple-capture-app
 
 bundle:
-    pnpm --dir ui build
-    cd app && ../ui/node_modules/.bin/tauri build --config tauri.bundle.conf.json -- --locked
+    scripts/local-bundle.sh --dmg
 
 test:
     cargo test --locked --workspace

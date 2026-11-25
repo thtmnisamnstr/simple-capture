@@ -44,6 +44,15 @@ pub enum SourceSpec {
         region_pt: RectPt,
     },
     Picked(PickedSource),
+    /// A camera as the main picture; the recorder runs it through the camera source.
+    Camera {
+        device: String,
+    },
+    /// The screen of a device plugged in by USB (an iPhone or iPad), through
+    /// [`Platform::device_screens`](crate::Platform::device_screens).
+    Device {
+        device: String,
+    },
 }
 
 /// A source chosen in the system picker. `handle` holds the OS filter object.
@@ -61,6 +70,43 @@ impl fmt::Debug for PickedSource {
             .field("descriptor", &self.descriptor)
             .field("region_pt", &self.region_pt)
             .finish_non_exhaustive()
+    }
+}
+
+/// Picked sources are equal when they hold the same OS filter object.
+impl PartialEq for SourceSpec {
+    fn eq(&self, other: &SourceSpec) -> bool {
+        use SourceSpec::*;
+        match (self, other) {
+            (Display { display: a }, Display { display: b }) => a == b,
+            (Window { window: a }, Window { window: b }) => a == b,
+            (
+                Application {
+                    display: d1,
+                    app: a1,
+                },
+                Application {
+                    display: d2,
+                    app: a2,
+                },
+            ) => d1 == d2 && a1 == a2,
+            (
+                Region {
+                    display: d1,
+                    region_pt: r1,
+                },
+                Region {
+                    display: d2,
+                    region_pt: r2,
+                },
+            ) => d1 == d2 && r1 == r2,
+            (Picked(a), Picked(b)) => {
+                Arc::ptr_eq(&a.handle, &b.handle) && a.region_pt == b.region_pt
+            }
+            (Camera { device: a }, Camera { device: b }) => a == b,
+            (Device { device: a }, Device { device: b }) => a == b,
+            _ => false,
+        }
     }
 }
 
@@ -155,6 +201,9 @@ pub struct CaptureDevice {
     pub model_id: Option<String>,
     pub is_default: bool,
     pub kind_hint: Option<String>,
+    /// Why it can't be used right now (another app holds it), when it can't.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable: Option<String>,
 }
 
 /// Default 1920×1080 @ 30.
@@ -162,6 +211,14 @@ pub struct CaptureDevice {
 pub struct CameraLimit {
     pub max: SizePx,
     pub max_fps: u32,
+}
+
+impl CameraLimit {
+    /// A device's whole screen, whatever its size.
+    pub const SCREEN: CameraLimit = CameraLimit {
+        max: SizePx { w: 8192, h: 8192 },
+        max_fps: 60,
+    };
 }
 
 impl Default for CameraLimit {
@@ -207,6 +264,8 @@ pub enum OverlayRole {
     PickOverlay,
     Saved,
     Onboarding,
+    Stage,
+    Editor,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

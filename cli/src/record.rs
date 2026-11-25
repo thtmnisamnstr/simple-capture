@@ -211,6 +211,7 @@ fn build_request(platform: &dyn Platform, plan: &Plan) -> Result<RecordRequest, 
         background_image,
         exclude: Vec::new(),
         duration_ns: a.duration_s.map(|d| (d * 1e9).round() as i64),
+        camera_key: Some(sc_core::project::CameraKey::default_placement()),
         tuning: Tuning::default(),
     })
 }
@@ -390,6 +391,7 @@ fn track_kind(k: AudioTrackKind) -> &'static str {
     match k {
         AudioTrackKind::Mic => "mic",
         AudioTrackKind::SystemAudio => "system_audio",
+        AudioTrackKind::DeviceAudio => "device_audio",
     }
 }
 
@@ -411,6 +413,7 @@ pub fn notice_json(n: &Notice) -> Value {
         }
         Notice::StoppedForSleep => json!({ "notice": "stopped_for_sleep" }),
         Notice::StoppedForDisk => json!({ "notice": "stopped_for_disk" }),
+        Notice::Paused { paused } => json!({ "notice": "paused", "paused": paused }),
     };
     let mut v = json!({ "ev": "notice" });
     if let (Some(o), Value::Object(b)) = (v.as_object_mut(), body) {
@@ -566,6 +569,7 @@ mod tests {
             model_id: None,
             is_default: default,
             kind_hint: None,
+            unavailable: None,
         }
     }
 

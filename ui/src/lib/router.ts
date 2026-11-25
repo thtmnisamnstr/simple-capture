@@ -1,6 +1,20 @@
 // Hash routes: one Vite build, one route per window label (plan §5.2).
 
-export const ROUTES = ['panel', 'onboarding', 'bar', 'switcher', 'region', 'pick', 'saved'] as const;
+export const ROUTES = [
+  'panel',
+  'onboarding',
+  'bar',
+  'switcher',
+  'traymenu',
+  'region',
+  'pick',
+  'saved',
+  'stage',
+  'editor',
+  'library',
+  'diagnostics',
+  'about',
+] as const;
 export type Route = (typeof ROUTES)[number];
 
 export function routeFromHash(hash: string): Route {

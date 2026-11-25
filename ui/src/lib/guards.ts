@@ -5,8 +5,6 @@ import type {
   ExportStateDto,
   HealthDto,
   NoticeDto,
-  PermissionStatus,
-  PermissionsDto,
   PickedDto,
   RecordingState,
   RectPt,
@@ -22,13 +20,6 @@ const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFin
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
 
-const PERMISSION_STATUSES = ['granted', 'denied', 'not_determined', 'restricted', 'unknown'];
-
-export const isPermissionStatus = (v: unknown): v is PermissionStatus =>
-  isStr(v) && PERMISSION_STATUSES.includes(v);
-
-export const isPermissions = (v: unknown): v is PermissionsDto =>
-  isObj(v) && isPermissionStatus(v.screen) && isPermissionStatus(v.camera) && isPermissionStatus(v.mic);
 
 export const isRectPt = (v: unknown): v is RectPt =>
   isObj(v) && isNum(v.x) && isNum(v.y) && isNum(v.w) && isNum(v.h) && v.w >= 0 && v.h >= 0;
@@ -41,6 +32,9 @@ export function isSourceSpec(v: unknown): v is SourceSpecDto {
     case 'application': return isStr(v.display_id) && isNum(v.pid) && (v.bundle_id === null || isStr(v.bundle_id));
     case 'region': return isStr(v.display_id) && isRectPt(v.region_pt);
     case 'picked': return isStr(v.pick_id) && (v.region_pt === null || isRectPt(v.region_pt));
+    case 'camera':
+    case 'device':
+      return isStr(v.device_id);
     default: return false;
   }
 }
@@ -84,7 +78,7 @@ export function isNotice(v: unknown): v is NoticeDto {
     case 'source_lost': return isStr(v.segment);
     case 'device_lost': return (v.device === 'camera' || v.device === 'mic') && isStr(v.name);
     case 'disk_low': return isNum(v.bytes_left);
-    case 'audio_gap': return (v.track === 'mic' || v.track === 'system_audio') && isNum(v.dur_ns);
+    case 'audio_gap': return (v.track === 'mic' || v.track === 'system_audio' || v.track === 'device_audio') && isNum(v.dur_ns);
     case 'frames_dropping': return isStr(v.track) && isNum(v.pct);
     case 'stopped_for_sleep':
     case 'stopped_for_disk':

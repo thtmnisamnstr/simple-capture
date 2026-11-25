@@ -1,0 +1,318 @@
+name: package
+
+# Installable builds for all three OSes (SPEC M6): the export helpers (FFmpeg with networking
+# off; gifski on Windows and Linux) built from the pinned sources in third_party/versions.toml,
+# the app bundled with them and every license text, and the corresponding source of the helpers.
+#   macOS   .dmg: the sandboxed app with the LGPL FFmpeg helpers and no gifski, the same app as
+#           the Mac App Store edition (app-store.yml); Developer ID signed and notarized on v* tags
+#           and manual runs when the secrets are set, else ad hoc
+#   Windows NSIS setup .exe (per-user install)
+#   Linux   .deb and .AppImage
+# A v* tag also drafts a GitHub Release with SHA256SUMS.txt and build provenance attestations.
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  NODE_VERSION: "26"
+  PNPM_VERSION: "12.23.0"
+
+jobs:
+  helpers:
+    name: helpers (${{ matrix.plat }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - plat: linux-x86_64
+            os_arg: linux
+          - plat: windows-x86_64
+            os_arg: windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Helper cache
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: third_party/out/${{ matrix.plat }}
+          key: helpers-${{ matrix.plat }}-${{ hashFiles('third_party/versions.toml', 'third_party/lib.sh', 'third_party/fetch.sh', 'third_party/ffmpeg/build-linux.sh', 'third_party/gifski/build.sh') }}
+      - name: Build tools
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends nasm cmake ninja-build meson pkg-config \
+            autoconf automake libtool mingw-w64
+      - name: Build helpers (cache miss)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          third_party/fetch.sh
+          third_party/ffmpeg/build-linux.sh ${{ matrix.os_arg }}
+          third_party/gifski/build.sh ${{ matrix.os_arg }}
+      - name: Save helpers
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: third_party/out/${{ matrix.plat }}
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: helpers-${{ matrix.plat }}
+          path: third_party/out/${{ matrix.plat }}
+          if-no-files-found: error
+
+  sources:
+    name: helper sources (GPL/AGPL)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Pinned sources and build scripts
+        run: |
+          third_party/fetch.sh
+          tar -czf simple-capture-helper-sources.tar.gz \
+            third_party/versions.toml third_party/lib.sh third_party/fetch.sh third_party/README.md \
+            third_party/ffmpeg third_party/gifski third_party/build/downloads
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: helper-sources
+          path: simple-capture-helper-sources.tar.gz
+
+  bundle:
+    name: bundle (${{ matrix.os }})
+    needs: helpers
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            plat: macos-arm64
+            bundles: app
+          - os: windows-2025
+            plat: windows-x86_64
+            bundles: nsis
+          - os: ubuntu-24.04
+            plat: linux-x86_64
+            bundles: deb,appimage
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    env:
+      # Developer ID signing and notarization run only when these secrets are set (docs/RELEASING.md),
+      # and never for pull requests, whose branch code would run with the signing identity.
+      DEVID: >-
+        ${{ startsWith(matrix.os, 'macos') && secrets.APPLE_CERTIFICATE_P12 != ''
+        && (github.event_name == 'workflow_dispatch'
+        || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          full: "true"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: UI build
+        shell: bash
+        run: |
+          npm install -g "pnpm@$PNPM_VERSION"
+          pnpm --dir ui install --frozen-lockfile
+          pnpm --dir ui build
+      - id: skia
+        uses: ./.github/actions/skia-cache
+        with:
+          mode: restore
+          profile: release
+      - name: LLVM >= 22 for the Skia build (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: choco upgrade llvm --version=22.1.8 --no-progress -y
+      - name: macOS helpers
+        if: runner.os == 'macOS'
+        uses: ./.github/actions/macos-helpers
+      - name: Windows or Linux helpers
+        if: runner.os != 'macOS'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: helpers-${{ matrix.plat }}
+          path: third_party/out/${{ matrix.plat }}
+      - name: Helper works here (raw-track round trip)
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          exe=""; [ "$RUNNER_OS" = Windows ] && exe=.exe
+          chmod +x third_party/out/${{ matrix.plat }}/* 2>/dev/null || true
+          "third_party/out/${{ matrix.plat }}/ffmpeg$exe" -hide_banner -version | head -n 1
+          SC_FFMPEG="$PWD/third_party/out/${{ matrix.plat }}/ffmpeg$exe" SC_REQUIRE_HELPERS=1 \
+            cargo test --locked -p simple-capture-tracks --test roundtrip
+      - name: cargo-about
+        shell: bash
+        run: cargo install --locked cargo-about@0.9.3 --features cli
+      - name: Notices and staging
+        shell: bash
+        run: |
+          chmod +x third_party/out/${{ matrix.plat }}/* 2>/dev/null || true
+          if [ "$RUNNER_OS" = macOS ]; then
+            scripts/ci/notices.sh --macos
+          else
+            scripts/ci/notices.sh
+          fi
+          scripts/stage-helpers.sh third_party/out/${{ matrix.plat }}
+          if [ "$RUNNER_OS" = macOS ]; then scripts/ci/notices.sh --check-macos app/gen/licenses; fi
+      - name: Developer ID keychain and notary key (macOS)
+        if: env.DEVID == 'true'
+        shell: bash
+        env:
+          P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          kc="$RUNNER_TEMP/signing.keychain-db"
+          kcpass="$(uuidgen)"
+          security create-keychain -p "$kcpass" "$kc"
+          security set-keychain-settings -lut 3600 "$kc"
+          security unlock-keychain -p "$kcpass" "$kc"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/devid.p12"
+          security import "$RUNNER_TEMP/devid.p12" -k "$kc" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/devid.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpass" "$kc" >/dev/null
+          # shellcheck disable=SC2046 # one word per keychain path; the runner's have no spaces
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          printf '%s' "$API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          {
+            echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8"
+            echo "APPLE_API_KEY_ID=$API_KEY_ID"
+            echo "APPLE_API_ISSUER=$API_ISSUER"
+          } >> "$GITHUB_ENV"
+      - name: Tauri bundle
+        shell: bash
+        working-directory: app
+        run: |
+          config=(--config tauri.bundle.conf.json)
+          if [ "$RUNNER_OS" = macOS ]; then config+=(--config tauri.bundle.macos.conf.json); fi
+          ../ui/node_modules/.bin/tauri build "${config[@]}" --bundles ${{ matrix.bundles }} -- --locked
+      - name: The .deb keeps its helpers off the system's names
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          deb=$(ls "$CARGO_TARGET_DIR"/release/bundle/deb/*.deb)
+          bins=$(dpkg-deb -c "$deb" | awk '{print $NF}' | grep -E '^\.?/?usr/bin/' || true)
+          echo "$bins"
+          if grep -qE '(^|/)usr/bin/(ffmpeg|ffprobe|gifski)$' <<<"$bins"; then
+            echo "::error::the .deb installs a helper under a name the distro owns"
+            exit 1
+          fi
+          if ! grep -qE '(^|/)usr/bin/sc-ffmpeg$' <<<"$bins"; then
+            echo "::error::the .deb has no usr/bin/sc-ffmpeg"
+            exit 1
+          fi
+      - name: Sign, notarize and package (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app="$CARGO_TARGET_DIR/release/bundle/macos/Simple Capture.app"
+          if [ "$DEVID" = true ]; then
+            scripts/macos-sign.sh "$app"
+            scripts/mas-check.sh --dmg "$app"
+          else
+            SC_SIGN_IDENTITY=- scripts/macos-sign.sh "$app"
+            scripts/mas-check.sh --dmg --adhoc "$app"
+          fi
+          version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' app/tauri.conf.json)
+          mkdir -p "$CARGO_TARGET_DIR/release/bundle/dmg"
+          dmg="$CARGO_TARGET_DIR/release/bundle/dmg/Simple Capture_${version}_aarch64.dmg"
+          scripts/make-dmg.sh "$app" "$dmg"
+          if [ "$DEVID" = true ]; then scripts/macos-sign.sh "$dmg"; fi
+      - name: Remove the signing keychain
+        if: always() && env.DEVID == 'true'
+        shell: bash
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
+      - name: Save Skia build
+        # Caches saved on a tag or a pull request are never restored anywhere else.
+        if: always() && steps.skia.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: ./.github/actions/skia-cache
+        with:
+          mode: save
+          profile: release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simple-capture-${{ matrix.plat }}
+          path: |
+            ${{ env.CARGO_TARGET_DIR }}/release/bundle/dmg/*.dmg
+            ${{ env.CARGO_TARGET_DIR }}/release/bundle/nsis/*.exe
+            ${{ env.CARGO_TARGET_DIR }}/release/bundle/deb/*.deb
+            ${{ env.CARGO_TARGET_DIR }}/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+  release:
+    # A version tag (v1.2.3) gathers this run's installers and the helpers' GPL/AGPL source
+    # archive into a draft GitHub Release; nothing is public until someone presses Publish.
+    name: draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [bundle, sources]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The tag matches the app's version
+        run: scripts/ci/version-check.sh "${GITHUB_REF_NAME#v}"
+      - name: Collect installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" -D dist -p 'simple-capture-*' -n helper-sources
+          mkdir release
+          # GitHub renames uploaded assets the same way, so the checksums and attestations name
+          # the files people actually download.
+          while IFS= read -r -d '' f; do
+            name=$(basename "$f")
+            name=${name//[^A-Za-z0-9._-]/.}
+            if [ -e "release/$name" ]; then echo "duplicate asset name: $name" >&2; exit 1; fi
+            mv "$f" "release/$name"
+          done < <(find dist -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.deb' \
+            -o -name '*.AppImage' -o -name '*.tar.gz' \) -print0)
+          cd release
+          assets=(*)
+          sha256sum -- "${assets[@]}" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: release/SHA256SUMS.txt
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+            --title "Simple Capture ${GITHUB_REF_NAME#v}" \
+            --notes "Installers for macOS, and experimental builds for Windows and Linux. See CHANGELOG.md. The helpers' corresponding source is simple-capture-helper-sources.tar.gz. Check a download against SHA256SUMS.txt, or its build provenance with \`gh attestation verify <file> --repo $GITHUB_REPOSITORY\`." \
+            release/*

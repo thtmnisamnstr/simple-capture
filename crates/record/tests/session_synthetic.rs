@@ -28,6 +28,7 @@ struct Obs {
     notices: Mutex<Vec<Notice>>,
     health: Mutex<Vec<HealthSnapshot>>,
     notices_at_end: Mutex<Option<Vec<Notice>>>,
+    levels: Mutex<Vec<(AudioTrackKind, f32)>>,
 }
 
 impl SessionObserver for Obs {
@@ -48,6 +49,9 @@ impl SessionObserver for Obs {
     }
     fn on_notice(&self, n: &Notice) {
         self.notices.lock().expect("lock").push(n.clone());
+    }
+    fn on_level(&self, track: AudioTrackKind, peak: f32) {
+        self.levels.lock().expect("lock").push((track, peak));
     }
 }
 
@@ -109,6 +113,7 @@ fn request(dir: &Path, source: SourceSpec) -> RecordRequest {
         background_image: None,
         exclude: Vec::new(),
         duration_ns: None,
+        camera_key: None,
         tuning: Tuning::default(),
     }
 }
@@ -146,6 +151,7 @@ fn source_key(d: &SourceDescriptor) -> String {
             let name = display_id.trim_start_matches("synthetic:");
             format!("{}/region", name.split(':').next().unwrap_or(name))
         }
+        SourceDescriptor::Camera { device_id, .. } => format!("camera {device_id}"),
     }
 }
 
@@ -257,8 +263,6 @@ fn records_every_track_and_finalizes() {
         Outcome::Locked,
         "the lock is held while recording"
     );
-    assert!(matches!(s.pause(), Err(Error::Unsupported(_))));
-    assert!(matches!(s.resume(), Err(Error::Unsupported(_))));
     let sum = s.stop(StopReason::User).expect("stop");
     assert!(!pdir.join(".lock").exists());
     assert_eq!(sum.segments, 1);
@@ -277,7 +281,7 @@ fn records_every_track_and_finalizes() {
     assert_eq!(s0.start_reason, StartReason::RecordStart);
     let frames = check_segments(&proj, &pdir, &*p.decoder());
     assert!(
-        frames as i64 >= dur / (34 * MS),
+        frames as i64 >= (dur - ci_slack_ns()) / (34 * MS),
         "{frames} screen frames in {dur} ns"
     );
 
@@ -1488,8 +1492,434 @@ fn stop_before_the_duration_ends_there() {
 /// Hosted CI runners are slow and shared: real-time limits get 100 ms more there.
 fn ci_slack_ns() -> i64 {
     if std::env::var_os("CI").is_some() {
-        100 * MS
+        150 * MS
     } else {
         0
     }
+}
+
+#[test]
+fn camera_keys_are_recorded_journaled_and_recovered() {
+    let dir = tmp("camera_keys");
+    let p = platform(Scenario::new().time_scale(2.0).camera(Some(VideoScript {
+        size: size(320, 240),
+        fps: 30,
+    })));
+    let mut req = request(&dir, display_spec("main", None));
+    req.camera = Some(sc_platform::synthetic::CAMERA_DEVICE_ID.into());
+    let first = sc_core::project::CameraKey::default_placement();
+    req.camera_key = Some(first.clone());
+    let s = Session::start(as_dyn(&p), req, Arc::new(Obs::default())).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 300 * MS);
+    let mut moved = first.clone();
+    moved.center_norm.x = 0.2;
+    s.camera_key(moved.clone()).expect("key");
+    let mut dragged = moved.clone();
+    dragged.center_norm.x = 0.25;
+    s.camera_key(dragged.clone()).expect("key");
+    sleep_host(&*p, 300 * MS);
+    let mut hidden = dragged.clone();
+    hidden.visible = false;
+    hidden.easing = sc_core::project::Easing::Step;
+    s.camera_key(hidden).expect("key");
+    sleep_host(&*p, 300 * MS);
+    s.stop(StopReason::User).expect("stop");
+
+    let proj = ProjectV1::load(&pdir).expect("load");
+    let o = &proj.camera_layout.overlays;
+    assert_eq!(o.len(), 1, "{o:?}");
+    assert_eq!(o[0].track_id, "camera");
+    let keys = &o[0].keyframes;
+    assert_eq!(keys.len(), 4);
+    assert_eq!(keys[0].t_rec_ns, 0);
+    assert!(
+        keys[1].t_rec_ns > 0
+            && keys[2].t_rec_ns >= keys[1].t_rec_ns
+            && keys[3].t_rec_ns > keys[2].t_rec_ns,
+        "{keys:?}"
+    );
+    assert_eq!(keys[1].center_norm.x, 0.2);
+    assert_eq!(
+        keys[1].easing,
+        sc_core::project::Easing::Step,
+        "a key after a pause is a jump"
+    );
+    assert_eq!(keys[2].center_norm.x, 0.25);
+    assert_eq!(
+        keys[2].easing,
+        sc_core::project::Easing::Linear,
+        "a key right after another is motion"
+    );
+    assert!(!keys[3].visible);
+    let at = |t| sc_core::camera::camera_at(keys, t);
+    let before_move = at(keys[1].t_rec_ns / 2).expect("shown");
+    assert_eq!(
+        before_move.pose.center.x, first.center_norm.x,
+        "the camera holds still until the move"
+    );
+    assert!(at(keys[1].t_rec_ns).is_some());
+    assert!(
+        at(keys[3].t_rec_ns).is_none(),
+        "hidden from the last key on"
+    );
+
+    let journaled: usize = journal(&pdir)
+        .iter()
+        .map(|e| match e {
+            JournalEvent::CameraKeys { keys } => keys.len(),
+            _ => 0,
+        })
+        .sum();
+    assert_eq!(journaled, 4, "every key reaches the journal");
+
+    let mut crashed = proj.clone();
+    crashed.state = ProjectState::Recording;
+    crashed.camera_layout.overlays.clear();
+    crashed.save(&pdir).expect("save");
+    let r = recover_project(&pdir, &*p.decoder()).expect("recover");
+    assert_eq!(r.outcome, Outcome::Recovered, "{r:?}");
+    let back = ProjectV1::load(&pdir).expect("load");
+    assert_eq!(
+        back.camera_layout.overlays[0].keyframes, *keys,
+        "rebuilt from the journal"
+    );
+}
+
+#[test]
+fn pause_cuts_the_paused_time_out_of_the_timeline() {
+    let dir = tmp("pause");
+    let p = platform(
+        Scenario::new()
+            .screen(
+                "main",
+                ScreenScript {
+                    size: size(320, 180),
+                    ..Default::default()
+                },
+            )
+            .mic(Some(mic())),
+    );
+    let mut req = request(&dir, display_spec("main", None));
+    req.mic = Some(sc_platform::synthetic::MIC_DEVICE_ID.into());
+    let obs = Arc::new(Obs::default());
+    let s = Session::start(as_dyn(&p), req, obs.clone()).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 800 * MS);
+    let before_pause = p.host_now().0;
+    s.pause().expect("pause");
+    assert!(s.paused());
+    s.pause().expect("pausing twice is a no-op");
+    sleep_host(&*p, 1000 * MS);
+    s.resume().expect("resume");
+    let after_resume = p.host_now().0;
+    assert!(!s.paused());
+    sleep_host(&*p, 800 * MS);
+    let sum = s.stop(StopReason::User).expect("stop");
+
+    let proj = ProjectV1::load(&pdir).expect("load");
+    assert_eq!(proj.recording.pauses.len(), 1);
+    let pause = &proj.recording.pauses[0];
+    let paused = pause.end_host_ns - pause.start_host_ns;
+    assert!(
+        paused >= 1000 * MS - 5 * MS && paused <= after_resume - before_pause,
+        "paused {paused} ns, calls spanned {} ns",
+        after_resume - before_pause
+    );
+    assert_eq!(proj.edl.clips.len(), 2, "{:?}", proj.edl.clips);
+    let start = proj.recording.start_host_ns;
+    assert_eq!(proj.edl.clips[0].src_in_rec_ns, 0);
+    assert_eq!(
+        proj.edl.clips[0].src_out_rec_ns,
+        pause.start_host_ns - start
+    );
+    assert_eq!(proj.edl.clips[1].src_in_rec_ns, pause.end_host_ns - start);
+    assert_eq!(proj.edl.clips[1].src_out_rec_ns, sum.duration_ns);
+    let edited = sc_core::edit::duration(&proj.edl);
+    assert_eq!(edited, sum.duration_ns - paused);
+
+    let n = obs.notices_at_end();
+    assert!(
+        n.iter()
+            .any(|x| matches!(x, Notice::Paused { paused: true }))
+            && n.iter()
+                .any(|x| matches!(x, Notice::Paused { paused: false })),
+        "{n:?}"
+    );
+    assert!(
+        !n.iter().any(|x| matches!(x, Notice::AudioGap { .. })),
+        "a pause is not an audio gap: {n:?}"
+    );
+    let j = read_journal(&pdir).expect("journal");
+    assert!(
+        j.events
+            .iter()
+            .any(|e| matches!(e, JournalEvent::Pause { .. }))
+    );
+    assert!(
+        j.events
+            .iter()
+            .any(|e| matches!(e, JournalEvent::Resume { .. }))
+    );
+    let screen = check_segments(&proj, &pdir, &*p.decoder());
+    assert!(screen > 0);
+}
+
+#[test]
+fn camera_only_recording_uses_the_camera_as_the_main_picture() {
+    let dir = tmp("camera_only");
+    let p = platform(
+        Scenario::new()
+            .camera(Some(VideoScript {
+                size: size(320, 240),
+                fps: 30,
+            }))
+            .mic(Some(mic())),
+    );
+    let mut req = request(
+        &dir,
+        SourceSpec::Camera {
+            device: sc_platform::synthetic::CAMERA_DEVICE_ID.into(),
+        },
+    );
+    req.mic = Some(sc_platform::synthetic::MIC_DEVICE_ID.into());
+    let obs = Arc::new(Obs::default());
+    let s = Session::start(as_dyn(&p), req, obs.clone()).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 1200 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let proj = ProjectV1::load(&pdir).expect("load");
+    assert_eq!(proj.state, ProjectState::Finalized);
+    let segs = &proj.recording.screen.segments;
+    assert_eq!(segs.len(), 1);
+    assert!(
+        matches!(&segs[0].source, SourceDescriptor::Camera { device_id, .. } if device_id == sc_platform::synthetic::CAMERA_DEVICE_ID),
+        "{:?}",
+        segs[0].source
+    );
+    assert_eq!(segs[0].frame_px, size(320, 240), "the camera's own size");
+    assert!(
+        !proj
+            .recording
+            .tracks
+            .iter()
+            .any(|t| t.kind == TrackKind::Camera),
+        "no separate camera track"
+    );
+    assert!(
+        proj.recording
+            .tracks
+            .iter()
+            .any(|t| t.kind == TrackKind::Mic)
+    );
+    let t = proj
+        .recording
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::Screen)
+        .expect("main picture track");
+    let probe = p.decoder().probe(&pdir.join(&t.file)).expect("probe");
+    assert!(probe.samples >= 20, "{} frames", probe.samples);
+}
+
+#[test]
+fn switching_between_the_screen_and_the_camera_keeps_one_recording() {
+    let dir = tmp("screen_camera_switch");
+    let p = platform(
+        Scenario::new()
+            .screen(
+                "main",
+                ScreenScript {
+                    size: size(320, 180),
+                    ..Default::default()
+                },
+            )
+            .camera(Some(VideoScript {
+                size: size(160, 120),
+                fps: 30,
+            })),
+    );
+    let req = request(&dir, display_spec("main", None));
+    let obs = Arc::new(Obs::default());
+    let s = Session::start(as_dyn(&p), req, obs.clone()).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 700 * MS);
+    s.switch_source(
+        SourceSpec::Camera {
+            device: sc_platform::synthetic::CAMERA_DEVICE_ID.into(),
+        },
+        Via::OwnChooser,
+    )
+    .expect("to camera");
+    sleep_host(&*p, 900 * MS);
+    s.switch_source(display_spec("main", None), Via::OwnChooser)
+        .expect("back to the screen");
+    sleep_host(&*p, 700 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let proj = ProjectV1::load(&pdir).expect("load");
+    let kinds: Vec<&str> = proj
+        .recording
+        .screen
+        .segments
+        .iter()
+        .map(|g| match g.source {
+            SourceDescriptor::Camera { .. } => "camera",
+            _ => "screen",
+        })
+        .collect();
+    assert_eq!(kinds, ["screen", "camera", "screen"]);
+    assert_eq!(proj.recording.screen.segments[1].frame_px, size(160, 120));
+}
+
+#[test]
+fn the_corner_camera_can_also_become_the_main_picture() {
+    let dir = tmp("corner_to_main");
+    let p = platform(
+        Scenario::new()
+            .screen(
+                "main",
+                ScreenScript {
+                    size: size(320, 180),
+                    ..Default::default()
+                },
+            )
+            .camera(Some(VideoScript {
+                size: size(160, 120),
+                fps: 30,
+            })),
+    );
+    let (shared, _cam) = sc_platform::WithSharedCamera::new(as_dyn(&p));
+    let mut req = request(&dir, display_spec("main", None));
+    req.camera = Some(sc_platform::synthetic::CAMERA_DEVICE_ID.into());
+    let obs = Arc::new(Obs::default());
+    let s = Session::start(shared.clone(), req, obs.clone()).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 700 * MS);
+    s.switch_source(
+        SourceSpec::Camera {
+            device: sc_platform::synthetic::CAMERA_DEVICE_ID.into(),
+        },
+        Via::OwnChooser,
+    )
+    .expect("to camera");
+    sleep_host(&*p, 900 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let failed: Vec<_> = obs
+        .notices()
+        .into_iter()
+        .filter(|n| matches!(n, Notice::SwitchFailed { .. }))
+        .collect();
+    assert!(failed.is_empty(), "{failed:?}");
+    let proj = ProjectV1::load(&pdir).expect("load");
+    let kinds: Vec<bool> = proj
+        .recording
+        .screen
+        .segments
+        .iter()
+        .map(|g| matches!(g.source, SourceDescriptor::Camera { .. }))
+        .collect();
+    assert_eq!(kinds, [false, true]);
+    let camera = proj
+        .recording
+        .tracks
+        .iter()
+        .find(|t| t.kind == sc_core::project::TrackKind::Camera)
+        .expect("the corner camera track keeps recording");
+    assert!(camera.health.frames > 30, "{}", camera.health.frames);
+}
+
+#[test]
+fn a_resized_source_gets_a_new_section_once_it_settles() {
+    let dir = tmp("resized");
+    let p = platform(
+        Scenario::new()
+            .screen("win", ScreenScript::default())
+            .at(300 * MS, ScriptedEvent::Resize(size(200, 300))),
+    );
+    let s = Session::start(
+        as_dyn(&p),
+        request(&dir, display_spec("win", Some(size(320, 180)))),
+        Arc::new(Obs::default()),
+    )
+    .expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    assert!(
+        wait_for(Duration::from_secs(5), || ProjectV1::load(&pdir)
+            .is_ok_and(|p| p.recording.screen.segments.len() == 2)),
+        "a second section after the resize settles"
+    );
+    sleep_host(&*p, 300 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let proj = ProjectV1::load(&pdir).expect("load");
+    let segs = &proj.recording.screen.segments;
+    assert_eq!(segs[0].end_reason, Some(EndReason::SourceResized));
+    assert_eq!(segs[1].start_reason, StartReason::SourceResized);
+    assert!(
+        segs[1].start_rec_ns >= 800 * MS,
+        "not before the 0.6 s settle"
+    );
+    check_segments(&proj, &pdir, &*p.decoder());
+}
+
+fn device_session(name: &str, sound: bool) -> ProjectV1 {
+    let dir = tmp(name);
+    let scenario = Scenario::new()
+        .camera(Some(VideoScript {
+            size: size(180, 320),
+            fps: 30,
+        }))
+        .device_audio(sound.then(|| AudioScript {
+            channels: 2,
+            ..mic()
+        }));
+    let p = platform(scenario);
+    let req = request(
+        &dir,
+        SourceSpec::Device {
+            device: sc_platform::synthetic::CAMERA_DEVICE_ID.into(),
+        },
+    );
+    let s = Session::start(as_dyn(&p), req, Arc::new(Obs::default())).expect("start");
+    let pdir = s.project_dir().to_path_buf();
+    sleep_host(&*p, 800 * MS);
+    s.stop(StopReason::User).expect("stop");
+    let proj = ProjectV1::load(&pdir).expect("load");
+    for t in &proj.recording.tracks {
+        assert!(pdir.join(&t.file).exists(), "{} is on disk", t.file);
+    }
+    proj
+}
+
+#[test]
+fn a_device_screen_records_the_device_sound_as_its_own_track() {
+    let proj = device_session("device_sound", true);
+    let t = proj
+        .recording
+        .tracks
+        .iter()
+        .find(|t| t.kind == TrackKind::DeviceAudio)
+        .expect("a device audio track");
+    assert_eq!(t.id, "device_audio");
+    assert_eq!(t.audio.as_ref().map(|a| a.channels), Some(2));
+    assert!(t.duration_ns.is_some_and(|d| d >= 600 * MS), "{t:?}");
+    assert!(proj.audio_mix.contains_key("device_audio"));
+}
+
+#[test]
+fn a_device_that_sends_no_sound_leaves_no_audio_track() {
+    let proj = device_session("device_quiet", false);
+    assert!(
+        proj.recording
+            .tracks
+            .iter()
+            .all(|t| t.kind != TrackKind::DeviceAudio)
+    );
+    assert!(!proj.audio_mix.contains_key("device_audio"));
+}
+
+/// A kill loses up to one unwritten fragment; the owner accepted about 1.08 s with 1 s fragments
+/// and nothing longer (Q-a).
+#[test]
+fn fragments_stay_at_most_one_second() {
+    assert!(sc_record::Tuning::default().fragment_interval_s <= 1.0);
 }

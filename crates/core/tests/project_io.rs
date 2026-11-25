@@ -97,14 +97,14 @@ fn duration_and_segment_lookup() {
     );
     assert_eq!(p.segment_at(60_100_000_000).map(|s| s.id.as_str()), None);
 
-    // A pause of 5 s inside the recording shortens it by 5 s.
+    // A pause stays in recording time (the tracks hold it); the EDL cuts it out (ADR-048).
     let start = p.recording.start_host_ns;
     p.recording.pauses.push(sc_core::project::PauseRecord {
         start_host_ns: start + 10_000_000_000,
         end_host_ns: start + 15_000_000_000,
         extra: Default::default(),
     });
-    assert_eq!(p.duration_ns(), Some(55_100_000_000));
+    assert_eq!(p.duration_ns(), Some(60_100_000_000));
 
     // Still recording: the last closed segment end; an open segment runs on.
     p.recording.stop_host_ns = None;

@@ -3,7 +3,7 @@
 
 mod devices;
 mod frames;
-mod pcm;
+pub(crate) mod pcm;
 mod reader;
 #[cfg(test)]
 mod tests;
@@ -12,6 +12,7 @@ mod writer;
 use std::path::Path;
 use std::sync::Arc;
 
+use objc2_av_foundation::AVCaptureSystemUserInterface;
 use sc_geometry::SizePx;
 use sc_platform::{
     AudioReader, AudioSource, AudioWriterSpec, CameraLimit, CameraSource, CaptureDevice, Decoder,
@@ -20,6 +21,8 @@ use sc_platform::{
 };
 
 pub use devices::CAMERA_TAG_BASE;
+pub(crate) use devices::allow_screen_devices;
+pub(crate) use frames::asbd_of;
 pub use frames::{MacAudioSample, MacPixelFrame, PIX_420F, PIX_420V};
 
 /// Spike 3 `encbench` default (0.05 bits per pixel per frame).
@@ -71,6 +74,9 @@ impl CameraSource for MacCamera {
     ) -> Result<Box<dyn DeviceStream>> {
         devices::start(DeviceKind::Camera, device_id, Some(limit), sink)
     }
+    fn show_video_effects(&self) -> Result<()> {
+        devices::show_system_ui(AVCaptureSystemUserInterface::VideoEffects)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -118,11 +124,31 @@ impl MacDecoder {
 
 impl Decoder for MacDecoder {
     fn open_video(&self, path: &Path) -> Result<Box<dyn VideoReader>> {
-        Ok(Box::new(reader::MacVideoReader::open(path)?))
+        Ok(Box::new(reader::MacVideoReader::open(path, None)?))
     }
     fn open_audio(&self, path: &Path, rate: u32, channels: u16) -> Result<Box<dyn AudioReader>> {
         Ok(Box::new(reader::MacAudioReader::open(
-            path, rate, channels,
+            path, rate, channels, None,
+        )?))
+    }
+    fn open_video_at(&self, path: &Path, from_file_ns: i64) -> Result<Box<dyn VideoReader>> {
+        Ok(Box::new(reader::MacVideoReader::open(
+            path,
+            Some(from_file_ns),
+        )?))
+    }
+    fn open_audio_at(
+        &self,
+        path: &Path,
+        rate: u32,
+        channels: u16,
+        from_file_ns: i64,
+    ) -> Result<Box<dyn AudioReader>> {
+        Ok(Box::new(reader::MacAudioReader::open(
+            path,
+            rate,
+            channels,
+            Some(from_file_ns),
         )?))
     }
     fn probe(&self, path: &Path) -> Result<TrackProbe> {

@@ -64,7 +64,11 @@ fn solid_is_exact_and_opaque() {
         assert_eq!(img.stride, size.w as usize * 4);
         assert_eq!(img.data.len(), img.stride * size.h as usize);
         assert!(
-            img.data.chunks_exact(4).all(|p| p == [51, 102, 153, 255]),
+            img.data
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| *p == [51, 102, 153, 255]),
             "every pixel of the {}x{} solid must be [51,102,153,255]",
             size.w,
             size.h
@@ -97,7 +101,7 @@ fn linear_endpoints_match_stops() {
             );
             assert_near(px(&img, end.0, end.1), rgb8(B), 1, &format!("{what} end"));
             assert!(
-                img.data.chunks_exact(4).all(|p| p[3] == 255),
+                img.data.as_chunks::<4>().0.iter().all(|p| p[3] == 255),
                 "{what} opaque"
             );
         }
@@ -226,7 +230,10 @@ fn image_cover_picks_the_focused_quadrant() {
             let probe = |focus: PointF| {
                 let img = rasterize_background(&image_bg(asset, focus), size, &dir)
                     .expect("rasterize image");
-                assert!(img.data.chunks_exact(4).all(|p| p[3] == 255), "opaque");
+                assert!(
+                    img.data.as_chunks::<4>().0.iter().all(|p| p[3] == 255),
+                    "opaque"
+                );
                 (px(&img, w / 2, h / 4), px(&img, w / 2, h * 3 / 4))
             };
             let what = format!("{asset} {w}x{h}");
@@ -319,7 +326,7 @@ fn cache_hits_share_the_arc_and_evict_lru() {
 #[test]
 fn png_round_trip_with_srgb_chunk() {
     let mut img = quadrants(37, 23);
-    for (i, p) in img.data.chunks_exact_mut(4).enumerate() {
+    for (i, p) in img.data.as_chunks_mut::<4>().0.iter_mut().enumerate() {
         p[0] = (i * 7) as u8;
         p[1] = (i * 13) as u8;
     }
@@ -388,14 +395,6 @@ fn build_info_reports_the_freetype_build() {
     assert_eq!(info.skia_milestone, 157, "{info:?}");
     assert!(info.jpeg_decode, "{info:?}");
     assert!(!info.webp_decode, "{info:?}");
-}
-
-#[test]
-fn layout_is_a_placeholder() {
-    assert!(matches!(
-        sc_text::layout::layout_placeholder(),
-        Err(Error::Unsupported(_))
-    ));
 }
 
 fn chunk_types(png: &[u8]) -> Vec<String> {

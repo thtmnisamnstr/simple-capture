@@ -7,7 +7,7 @@ cd "$(dirname "$0")/../.."
 FAST=(-p simple-capture-geometry -p simple-capture-core -p simple-capture-platform
     -p simple-capture-capture-macos -p simple-capture-capture-windows -p simple-capture-capture-linux
     -p simple-capture-record -p simple-capture-decode -p simple-capture-render
-    -p simple-capture-helpers -p sc-devtools)
+    -p simple-capture-helpers -p simple-capture-tracks -p simple-capture-capture-common -p sc-devtools)
 installed=$(rustup target list --installed)
 W=x86_64-pc-windows-msvc
 L=x86_64-unknown-linux-gnu
@@ -18,9 +18,19 @@ if grep -qx "$L" <<<"$installed"; then
 else
     echo "windows-check: $L not installed, Linux cross-check SKIPPED (rustup target add $L)"
 fi
+# The Linux backend links PipeWire through pkg-config, which a macOS host cannot cross-resolve;
+# scripts/ci/linux-docker.sh and tools/linux-dev cover it natively.
+LINUX_NATIVE=(simple-capture-capture-linux simple-capture-capture-common simple-capture-cli)
 for t in "${targets[@]}"; do
     echo "windows-check: $t"
-    cargo clippy --locked --target "$t" "${FAST[@]}" --all-targets -- -D warnings
-    cargo clippy --locked --target "$t" -p simple-capture-cli --no-default-features --all-targets -- -D warnings
+    pkgs=("${FAST[@]}")
+    if [ "$t" = "$L" ]; then
+        pkgs=()
+        for ((i = 0; i < ${#FAST[@]}; i += 2)); do
+            [[ " ${LINUX_NATIVE[*]} " == *" ${FAST[i+1]} "* ]] || pkgs+=("${FAST[i]}" "${FAST[i+1]}")
+        done
+    fi
+    cargo clippy --locked --target "$t" "${pkgs[@]}" --all-targets -- -D warnings
+    [ "$t" = "$L" ] || cargo clippy --locked --target "$t" -p simple-capture-cli --no-default-features --all-targets -- -D warnings
 done
 echo "windows-check: ok (${targets[*]})"

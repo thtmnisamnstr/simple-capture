@@ -63,6 +63,7 @@ impl GapFiller {
         self.rate
     }
 
+    #[cfg(test)]
     pub fn written_frames(&self) -> u64 {
         self.written
     }

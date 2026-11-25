@@ -1,0 +1,25 @@
+[package]
+name = "simple-capture-diagnostics"
+description = "The self-test behind `simple-capture --self-test` and the app's Diagnostics window"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "sc_diagnostics"
+
+[dependencies]
+simple-capture-core.workspace = true
+simple-capture-geometry.workspace = true
+simple-capture-platform.workspace = true
+simple-capture-record.workspace = true
+simple-capture-export.workspace = true
+simple-capture-player.workspace = true
+simple-capture-tracks.workspace = true
+simple-capture-helpers.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

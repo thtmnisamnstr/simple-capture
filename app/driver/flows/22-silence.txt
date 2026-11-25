@@ -1,0 +1,17 @@
+# Remove silences and blur boxes (M7): loudness of a real recording, the pauses it finds, one edit
+# that cuts several ranges, then a black box over the whole screen for the first second of an export.
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv silence","settings":{"mic":"@MIC@"}}}
+wait 5000
+cmd stop_recording
+wait-phase saved 30000
+wait 1500
+cmd editor {"action":"state"}
+cmd editor {"action":"silences","threshold_db":-5,"min_ms":500}
+cmd editor {"action":"silences","min_ms":1000}
+cmd editor {"action":"edit","op":{"op":"delete_ranges","ranges":[[0,1000000000],[3000000000,4000000000]]}}
+cmd editor {"action":"edit","op":{"op":"upsert_redaction","item":{"id":"drv-blur","start_rec_ns":1000000000,"end_rec_ns":2000000000,"rect_norm":{"x":0.0,"y":0.0,"w":1.0,"h":1.0},"style":"black"}}}
+cmd editor {"action":"export","size":"480"}
+wait-phase saved 120000
+cmd editor {"action":"close"}
+wait 500
+quit

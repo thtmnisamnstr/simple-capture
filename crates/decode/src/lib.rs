@@ -5,5 +5,7 @@ mod audio;
 mod frames;
 
 pub use audio::TrackAudio;
-pub use frames::{SegmentFrame, SegmentFrameSource, cfr_frame_times};
+pub use frames::{
+    SEEK_AHEAD_NS, SegmentFrame, SegmentFrameSource, TrackFrameSource, cfr_frame_times,
+};
 pub use sc_platform::{Error, Result};

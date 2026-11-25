@@ -1,0 +1,26 @@
+# Separate tracks: a screen + camera recording, the camera unlinked, its start lifted to a gap,
+# the rest slid earlier, an export of that, then linked again.
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv tracks","settings":{"camera":"@CAMERA@","mic":"@MIC@"}}}
+wait 8000
+cmd stop_recording
+wait-phase saved 30000
+wait 2500
+cmd editor {"action":"state"}
+cmd editor {"action":"rect","rect":{"x":0,"y":52,"w":880,"h":520}}
+cmd editor {"action":"edit","op":{"op":"set_linked","linked":false}}
+cmd editor {"action":"edit","op":{"op":"split","at_tl_ns":3000000000,"track":"camera"}}
+cmd editor {"action":"edit","op":{"op":"delete_clips","ids":["$CAMCLIP0"]}}
+cmd editor {"action":"edit","op":{"op":"slide_clip","id":"$CAMCLIP1","by_tl_ns":-1000000000}}
+cmd editor {"action":"seek","tl_ns":1000000000}
+wait 800
+cmd editor {"action":"state"}
+cmd editor {"action":"play"}
+wait 2000
+cmd editor {"action":"pause"}
+cmd editor {"action":"export","size":"720"}
+wait-phase saved 180000
+cmd editor {"action":"edit","op":{"op":"set_linked","linked":true}}
+cmd editor {"action":"state"}
+cmd editor {"action":"close"}
+wait 500
+quit

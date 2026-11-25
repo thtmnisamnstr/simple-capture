@@ -13,6 +13,12 @@ pub trait NativeFrame: Send + Sync + 'static {
     fn as_any(&self) -> &dyn Any;
     fn size(&self) -> SizePx;
     fn with_nv12(&self, f: &mut dyn FnMut(Nv12View<'_>)) -> Result<()>;
+
+    /// The `CVPixelBufferRef` behind a macOS frame, valid while `self` lives, so the GPU can read
+    /// its IOSurface without a copy.
+    fn cv_pixel_buffer(&self) -> Option<std::ptr::NonNull<std::ffi::c_void>> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -40,7 +46,7 @@ impl CpuNv12Frame {
     pub fn filled(size: SizePx, y: u8, u: u8, v: u8, full_range: bool) -> CpuNv12Frame {
         let uv_len = Self::uv_stride_for(size) * Self::uv_rows_for(size);
         let mut uv = vec![u; uv_len];
-        for pair in uv.chunks_exact_mut(2) {
+        for pair in uv.as_chunks_mut::<2>().0 {
             pair[1] = v;
         }
         CpuNv12Frame {
@@ -54,6 +60,30 @@ impl CpuNv12Frame {
     /// Black in the given range.
     pub fn black(size: SizePx, full_range: bool) -> CpuNv12Frame {
         Self::filled(size, if full_range { 0 } else { 16 }, 128, 128, full_range)
+    }
+
+    /// Limited-range NV12 from rows `stride` bytes apart, the UV plane starting at row
+    /// `uv_row`. Rows missing from `data` come out black.
+    pub fn from_padded(data: &[u8], size: SizePx, stride: usize, uv_row: usize) -> CpuNv12Frame {
+        let (w, h) = (size.w as usize, size.h as usize);
+        let (uv_w, uv_h) = (Self::uv_stride_for(size), Self::uv_rows_for(size));
+        let plane = |rows: usize, width: usize, first: usize, fill: u8| {
+            let mut out = Vec::with_capacity(rows * width);
+            for r in 0..rows {
+                let at = (first + r) * stride;
+                match data.get(at..at + width) {
+                    Some(row) => out.extend_from_slice(row),
+                    None => out.resize(out.len() + width, fill),
+                }
+            }
+            out
+        };
+        CpuNv12Frame {
+            size,
+            y: plane(h, w, 0, 16),
+            uv: plane(uv_h, uv_w, uv_row, 128),
+            full_range: false,
+        }
     }
 
     /// Bytes per UV row: the width rounded up to even.
@@ -129,6 +159,19 @@ pub struct VideoFrame {
 
 pub trait NativeAudio: Send + Sync + 'static {
     fn as_any(&self) -> &dyn Any;
+    /// The samples as interleaved f32, when the platform can give them (level meters).
+    fn to_f32(&self) -> Option<Vec<f32>> {
+        None
+    }
+}
+
+impl AudioData {
+    pub fn samples(&self) -> Option<std::borrow::Cow<'_, [f32]>> {
+        match self {
+            AudioData::F32Interleaved(s) => Some(std::borrow::Cow::Borrowed(s)),
+            AudioData::Native(n) => n.to_f32().map(std::borrow::Cow::Owned),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -161,6 +204,7 @@ pub struct AudioBuffer {
 pub enum AudioTrackKind {
     Mic,
     SystemAudio,
+    DeviceAudio,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -186,6 +230,15 @@ pub struct AudioWriterSpec {
     pub channels: u16,
     pub bitrate: u32,
     pub fragment_interval_s: f64,
+}
+
+impl AudioWriterSpec {
+    /// An AAC bitrate the encoder accepts at this rate: 96 kbps per channel at 48 kHz, scaled
+    /// down for headset mics (AirPods send 24 kHz, older Bluetooth 16 kHz), which macOS's AAC
+    /// encoder refuses at 96 kbps.
+    pub fn aac_bitrate(sample_rate: u32, channels: u16) -> u32 {
+        (sample_rate.saturating_mul(2)).clamp(16_000, 96_000) * u32::from(channels.clamp(1, 2))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

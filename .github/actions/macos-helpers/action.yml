@@ -1,22 +1,55 @@
 name: macos-helpers
 description: >-
-  Restore (or build once) the static FFmpeg helper in third_party/out/macos-arm64, keyed by the
-  pinned sources and the build scripts, then set SC_REQUIRE_HELPERS=1 so helper tests cannot skip.
+  Restore (or build once) the static FFmpeg helper that every macOS build ships (the DMG and the
+  Mac App Store edition), keyed by the variant, the macOS SDK major version, the pinned sources and
+  the build scripts. lgpl (the default and the only shipped variant: no x264/x265, H.264 and HEVC
+  from VideoToolbox) lands in third_party/out/macos-arm64 and must report LGPL 2.1. gpl (local
+  experiments only) lands in third_party/out/macos-arm64-gpl. Either way the helper is checked and
+  SC_REQUIRE_HELPERS=1 is set, so helper tests cannot skip.
+inputs:
+  variant:
+    description: lgpl or gpl (SC_FFMPEG_LICENSE of third_party/ffmpeg/build-macos.sh)
+    required: false
+    default: lgpl
+outputs:
+  dir:
+    description: The helper directory, for scripts/stage-helpers.sh
+    value: ${{ steps.variant.outputs.dir }}
 runs:
   using: composite
   steps:
+    - name: Variant
+      id: variant
+      shell: bash
+      env:
+        VARIANT: ${{ inputs.variant }}
+      run: |
+        case "$VARIANT" in
+          lgpl) echo "dir=third_party/out/macos-arm64" >> "$GITHUB_OUTPUT" ;;
+          gpl) echo "dir=third_party/out/macos-arm64-gpl" >> "$GITHUB_OUTPUT" ;;
+          *) echo "::error::macos-helpers: unknown variant '$VARIANT' (lgpl|gpl)"; exit 1 ;;
+        esac
+
+    - name: macOS SDK
+      id: sdk
+      shell: bash
+      run: |
+        v=$(xcrun --sdk macosx --show-sdk-version)
+        echo "major=${v%%.*}" >> "$GITHUB_OUTPUT"
+
     - name: Helper cache
       id: cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: third_party/out/macos-arm64
-        key: helpers-macos-arm64-${{ hashFiles('third_party/versions.toml', 'third_party/lib.sh', 'third_party/fetch.sh', 'third_party/ffmpeg/build-macos.sh') }}
+        path: ${{ steps.variant.outputs.dir }}
+        key: helpers-macos-arm64-ffmpeg-${{ inputs.variant }}-sdk${{ steps.sdk.outputs.major }}-${{ hashFiles('third_party/versions.toml', 'third_party/lib.sh', 'third_party/fetch.sh', 'third_party/ffmpeg/build-macos.sh') }}
 
     - name: Build helper (cache miss)
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       env:
         HOMEBREW_NO_AUTO_UPDATE: "1"
+        SC_FFMPEG_LICENSE: ${{ inputs.variant }}
       run: |
         brew install nasm pkgconf cmake
         third_party/fetch.sh
@@ -26,13 +59,29 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: third_party/out/macos-arm64
+        path: ${{ steps.variant.outputs.dir }}
         key: ${{ steps.cache.outputs.cache-primary-key }}
 
     - name: Require helper
       shell: bash
+      env:
+        DIR: ${{ steps.variant.outputs.dir }}
+        VARIANT: ${{ inputs.variant }}
       run: |
-        test -x third_party/out/macos-arm64/ffmpeg
-        test -x third_party/out/macos-arm64/ffprobe
-        third_party/out/macos-arm64/ffmpeg -hide_banner -version | head -n 1
+        test -x "$DIR/ffmpeg"
+        test -x "$DIR/ffprobe"
+        "$DIR/ffmpeg" -hide_banner -version | head -n 1
+        if [ "$VARIANT" = lgpl ]; then
+          conf=$("$DIR/ffmpeg" -hide_banner -buildconf)
+          lic=$("$DIR/ffmpeg" -hide_banner -L | tr -s ' \n' '  ')
+          case "$conf" in *--enable-gpl*|*--enable-nonfree*|*--enable-version3*|*libx26*)
+            echo "::error::$DIR/ffmpeg is not an LGPL 2.1 build"; exit 1 ;;
+          esac
+          case "$lic" in *"GNU Lesser General Public License"*"version 2.1"*) ;; *)
+            echo "::error::$DIR/ffmpeg does not report LGPL 2.1"; exit 1 ;;
+          esac
+          if [ -e "$DIR/gifski" ]; then
+            echo "::error::$DIR holds gifski; macOS builds ship no gifski"; exit 1
+          fi
+        fi
         echo "SC_REQUIRE_HELPERS=1" >> "$GITHUB_ENV"

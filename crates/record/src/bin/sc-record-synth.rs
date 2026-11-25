@@ -213,6 +213,7 @@ fn run(a: Args) -> Result<(), String> {
         background_image: None,
         exclude: Vec::new(),
         duration_ns: None,
+        camera_key: None,
         tuning: Tuning::default(),
     };
     if a.hold_at.as_deref() == Some("after_start") {

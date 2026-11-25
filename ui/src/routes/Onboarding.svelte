@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, errorText } from '../lib/api.ts';
   import type { PermissionKind, PermissionStatus, PermissionsDto } from '../lib/types.ts';
+  import Icon, { type IconName } from '../components/Icon.svelte';
 
   let perms = $state<PermissionsDto | null>(null);
   let busy = $state<PermissionKind | null>(null);
@@ -11,11 +12,24 @@
       kind: 'screen',
       key: 'screen',
       title: 'Screen Recording',
-      why: 'Lets Simple Capture list your windows and apps and record the screen and system audio. Without it you can still record through the system picker.',
+      why: 'Lists your windows and apps, and records the screen and system audio. Without it you can still record through the System Picker.',
     },
-    { kind: 'camera', key: 'camera', title: 'Camera', why: 'Only needed when you choose a camera. Camera video is recorded now and shown in the video from M2.' },
+    { kind: 'camera', key: 'camera', title: 'Camera', why: 'Only needed when you choose a camera to show yourself in the video.' },
     { kind: 'microphone', key: 'mic', title: 'Microphone', why: 'Only needed when you choose a microphone to narrate.' },
   ];
+
+  const LOOK: Record<PermissionKind, { icon: IconName; tint: string }> = {
+    screen: { icon: 'display', tint: '#5e5ce6' },
+    camera: { icon: 'camera', tint: '#30b0c7' },
+    microphone: { icon: 'mic', tint: '#ff9500' },
+  };
+  const TONE: Record<PermissionStatus, string> = {
+    granted: 'ok',
+    denied: 'bad',
+    restricted: 'bad',
+    not_determined: '',
+    unknown: '',
+  };
 
   const LABEL: Record<PermissionStatus, string> = {
     granted: 'Granted',
@@ -45,12 +59,35 @@
     };
   });
 
+  const ASKED_KEY = 'sc.screen-asked';
+  let screenAsked = $state(readAsked());
+
+  function readAsked(): boolean {
+    try {
+      return localStorage.getItem(ASKED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  const badge = (kind: PermissionKind, status: keyof typeof LABEL) =>
+    kind === 'screen' && screenAsked && status === 'not_determined' ? 'Off' : LABEL[status];
+
   async function request(kind: PermissionKind) {
     busy = kind;
     error = null;
     try {
-      await api.requestPermission(kind);
+      const s = await api.requestPermission(kind);
       await refresh();
+      if (kind === 'screen' && s !== 'granted') {
+        screenAsked = true;
+        try {
+          localStorage.setItem(ASKED_KEY, '1');
+        } catch {
+          /* only a convenience */
+        }
+        await api.openPermissionSettings('screen');
+      }
     } catch (e) {
       error = errorText(e);
     } finally {
@@ -61,6 +98,7 @@
   async function openSettings(kind: PermissionKind) {
     error = null;
     try {
+      if (kind === 'screen') await api.requestPermission('screen');
       await api.openPermissionSettings(kind);
     } catch (e) {
       error = errorText(e);
@@ -69,110 +107,145 @@
 </script>
 
 <div class="window onboarding">
-  <h1>Permissions</h1>
-  <p class="muted">macOS asks you once for each. Simple Capture checks the status without asking; it only asks when you press Request.</p>
+  <header>
+    <span class="app-tile"><Icon name="lock" size={22} /></span>
+    <div>
+      <h1>Permissions</h1>
+      <p class="caption">macOS asks once for each. Simple Capture checks without asking, and only asks when you press Allow.</p>
+    </div>
+  </header>
 
-  <ul>
+  <ul class="group">
     {#each ROWS as row (row.kind)}
       {@const status = perms?.[row.key] ?? 'unknown'}
-      <li aria-labelledby="perm-{row.kind}">
-        <div class="head">
-          <h3 id="perm-{row.kind}">{row.title}</h3>
-          <span class="badge {status}" aria-label="{row.title}: {LABEL[status]}">{LABEL[status]}</span>
-        </div>
-        <p class="muted">{row.why}</p>
-        <div class="actions">
-          {#if status === 'not_determined'}
-            <button class="primary" onclick={() => request(row.kind)} disabled={busy !== null}>
-              {busy === row.kind ? 'Waiting for macOS…' : 'Request'}
-            </button>
+      <li class="grow perm" aria-labelledby="perm-{row.kind}">
+        <span class="tile" style:background={LOOK[row.kind].tint}><Icon name={LOOK[row.kind].icon} size={16} /></span>
+        <div class="glabel text">
+          <div class="title-line">
+            <h3 id="perm-{row.kind}">{row.title}</h3>
+            <span class="badge {TONE[status]}" aria-label="{row.title}: {badge(row.kind, status)}">{badge(row.kind, status)}</span>
+          </div>
+          <p class="caption">{row.why}</p>
+          {#if row.kind === 'screen' && screenAsked && status !== 'granted'}
+            <p class="caption next">
+              In System Settings → Screen Recording, switch on <strong>Simple Capture</strong>. macOS then asks to quit and reopen it;
+              choose Quit &amp; Reopen.
+            </p>
           {/if}
-          {#if status !== 'granted'}
-            <button onclick={() => openSettings(row.kind)}>Open System Settings</button>
+        </div>
+        <div class="gcontrol actions">
+          {#if status === 'not_determined' && !(row.kind === 'screen' && screenAsked)}
+            <button class="primary" onclick={() => request(row.kind)} disabled={busy !== null}>
+              {busy === row.kind ? 'Waiting…' : 'Allow…'}
+            </button>
+          {:else if status !== 'granted'}
+            <button class:primary={row.kind === 'screen'} onclick={() => openSettings(row.kind)}>Open Settings…</button>
           {/if}
         </div>
       </li>
     {/each}
   </ul>
 
-  {#if error}<p class="warn" role="alert">{error}</p>{/if}
+  {#if error}<p class="warn" role="alert"><Icon name="warning" size={14} /><span>{error}</span></p>{/if}
 
-  <aside>
-    <h2>Why macOS may ask again</h2>
-    <p>
-      This build of Simple Capture is signed ad hoc, so macOS treats every update as a new app and asks for Screen Recording, Camera
-      and Microphone again. If a permission looks stuck, remove Simple Capture from the list in System Settings and grant it
-      again.
-    </p>
-    <p>
-      On macOS 15 and later, macOS may also show a reminder from time to time that Simple Capture can see your screen, or ask you to
-      allow it to bypass the private window picker. The <strong>System picker…</strong> source avoids that: macOS shows its own
-      chooser, and what you pick there counts as your consent for that recording.
-    </p>
-  </aside>
+  <details>
+    <summary>Why macOS may ask again</summary>
+    <div class="more caption">
+      <p>
+        This build of Simple Capture is signed ad hoc, so macOS treats every update as a new app and asks for Screen Recording,
+        Camera and Microphone again. If a permission looks stuck, remove Simple Capture from the list in System Settings and allow it
+        again.
+      </p>
+      <p>
+        On macOS 15 and later, macOS may also remind you from time to time that Simple Capture can see your screen, or ask to let it
+        bypass the private window picker. The <strong>System Picker</strong> source avoids that: macOS shows its own chooser, and what
+        you pick there counts as your consent for that recording.
+      </p>
+    </div>
+  </details>
 </div>
 
 <style>
   .onboarding {
-    padding: 16px 18px;
+    padding: 18px 20px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 16px;
   }
-  p {
-    margin: 0;
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  header h1 {
+    font-size: 17px;
+    margin-bottom: 2px;
+  }
+  .app-tile {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    border-radius: 11px;
+    color: #fff;
+    background: linear-gradient(135deg, #257a59, #0d4b34);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
   }
   ul {
     list-style: none;
     margin: 0;
     padding: 0;
+  }
+  .perm {
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+  }
+  .next {
+    margin-top: 4px;
+  }
+  .tile {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    color: #fff;
+  }
+  .text {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 3px;
   }
-  li {
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-    padding: 10px 12px;
+  .title-line {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .head {
-    display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 8px;
   }
   h3 {
     font-size: 13px;
-  }
-  .badge {
-    font-size: 11px;
-    border-radius: 10px;
-    padding: 1px 8px;
-    background: var(--surface-2);
-    color: var(--muted);
-  }
-  .badge.granted {
-    color: var(--ok);
-  }
-  .badge.denied,
-  .badge.restricted {
-    color: var(--danger);
+    font-weight: 600;
   }
   .actions {
-    display: flex;
-    gap: 6px;
+    align-self: center;
   }
   .actions:empty {
     display: none;
   }
-  aside {
+  details {
+    padding: 0 4px;
+  }
+  summary {
+    font-size: 12px;
+    color: var(--label-2);
+    cursor: default;
+  }
+  .more {
     display: flex;
     flex-direction: column;
     gap: 6px;
-    font-size: 12px;
-    color: var(--muted);
+    margin-top: 8px;
   }
 </style>

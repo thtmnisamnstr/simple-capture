@@ -39,12 +39,12 @@ fn pattern(size: SizePx, n: u32, out: &mut Vec<u8>) {
 }
 
 #[test]
-fn x264_encodes_two_seconds_of_y4m_into_a_part_file() {
+fn h264_encodes_two_seconds_of_y4m_into_a_part_file() {
     let Some(ffmpeg) = find(HelperKind::Ffmpeg) else {
         return;
     };
     let dir = std::env::temp_dir().join(format!(
-        "sc-helpers-x264-{}-{}",
+        "sc-helpers-h264-{}-{}",
         std::process::id(),
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -56,6 +56,11 @@ fn x264_encodes_two_seconds_of_y4m_into_a_part_file() {
     let (fps, frames) = (30u32, 60u32);
     let fin = dir.join("pattern.mp4");
     let part = PartFile::create(&fin).expect("part");
+    let encoder: &[&str] = if cfg!(target_os = "macos") {
+        &["-c:v", "h264_videotoolbox", "-allow_sw", "1"]
+    } else {
+        &["-c:v", "libx264", "-preset", "ultrafast"]
+    };
     let args: Vec<String> = [
         "-hide_banner",
         "-nostdin",
@@ -68,17 +73,10 @@ fn x264_encodes_two_seconds_of_y4m_into_a_part_file() {
         "yuv4mpegpipe",
         "-i",
         "pipe:0",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "ultrafast",
-        "-pix_fmt",
-        "yuv420p",
-        "-f",
-        "mp4",
-        "-y",
     ]
     .iter()
+    .chain(encoder)
+    .chain(&["-pix_fmt", "yuv420p", "-f", "mp4", "-y"])
     .map(|s| (*s).to_owned())
     .chain([part.path().display().to_string()])
     .collect();
@@ -148,11 +146,15 @@ fn ffmpeg_info_reports_network_disabled() {
         i.version_line
     );
     assert_eq!(i.sha256.len(), 64);
-    assert!(
-        i.buildconf.iter().any(|f| f == "--enable-libx264"),
-        "{:?}",
-        i.buildconf
-    );
+    let gpl = ["--enable-gpl", "--enable-libx264", "--enable-libx265"];
+    for flag in gpl {
+        assert_eq!(
+            i.buildconf.iter().any(|f| f == flag),
+            !cfg!(target_os = "macos"),
+            "{flag} in {:?}",
+            i.buildconf
+        );
+    }
     if let Ok(gifski) = locate(HelperKind::Gifski) {
         let g = helper_info(&gifski).expect("gifski info");
         assert!(g.version_line.starts_with("gifski "), "{}", g.version_line);

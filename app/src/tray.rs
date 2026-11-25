@@ -8,22 +8,35 @@ use sc_core::journal::StopReason;
 use serde_json::Value;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{TrayIcon, TrayIconBuilder};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, LogicalPosition, Manager};
 
 use crate::core::{Core, Reply};
 use crate::state::Phase;
 
-pub const ITEMS: [(&str, &str); 4] = [
+pub const ITEMS: [(&str, &str); 9] = [
     ("open", "Open Recorder"),
     ("start-stop", "Start Recording"),
+    ("pause", "Pause Recording"),
     ("switch", "Switch Source…"),
+    ("edit", "Edit Last Recording"),
+    ("library", "Library…"),
+    ("diagnostics", "Diagnostics…"),
+    ("about", "About Simple Capture"),
     ("quit", "Quit"),
 ];
 
 pub struct Tray {
     icon: TrayIcon,
+    menu: Menu<tauri::Wry>,
     start_stop: MenuItem<tauri::Wry>,
+    pause: MenuItem<tauri::Wry>,
+    recording: std::sync::atomic::AtomicBool,
+}
+
+fn tray_image(png: &[u8]) -> Result<Image<'static>, String> {
+    let img = sc_text::decode_image(png).map_err(|e| format!("tray icon: {e}"))?;
+    Ok(Image::new_owned(img.data, img.size.w, img.size.h))
 }
 
 pub fn format_elapsed(ns: i64) -> String {
@@ -36,6 +49,7 @@ pub fn format_elapsed(ns: i64) -> String {
     }
 }
 
+#[cfg(debug_assertions)]
 pub fn item_id(label_or_id: &str) -> Option<&'static str> {
     let l = label_or_id.trim();
     ITEMS.iter().find_map(|(id, label)| {
@@ -43,7 +57,9 @@ pub fn item_id(label_or_id: &str) -> Option<&'static str> {
         (l == *id
             || l == *label
             || l == plain
-            || l.eq_ignore_ascii_case("Stop Recording") && *id == "start-stop")
+            || (l.eq_ignore_ascii_case("Stop Recording")
+                || l.eq_ignore_ascii_case("Cancel Countdown"))
+                && *id == "start-stop")
             .then_some(*id)
     })
 }
@@ -61,15 +77,27 @@ impl Tray {
             .map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>)
             .collect();
         let menu = Menu::with_items(app, &refs).map_err(e)?;
-        let png = sc_text::decode_image(include_bytes!("../icons/tray-template@2x.png"))
-            .map_err(|e| format!("tray icon: {e}"))?;
-        let image = Image::new_owned(png.data, png.size.w, png.size.h);
+        let image = tray_image(include_bytes!("../icons/tray-template@2x.png"))?;
         let icon = TrayIconBuilder::with_id("main")
             .icon(image)
             .icon_as_template(true)
             .tooltip("Simple Capture")
             .menu(&menu)
             .show_menu_on_left_click(true)
+            .on_tray_icon_event({
+                let core = core.clone();
+                move |_tray, ev| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = ev
+                        && core.phase().is_recording()
+                    {
+                        show_recording_menu(&core);
+                    }
+                }
+            })
             .on_menu_event(move |_app, ev| {
                 let id = ev.id().as_ref().to_string();
                 let core = core.clone();
@@ -82,17 +110,65 @@ impl Tray {
             .build(app)
             .map_err(e)?;
         let start_stop = items[1].clone();
-        Ok(Tray { icon, start_stop })
+        let pause = items[2].clone();
+        let _ = pause.set_enabled(false);
+        Ok(Tray {
+            icon,
+            menu,
+            start_stop,
+            pause,
+            recording: std::sync::atomic::AtomicBool::new(false),
+        })
     }
 
-    pub fn refresh(&self, phase: &Phase, elapsed_ns: i64) {
+    /// `counting`: a recording start, its countdown included, is under way.
+    pub fn refresh(&self, phase: &Phase, elapsed_ns: i64, paused: bool, counting: bool) {
         let recording = phase.is_recording();
-        let title = recording.then(|| format_elapsed(elapsed_ns));
+        let title = recording.then(|| {
+            if paused {
+                format!("❚❚ {}", format_elapsed(elapsed_ns))
+            } else {
+                format_elapsed(elapsed_ns)
+            }
+        });
+        let _ = self.pause.set_enabled(recording);
+        let _ = self.pause.set_text(if paused {
+            "Resume Recording"
+        } else {
+            "Pause Recording"
+        });
         if let Err(e) = self.icon.set_title(title) {
             tracing::debug!("tray title: {e}");
         }
+        if self
+            .recording
+            .swap(recording, std::sync::atomic::Ordering::Relaxed)
+            != recording
+        {
+            let (bytes, template): (&[u8], bool) = if recording {
+                (include_bytes!("../icons/tray-recording@2x.png"), false)
+            } else {
+                (include_bytes!("../icons/tray-template@2x.png"), true)
+            };
+            match tray_image(bytes) {
+                Ok(image) => {
+                    let _ = self.icon.set_icon(Some(image));
+                    let _ = self.icon.set_icon_as_template(template);
+                }
+                Err(e) => tracing::debug!("{e}"),
+            }
+            // A system menu only becomes excludable from the recording once it is already on
+            // screen, so its first frame can be captured; while recording, a click opens the
+            // `traymenu` window instead, which was excluded before the recording began.
+            let menu = (!recording).then(|| self.menu.clone());
+            if let Err(e) = self.icon.set_menu(menu) {
+                tracing::warn!("tray menu: {e}");
+            }
+        }
         let text = if recording {
             "Stop Recording"
+        } else if counting {
+            "Cancel Countdown"
         } else {
             "Start Recording"
         };
@@ -101,6 +177,7 @@ impl Tray {
         }
     }
 
+    #[cfg(debug_assertions)]
     pub fn status_item(&self) -> usize {
         #[cfg(target_os = "macos")]
         {
@@ -118,6 +195,7 @@ impl Tray {
 
     /// Opens the menu in-process (no synthetic input), closes it after `hold`, and returns this
     /// process's on-screen windows listed halfway through (the menu is the one not in `known`).
+    #[cfg(debug_assertions)]
     pub fn open_menu(&self, hold: Duration, known: &[u32]) -> Result<Value, String> {
         let item = self.status_item();
         let icon = self.icon.clone();
@@ -159,22 +237,35 @@ impl Tray {
     }
 }
 
+/// The recording menu below the tray icon; a second click closes it.
+pub fn show_recording_menu(core: &Arc<Core>) {
+    if let Some(w) = core.app.get_webview_window("traymenu")
+        && w.is_visible().unwrap_or(false)
+    {
+        let _ = w.hide();
+        return;
+    }
+    if let Some(t) = core.tray.get() {
+        t.below_icon(&core.app, "traymenu");
+    }
+    if let Err(e) = core.show_window("traymenu", true) {
+        tracing::warn!("tray menu: {e}");
+    }
+}
+
 pub fn on_item(core: &Arc<Core>, id: &str) -> Reply {
     match id {
         "open" => core.show_window("panel", true).map(|_| Value::Null),
-        "start-stop" => {
-            if core.phase().is_recording() {
-                core.stop_recording()
-            } else {
-                core.tray_start()
-            }
-        }
+        "start-stop" => core.start_stop(),
         "switch" => {
             if let Some(t) = core.tray.get() {
                 t.below_icon(&core.app, "switcher");
             }
             core.show_window("switcher", true).map(|_| Value::Null)
         }
+        "pause" => core.toggle_pause(),
+        "edit" => core.edit_last(),
+        "library" | "diagnostics" | "about" => core.show_window(id, true).map(|_| Value::Null),
         "quit" => {
             core.shutdown(StopReason::Quit, 0);
             Ok(Value::Null)
@@ -216,6 +307,7 @@ mod tests {
         assert_eq!(item_id("Switch Source…"), Some("switch"));
         assert_eq!(item_id("Switch Source"), Some("switch"));
         assert_eq!(item_id("Stop Recording"), Some("start-stop"));
+        assert_eq!(item_id("Cancel Countdown"), Some("start-stop"));
         assert_eq!(item_id("quit"), Some("quit"));
         assert_eq!(item_id("Frob"), None);
     }

@@ -1,0 +1,1 @@
+screencast,record,webcam,camera,mic,audio,voice,gif,mp4,tutorial,demo,walkthrough,trim,text,offline

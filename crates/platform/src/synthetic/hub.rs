@@ -310,6 +310,16 @@ impl EventGen {
             },
             ScriptedEvent::DevicesChanged(kind) => SourceEvent::DevicesChanged { kind },
             ScriptedEvent::OwnWindowsChanged => SourceEvent::OwnWindowsChanged,
+            ScriptedEvent::Resize(size) => SourceEvent::SourceResized {
+                stream: StreamTag(0),
+                content_rect_pt: Some(RectPt {
+                    x: 0.0,
+                    y: 0.0,
+                    w: f64::from(size.w),
+                    h: f64::from(size.h),
+                }),
+                content_scale: Some(1.0),
+            },
         })
     }
 }
@@ -602,6 +612,9 @@ impl Hub {
             SourceSpec::Picked(_) => Err(Error::Unsupported(
                 "synthetic: picked sources (the synthetic platform has no picker)",
             )),
+            SourceSpec::Camera { .. } | SourceSpec::Device { .. } => Err(Error::Unsupported(
+                "camera sources go through the camera, not the screen",
+            )),
         }
     }
 
@@ -681,9 +694,17 @@ impl Hub {
             }
             let id = st.emitters[i].id;
             let sink = Arc::clone(&st.emitters[i].sink);
-            let Some(item) = st.emitters[i].source.produce() else {
+            let Some(mut item) = st.emitters[i].source.produce() else {
                 continue;
             };
+            if let Item::Event(SourceEvent::SourceResized { stream, .. }) = &mut item
+                && let Some(tag) = st.emitters.iter().rev().find_map(|e| match &e.source {
+                    Gen::Screen(g) => Some(g.tag),
+                    _ => None,
+                })
+            {
+                *stream = tag;
+            }
             self.after_produce(&mut st, i, id, &item);
             let guard = lock(&self.deliver);
             drop(st);
@@ -740,6 +761,7 @@ impl Hub {
         });
         Ok(Box::new(SynthDeviceStream {
             handle: self.add_emitter(sink, source)?,
+            sound: None,
             format: "synthetic system events".into(),
         }))
     }
@@ -829,6 +851,7 @@ impl ScreenStream for SynthScreenStream {
 
 struct SynthDeviceStream {
     handle: Handle,
+    sound: Option<Handle>,
     format: String,
 }
 
@@ -839,6 +862,9 @@ impl DeviceStream for SynthDeviceStream {
 
     fn stop(self: Box<Self>) -> Result<()> {
         self.handle.stop();
+        if let Some(s) = self.sound {
+            s.stop();
+        }
         Ok(())
     }
 }
@@ -1069,6 +1095,7 @@ impl AudioSource for HubRef {
                 model_id: Some("synthetic".into()),
                 is_default: true,
                 kind_hint: Some("builtin".into()),
+                unavailable: None,
             }],
             _ => Vec::new(),
         })
@@ -1093,6 +1120,7 @@ impl AudioSource for HubRef {
                 .start_audio(AudioTrackKind::Mic, Some(DeviceKind::Mic), script, sink)?;
         Ok(Box::new(SynthDeviceStream {
             handle,
+            sound: None,
             format: format!(
                 "synthetic f32 {} Hz {} ch, {} frames/buffer",
                 script.rate, script.channels, script.buffer_frames
@@ -1133,6 +1161,7 @@ impl CameraSource for HubRef {
                 model_id: Some("synthetic".into()),
                 is_default: true,
                 kind_hint: Some("builtin".into()),
+                unavailable: None,
             }],
             _ => Vec::new(),
         })
@@ -1175,9 +1204,19 @@ impl CameraSource for HubRef {
             template: background(size, hash, false),
             k: 0,
         }));
+        let sound = match &self.0.scenario.device_audio {
+            Some(a) => {
+                Some(
+                    self.0
+                        .start_audio(AudioTrackKind::DeviceAudio, None, a, sink.clone())?,
+                )
+            }
+            None => None,
+        };
         let handle = self.0.add_emitter(sink, source)?;
         Ok(Box::new(SynthDeviceStream {
             handle,
+            sound,
             format: format!("synthetic nv12 {}x{} @ {fps} fps", size.w, size.h),
         }))
     }

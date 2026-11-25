@@ -54,9 +54,37 @@ enum Loaded {
     Unreadable(String),
 }
 
+/// Just enough of `project.json` to tell a finished project from one still recording, so the scan
+/// at launch does not parse every project in full.
+#[derive(serde::Deserialize)]
+struct Peek {
+    state: ProjectState,
+    recording: PeekRecording,
+}
+
+#[derive(serde::Deserialize)]
+struct PeekRecording {
+    screen: PeekScreen,
+}
+
+#[derive(serde::Deserialize)]
+struct PeekScreen {
+    segments: Vec<serde::de::IgnoredAny>,
+}
+
 fn load(dir: &Path) -> Loaded {
-    if !dir.join(ProjectV1::FILE_NAME).exists() {
-        return Loaded::Missing;
+    let path = dir.join(ProjectV1::FILE_NAME);
+    let Ok(bytes) = fs::read(&path) else {
+        return if path.exists() {
+            Loaded::Unreadable(format!("{}: unreadable", path.display()))
+        } else {
+            Loaded::Missing
+        };
+    };
+    if let Ok(p) = serde_json::from_slice::<Peek>(&bytes)
+        && p.state != ProjectState::Recording
+    {
+        return Loaded::Final(p.recording.screen.segments.len());
     }
     match ProjectV1::load(dir) {
         Ok(p) if p.state == ProjectState::Recording => Loaded::Recording(Box::new(p)),

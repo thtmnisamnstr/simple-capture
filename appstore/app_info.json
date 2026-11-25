@@ -1,0 +1,9 @@
+{
+  "platform": "MAC_OS",
+  "bundleId": "com.simplecapture.desktop",
+  "primaryLocale": "en-US",
+  "primaryCategory": "PHOTO_AND_VIDEO",
+  "secondaryCategory": "PRODUCTIVITY",
+  "copyright": "2026 Gavin Johnson",
+  "contentRightsDeclaration": "DOES_NOT_USE_THIRD_PARTY_CONTENT"
+}

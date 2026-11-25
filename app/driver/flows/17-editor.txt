@@ -1,0 +1,38 @@
+# Editor (M3): a short recording opens in the editor; split, ripple delete, speed, mute, copy and
+# paste, undo/redo, a text item, play, then export the edit and check its length and the text.
+cmd start_recording {"request":{"source":{"kind":"display","display_id":"@DISPLAY@"},"via":"own_chooser","title":"drv editor","settings":{"mic":"@MIC@"}}}
+wait 9000
+cmd stop_recording
+wait-phase saved 30000
+wait 2500
+cmd editor {"action":"state"}
+cmd editor {"action":"rect","rect":{"x":0,"y":52,"w":880,"h":520}}
+cmd editor {"action":"edit","op":{"op":"split","at_tl_ns":2000000000}}
+cmd editor {"action":"edit","op":{"op":"split","at_tl_ns":5000000000}}
+cmd editor {"action":"edit","op":{"op":"delete_range","a_tl_ns":1000000000,"b_tl_ns":2000000000}}
+cmd editor {"action":"edit","op":{"op":"set_speed","ids":["$CLIP1"],"speed":{"num":2,"den":1}}}
+cmd editor {"action":"edit","op":{"op":"set_muted","ids":["$CLIP2"],"muted":true}}
+cmd editor {"action":"copy","range":{"a_tl_ns":0,"b_tl_ns":500000000}}
+cmd editor {"action":"paste","at_tl_ns":0}
+cmd editor {"action":"undo"}
+cmd editor {"action":"redo"}
+cmd editor {"action":"undo"}
+cmd editor {"action":"edit","op":{"op":"set_track_mix","track_id":"mic","gain_db":-6,"muted":false}}
+cmd editor {"action":"edit","op":{"op":"upsert_text","item":{"id":"drv-text","start_tl_ns":500000000,"end_tl_ns":3500000000,"layer":0,"content":"DRIVER TEXT","style":{"font_family":"Montserrat","size_1080":130.0,"weight":900,"italic":false,"uppercase":false,"align":"center","line_height":1.1,"letter_spacing":0.0,"opacity":1.0,"fill":{"solid":[1.0,0.95,0.0,1.0]},"outline":{"width_1080":4.0,"color":[0.0,0.0,0.0,1.0]}},"transform":{"center_norm":{"x":0.5,"y":0.3},"scale":1.0,"rotation_deg":0.0},"anim":{"in":{"kind":"pop","duration_s":0.3,"easing":"ease_out"}}}}}
+cmd editor {"action":"seek","tl_ns":1500000000}
+wait 700
+cmd editor {"action":"play"}
+wait 2500
+cmd editor {"action":"pause"}
+cmd editor {"action":"state"}
+wait 800
+cmd editor {"action":"export","size":"720"}
+wait-phase saved 180000
+cmd editor {"action":"export_estimate","settings":{"format":"gif","fps":10,"size":{"kind":"class","value":240}}}
+cmd editor {"action":"export_start","settings":{"format":"gif","fps":10,"size":{"kind":"class","value":240}}}
+wait-phase saved 180000
+cmd editor {"action":"export_start","settings":{"format":"webm","quality":{"tier":"small"},"size":{"kind":"class","value":480}}}
+wait-phase saved 180000
+cmd editor {"action":"close"}
+wait 500
+quit

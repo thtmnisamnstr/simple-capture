@@ -1,7 +1,7 @@
 use objc2_av_foundation::{
     AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio, AVMediaTypeVideo,
 };
-use objc2_core_graphics::{CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
+use objc2_core_graphics::CGRequestScreenCaptureAccess;
 use objc2_foundation::NSString;
 use sc_platform::{PermissionKind, PermissionStatus, Permissions};
 
@@ -51,7 +51,7 @@ impl Permissions for MacPermissions {
     fn status(&self, k: PermissionKind) -> PermissionStatus {
         match k {
             PermissionKind::Screen => {
-                if CGPreflightScreenCaptureAccess() {
+                if super::content::screen_allowed() {
                     PermissionStatus::Granted
                 } else {
                     PermissionStatus::NotDetermined
@@ -102,7 +102,7 @@ impl Permissions for MacPermissions {
             PermissionKind::Microphone => "Privacy_Microphone",
         };
         Some(format!(
-            "x-apple.systempreferences:com.apple.preference.security?{pane}"
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?{pane}"
         ))
     }
 }

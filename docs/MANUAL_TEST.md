@@ -33,6 +33,15 @@ cargo build --locked -p simple-capture-cli -p sc-devtools
   banner is up, stay off the screen.
 - `just run` keeps the Mac awake (`caffeinate`) while the app runs; an explicit Sleep still works.
 - Stop the app with tray → **Quit**. Ctrl-C in the `just run` terminal also quits gracefully.
+- To try the real app (`com.simplecapture.desktop`, its own grants) build it with
+  `scripts/local-bundle.sh` (release build in `target/skia/release/bundle/macos/`). It is the
+  sandboxed app the DMG and the Mac App Store ship (ADR-058). It is signed with the Developer ID
+  when the keychain has one, else with the self-signed "Simple Capture Local Signing"
+  certificate, so Screen Recording, Camera and Microphone stay granted across rebuilds; without
+  either the bundle is ad hoc signed and every rebuild needs the grants again. Being sandboxed,
+  it keeps its settings and logs in
+  `~/Library/Containers/com.simplecapture.desktop/Data/Library/Application Support/com.simplecapture.desktop/`
+  instead of the paths below.
 
 ### 0.2 Where to look
 
@@ -115,21 +124,22 @@ fail (note the frame time and which window).
 
 **L3. Recorder panel**
 - Do: tray → Open Recorder.
-- Expect: the "Simple Capture" panel with Source (Displays / Windows / Apps tabs), Frame, Camera
-  and audio, Video, and a Record button. No "Permissions…" link (all three grants held). If a
-  recording from an earlier crash exists, a yellow "A recording from a previous session was
-  recovered." line with Reveal.
+- Expect: the "Simple Capture" panel with grouped sections Source (Displays / Windows / Apps),
+  Frame, Camera, Audio and Video, and a footer with the chosen source and a red Record button. No
+  "Permissions needed" banner (all three grants held). If a recording from an earlier crash exists,
+  a yellow "A recording from a previous session was recovered." line with Show in Finder. The
+  controls look and behave like macOS ones in light and dark mode (System Settings → Appearance).
 - Look: the panel.
 
 **L4. Onboarding window**
-- Do: if the panel shows "Permissions…" (the dev host lacks one grant), click it. If all three
-  grants are held the link is hidden; then this step is covered by B1 and B5 in the release
+- Do: if the panel shows "Permissions needed" (the dev host lacks one grant), click it. If all
+  three grants are held the banner is hidden; then this step is covered by B1 and B5 in the release
   bundle. Do not change grants to test it.
 - Expect (whenever it shows): three rows, Screen Recording, Camera, Microphone, each with a status
   badge (Granted / Denied / Not asked yet / Restricted / Unknown) read **without prompting**;
-  Request only on "Not asked yet"; Open System Settings on anything not granted; the "Why macOS may
-  ask again" text explains the ad-hoc re-prompt and the macOS 15 reminder / private-picker bypass
-  alert, and points to System picker….
+  Allow… only on "Not asked yet"; Open Settings… on anything not granted; the "Why macOS may ask
+  again" disclosure explains the ad-hoc re-prompt and the macOS 15 reminder / private-picker bypass
+  alert, and points to the System Picker.
 - Look: the onboarding window; §12 for any prompt.
 
 ---
@@ -143,7 +153,7 @@ scrolling something inside the source, stop with the bar's **Stop**, then `scsho
 - Do: Displays tab → the "(main)" display → Record.
 - Expect: the floating bar appears (timer counting, Switch, Stop, ✕); the tray title shows the
   elapsed time (`0:07`); Stop opens the "Recording saved" window (Duration, Size, Project, Export
-  MP4, Reveal in Finder). One segment, `frame_px` = the display's pixel size shown in the list.
+  MP4, Show in Finder). One segment, `frame_px` = the display's pixel size shown in the list.
 - Look: bar, menu bar title, Saved window, `scshow`, `screen-000.mov` in QuickTime.
 
 **S2. Window**
@@ -161,7 +171,7 @@ scrolling something inside the source, stop with the bar's **Stop**, then `scsho
 - Look: QuickTime, `scshow` (`source.kind = application`).
 
 **S4. Region (drag)**
-- Do: Select region… → the region overlay covers the display with "Drag to select a region ·
+- Do: Region… → the region overlay covers the display with "Drag to select a region ·
   Esc to cancel". Drag a rectangle; move it by dragging inside; resize from a corner and an edge
   handle; type W and H in the toolbar; try the shape presets (Free, 16:9, 9:16, 4:3, 1:1; Match
   frame is disabled while the frame is Original); Esc once to cancel, then again with Use region.
@@ -178,7 +188,7 @@ scrolling something inside the source, stop with the bar's **Stop**, then `scsho
 - Look: `scshow`, QuickTime.
 
 **S6. Pick mode (click)**
-- Do: Pick window by clicking. A dimmed overlay with a card "Record… / Click a window / D whole
+- Do: Click a Window. A dimmed overlay with a card "Record… / Click a window / D whole
   display / Drag for a region / P system picker / Esc cancel". Hover over windows (each is
   highlighted with its title), click one.
 - Expect: the panel Source line shows that window. Repeat with **D** (whole display), with a drag
@@ -187,8 +197,8 @@ scrolling something inside the source, stop with the bar's **Stop**, then `scsho
 
 **S7. Second display at a different scale** (needs an external display whose scale differs from
 the built-in one, e.g. a 1× monitor next to a 2× Retina screen; a Sidecar iPad also works)
-- Do: (a) record the non-main display; (b) Select region… with the cursor on the second display
-  and drag a region there; (c) Pick window by clicking, move the cursor from one display to the
+- Do: (a) record the non-main display; (b) Region… with the cursor on the second display
+  and drag a region there; (c) Click a Window, move the cursor from one display to the
   other, click a window on the second display; (d) Apps tab: "Record on" the second display.
 - Expect: (a) `frame_px` = the second display's pixel size; (b) the overlay opens on the display
   under the cursor; px = pt × that display's scale; the recording shows the right area of the
@@ -218,9 +228,9 @@ the built-in one, e.g. a 1× monitor next to a 2× Retina screen; a Sidecar iPad
   only its audio" otherwise); `system_audio.mov` has only the chosen app's sound.
 - Look: panel, QuickTime on `system_audio.mov`.
 
-**S11. Mic Mode…**
-- Do: choose a microphone, click Mic Mode… (also once during a recording).
-- Expect: macOS's own Mic Mode panel (Control Center) opens; the button is disabled with no mic.
+**S11. Mic Mode**
+- Do: choose a microphone, click the ⋯ button next to it (Mic Mode; also once during a recording).
+- Expect: macOS's own Mic Mode panel (Control Center) opens; the button is hidden with no mic.
   If macOS shows nothing while the mic is idle, note whether it works during a recording.
 - Look: the Control Center panel; note the macOS version in §11.
 
@@ -232,7 +242,7 @@ the built-in one, e.g. a 1× monitor next to a 2× Retina screen; a Sidecar iPad
 - Look: QuickTime.
 
 **S13. 60 fps gating**
-- Do: Frame rate: try 30 fps, 60 fps and 60 fps at 1× on each display; then plug in a display
+- Do: Frame rate: try 30, 60 and 60 at 1× on each display; then plug in a display
   that was not connected at launch and select it.
 - Expect: 60 fps options are enabled only when the launch probe passed for that display; a
   disabled option says why ("This Mac can't keep up…" or, for a display connected after launch,
@@ -250,8 +260,8 @@ adds a segment whose start equals the previous segment's end; audio and camera t
 whole recording without gaps.
 
 **W1. From the bar**
-- Do: bar → Switch → the switch popover (Recent, Displays, Windows, search box, Select region…,
-  Pick by clicking, System picker…). Type part of a window title, choose it. Then Switch → a
+- Do: bar → Switch → the switch popover (Recent, Displays, Windows, search box, Region…,
+  Click a Window, System… (System Picker)). Type part of a window title, choose it. Then Switch → a
   display.
 - Expect: the bar says "Switching…" briefly, then "Recording"; the popover closes; Esc closes the
   popover without switching. Segments: display → window → display, `end=user_switch`.
@@ -298,45 +308,45 @@ whole recording without gaps.
 
 ## 4. System picker (under the dev host)
 
-Panel → System picker… (or **P** in pick mode). macOS shows its own content-sharing picker.
+Panel → System… (System Picker) (or **P** in pick mode). macOS shows its own content-sharing picker.
 
 **P1. Pick a display**
-- Do: System picker… → choose a display → in the panel "Record the whole display or a region of
-  it?" → Whole display → Record 10 s.
+- Do: System… (System Picker) → choose a display → in the panel "Record the whole display, or a region of
+  it?" → Whole Display → Record 10 s.
 - Expect: Source line ends "(system picker)"; segment `via=system_picker`, `frame_px` = display
   pixels. Any prompt or "bypass the private window picker" alert goes in §12.
 - Look: panel, `scshow`, §12.
 
 **P2. Pick a window**
-- Do: System picker… → a window → Record 10 s.
+- Do: System… (System Picker) → a window → Record 10 s.
 - Expect: as S2, `via=system_picker`.
 - Look: `scshow`, QuickTime.
 
 **P3. Pick an app**
-- Do: System picker… → an app → Record 10 s.
+- Do: System… (System Picker) → an app → Record 10 s.
 - Expect: as S3 (that app's windows only), `via=system_picker`.
 - Look: `scshow`, QuickTime.
 
 **P4. Cancel**
-- Do: System picker… → Cancel in the picker. Again from pick mode with **P** → Cancel.
+- Do: System… (System Picker) → Cancel in the picker. Again from pick mode with **P** → Cancel.
 - Expect: nothing changes, no error; the source stays as before.
 - Look: panel.
 
 **P5. Display then region**
-- Do: System picker… → a display → Select region… → drag a region on that display → Use region →
+- Do: System… (System Picker) → a display → Region… → drag a region on that display → Use region →
   Record 10 s.
 - Expect: the region overlay opens on the picked display; the recording shows the region;
   `source.kind = region`, `via=system_picker`.
 - Look: `scshow`, QuickTime.
 
 **P6. Switch with the picker**
-- Do: during a recording, bar → Switch → System picker… → a window; then Switch → System
+- Do: during a recording, bar → Switch → System… (System Picker) → a window; then Switch → System
   picker… → a display.
 - Expect: two new segments with `via=system_picker`; no gap in audio.
 - Look: `scshow`.
 
 **P7. Picked display with the floating bar visible — our pixels**
-- Do: System picker… → the display where the floating bar will show → Whole display → Record
+- Do: System… (System Picker) → the display where the floating bar will show → Whole Display → Record
   15 s. During the recording open the switch popover and close it, and open the tray menu.
 - Expect: the bar, the popover and the tray menu are **absent** from the recording
   (`excludedWindowIDs` on a picked display), per §0.4.
@@ -349,7 +359,7 @@ Panel → System picker… (or **P** in pick mode). macOS shows its own content-
 **E1. Quick export from the Saved window**
 - Do: after a recording, Size "Full size (long side up to 3840)" → Export MP4; then 1080p; then
   start one more and press Cancel.
-- Expect: a progress bar with % and about-N-s-left, then "Exported <name>.mp4" with Reveal; the
+- Expect: a progress bar with % and about-N-s-left, then "Exported <name>.mp4" with Show in Finder; the
   MP4 sits next to the project folder. Cancel shows "Export cancelled." and leaves no `.part`
   file and no `ffmpeg` process.
 - Look: Saved window; `ls "$(dirname "$(sclast)")"/*.part`; `pgrep -l ffmpeg`.
@@ -394,7 +404,7 @@ open "$OUT"
 **E4. Our UI and the tray menu absent from recordings**
 - Do: record the main display 20 s with Original; during it: open the recorder panel (tray →
   Open Recorder), open the switch popover, open the tray menu and hold it open 3 s, press ⌥⇧S and
-  Esc, open Select region… from the popover and Esc. Export.
+  Esc, open Region… from the popover and Esc. Export.
 - Expect: none of our windows, overlays or the tray menu are in any frame; the menu bar shows a
   gap where our status item is (§0.4). If the open tray menu does appear, write it down with the
   frame time: the docs then ask whether to accept that exception.
@@ -480,7 +490,7 @@ open "$OUT"
   system audio; switch source once; after 15 s `kill -KILL "$(cat "$TMPDIR/sc-app.pid")"`. Run
   `just run` again.
 - Expect: on relaunch the panel shows "A recording from a previous session was recovered." with
-  Reveal; `state: recovered`; the last segment ends with `end=recovered`; at most about 1 s is
+  Show in Finder; `state: recovered`; the last segment ends with `end=recovered`; at most about 1 s is
   lost per track; every track file plays; `"$SC" export "$(sclast)"` writes an MP4 that plays.
 - Look: panel, `scshow`, QuickTime, the export.
 
@@ -560,36 +570,39 @@ verdict      PASS|FAIL (list failed thresholds); ADR-010 frame copy: copy|no cop
 
 ## 10. Release bundle (owner only)
 
-The release bundle is `com.simplecapture.desktop`, ad-hoc signed, hardened runtime. It has never
+The release bundle is `com.simplecapture.desktop`, sandboxed, hardened runtime, signed as
+`scripts/local-bundle.sh` finds (Developer ID, the local certificate, or ad hoc). It has never
 been granted anything, so it **will** prompt; that is what this section tests (ADR-028, Q8).
 Agents never launch it. Quit the dev app (`just run`) first so only one tray icon is in the menu
 bar.
 
 **B0. Build and inspect**
-- Do: `just bundle`. The bundle is `target/release/bundle/macos/Simple Capture.app` (the path is
-  printed at the end). Then:
+- Do: `just bundle` (`scripts/local-bundle.sh --dmg`). The bundle is
+  `target/skia/release/bundle/macos/Simple Capture.app` (the path is printed). Then:
   ```bash
-  APP="target/release/bundle/macos/Simple Capture.app"
-  codesign -dv --entitlements - "$APP" 2>&1 | grep -E 'flags|Identifier|camera|audio-input'
+  APP="target/skia/release/bundle/macos/Simple Capture.app"
+  codesign -dv --entitlements - "$APP" 2>&1 | grep -E 'flags|Identifier|app-sandbox|camera|audio-input'
   plutil -p "$APP/Contents/Info.plist" | grep -E 'UsageDescription|CFBundleIdentifier'
-  codesign -dv "$APP/Contents/MacOS/ffmpeg" 2>&1 | grep -E 'Signature|flags'
+  ls "$APP/Contents/MacOS"
+  scripts/mas-check.sh --dmg --adhoc "$APP"   # drop --adhoc for a Developer ID build
   ```
-- Expect: `flags=0x10002(adhoc,runtime)` (hardened runtime), `Identifier=com.simplecapture.desktop`,
-  the camera and audio-input entitlements, the three usage strings (camera, microphone, system
-  audio), and signed ffmpeg/ffprobe sidecars.
+- Expect: `runtime` in the flags (hardened runtime), `Identifier=com.simplecapture.desktop`, the
+  app-sandbox, camera and audio-input entitlements, the three usage strings (camera,
+  microphone, system audio), only `sc-ffmpeg` and `sc-ffprobe` beside the app (no
+  `sc-gifski`), and mas-check passing.
 - Look: the command output.
 
 **B1. Never-granted: onboarding and lists without a prompt**
-- Do: `open "$APP"`. Tray → Open Recorder. Click the Windows and Apps tabs. Click
-  "Permissions…".
+- Do: `open "$APP"`. Tray → Open Recorder (on a first launch the recorder opens by itself).
+  Click the Windows and Apps tabs. Click "Permissions needed".
 - Expect: no prompt appears from opening the app, the panel, the tabs or the onboarding window
-  (status is read without asking). Windows/Apps say "Grant Screen Recording to list windows and
-  apps." with Grant… and System picker…. Onboarding shows "Not asked yet" (or the real state) for
+  (status is read without asking). Windows/Apps say "Allow Screen Recording to list windows and
+  apps." with Allow… and Use the System Picker…. Onboarding shows "Not asked yet" (or the real state) for
   all three.
 - Look: screen, §12.
 
 **B2. Never-granted: record through the system picker**
-- Do: System picker… → a display → Whole display; System audio All; Record 15 s with music
+- Do: System… (System Picker) → a display → Whole Display; System audio All; Record 15 s with music
   playing; stop; export. Repeat once with a window.
 - Expect: the macOS picker works without a Screen Recording grant (picking is consent for that
   recording). Note in §12 every prompt or alert (Screen Recording prompt, "bypass the private
@@ -604,7 +617,7 @@ bar.
 - Look: §12.
 
 **B4. Grant Screen Recording; whole-app exclusion re-test**
-- Do: onboarding → Screen Recording → Request (write down the prompt), grant it in System
+- Do: onboarding → Screen Recording → Allow… (write down the prompt), grant it in System
   Settings as macOS asks, and relaunch as macOS suggests. Quit the app, then:
   ```bash
   open -n --env SC_EXCLUSION=app "$APP"
@@ -617,7 +630,7 @@ bar.
 - Look: QuickTime frame by frame.
 
 **B5. Camera and microphone prompts**
-- Do: onboarding → Camera → Request; Microphone → Request. Then record with a camera and mic.
+- Do: onboarding → Camera → Allow…; Microphone → Allow…. Then record with a camera and mic.
 - Expect: each prompt shows our usage string: "Simple Capture records your camera when you turn
   the camera on for a recording." / "Simple Capture records your microphone when you choose a
   microphone for a recording."; after granting, the recording has `camera.mov` and `mic.mov`.
@@ -630,7 +643,274 @@ bar.
   next `just run` shows no prompt).
 - Look: menu bar, `pgrep -lf "Simple Capture.app"` prints nothing, §12.
 
+**B7. First launch and opening it again**
+- Do: with the bundle quit, start it as on a new Mac, with an empty data folder:
+  ```bash
+  d=$(mktemp -d); open -n --env SC_DATA_DIR="$d" "$APP"
+  ```
+  Close the recorder panel, then open Simple Capture again while it runs (double-click it in
+  Finder, or `open "$APP"`). Change one recorder setting (for example 30 → 60 fps), quit from
+  the tray, and start it once more with `open -n --env SC_DATA_DIR="$d" "$APP"`.
+- Expect: the first launch opens the recorder panel by itself, without a prompt. Opening the
+  running app again brings the panel back. The last launch shows only the menu-bar icon (it is
+  no longer a first launch). No focus change other than the panel itself.
+- Look: screen, menu bar, §12.
+
 ---
+
+## 10b. Camera and Preview window (M2)
+
+Choose a camera in the recorder panel first. The OBSBOT, FaceTime HD, EOS Webcam Utility and
+iPhone cameras all work on the build Mac.
+
+**M1. Preview window appears with the panel**
+- Do: open the recorder panel (tray → Open Recorder), pick a camera, source = the whole display.
+- Expect: a "Preview" window shows the video as it will be recorded: the screen in its frame and
+  the camera in a circle, not mirrored; the camera light is on. Closing the panel turns the camera
+  off and hides the Preview. Its close button unticks "Show the Preview window".
+- Look: Preview window, camera light.
+
+**M2. Place, snap, resize, zoom**
+- Do: in the Preview, drag the camera around, near the edges, corners and centre lines; drag a
+  corner handle out and in; scroll on it. Move the Preview window itself and reopen the panel.
+- Expect: the camera follows, snaps to the margins and centre lines, grows and shrinks, zooms, and
+  never leaves the frame; the Preview reopens where you left it.
+- Also: resize the Preview by its edges and corners, and drag it to the other display if there is
+  one, and try full screen (green button). The picture stays centred and the camera sharp (the
+  screen part is a once-a-second snapshot at the window's point size, so it is softer), and the
+  dashed outline and handles stay on the camera (a fast resize may lag a frame, then catch up).
+- Look: Preview window.
+
+**M3. Shape, framing, mirror, border, shadow**
+- Do: in the panel's Camera section try every shape, the Corners slider, S/M/L, the four corner
+  buttons, Mirror, Border, Shadow, "In the video", and Reset framing.
+- Expect: the Preview and the panel's little preview change at once and match; the Preview's
+  dashed outline and handles move with the camera.
+
+**M4. Video Effects**
+- Do: press Effects… in the Camera section.
+- Expect: macOS's Video Effects panel opens for the camera and the Preview shows the effect.
+
+**M5. Other sources and frame shapes**
+- Do: switch the source to a window, an app, a region; change the frame to 9:16 and 1:1.
+- Expect: the Preview always shows the real output, and the camera stays inside the frame.
+
+**M6. Record, move the camera, export**
+- Do: record for about 15 s; at 5 s drag the camera in the Preview to another corner, at 10 s
+  untick "In the video", stop. Check the control bar's timer counts up, drag the bar by its grip,
+  and check the Saved window's duration and "Recorded" list; press Export Video.
+- Expect: the export is one MP4 with the screen, the camera staying put until about 5 s, then
+  following your drag, and gone from about 10 s, and the mic and system audio mixed; the Preview
+  never appears in it. After Stop (the panel is hidden) the camera light goes off and the Preview
+  closes.
+- Look: the export in QuickTime, the camera light.
+
+**M7. The camera survives a crash**
+- Do: start a recording with the camera, move it in the Preview, then `kill -9` the app (or Force
+  Quit) and relaunch.
+- Expect: the recovered recording exports with the camera, including the move (up to 0.2 s of the
+  last motion may be lost).
+
+## 10c. Editor (M3)
+
+Record about 30 seconds with screen, camera and mic (talk, and show something that moves), then
+stop. The editor opens by itself. Check, in order:
+
+| # | Step | Expected |
+|---|---|---|
+| E1 | Look at the editor | Preview of the composed video on top; inspector on the right (Clip, Camera, Audio, Frame); timeline with thumbnails and a waveform filling in within a few seconds |
+| E2 | Space; Space again after a few seconds | Plays with sound from the playhead, picture and sound in step; pauses |
+| E3 | Click and drag on the ruler | The playhead follows and the preview shows that moment |
+| E4 | Put the playhead somewhere and press S | The clip splits there |
+| E5 | Click a clip, press ⌫ | It is removed and the gap closes (ripple); playing across the new cut has no click |
+| E6 | Shift-drag a range on the ruler, ⌘X, move the playhead, ⌘V | The range moves to the playhead; the camera in the pasted piece is where it was when recorded |
+| E7 | Select a clip, set 2× in the Clip tab, play it | Twice as fast, voice at the same pitch; the clip shows 2× |
+| E8 | Drag a clip's yellow edge (select it first) | Trims; the timeline gets shorter or longer as you drag, applied on release |
+| E9 | Drag a clip body sideways | A blue marker shows where it will land; release reorders |
+| E10 | ⌘Z repeatedly, then ⇧⌘Z | Every edit undoes and redoes in order |
+| E11 | Camera tab: change shape, size, corner; drag the camera in the preview; scroll on it | The preview updates; orange keyframe marks show on the timeline; "Use Everywhere" makes one placement for the whole video |
+| E12 | Audio tab: lower the microphone, mute system audio | Playback and the export follow |
+| E13 | Frame tab: 9:16, then a gradient background | The preview reshapes and letterboxes with the background |
+| E14 | Export → 1080p | Progress in the toolbar; "Exported. Show in Finder"; the file plays with every edit |
+| E15 | Close the editor, tray → Edit Last Recording | The editor opens with the edits kept (autosaved) |
+| E16 | Recorder panel → When Recording Stops → Show Summary; record again | The Saved window appears instead; its Edit… button opens the editor |
+| E17 | Light and dark appearance | Both look right |
+| E18 | Record 30 s talking with a few long pauses; editor → Remove Silences… | The pauses are marked red on the timeline; the count and total update as you move the level or pick 0.5 s / 1 s / 2 s |
+| E19 | Remove | The marked pauses are gone in one step; speech keeps a short breath at each cut; ⌘Z brings them all back |
+| E20 | Mute the system audio track in Audio, open Remove Silences again | Only the microphone counts: music in the muted track no longer hides the pauses |
+| E21 | Pause on an email address; Blur (or B) | A box appears over the middle of the screen for 3 s and the preview shows a mosaic there; a Blur item appears in its own lane |
+| E22 | Drag the box over the address and resize it from a corner; switch it to Black | The preview follows; the camera bubble and text stay on top |
+| E23 | Change the frame to 9:16 or add padding | The box stays on the same screen content |
+| E24 | Drag the Blur item's edges on the timeline; cut a range before it; ⌘Z | It moves and ripples like text; undo restores it |
+| E25 | Export | The exported video hides the area for exactly that stretch |
+| E26 | Record 30 s with screen, camera and mic; open the editor | The timeline shows Screen (system audio waveform), Camera (microphone waveform), Text and, once there is one, Blur; the chain button between Screen and Camera is on (linked) |
+| E27 | Linked: split, delete a clip, drag a clip | Both tracks change together, as before |
+| E28 | Click the chain to unlink; select a camera clip, ⌫ | A striped gap is left; the screen does not move; playing over it shows the screen with no camera and no mic |
+| E29 | Drag the camera clip after the gap left | It slides in time and stops at the start; the camera's mouth and voice stay in step |
+| E30 | Select a screen clip, ⌫ | A gap on the screen track; the camera fills the frame there; the timeline keeps its length |
+| E31 | Select the screen gap, ⌫ | That time leaves every track; text after it moves back |
+| E32 | Click the chain again | One step: the camera follows the screen again and the screen's gaps close; ⌘Z brings the separate tracks back |
+| E33 | Export while unlinked | The export matches the preview: camera gaps, the full-frame camera and the slid camera clip |
+| E34 | Add text; select it | The dashed box sits exactly on the drawn text; the camera and blur boxes sit exactly on the camera and the blurred area |
+| E35 | Text tab | Text colour and Background (box, colour, opacity, corners) are separate sections |
+
+## 10d. Text (M4)
+
+In the editor with any recording:
+
+| # | Step | Expected |
+|---|---|---|
+| T1 | Press T | "Your text" appears near the bottom for 3 s from the playhead, selected (yellow box); the Text tab opens |
+| T2 | Double-click the text in the preview, type "Hello 👋 world" | The video updates as you type; the emoji is in colour |
+| T3 | Try each style preset | Each looks like its button; Box and Inverted put a rounded box behind the lines; Merged joins the boxes of several lines |
+| T4 | Change font, weight, italic, size, alignment, line height, spacing | The preview follows; heavy weights are real weights, not smeared |
+| T5 | Gradient on; eyedropper; pick a colour from anywhere on screen | The fill uses it |
+| T6 | Drag the text; watch the pink guides at the centre and thirds | Snaps to them |
+| T7 | Drag a corner handle; drag the round handle above the box | Scales; rotates and snaps at 0°, 15° and 90° |
+| T8 | Set In: Typewriter, Out: Slide down, Loop: Pulse; play | Letters appear one by one, the text pulses, then slides away |
+| T9 | Drag the text item and its edges on the timeline | It moves and retimes |
+| T10 | Delete a range that covers the text; undo | The text goes with it; undo brings both back |
+| T11 | ⌘C, move the playhead, ⌘V | A copy appears at the playhead |
+| T12 | Export 1080p and 720p | The text looks identical in both and in the preview |
+| T13 | Choose the Inverted preset, then change Text colour and Background colour | Text colour changes the letters and Background colour the box |
+| T14 | On a 3 s text, set In to fade and drag its duration to the end; then add a 1 s Out fade | The In slider reaches 3 s and the fade lasts the whole clip; with the Out added, a note shows them sharing the clip (2.25 s, then 0.75 s) and the text peaks once, at the hand-over |
+
+## 10e. Export sheet (M5)
+
+In the editor with any recording, press ⌘E:
+
+| # | Step | Expected |
+|---|---|---|
+| X1 | Look at the sheet | Format tabs MP4, WebM, GIF, MOV; codecs, encoder, quality, fps, size; an estimate line with size range and time |
+| X2 | Change the size to 720p, then type a width | The other side follows (aspect locked); the estimate updates |
+| X3 | Pick fps 60 on a 30 fps recording | The sheet says it exports at 30 (capped at the recording's rate) |
+| X4 | MP4 + HEVC, export; open in QuickTime | Plays; ⌘I shows HEVC |
+| X5 | MP4 + AV1 + Opus | Marked "less compatible"; plays in Chrome and VLC |
+| X6 | WebM VP9 + Opus, then VP8 + Vorbis | Both play in Chrome and Firefox with the right colours |
+| X7 | MOV ProRes 422 + PCM | Plays in QuickTime; large file |
+| X8 | GIF (Palette on macOS, gifski on Windows and Linux) at 15 fps, 480p, loop 3 times | Plays in Safari, Chrome and Firefox at normal speed, three times then stops |
+| X9 | GIF palette mode, 64 colours, dither off | Visible banding; plays at the chosen speed |
+| X10 | Fast encoder on a 5K recording with H.264 at Original | A warning that hardware H.264 stops at 4096 px |
+| X11 | Save the settings as a preset, switch format, apply the preset | Every setting comes back; delete removes it |
+| X12 | Close and reopen the sheet | Each format kept its last settings |
+| X13 | Start an export and press Cancel | "Export cancelled"; no `.part` file left |
+| X14 | After an export: Show in Finder, Copy (paste into Finder or Messages), Open | Each works |
+| X15 | Output folder: choose another folder; name template `{title} {size}` | The file lands there with that name; a second export gets " 2" |
+
+## 10f. Recording controls (M7)
+
+| # | Step | Expected |
+|---|---|---|
+| R1 | Start a recording from the panel | The bar shows 3, 2, 1, then recording starts; nothing of the countdown is in the video |
+| R2 | Start again and press Escape (or Cancel) during the countdown | Nothing records |
+| R3 | While recording, press ⌥⇧P (or the pause button); wait 5 s; press it again | The bar says Paused and its timer stops; the tray title shows ❚❚; resuming continues the timer |
+| R4 | Stop; look at the editor | Two clips with the paused stretch cut out; playback jumps over it with no click |
+| R5 | ⌥⇧R from any app | Starts recording (the last source); ⌥⇧R again stops |
+| R6 | ⌥⇧C while recording with a camera | The camera disappears from the recording from then on; again brings it back |
+| R7 | Restart in the bar, confirm | The take is gone (not in the Library) and a new recording starts |
+| R8 | Settings → Show frame rate and drops; record | The bar shows fps, dropped frames and drift |
+| R9 | Panel open, a microphone chosen; speak | The level bar under the microphone moves; it turns orange near the top |
+| R10 | When Recording Stops → Export; record | The summary shows the export running with the format you exported last |
+| R11 | Turn on "Move the recording to the Trash after a quick export"; export from the summary | The project folder is in the Trash after the export finishes; the exported file is kept |
+| R12 | Panel → Camera Only; record 10 s talking | The Preview window and the panel picture show the camera filling the frame; the recording is the camera with your voice, no screen |
+| R13 | Screen + Camera, then Screen | The camera section appears and goes away; Screen returns to the display or window you had |
+| R14 | While recording the screen, switch source → Camera | The camera fills the frame from then on and the corner camera hides; switching back to a display brings the corner camera back |
+| R15 | Panel → Starting and Shortcuts → click "Pause or resume", press ⌃⌥P | It shows ⌃⌥P; ⌃⌥P now pauses a recording and ⌥⇧P does nothing; the bar's Pause tooltip says ⌃⌥P |
+| R16 | Give "Switch source" the same keys as "Start or stop recording" | An orange note says it is also used for the other action; Default puts it back |
+| R17 | Click a shortcut, press Delete; click another, press Escape | The first shows None and no longer works; the second keeps its keys |
+| R18 | While recording, hover each button in the bar | The bar's message area says what the button does (and its shortcut); the normal tooltip shows too |
+| R19 | Plug in an iPhone, unlock it, tap Trust; panel → Source → iPhone | Within a few seconds the phone is listed with a USB tag; it is not in the camera menu |
+| R20 | Pick it, Screen + Camera, record 20 s while using the phone | The Preview shows the phone's screen live with your camera in the corner; the recording is phone-shaped (portrait or landscape) and smooth |
+| R21 | Rotate the phone while recording | The picture follows the new shape |
+| R22 | Unplug the phone while recording | The bar says the source closed; Switch… or Stop work |
+| R23 | iPhone tab → Open iPhone Mirroring; pick the iPhone Mirroring item (Wireless) and record | The mirrored phone records like a window; with system audio on, the phone's sound is in the recording |
+| R24 | Camera Only, frame 9:16, Camera → Fill; record | A vertical video filled by the middle of the camera, no bars; Fit gives the whole camera with the background above and below |
+| R25 | Screen, frame 9:16, a wide window, Picture → Fill | The window's middle fills the frame; blur boxes stay on their content in the editor and the export |
+| R26 | Region… and Click a Window | The screen stays visible (lightly dimmed) while choosing |
+| R27 | Screen only (no camera); open the Preview | No camera box or handles in it |
+| R28 | Grant Screen Recording in System Settings, return to Permissions | It reads Granted |
+| R29 | Panel open; plug in a USB camera or microphone, then unplug it | The menus gain and lose it within a few seconds, without reopening the panel |
+| R30 | Screen + Camera; click the Preview, press the arrow keys (and with Shift) | The camera moves a little (Shift: further) and stays where it lands |
+| R31 | Camera → Quality → 1080p, 60 fps (and 720p) | The Preview's camera changes format at once (Diagnostics/log shows the new format); recordings use it |
+| R32 | Record a window; resize it mid-recording; stop | The editor shows a new section from shortly after the resize, at the new size, with no black area or squashing |
+| R33 | macOS 14 or Windows: Highlight clicks on; record a window, click around in it; export | Each click shows a yellow ring that grows and fades where you clicked, in the editor and the export; with Fill it follows the crop |
+| R34 | iPhone over USB as the source; start recording, then press play on a YouTube video (starting pauses it); record 15 s; open the editor | Audio tab lists Device sound with a waveform; the export plays the phone's sound in step with its picture; muting Device sound silences it |
+| R35 | Connect AirPods (or another Bluetooth headset) as the microphone; record 10 s while talking | The editor shows the mic waveform and the export has your voice (headset mics run at 16–24 kHz) |
+| R36 | While recording a display, click the menu bar icon, then click it again; reopen it and choose Pause, then Stop | A menu opens under the icon and closes on the second click; Pause and Stop work; the menu never appears in the recording; when not recording the icon shows the normal menu |
+| R37 | Source → System Picker…, cancel it; then pick a window with it, record 5 s, stop; quit the app | After the cancel, and again after the recording ends, the app is no longer listed in the menu bar's Sharing (screen sharing) menu; nothing is listed after quitting |
+| R38 | With Screen Recording off for Simple Capture (never granted, or denied once), launch it, open the panel with a display source and leave it 30 s; then choose Deny or Open System Settings on the one prompt Allow raises | macOS asks only when you press Allow in Permissions; no prompt comes back on its own, however long the panel stays open |
+| R39 | Choose an iPhone plugged in by cable as the source, with Show preview on; switch the shape through Original, 16:9 and 9:16 | The Frame thumbnail shows the phone screen within a second or two and takes each shape; the Preview window reshapes to each shape (tall for Original and 9:16), keeping its bottom-right corner |
+| R40 | Choose a Bluetooth headset as the microphone, quit, turn the headset off, reopen and record 5 s | The Microphone menu shows Not connected with a note naming the mic recordings will use; the recording starts and has that mic's sound. If a start ever fails after the countdown, the panel comes back with the error |
+| R41 | Record a display with the camera bubble and Show preview on; switch to a window; then drag the bubble in the Preview window | The Preview keeps showing the window, as the recording does; it never goes back to the display |
+| R42 | Open iPhone Mirroring, then open the recorder | The iPhone's camera and microphone are listed as In use by iPhone Mirroring and can't be chosen; one already chosen shows a note, and recording uses the Mac's default camera or mic instead. Nothing freezes |
+| R43 | With an iPhone's Continuity Camera stuck or busy, launch Simple Capture | The menu bar icon appears within a few seconds; a camera that won't start shows an error after about 8 s instead of freezing the app |
+| R44 | While macOS's camera system is stuck (`system_profiler SPCameraDataType` never finishes), launch Simple Capture and click its menu bar icon | The menu opens; the recorder opens and records the screen; the Audio section says the camera system isn't responding and that restarting the Mac fixes it |
+| E44 | Open a recording with a camera in the editor; scrub, trim and split the camera track | The camera lane shows frames from the camera, like the screen lane does, and they stay after scrubbing and edits |
+| Y13 | A recording that crashed (end the app from Activity Monitor while recording, start it again) → Library → What Was Recovered… | The sheet says what was kept and left out; Edit opens what was saved |
+| E36 | Record a 16:9 frame from one window, switch to a much wider window; in the editor put the playhead in the second part → Frame → This section → Fill, drag Keep to Left | Only that part changes: it fills the frame and keeps its left side; the first part is unchanged; the export matches |
+| E37 | J, J, L, L, L, K in the editor | J plays backwards at 1× then 2× (silent, with ◀◀ 2× by the time); L plays forward with sound, again 2×, again 4× (silent); K stops |
+| E38 | Turn Snap off (or press N), drag a text edge near a cut | It no longer jumps to the cut; Snap on again restores it and is remembered next time |
+| E39 | Two overlapping text items; Text tab → Bring to Front / Send to Back | The chosen one draws above or below the other in the preview and the export |
+| E40 | Frame tab → 4:5 | A portrait 4:5 frame in the preview and the export |
+| E41 | Export → WebP, Loop: Several times (3) | It plays in a browser with the right colours and stops after three plays; it is much smaller than the GIF |
+| E42 | Add three texts at the same playhead, and two blurs that overlap | Overlapping items stack on separate rows; items that don't overlap share the first row; the timeline grows to fit |
+| E43 | Scrub the timeline, switch to another app and back, scrub again | The screen track's pictures stay; Play works after changing a text's animation time |
+
+## 10g. Library, About and Diagnostics (M6, M7)
+
+| # | Step | Expected |
+|---|---|---|
+| Y1 | Tray → Library… | Every recording, newest first, with a picture, date, length and size |
+| Y2 | Type in Search | The list narrows by title |
+| Y3 | Double-click a recording | The editor opens it |
+| Y4 | Select one → Export… | The editor opens with the export sheet showing |
+| Y5 | Select one → Move to Trash → confirm | It leaves the list and is in the Trash (restorable) |
+| Y6 | Tray → About Simple Capture | Version and licenses; each license opens as text; "Open notices" opens the Rust notices (release builds) |
+| Y7 | About → Diagnostics… → Run Self-Test | Lines stream in; "7 passed, 0 failed" on a Mac with the screen grant; Show in Finder finds the report |
+| Y8 | Terminal: `simple-capture --self-test` | The same report, printed and saved |
+| Y9 | Library: select a recording, click its name, type a new one, Return | The name changes; in Finder the folder is now "<date> <new name>.sc" |
+| Y10 | Rename a recording that is open in the editor (from the editor's title) | The title changes at once; the folder follows when the editor closes |
+| Y11 | After recording, type a name in the summary's Name field | The Library and the editor show that name; exports use it |
+| Y12 | Library: sort by Longest, Largest, Name; ⌘-click and ⇧-click several; ⌘A | Order changes and is remembered; the footer shows the count and size; Move N to Trash asks once |
+
+## 10h. Sandboxed Mac app: the DMG and the Mac App Store (owner only)
+
+The DMG and the store build are the same sandboxed app (ADR-058), so these rows apply to both.
+Run them on the DMG first (`just bundle`, or the release's DMG) and again on the store build
+before the first submission: `gh workflow run app-store.yml -f tag=v<version> -f submit=false`
+uploads it without submitting (docs/RELEASING.md, Mac App Store), and the TestFlight app
+installs it. Either keeps its settings in `~/Library/Containers/com.simplecapture.desktop`, and
+the two have separate permission grants (Developer ID and Apple Distribution signatures). Quit
+every other Simple Capture first, and keep only one copy in /Applications (both are
+`Simple Capture.app` with the same ID). Write each prompt in §12 with "DMG" or "TestFlight" as
+the app. A failure here holds the release or the submission: report it.
+
+AS0 can run on this Mac with the dev app, which runs the same code without the sandbox under
+the dev host's grants:
+
+```bash
+just run
+```
+
+| # | Step | Expected |
+|---|---|---|
+| AS0 | Dev host (`just run`): record a display with TextEdit frontmost; click the floating bar's pause and resume, then type in TextEdit | TextEdit stays frontmost and takes the typing after each click |
+| AS1 | Install (drag from the DMG, or from TestFlight) and open it from Launchpad (first launch) | The recorder panel opens by itself; the menu-bar icon appears; no prompt yet |
+| AS2 | Close the panel; open Simple Capture again from Finder (Applications) or Launchpad | The recorder panel comes back |
+| AS3 | "Permissions needed" → Allow… for Screen Recording; follow macOS (System Settings, Quit & Reopen); then Allow… for Camera and for Microphone | Each prompt names Simple Capture (Camera and Microphone with our usage strings); afterwards the Permissions window says Granted for all three and the banner is gone |
+| AS4 | Record a display 20 s with a camera, the mic and system audio (music playing) | The editor opens; screen, camera, voice and music play in step; the recording is in ~/Movies/Simple Capture |
+| AS5 | Record a window 15 s, resizing it once | Only that window is recorded, letterboxed after the resize; none of our windows in it |
+| AS6 | Plug in an iPhone or iPad (unlocked, trusted) → the recorder's iPhone tab → record 15 s with sound playing on it | It is listed and its screen and sound are recorded. If it is missing or black, report it: the build may need the `device.usb` entitlement |
+| AS7 | Record a display with TextEdit frontmost; click the floating bar (pause, resume) and drag the camera Preview window, typing in TextEdit after each | TextEdit stays frontmost and keeps the typing. No Mac build uses `_setPreventsActivation:` any more; if Simple Capture takes focus, report it |
+| AS8 | Export MP4 to the default folder | The file is in ~/Movies/Simple Capture and plays in QuickTime; Show in Finder finds it |
+| AS9 | Export → Choose… another folder (Desktop or Documents) → Export | The file is in that folder and plays |
+| AS10 | Tray → Quit; open the app again; export another recording without choosing the folder again | It saves to the folder from AS9, with no "Choose the folder again" message |
+| AS11 | Export: pick MP4 with H.264, then HEVC, then GIF, and look at the Encoder row each time | Without touching it, Fast is selected for H.264 and HEVC and Palette for GIF; Best Quality and Best Quality (gifski) are greyed out |
+| AS12 | Export MP4, H.264 (Fast) | It plays; `strings <file> \| grep -c x264` prints 0 (VideoToolbox; x264 would write its settings into the file); nothing in the sheet mentions x264 or x265 |
+| AS13 | Export GIF (Palette) | The GIF (FFmpeg's palette) plays in a browser |
+| AS14 | Optional: export to a folder on another disk | It finishes after a short copy at 100%; it needs free space on the Movies disk, where it is encoded first |
+| AS15 | About Simple Capture → Privacy Policy | The browser opens docs/PRIVACY.md on GitHub |
+| AS16 | About → Licenses → FFmpeg export helper → Source code | LGPL-2.1-or-later; the note says the source is attached to this version's GitHub release, and the Source code button opens `https://github.com/thtmnisamnstr/simple-capture/releases/tag/v<version>` in the browser, which (once the release is published) has `simple-capture-helper-sources.tar.gz`; no x264, x265 or gifski entries |
 
 ## 11. Results log
 
@@ -642,14 +922,14 @@ Copy this table into the M1 review notes (or STATUS) with one line per step run.
 | … | | | | |
 
 Steps: L1–L4, S1–S13, W1–W6, P1–P7, E1–E4, H1–H8, K1–K2, C1 (three clap offsets in ms), O1 (paste
-the soak summary), B0–B6.
+the soak summary), B0–B7, M1–M7, AS0–AS16 (store build).
 
 ## 12. Prompt log
 
 Every Screen Recording, Camera, Microphone or system-audio prompt, reminder or alert seen, with the
 path that led to it.
 
-| Date | App (dev host / release bundle) | Path (what you clicked, step ID) | Prompt or alert (exact wording) | Your answer | Notes |
+| Date | App (dev host / release bundle / TestFlight) | Path (what you clicked, step ID) | Prompt or alert (exact wording) | Your answer | Notes |
 |---|---|---|---|---|---|
 | | | | | | |
 
@@ -659,12 +939,29 @@ Under the dev host (§1–§9) this table should stay empty.
 
 ## 13. Windows and Linux
 
-Placeholders until M6; CI only. M1 builds the Windows and Linux crates as stubs that compile and
-pass their tests on GitHub's Windows x64 and Ubuntu x64 runners (`just ci-local` runs the local
-equivalents). There is nothing to test by hand on these systems in M1.
+Installers come from the `package` workflow's artifacts (Actions → package → the run →
+`simple-capture-windows-x86_64` or `simple-capture-linux-x86_64`). Nothing here has been tried
+on a real Windows or Linux desktop yet (ADR-048).
 
-### Windows
-Placeholder until M6 (Windows Graphics Capture, WASAPI, Media Foundation). CI only.
+### Windows (10 2004 or later; 11 removes the yellow capture border)
+| # | Step | Expected |
+|---|---|---|
+| WN1 | Install the NSIS setup (per user) and start Simple Capture | A tray icon; the recorder panel opens from it |
+| WN2 | Run the self-test from About → Diagnostics | Encoders list `h264_mf` or a GPU encoder; the 2 s real capture passes |
+| WN3 | Record the main display 20 s with mic and system audio playing | The editor opens; picture and sound play in step |
+| WN4 | Record a window, resize it while recording | The recording letterboxes the window instead of stretching |
+| WN5 | Record a region, then an app | Only the region / the app's windows' area is in the video |
+| WN6 | Our panel and bar during a recording | Not in the video (excluded from capture) |
+| WN7 | Camera on | The camera records; unplugging it shows "Camera disconnected" and recording goes on |
+| WN8 | Export MP4, WebM and GIF | Each plays (Films & TV, a browser) |
+| WN9 | Settings → Privacy → Camera off for desktop apps, then reopen | The app shows the camera as denied and links to the setting |
 
-### Linux
-Placeholder until M6 (PipeWire portal, GStreamer). CI only.
+### Linux (Ubuntu 24.04 or similar with PipeWire and xdg-desktop-portal)
+| # | Step | Expected |
+|---|---|---|
+| LX1 | Install the .deb (or run the AppImage) | The app starts; a tray icon (needs an AppIndicator host on GNOME) |
+| LX2 | Panel → Choose Screen or Window… | The system's share dialog; after choosing, the panel says it will record your choice |
+| LX3 | Record 20 s with mic and system audio | Our windows hide while recording; the editor opens afterwards; sound in step |
+| LX4 | Camera (a webcam that offers YUYV) | Records; an MJPEG-only camera says so |
+| LX5 | Self-test | Encoders list `libx264`; the real-capture step says it is skipped on Linux |
+| LX6 | Export MP4 and GIF; Move to Trash from the Library | Files play; the project is in the Trash |

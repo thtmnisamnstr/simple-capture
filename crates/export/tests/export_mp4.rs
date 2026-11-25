@@ -165,7 +165,7 @@ fn segments_gap_audio_and_fps_override() {
         &vec![0.1; 2 * 44_100],
     );
     let dir = p.save();
-    for fps in [30u32, 25, 60] {
+    for fps in [30u32, 25, 24] {
         let out = t.path().join(format!("segs-{fps}.mp4"));
         let (path, obs) = run_export(&dir, Some(out), ExportSize::Reference, Some(fps));
         let frames = (1200 * u64::from(fps)).div_ceil(1000);

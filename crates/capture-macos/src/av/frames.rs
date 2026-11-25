@@ -69,6 +69,10 @@ impl NativeFrame for MacPixelFrame {
         self.size
     }
 
+    fn cv_pixel_buffer(&self) -> Option<NonNull<std::ffi::c_void>> {
+        Some(NonNull::from(&*self.pb).cast())
+    }
+
     fn with_nv12(&self, f: &mut dyn FnMut(Nv12View<'_>)) -> Result<()> {
         let fmt = self.pixel_format();
         if (fmt != PIX_420V && fmt != PIX_420F) || CVPixelBufferGetPlaneCount(&self.pb) != 2 {
@@ -165,6 +169,9 @@ impl MacAudioSample {
 impl NativeAudio for MacAudioSample {
     fn as_any(&self) -> &dyn Any {
         self
+    }
+    fn to_f32(&self) -> Option<Vec<f32>> {
+        super::pcm::to_f32(&self.sb)
     }
 }
 

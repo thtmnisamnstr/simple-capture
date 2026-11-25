@@ -1,7 +1,6 @@
 // Typed wrappers for the app commands (plan §5.2). Falls back to the mock backend outside Tauri.
 
 import { invoke } from '@tauri-apps/api/core';
-import { mockInvoke } from './mock.ts';
 import type {
   CapabilitiesDto,
   DevicesDto,
@@ -17,12 +16,18 @@ import type {
   SourceList,
   SourceSpecDto,
   CanvasDto,
+  CameraKey,
 } from './types.ts';
 
 export const inTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+/** The mock backend outside Tauri, loaded on first use so the app's bundle leaves it out. */
+export function viaMock<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
+  return import('./mock.ts').then((m) => m.mockInvoke<T>(cmd, args));
+}
+
 function call<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
-  return inTauri() ? invoke<T>(cmd, args) : mockInvoke<T>(cmd, args);
+  return inTauri() ? invoke<T>(cmd, args) : viaMock<T>(cmd, args);
 }
 
 export const api = {
@@ -31,12 +36,16 @@ export const api = {
   openPermissionSettings: (kind: PermissionKind) => call<void>('open_permission_settings', { kind }),
   listDisplays: () => call<DisplayInfo[]>('list_displays'),
   listSources: () => call<SourceList>('list_sources'),
-  listDevices: () => call<DevicesDto>('list_devices'),
+  listDevices: async (): Promise<DevicesDto> => {
+    const d = await call<DevicesDto>('list_devices');
+    return { ...d, cameras: d.cameras.filter((c) => c.kind_hint !== 'screen'), screens: d.cameras.filter((c) => c.kind_hint === 'screen') };
+  },
   showMicModes: () => call<void>('show_mic_modes'),
   getSettings: () => call<RecorderSettings>('get_settings'),
   setSettings: (settings: RecorderSettings) => call<RecorderSettings>('set_settings', { settings }),
   getCapabilities: () => call<CapabilitiesDto>('get_capabilities'),
-  previewStill: (source: SourceSpecDto, canvas: CanvasDto) => call<string>('preview_still', { source, canvas }),
+  previewStill: (source: SourceSpecDto, canvas: CanvasDto, cameraKey?: CameraKey) =>
+    call<string>('preview_still', { source, canvas, cameraKey }),
   chooseBackgroundImage: () => call<string | null>('choose_background_image'),
   beginRegionSelect: (purpose: Purpose, displayId?: string) =>
     call<void>('begin_region_select', { purpose, displayId: displayId ?? null }),
@@ -50,6 +59,10 @@ export const api = {
   cancelExport: (id: string) => call<void>('cancel_export', { id }),
   reveal: (path: string) => call<void>('reveal', { path }),
   recoveryReport: () => call<RecoveryReportDto[]>('recovery_report'),
+  cameraPreview: (active: boolean) => call<{ shown: boolean }>('camera_preview', { active }),
+  cameraKeyLive: (key: CameraKey, last = false) => call<void>('camera_key_live', { key, last }),
+  showVideoEffects: () => call<void>('show_video_effects'),
+  barDrag: (phase: 'begin' | 'move' | 'end', x: number, y: number) => call<void>('bar_drag', { phase, x, y }),
 };
 
 export const COMMANDS = [
@@ -76,6 +89,13 @@ export const COMMANDS = [
   'cancel_export',
   'reveal',
   'recovery_report',
+  'camera_preview',
+  'preview_state',
+  'camera_key_live',
+  'show_video_effects',
+  'bar_drag',
+  'editor',
+  'app',
 ] as const;
 
 export function errorText(err: unknown): string {

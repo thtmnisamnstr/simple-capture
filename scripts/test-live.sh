@@ -7,7 +7,7 @@
 # Fails when 0 tests ran or any failed (M1 plan §2 rule 3).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 [ $# -ge 2 ] || { echo "usage: scripts/test-live.sh PKG PREFIX [FILTER...]" >&2; exit 2; }
 PKG=$1 PREFIX=$2
 shift 2

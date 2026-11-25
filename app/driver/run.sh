@@ -3,6 +3,8 @@
 #   app/driver/run.sh [FLOW_PREFIX...]   default: every flow
 #   env SC_KEEP_MEDIA=1                  keep recorded media (deleted after the checks otherwise)
 #   env SC_DRV_CAMERA=ID SC_DRV_MIC=ID   devices for the display run (default: the system defaults)
+#   env SC_DRV_PROFILE=release           drive an optimized build (with debug assertions, which the
+#                                        driver needs) instead of the debug build
 # Output: target/app-driver/<stamp>/ (logs, project metadata, report.json); exit 0 when every
 # check in check.py passed.
 #
@@ -28,19 +30,26 @@ mkdir -p "$RUN/projects" "$RUN/data" "$RUN/scripts" "$RUN/bin" "$OUT"
 export SC_PROJECTS_DIR="$RUN/projects" SC_DATA_DIR="$RUN/data"
 echo "app-driver: run folder $RUN (copied to $OUT)" >&2
 
-(cd "$ROOT" && pnpm --dir ui build >/dev/null && cargo build --locked -q -p simple-capture-app) || {
+PROFILE="${SC_DRV_PROFILE:-debug}"
+PROFILE_FLAG=""
+if [ "$PROFILE" = release ]; then
+  PROFILE_FLAG="--release"
+  export CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true
+fi
+(cd "$ROOT" && pnpm --dir ui build >/dev/null && cargo build --locked -q $PROFILE_FLAG -p simple-capture-app) || {
   echo "app-driver: build failed" >&2
   exit 1
 }
 live_devtools || exit 1
-cp "$CARGO_TARGET_DIR/debug/simple-capture-app" "$SC_DEVTOOLS" "$RUN/bin/" || exit 1
+cp "$CARGO_TARGET_DIR/$PROFILE/simple-capture-app" "$SC_DEVTOOLS" "$RUN/bin/" || exit 1
 APP="$RUN/bin/simple-capture-app"
 export SC_DEVTOOLS="$RUN/bin/sc-devtools"
 FFMPEG=""
 if [ -x "$MAIN/third_party/out/macos-arm64/ffmpeg" ]; then
-  cp "$MAIN/third_party/out/macos-arm64/ffmpeg" "$RUN/bin/ffmpeg" && FFMPEG="$RUN/bin/ffmpeg"
-  export SC_FFMPEG="$FFMPEG"
+  cp "$MAIN/third_party/out/macos-arm64/ffmpeg" "$RUN/bin/sc-ffmpeg" && FFMPEG="$RUN/bin/sc-ffmpeg"
+  cp "$MAIN/third_party/out/macos-arm64/ffprobe" "$RUN/bin/sc-ffprobe" 2>/dev/null
 fi
+export SC_FFMPEG="$FFMPEG"
 cd "$RUN" || exit 1
 
 fixture_start || exit 1
@@ -58,12 +67,12 @@ MIC=""
 render() {
   sed -e "s|@DISPLAY@|$DISPLAY_ID|g" -e "s|@RED_WID@|$RED_WID|g" -e "s|@GREEN_WID@|$GREEN_WID|g" \
       -e "s|@GREEN_PID@|$GREEN_PID|g" -e "s|@CAMERA@|$CAMERA|g" -e "s|@MIC@|$MIC|g" \
-      -e "s|@TITLE@|${3:-}|g" "$HERE/flows/$1.txt" > "$RUN/scripts/$2.txt"
+      -e "s|@TITLE@|${3:-}|g" -e "s|@RUN@|$RUN|g" "$HERE/flows/$1.txt" > "$RUN/scripts/$2.txt"
 }
 
 drive() {
   echo "app-driver: flow $1" >&2
-  SC_APP_SCRIPT="$RUN/scripts/$1.txt" "$ROOT/scripts/lib/live.sh" \
+  SC_DEV_PID_FILE="$RUN/$1.pid" SC_APP_SCRIPT="$RUN/scripts/$1.txt" "$ROOT/scripts/lib/live.sh" \
     "$ROOT/tools/macos-dev-host/run.sh" "$APP" > "$RUN/$1.log" 2>&1
   echo "$?" > "$RUN/$1.rc"
 }
@@ -107,7 +116,7 @@ CAMERA="${SC_DRV_CAMERA:-$(pick_dev cameras)}"
 MIC="${SC_DRV_MIC:-$(pick_dev mics)}"
 echo "app-driver: camera=${CAMERA:-none} mic=${MIC:-none}" >&2
 
-for f in 02-still-csp 03-sources 04-switch 05-exclusion 06-export 07-sleep 08-quit-recording; do
+for f in 02-still-csp 03-sources 04-switch 05-exclusion 06-export 17-editor 27-tracks 29-sections 18-diagnostics 19-library 20-pause 21-camera 22-silence 23-shortcuts 25-preview-rate 07-sleep 12-preview 14-preview-capture 08-quit-recording; do
   flow "$f"
 done
 if wanted 08-quit-recording; then
@@ -125,6 +134,26 @@ if wanted 10-kill; then
   drive 10b-relaunch
 fi
 flow 11-quit-export
+if [ ${#FILTERS[@]} -gt 0 ] && wanted 16-soak; then
+  ( while sleep 15; do P=$(cat "$RUN/16-soak.pid" 2>/dev/null); [ -n "$P" ] && ps -o rss=,%cpu= -p "$P"; done ) > "$RUN/soak-ps.txt" 2>/dev/null &
+  SAMPLER=$!
+  flow 16-soak
+  kill "$SAMPLER" 2>/dev/null
+fi
+if [ ${#FILTERS[@]} -gt 0 ] && wanted 28-iphone; then
+  mkdir -p "$RUN/shots"
+  flow 28-iphone
+fi
+if [ ${#FILTERS[@]} -gt 0 ] && wanted 26-shots; then
+  mkdir -p "$RUN/shots"
+  flow 26-shots
+  echo "app-driver: window shots in $RUN/shots (they show the real screen: delete them after review)" >&2
+fi
+if [ ${#FILTERS[@]} -gt 0 ] && wanted 24-long && [ -n "$FFMPEG" ]; then
+  LONG="$(python3 -I "$HERE/longproject.py" "$FFMPEG" "$RUN/projects" "${SC_LONG_SECS:-600}")" || exit 1
+  sed -e "s|@LONG@|$LONG|g" "$HERE/flows/24-long.txt" > "$RUN/scripts/24-long.txt"
+  drive 24-long
+fi
 sleep 1
 [ -n "$FFMPEG" ] && pgrep -fl "$FFMPEG" > "$RUN/ffmpeg-after.txt" 2>/dev/null
 
@@ -133,9 +162,11 @@ trap - EXIT
 python3 -I "$HERE/check.py" "$RUN"
 rc=$?
 if [ "${SC_KEEP_MEDIA:-0}" != 1 ]; then
-  find "$RUN/projects" -type f \( -name '*.mov' -o -name '*.mp4' -o -name '*.m4a' -o -name '*.wav' -o -name '*.part' \) -delete
-  rm -f "$RUN/bin/simple-capture-app" "$RUN/bin/sc-devtools" "$RUN/bin/ffmpeg"
+  find "$RUN/projects" -type f \( -name '*.mov' -o -name '*.mp4' -o -name '*.m4a' -o -name '*.wav' -o -name '*.part' \
+    -o -name '*.gif' -o -name '*.webm' -o -name '*.mkv' \) -delete
+  find "$RUN/projects" -type d -name thumbs -prune -exec rm -rf {} +
+  rm -f "$RUN/bin/simple-capture-app" "$RUN/bin/sc-devtools" "$RUN/bin/sc-ffmpeg" "$RUN/bin/sc-ffprobe"
 fi
-rsync -a --exclude bin --exclude '*.mov' --exclude '*.mp4' --exclude '*.m4a' --exclude '*.wav' "$RUN/" "$OUT/"
+rsync -a --exclude bin --exclude thumbs --exclude shots --exclude '*.mov' --exclude '*.mp4' --exclude '*.m4a' --exclude '*.wav' --exclude '*.gif' --exclude '*.webm' --exclude '*.mkv' "$RUN/" "$OUT/"
 echo "app-driver: report $OUT/report.json (exit $rc)" >&2
 exit "$rc"

@@ -5,8 +5,8 @@ use sc_core::image::RgbaImage;
 use sc_geometry::SizePx;
 use sc_platform::{Error, Nv12View, Result};
 
-use crate::maths::{self, ScreenPlan};
-use crate::{FrameJob, OutputFormat, RenderedFrame};
+use crate::maths::{self, CameraPlan, ScreenPlan};
+use crate::{CameraLayer, FrameJob, OutputFormat, RenderedFrame};
 
 pub fn render_cpu(job: &FrameJob, out: OutputFormat) -> Result<RenderedFrame> {
     let canvas = job.canvas;
@@ -15,9 +15,21 @@ pub fn render_cpu(job: &FrameJob, out: OutputFormat) -> Result<RenderedFrame> {
     if let Some(layer) = &job.screen {
         let mut result = Ok(());
         layer.frame.0.with_nv12(&mut |view| {
-            result = draw_screen(&mut rgba, canvas, layer.src, layer.dst, &view);
+            result = draw_screen(&mut rgba, canvas, layer, &view);
         })?;
         result?;
+    }
+    if let Some(layer) = &job.camera {
+        let mut result = Ok(());
+        layer.frame.0.with_nv12(&mut |view| {
+            result = draw_camera(&mut rgba, canvas, layer, &view);
+        })?;
+        result?;
+    }
+    for layer in job.text {
+        if let Some(plan) = maths::plan_text(canvas, layer) {
+            draw_text(&mut rgba, canvas, layer.image, &plan);
+        }
     }
     let data = match out {
         OutputFormat::Rgba8 => rgba,
@@ -89,18 +101,38 @@ fn pack_background(bg: &RgbaImage, canvas: SizePx) -> Vec<u8> {
 fn draw_screen(
     rgba: &mut [u8],
     canvas: SizePx,
-    src: sc_geometry::RectPx,
-    dst: sc_geometry::RectPx,
+    layer: &crate::ScreenLayer<'_>,
     view: &Nv12View<'_>,
 ) -> Result<()> {
     maths::check_size("frame", view.size)?;
     check_view(view)?;
-    let Some(plan) = maths::plan_screen(canvas, view.size, view.full_range, src, dst)? else {
+    let Some(plan) = maths::plan_screen(canvas, view.size, view.full_range, layer.src, layer.dst)?
+    else {
         return Ok(());
     };
     let pre = prefilter(&plan, view);
+    let pre = redact(&plan, pre, &maths::redact_rects(plan.p, layer.redact));
     composite(rgba, canvas, &plan, &pre);
     Ok(())
+}
+
+fn redact(plan: &ScreenPlan, pre: Vec<[u8; 3]>, rects: &[maths::RedactRect]) -> Vec<[u8; 3]> {
+    if rects.is_empty() {
+        return pre;
+    }
+    let pw = plan.p[0];
+    let mut out = pre.clone();
+    for rr in rects {
+        let [x0, y0, x1, y1] = rr.r;
+        for y in y0..y1 {
+            for x in x0..x1 {
+                if let Some(v) = maths::redact_texel(&pre, pw, x, y, rects) {
+                    out[(y * pw + x) as usize] = v;
+                }
+            }
+        }
+    }
+    out
 }
 
 /// k×k box average of the converted source, one RGB triple per prefiltered texel.
@@ -185,6 +217,134 @@ fn composite(rgba: &mut [u8], canvas: SizePx, plan: &ScreenPlan, pre: &[[u8; 3]]
     }
 }
 
+fn draw_camera(
+    rgba: &mut [u8],
+    canvas: SizePx,
+    layer: &CameraLayer<'_>,
+    view: &Nv12View<'_>,
+) -> Result<()> {
+    maths::check_size("camera frame", view.size)?;
+    check_view(view)?;
+    let Some(plan) = maths::plan_camera(canvas, view.size, view.full_range, layer)? else {
+        return Ok(());
+    };
+    let pre = prefilter(&plan.sample, view);
+    composite_camera(rgba, canvas, &plan, &pre);
+    Ok(())
+}
+
+fn composite_camera(rgba: &mut [u8], canvas: SizePx, plan: &CameraPlan, pre: &[[u8; 3]]) {
+    let s = &plan.sample;
+    let [_, _, sw, sh] = s.src;
+    let [dx, dy, dw, dh] = s.dst;
+    let [kx, ky] = s.k;
+    let [pw, ph] = s.p;
+    let [x0, y0, x1, y1] = plan.region;
+    let (hw, hh) = (dw as f32 * 0.5, dh as f32 * 0.5);
+    let (cx, cy) = (dx as f32 + hw, dy as f32 + hh);
+    for y in y0..y1 {
+        let py = y as f32 + 0.5 - cy;
+        for x in x0..x1 {
+            let px = x as f32 + 0.5 - cx;
+            let o = (y as usize * canvas.w as usize + x as usize) * 4;
+            let mut c = [
+                i32::from(rgba[o]),
+                i32::from(rgba[o + 1]),
+                i32::from(rgba[o + 2]),
+                i32::from(rgba[o + 3]),
+            ];
+            if plan.shadow > 0 {
+                let ds = maths::sdf_rrect(px, py - plan.shadow_dy as f32, hw, hh, plan.radius);
+                let sa = maths::shadow_alpha(ds, plan.shadow_blur, plan.shadow);
+                for v in &mut c[..3] {
+                    *v = maths::mix256(0, *v, sa);
+                }
+                c[3] = maths::mix256(255, c[3], sa);
+            }
+            let d = maths::sdf_rrect(px, py, hw, hh, plan.radius);
+            let cov = maths::coverage(d);
+            if cov > 0 {
+                let rx = if plan.mirror {
+                    dw - 1 - (x - dx)
+                } else {
+                    x - dx
+                };
+                let (ax0, ax1, wx) = maths::axis(rx, sw, dw, kx, pw);
+                let (ay0, ay1, wy) = maths::axis(y - dy, sh, dh, ky, ph);
+                let (r0, r1) = ((ay0 * pw) as usize, (ay1 * pw) as usize);
+                let (p00, p10) = (pre[r0 + ax0 as usize], pre[r0 + ax1 as usize]);
+                let (p01, p11) = (pre[r1 + ax0 as usize], pre[r1 + ax1 as usize]);
+                let inner = plan.border_rgb.map(|_| maths::coverage(d + plan.border_px));
+                for ch in 0..3 {
+                    let mut v = maths::bilerp(
+                        i32::from(p00[ch]),
+                        i32::from(p10[ch]),
+                        i32::from(p01[ch]),
+                        i32::from(p11[ch]),
+                        wx,
+                        wy,
+                    );
+                    if let (Some(b), Some(ci)) = (plan.border_rgb, inner) {
+                        v = maths::mix256(v, b[ch], ci);
+                    }
+                    c[ch] = maths::mix256(v, c[ch], cov);
+                }
+                c[3] = maths::mix256(255, c[3], cov);
+            }
+            for ch in 0..4 {
+                rgba[o + ch] = c[ch] as u8;
+            }
+        }
+    }
+}
+
+fn draw_text(rgba: &mut [u8], canvas: SizePx, img: &RgbaImage, plan: &maths::TextPlan) {
+    let [w, h] = plan.size;
+    let texel = |x: i32, y: i32| -> [i32; 4] {
+        if x < 0 || y < 0 || x >= w || y >= h {
+            return [0; 4];
+        }
+        let o = y as usize * img.stride + x as usize * 4;
+        [
+            i32::from(img.data[o]),
+            i32::from(img.data[o + 1]),
+            i32::from(img.data[o + 2]),
+            i32::from(img.data[o + 3]),
+        ]
+    };
+    let [x0, y0, x1, y1] = plan.region;
+    for y in y0..y1 {
+        for x in x0..x1 {
+            let (tx, ty, wx, wy) = maths::text_sample(&plan.inv, x, y);
+            let (p00, p10, p01, p11) = (
+                texel(tx, ty),
+                texel(tx + 1, ty),
+                texel(tx, ty + 1),
+                texel(tx + 1, ty + 1),
+            );
+            let mut s = [0; 4];
+            for ch in 0..4 {
+                let v = maths::bilerp(p00[ch], p10[ch], p01[ch], p11[ch], wx, wy);
+                s[ch] = (v * plan.op256 + 128) >> 8;
+            }
+            if s[3] == 0 && s[0] == 0 && s[1] == 0 && s[2] == 0 {
+                continue;
+            }
+            let o = (y as usize * canvas.w as usize + x as usize) * 4;
+            let d = [
+                i32::from(rgba[o]),
+                i32::from(rgba[o + 1]),
+                i32::from(rgba[o + 2]),
+                i32::from(rgba[o + 3]),
+            ];
+            let c = maths::over(s, d);
+            for ch in 0..4 {
+                rgba[o + ch] = c[ch].clamp(0, 255) as u8;
+            }
+        }
+    }
+}
+
 /// Y plane, then U, then V; chroma from 2×2 block sums.
 pub(crate) fn rgba_to_i420(rgba: &[u8], canvas: SizePx) -> Vec<u8> {
     let (w, h) = (canvas.w as usize, canvas.h as usize);
@@ -192,7 +352,7 @@ pub(crate) fn rgba_to_i420(rgba: &[u8], canvas: SizePx) -> Vec<u8> {
     let mut out = vec![0u8; w * h + 2 * cw * ch];
     let (yp, rest) = out.split_at_mut(w * h);
     let (up, vp) = rest.split_at_mut(cw * ch);
-    for (i, px) in rgba.chunks_exact(4).enumerate() {
+    for (i, px) in rgba.as_chunks::<4>().0.iter().enumerate() {
         yp[i] = maths::rgb_to_y(i32::from(px[0]), i32::from(px[1]), i32::from(px[2])) as u8;
     }
     for cy in 0..ch {

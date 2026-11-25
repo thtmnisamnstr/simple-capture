@@ -26,7 +26,9 @@ fn read_wav_f32(path: &Path) -> (u16, u32, Vec<f32>) {
         }
         if id == b"data" {
             let s = body
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                 .collect();
             return (ch, rate, s);

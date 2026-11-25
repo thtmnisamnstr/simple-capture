@@ -1,118 +1,21 @@
-//! FFmpeg argument recipes, the quick-export plan and the per-frame renderer.
+//! The quick export's canvas and file name, and the per-frame renderer.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sc_core::image::RgbaImage;
-use sc_core::project::{Background, ProjectV1, TrackKind};
-use sc_decode::{SegmentFrameSource, cfr_frame_times};
-use sc_geometry::{Ratio, RectPx, SizePx, contain_fit, even_round, preset_size};
+use sc_core::project::ProjectV1;
+use sc_geometry::{Ratio, RectPx, SizePx, even_round, preset_size};
 use sc_platform::{Decoder, Error, Result};
-use sc_render::{Backend, Compositor, FrameJob, OutputFormat, RenderedFrame, ScreenLayer};
-use sc_text::BackgroundCache;
+use sc_player::video::TimelineVideo;
+use sc_render::{Backend, Compositor, OutputFormat, RenderedFrame};
 
-use crate::{ExportSize, QuickExportRequest};
+use crate::ExportSize;
 
 /// Owner answer Q6: full-size Original exports wait for M5's resize presets.
 pub const QUICK_LONG_SIDE_CAP: u32 = 3840;
 pub const MIX_RATE: u32 = 48_000;
 pub const MIX_CHANNELS: u16 = 2;
-
-// FFmpeg 9 lets unspecified frame properties override -color_primaries/-color_trc, so the
-// frames themselves are tagged (spike 1).
-const TAG_FRAMES: &str =
-    "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
-
-#[cfg(target_os = "macos")]
-const AAC_ENCODER: &str = "aac_at";
-#[cfg(not(target_os = "macos"))]
-const AAC_ENCODER: &str = "aac";
-
-fn s(v: &[&str]) -> Vec<String> {
-    v.iter().map(|x| (*x).to_string()).collect()
-}
-
-/// `<final>.wav.part` for `out` = `<final>.part`, a name the stale-part sweep removes.
-pub fn mix_wav_path(out: &Path) -> PathBuf {
-    let name = out
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let name = match name.strip_suffix(".part") {
-        Some(stem) => format!("{stem}.wav.part"),
-        None => format!("{name}.wav.part"),
-    };
-    out.with_file_name(name)
-}
-
-/// Y4M on stdin (+ the WAV at [`mix_wav_path`]`(out)` when `audio`) → MP4 at `out`. Size and fps
-/// come from the Y4M header, so the recipe never scales or retimes.
-pub fn x264_quick(size: SizePx, fps: u32, audio: bool, out: &Path) -> Vec<String> {
-    tracing::debug!(w = size.w, h = size.h, fps, audio, "x264_quick recipe");
-    let mut a = s(&[
-        "-hide_banner",
-        "-loglevel",
-        "warning",
-        "-nostats",
-        "-progress",
-        "pipe:2",
-        "-stats_period",
-        "0.5",
-        "-f",
-        "yuv4mpegpipe",
-        "-i",
-        "pipe:0",
-    ]);
-    if audio {
-        a.extend(s(&["-f", "wav", "-i"]));
-        a.push(mix_wav_path(out).to_string_lossy().into_owned());
-    }
-    a.extend(s(&["-map", "0:v:0"]));
-    if audio {
-        a.extend(s(&["-map", "1:a:0"]));
-    }
-    a.extend(s(&[
-        "-vf",
-        TAG_FRAMES,
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        "-profile:v",
-        "high",
-        "-pix_fmt",
-        "yuv420p",
-        "-crf",
-        "22",
-        "-color_primaries",
-        "bt709",
-        "-color_trc",
-        "bt709",
-        "-colorspace",
-        "bt709",
-        "-color_range",
-        "tv",
-    ]));
-    if audio {
-        a.extend(s(&["-c:a", AAC_ENCODER, "-b:a", "160k"]));
-    } else {
-        a.push("-an".into());
-    }
-    a.extend(s(&["-movflags", "+faststart", "-f", "mp4", "-y"]));
-    a.push(out.to_string_lossy().into_owned());
-    a
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct QuickPlan {
-    pub canvas: SizePx,
-    pub fps: u32,
-    pub duration_ns: i64,
-    pub frames: u64,
-    /// Final path; the job writes `<out_path>.part` and renames it.
-    pub out_path: PathBuf,
-    pub audio_tracks: Vec<String>,
-}
 
 fn class_ratio(project: &ProjectV1, reference: SizePx) -> Ratio {
     match project.output.canvas.aspect.ratio() {
@@ -208,59 +111,12 @@ pub fn default_out_path(project_dir: &Path) -> Result<PathBuf> {
     )))
 }
 
-pub fn quick_plan(
-    project: &ProjectV1,
-    project_dir: &Path,
-    req: &QuickExportRequest,
-) -> Result<QuickPlan> {
-    let duration_ns = project.duration_ns().filter(|d| *d > 0).ok_or_else(|| {
-        Error::Other(format!(
-            "sc_export: {} has no recorded duration (still recording, or empty)",
-            project_dir.display()
-        ))
-    })?;
-    let fps = req
-        .fps
-        .unwrap_or(project.recording.screen.fps_requested)
-        .clamp(1, 240);
-    let frames = cfr_frame_times(duration_ns, fps).count() as u64;
-    if frames == 0 {
-        return Err(Error::Other(format!(
-            "sc_export: {} is too short to export at {fps} fps",
-            project_dir.display()
-        )));
-    }
-    let out_path = match &req.out_path {
-        Some(p) => p.clone(),
-        None => default_out_path(project_dir)?,
-    };
-    Ok(QuickPlan {
-        canvas: quick_canvas(project, req.size),
-        fps,
-        duration_ns,
-        frames,
-        out_path,
-        audio_tracks: audio_track_ids(project),
-    })
-}
+pub(crate) use sc_player::audio::audio_track_ids;
 
-pub(crate) fn audio_track_ids(project: &ProjectV1) -> Vec<String> {
-    project
-        .recording
-        .tracks
-        .iter()
-        .filter(|t| matches!(t.kind, TrackKind::Mic | TrackKind::SystemAudio))
-        .map(|t| t.id.clone())
-        .collect()
-}
-
-/// Background, then the active (or held) screen segment contain-fit on the canvas.
+/// One output frame of the edited timeline: background, screen segment, camera.
 pub struct FrameRenderer {
-    source: SegmentFrameSource,
+    video: TimelineVideo,
     compositor: Compositor,
-    backgrounds: BackgroundCache,
-    background: Background,
-    project_dir: PathBuf,
     canvas: SizePx,
     format: OutputFormat,
 }
@@ -284,11 +140,13 @@ impl FrameRenderer {
         format: OutputFormat,
     ) -> Result<FrameRenderer> {
         Ok(FrameRenderer {
-            source: SegmentFrameSource::open(project, project_dir, decoder)?,
+            video: TimelineVideo::open(
+                project,
+                project_dir,
+                decoder,
+                sc_player::timeline_doc(project),
+            )?,
             compositor: Compositor::new(backend)?,
-            backgrounds: BackgroundCache::new(1),
-            background: project.output.canvas.background.clone(),
-            project_dir: project_dir.to_path_buf(),
             canvas,
             format,
         })
@@ -299,35 +157,17 @@ impl FrameRenderer {
     }
 
     pub fn background(&mut self) -> Result<Arc<RgbaImage>> {
-        self.backgrounds
-            .get(&self.background, self.canvas, &self.project_dir)
-            .map_err(|e| Error::Other(format!("sc_export: background: {e}")))
+        self.video.background(self.canvas)
     }
 
-    /// Also returns where the screen frame landed (`None`: background only).
-    pub fn render(&mut self, t_rec_ns: i64) -> Result<(RenderedFrame, Option<RectPx>)> {
+    /// The frame at timeline time `t_tl_ns`, and where the screen landed (`None`: background
+    /// only).
+    pub fn render(&mut self, t_tl_ns: i64) -> Result<(RenderedFrame, Option<RectPx>)> {
         let bg = self.background()?;
-        let shown = self.source.frame_at(t_rec_ns)?;
-        let layer = shown
-            .as_ref()
-            .filter(|f| f.content_px.w > 0 && f.content_px.h > 0)
-            .map(|f| ScreenLayer {
-                frame: &f.frame,
-                src: f.content_px,
-                dst: contain_fit(
-                    self.canvas,
-                    SizePx {
-                        w: f.content_px.w,
-                        h: f.content_px.h,
-                    },
-                ),
-            });
-        let dst = layer.as_ref().map(|l| l.dst);
-        let job = FrameJob {
-            canvas: self.canvas,
-            background: &bg,
-            screen: layer,
-        };
+        let c = self.video.compose(t_tl_ns, self.canvas)?;
+        let dst = c.screen_dst(self.canvas);
+        let layers = c.text_layers();
+        let job = c.job(self.canvas, &bg, Some(Arc::as_ptr(&bg) as u64), &layers);
         Ok((self.compositor.render(&job, self.format)?, dst))
     }
 }

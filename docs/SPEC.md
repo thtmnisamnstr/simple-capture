@@ -54,25 +54,25 @@ These are the defaults. Validate them with the M0 spikes (small throwaway protot
 | Recording encode (raw tracks) | AVAssetWriter: VideoToolbox HEVC/H.264 + AudioToolbox AAC, zero-copy | Media Foundation hardware encoder (MFT), zero-copy D3D11 | FFmpeg VAAPI/NVENC (LGPL libraries in-process); x264 via the helper if there's no hardware encoder |
 | Editor decode | AVAssetReader / VideoToolbox | Media Foundation (DXVA) | FFmpeg LGPL libraries + VAAPI |
 | Frames into wgpu | IOSurface → Metal texture | shared D3D11 texture | dmabuf or CPU upload |
-| Export encode + mux | bundled FFmpeg helper (GPL build) | same | same |
-| GIF | bundled gifski helper | same | same |
+| Export encode + mux | bundled FFmpeg helper (LGPL build, ADR-058) | bundled FFmpeg helper (GPL build) | same as Windows |
+| GIF | FFmpeg palette mode | bundled gifski helper, or palette mode | same as Windows |
 
 - Export encoders all run through the FFmpeg helper, each with a "Best quality" and a "Fast" option:
-  - H.264: x264 by default (best quality for the file size, CRF-based presets); hardware encoders (VideoToolbox/MF/NVENC/QSV/AMF/VAAPI) for Fast.
-  - HEVC: x265 or hardware, tagged hvc1.
+  - H.264: x264 by default (best quality for the file size, CRF-based presets); hardware encoders (VideoToolbox/MF/NVENC/QSV/AMF/VAAPI) for Fast. macOS has no x264 (ADR-058): VideoToolbox only, so "Best quality" is unavailable there.
+  - HEVC: x265 or hardware, tagged hvc1 (VideoToolbox only on macOS).
   - AV1: SVT-AV1, or hardware AV1 where available.
   - VP9 and VP8: libvpx.
   - Audio: AAC (aac_at on macOS; Media Foundation or FFmpeg's AAC elsewhere), Opus, Vorbis, FLAC, ALAC.
-- GIF: gifski by default. It gives the best quality, reads Y4M video from stdin, and exposes quality, motion-quality, and lossy settings. FFmpeg's palettegen/paletteuse (Kap's approach) is the Fast option.
+- GIF: gifski by default on Windows and Linux. It gives the best quality, reads Y4M video from stdin, and exposes quality, motion-quality, and lossy settings. FFmpeg's palettegen/paletteuse (Kap's approach) is the Fast option, and the only one on macOS (ADR-058).
 - How export works: the renderer streams frames to the helper over a pipe (Y4M, or raw NV12 video). Mixed audio goes through a temporary WAV file or a second pipe. Parse the helper's progress output; Cancel stops the helper cleanly.
 
 ## Licensing
 - The app binary contains only permissive code (MIT, Apache-2.0, BSD, ISC, Zlib, Unicode, CC0; MPL-2.0 only if unavoidable), plus dynamically linked LGPL code (the Linux FFmpeg libraries). Enforce this with cargo-deny and an npm license check in CI.
 - GPL/AGPL encoders run only as separate bundled executables (Tauri sidecars), never linked into the app. Kap (MIT) ships a GPL FFmpeg binary the same way.
-  - ffmpeg, GPL build: x264, x265, SVT-AV1, libvpx, Opus, Vorbis, plus hardware encoders. Never --enable-nonfree.
-    - macOS: build static arm64 + x86_64 binaries from source with a pinned script. markus-perl/ffmpeg-build-script (MIT) is a good reference; skip its non-free options.
+  - ffmpeg, GPL build (Windows, Linux): x264, x265, SVT-AV1, libvpx, Opus, Vorbis, plus hardware encoders. Never --enable-nonfree.
+    - macOS (owner 2026-11-25, ADR-058): an LGPL-2.1-or-later build (no --enable-gpl, x264 or x265) for every Mac build, DMG and Mac App Store alike, because the store's terms conflict with the GPL and AGPL. Static binaries from source with a pinned script; markus-perl/ffmpeg-build-script (MIT) is a good reference; skip its non-free options.
     - Windows/Linux (owner decision 2026-11-19): build our own from pinned sources with --disable-network, like macOS (FFmpeg-Builds' MIT scripts may be adapted). Prebuilt BtbN releases are not used, because they include network protocols.
-  - gifski (AGPL-3.0): built from source with cargo in CI for each target.
+  - gifski (AGPL-3.0): built from source with cargo in CI for Windows and Linux. Not shipped on macOS (ADR-058).
   - Linux in-process decoding and hardware encoding: LGPL shared FFmpeg libraries, also built by us with --disable-network.
 - Never link x264, x265, gifski, or libimagequant into the app. No fdk-aac or anything else nonfree.
 - Every release includes each helper's license, version, build flags, and exact source (or a link to it). Add an About → Licenses screen and third-party notices (cargo-about plus an npm license tool).
@@ -108,6 +108,7 @@ These are the defaults. Validate them with the M0 spikes (small throwaway protot
 - Moving, resizing, or hiding the camera during recording is saved as timestamped keyframes, reproduced in the output, and editable later.
 - What you see is what you get: the bubble on screen matches the output exactly.
 - Single-window capture: position the camera in a live "stage preview" of the composed output.
+- Placement (ADR-043, owner 2026-11-20, replaces the floating bubble of ADR-041): one Preview window shows the composed output (the source in its frame, the letterbox background and the live camera) for every source and frame shape; the camera is placed, sized and reframed there. It is open while the recorder panel is open or a recording runs (it can be turned off), and it never appears in recordings. The camera runs while the recorder panel is open or a recording is on. Not mirrored by default; mirroring is a toggle.
 - The data model allows multiple overlays; 2+ cameras at once is a stretch goal.
 
 ### Audio
@@ -122,6 +123,7 @@ These are the defaults. Validate them with the M0 spikes (small throwaway protot
 
 ### Recording flow
 - Tray/menu-bar app. Global hotkeys: open recorder, start/stop, pause/resume, toggle camera. On Linux, use the GlobalShortcuts portal where available; otherwise fall back to the tray menu.
+- The recorder panel opens by itself on the first launch and, on macOS, when the running app is opened again from Finder or Launchpad (2026-11-25, ADR-057); other launches show only the tray icon.
 - The recorder panel remembers the last choices. Before recording, check permissions, free disk space, and devices. Optional 3-2-1 countdown.
 - While recording, show a small floating bar (stop, pause/resume, restart, discard, timer, mic level) that's excluded from capture where the OS allows, plus a timer in the tray.
 - When recording stops, the editor opens. Settings can change this to "quick export with last settings" or "just save to Library".
@@ -147,7 +149,7 @@ Opens automatically after recording. It must stay light and fast.
 - Add text with a button or T; type directly on the preview; multi-line and emoji supported.
 - Fonts: 10–15 curated bundled OFL or Apache-2.0 fonts, each checked to render correctly (no missing glyphs for common Latin text) before it ships (classic, modern, bold condensed, serif, typewriter, handwriting, neon, rounded) plus any installed system font.
 - Color: palette, custom picker, gradient fill, and an eyedropper that samples the video.
-- Styles: plain, outline, drop shadow, glow/neon, uppercase toggle, opacity, and a per-line background box (solid or translucent, rounded, with TikTok-style merged line backgrounds). Also an inverted style (colored box, white text). Alignment, line height, and letter spacing.
+- Styles: plain, outline, drop shadow, glow/neon, uppercase toggle, opacity, and a per-line background box (solid or translucent, rounded, with TikTok-style merged line backgrounds). Also an inverted style preset (colored box, white text). Alignment, line height, and letter spacing.
 - Transform: drag with snap guides (center, thirds, safe margins), a resize handle, a rotate handle (snaps at 0°, ±15°, 90°), and layer order.
 - Timing: each text item has a start and end on the text track (drag the edges; default 3 seconds starting at the playhead).
   - Text is positioned on the edited timeline, not the original recording.
@@ -165,9 +167,10 @@ Opens automatically after recording. It must stay light and fast.
 - Formats. The video and audio codecs are chosen separately within each container. Only show options the capability probe has confirmed work:
   - MP4. Video: H.264 (default), HEVC, AV1. Audio: AAC (default), Opus, FLAC, ALAC. Label the less-compatible choices.
   - WebM. Video: VP9 (default), AV1, VP8. Audio: Opus (default), Vorbis.
-  - GIF: gifski (default) or Fast palette mode; no audio.
-  - Nice-to-have: MOV (ProRes 422 + PCM) for editing; animated WebP/APNG.
-- Encoder: "Best quality" (x264/x265/SVT-AV1/libvpx/gifski) or "Fast" (hardware/palette), with estimated time and file size.
+  - GIF: gifski (default) or Fast palette mode; palette mode only on macOS; no audio.
+  - MOV (ProRes 422 + PCM) for editing.
+  - Animated WebP (libwebp, Small/Balanced/High); no audio, GIF frame rates and sizes, a loop setting. The sheet offers MP4, MOV, WebM, GIF, WebP in that order.
+- Encoder: "Best quality" (x264/x265/SVT-AV1/libvpx/gifski) or "Fast" (hardware/palette), with estimated time and file size. On macOS, H.264 and HEVC are Fast (VideoToolbox) only and GIF is palette only.
 - FPS per format. Each format has its own fps picker and remembers its own last value, capped at the recording's fps (adapt Kap's fpsHistory):
   - Video formats: 15/24/25/30/50/60.
   - GIF: 5/8/10/12/15 (default)/20/25/30/50. GIF frame timing is in hundredths of a second, and browsers slow down anything faster than 50 fps, so cap at 50 and note that 30 is approximate.
@@ -177,7 +180,7 @@ Opens automatically after recording. It must stay light and fast.
   - Round to even numbers (except GIF). Don't upscale by default.
   - Check encoder limits (hardware H.264 tops out around 4K).
 - Quality: Small / Balanced / High / Custom (CRF or bitrate).
-- GIF settings: quality, motion quality, and lossy (gifski), or colors and dithering (palette mode); loop (forever/once/N); default maximum width 960 px; size estimate.
+- GIF settings: quality, motion quality, and lossy (gifski, Windows and Linux), or colors and dithering (palette mode); loop (forever/once/N); default maximum width 960 px; size estimate.
 - Output folder and filename template; progress with Cancel; then Reveal / Copy file / Open. Remember the last settings per format and support named presets.
 
 ### Library and safety
@@ -245,9 +248,12 @@ Other references:
 ## Platform notes
 - macOS (primary):
   - The bubble and control bar don't steal focus and stay visible on all Spaces and over full-screen apps (set via objc2 on the window handle). Transparent windows no longer need Tauri's macOSPrivateApi setting (Tauri 2.12.1+, ADR-026).
+  - The UI follows macOS conventions in light and dark mode (system colours and accent, AppKit-sized controls, grouped forms), with system materials behind the floating control bar and source switcher (owner 2026-11-20, ADR-044).
+  - The Preview window draws its video into a Metal layer under its transparent webview (owner 2026-11-20, ADR-007), not through the webview. Windows and Linux send frames to the webview until their native paths are proven on real hardware.
   - Hardened runtime with camera/mic entitlements; sign the helpers too.
   - Sign every build with one stable Apple Development identity (a free personal team works). Ad-hoc signing makes macOS forget the Screen Recording permission on every build. Document "tccutil reset ScreenCapture <bundle-id>". (2026-11-19: the owner has no identity and may not create one. Until one exists, run development builds of the app through the Simple Capture Dev host, and expect ad-hoc-signed release builds to ask for permissions again after each update. See DECISIONS ADR-003.)
   - macOS 15+ may periodically re-ask permission for apps that don't use the system screen picker (SCContentSharingPicker). Owner decision 2026-11-19: use the system picker only if equivalent system pickers can be used on Windows and Linux too (ADR-028).
+  - Distribution (owner 2026-11-24 and 2026-11-25, ADR-003, ADR-057, ADR-058): one sandboxed app with LGPL-only helpers and no gifski, built from one tag and shipped two ways. The DMG on GitHub Releases and through the Homebrew tap is signed with a Developer ID (hardened runtime, notarized, `app/macos/entitlements.plist`); the Mac App Store build is signed with Apple Distribution and a provisioning profile and packed as a .pkg (`app/macos/entitlements.appstore.plist`, the same sandbox set plus the application and team identifiers). The sandbox entitlements include `com.apple.security.network.client`, because WKWebView's WebContent and Networking processes need it in any sandboxed app, even for local content; the app itself still makes no network connections.
   - Development (decided 2026-11-19): every dev/spike/test binary that needs a privacy permission runs as a child of one fixed host app, "Simple Capture Dev" (com.simplecapture.dev, tools/macos-dev-host), which is signed once and never rebuilt, so the owner approves each permission once. No per-spike bundles or bundle IDs.
 - Windows:
   - Disable the yellow capture border where Windows 11 allows it. Region capture = a cropped display capture.
@@ -310,7 +316,7 @@ At each ★, stop, summarize, tell me what to test, and wait for my OK.
 - The bubble matches the output. No app UI appears in captures on macOS/Windows; auto-hide works on Linux.
 - Editor: opens in under 2 seconds for a 10-minute recording, plays smoothly across cuts, and every edit operation plus undo/redo is covered by tests.
 - Every text style and animation looks identical in the preview and in every export format.
-- Every export combination offered passes ffprobe validation and plays in QuickTime, Chrome, Firefox, or VLC as appropriate. GIFs play at the chosen fps in browsers. x264 "Best quality" scores higher on SSIM (an image-quality metric) than hardware "Fast" at the same file size on a text-heavy test clip.
+- Every export combination offered passes ffprobe validation and plays in QuickTime, Chrome, Firefox, or VLC as appropriate. GIFs play at the chosen fps in browsers. x264 "Best quality" scores higher on SSIM (an image-quality metric) than hardware "Fast" at the same file size on a text-heavy test clip (Windows and Linux; macOS has no x264, ADR-058).
 - Force-quitting mid-recording is recoverable, and unplugging the camera or mic doesn't stop the recording.
 - CI is green on all three OSes, with downloadable builds. The app binary contains no GPL/AGPL code, and the helpers' license and source files are included.
 - No networking code anywhere.
@@ -319,4 +325,4 @@ At each ★, stop, summarize, tell me what to test, and wait for my OK.
 - Ask before adding dependencies, changing the architecture or stack, or dropping a requirement. Log decisions in docs/DECISIONS.md and keep docs/STATUS.md current.
 - Have working software at every milestone, macOS first. Windows/Linux work must never block macOS milestones, but those platforms must keep compiling and passing tests.
 - Check assumptions with tiny spikes and update the spec rather than guessing.
-- Out of scope for v1: cloud or share links, transcription/AI, drawing/annotations, auto-zoom, background beautification (padding, rounded corners, shadows around the screen; the letterbox background for the output aspect ratio is in scope), transitions or an effects library, layering anything beyond screen + camera + text, live streaming, App Store or notarized distribution.
+- Out of scope for v1: cloud or share links, transcription/AI, drawing/annotations, auto-zoom, background beautification (padding, rounded corners, shadows around the screen; the letterbox background for the output aspect ratio is in scope), transitions or an effects library, layering anything beyond screen + camera + text, live streaming. (App Store and notarized distribution were here until the owner decided on 2026-11-24 to ship both; see Platform notes and DECISIONS ADR-057.)

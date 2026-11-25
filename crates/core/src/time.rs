@@ -25,13 +25,6 @@ pub struct HostTime(pub i64);
 #[serde(transparent)]
 pub struct RecTime(pub i64);
 
-/// Edited-timeline time.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
-)]
-#[serde(transparent)]
-pub struct TlTime(pub i64);
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PauseSpan {
     pub start: HostTime,

@@ -1,8 +1,187 @@
 # Status
 
-**M1 ★ (macOS recording): accepted by the owner on 2026-11-20** after two hands-on passes (fixes
-below). Current milestone: **M2 ★ camera bubble on macOS**, being planned (docs/M2_PLAN.md).
-Updated 2026-11-20. M1 is merged to `main`. The M1 ★ review list is the last section of this file.
+**M3–M7 built on branch `m3` (2026-11-21) under the owner's "Build the rest of it out"; no ★
+stops were taken, so every milestone from M2 on waits for the owner's hands-on review.** M1 is
+merged to `main` (35b7d3e); M2 is on `m2` and also contained in `m3`.
+
+
+> The M0 spikes (`spikes/`, prototypes and their reports) were removed before 0.1.0; paths to them
+> in these docs refer to commit d05da49 and earlier.
+
+> **One Mac app (2026-11-25, ADR-058):** the DMG, Homebrew and Mac App Store builds are the same
+> sandboxed app with the LGPL FFmpeg and no gifski, so on macOS H.264 and HEVC exports use
+> VideoToolbox and GIFs use palette mode. Mac numbers below for x264, x265 and gifski were
+> measured with the earlier GPL helpers; they now describe Windows and Linux.
+
+## After M7: the owner's requests (2026-11-21, ADR-050)
+
+| Feature | Where to try it | Verified here |
+|---|---|---|
+| Record modes: Screen, Screen + Camera, Camera Only; switch to or from the camera mid-recording | MANUAL_TEST R12–R14 | driver flow 21 live (14/14), synthetic recorder tests, panel in the browser |
+| Rename from the Library, the editor title and the summary; the folder follows | Y9–Y11 | folder rename tests, Library rename in the browser |
+| Library: sort, ⌘/⇧-click and ⌘A selection, Move N to Trash | Y12 | sort and selection tests, browser |
+| Export destinations (Email under 18 MB, Slack & Teams, YouTube, Reels/Shorts, GIF) and Size Limit | §10e | size-limit export tests |
+| Mic level in the recording bar | R9 | driver flow 20 (64 levels in 4.5 s) |
+| Remove Silences | E18–E20 | silence and delete_ranges tests; driver flow 22 live on a real recording |
+| Blur and black boxes | E21–E25 | GPU = CPU exactly; export test; driver flow 22 exports a black box over the real screen |
+| Customizable shortcuts | R15–R17 | driver flow 23 (registration, clash, bare key refused, clear) |
+| Windows: Media Foundation tracks (experimental) | TESTING_ON_WINDOWS_LINUX.md | round trips on GitHub's Windows runner |
+| Linux: GStreamer screen track (experimental) | TESTING_ON_WINDOWS_LINUX.md | round trip in tools/linux-dev and on GitHub's Ubuntu runner |
+| NVENC in the Linux and Windows helpers | — | `package` run 44958418772 built every installer with it; the Linux helper lists h264_nvenc/hevc_nvenc and links only system libraries; no NVIDIA GPU here to run it |
+
+Independent reviews of the new code ran before handing over; their verified findings were fixed
+(see the commits after "Guide for testing").
+
+## M3–M7 build-out (2026-11-21)
+
+| Milestone | What is in it | ADR | Hands-on script |
+|---|---|---|---|
+| M3 editor | timeline, every edit with undo/redo, speed with kept pitch, playback across cuts, camera keyframes, audio mix, frame/background, autosave, export of the edit | 045 | MANUAL_TEST §10c |
+| M4 text | 13 bundled families + system fonts, colour emoji, styles, boxes, gradients, animations, on-preview editing | 046 | §10d |
+| M5 export | MP4/MOV/WebM/GIF/WebP, Best/Fast encoders, quality tiers and custom, fps per format, sizes, presets, estimates, Copy/Open | 047 | §10e |
+| M6 Windows/Linux | Windows and Linux backends, helper tracks, our own Windows/Linux helpers, package workflow, self-test and Diagnostics | 048 | §13, §10g |
+| M7 polish | pause/resume, Restart, countdown, global shortcuts, Library, Trash, About/licenses, mic meter, stats overlay, export-after-recording, delete-raw-after-export, README | 049 | §10f, §10g |
+
+**Verified here (macOS 26, M3 Pro):** the workspace tests and clippy; UI checks and 51 UI tests;
+live app-driver flows 01, 17 (editor, text, MP4/GIF/WebM exports from the sheet: 23/23), 18
+(self-test from the app: 7/7), 19 (Library posters) and 20 (pause: a 1.5 s pause cut into two
+clips); `simple-capture --self-test` 7/7 including a real 2 s capture; x264 Best beats
+VideoToolbox Fast on SSIM at a smaller size on a text-heavy clip (0.9365 at 134 KB vs 0.9341 at
+233 KB). Every recording the agent made was deleted after its checks.
+
+**Verified in CI and containers:** the Windows backend builds and runs its tests on GitHub's
+Windows runner; the Linux backend on Ubuntu and in `tools/linux-dev` (PipeWire frames from a
+test source). The Linux and Windows FFmpeg helpers build from the pinned sources with networking
+off and link only system libraries; both pass the helper-track round trip on GitHub's Ubuntu and
+Windows runners. The first `package` run (44939780618) built every installer: `Simple
+Capture_0.1.0_aarch64.dmg` (37 MB), `…_x64-setup.exe` (32 MB), `…_x64_en-US.msi` (43 MB),
+`…_amd64.deb` and `…_amd64.AppImage`, plus the helper source archive.
+
+**Editor open time on a 10-minute recording:** first frame 900 ms (definition of done: under
+2 s), driver flow 24 on a generated 3024×1964 HEVC recording (no capture involved).
+
+**Not verified:** any real Windows or Linux desktop; the Linux portal dialog end to end (the
+headless test compositor could not hand frames to the portal backend); the mic level meter and
+the countdown by eye (driver mode turns both off); installing and running the built installers;
+NVENC and VA-API on real GPUs.
+
+**30-minute soak (2026-11-21, release build, driver flow 16):** the main display (3024×1964),
+camera, mic and system audio for 1800.1 s: 0 dropped frames or samples on every track, no writer
+stalls or gaps; the app held 78–91 MB while recording (85 MB in the second quarter, 81 MB in the
+last; 208 MB peak during the export) at 33% of one core on average (41% peak); the Preview stayed
+native. The take opened in the editor in 344 ms and exported whole at 1080p (54,003 frames at
+122 fps, 1800.15 s long). The Preview then drew 23.5 of the camera's 30 fps; fixed (28.4 fps,
+flow 25).
+
+### Owner decisions needed
+1. **Windows records with Media Foundation and Linux's screen track goes through GStreamer, both
+   experimental** (ADR-050; the owner ships the Windows and Linux builds as experimental,
+   2026-11-24). Older recordings and any file these cannot open still go through the
+   helper; `SC_MEDIA=helper` switches back. Untested on a real desktop until you try them
+   (docs/TESTING_ON_WINDOWS_LINUX.md).
+2. ⚑ **Linux records only what the system's share dialog picks** (displays and windows; no app or
+   region sources), and hides our windows while recording (ADR-048).
+3. **Pause keeps the paused time in the raw tracks and cuts it in the starting timeline**
+   (ADR-049); recording time no longer subtracts pauses.
+4. **Linux hardware encoding** goes through GStreamer (VA-API, NVENC) in the app and NVENC in the
+   helper; the helper still has no VA-API (it would need libva to start).
+5. **The package workflow runs on pull requests, version tags and manual runs** (owner, ok).
+
+### Open items
+- Carried: the Windows CI flake `stop_before_the_duration_ends_there`; Preview at ~24 fps while
+  recording; camera A/V sync unmeasured (STATUS §3).
+- The owner's own hands-on recording `~/Movies/Simple Capture/2026-11-20 15.35.33 Recording.sc`
+  and its export `2026-11-20 15.35.33 Recording.mp4` were left in place.
+
+## M2 ★ review (2026-11-20)
+
+Plan: docs/M2_PLAN.md; owner answers: ADR-041; implementation decisions: ADR-042; owner change
+after the first hands-on: ADR-043.
+
+**Owner hands-on, M2 first pass (2026-11-20), and changes:**
+- **Bubble plus preview window was confusing; the preview window is better.** The floating bubble
+  is gone (ADR-043). One Preview window shows the composed output with the live camera for every
+  source and frame, is where the camera is placed, opens with the panel and stays while recording,
+  remembers its position, and never appears in recordings (live: 0 of 57 frames).
+- **Control bar in the middle of the screen, not movable.** It now opens at the bottom centre of
+  the recorded display, moves by its grip and remembers where it was put (live checks in flow 14).
+- **Timer stuck at 0:00 on the bar and in the Saved window.** The bar only updated on state
+  changes; it now ticks and re-syncs to the 1 Hz health events (the tray title too). The Saved
+  window shows the project's duration.
+- **"No way to export it as one video".** The owner's export
+  (`2026-11-20 15.35.33 Recording.mp4`, 18.8 s, 3840×2160) does contain the screen, the camera
+  composited where it was placed, and the mixed mic and system audio (the system audio track was
+  silent in that recording; the mic peaks about −20 dBFS). The Saved window now lists what was
+  recorded, says the export makes one video of it, and the button reads "Export video".
+
+**Found and fixed before the second hands-on (2026-11-20)**, by the live driver flows and an
+independent review of the branch (ADR-042 update, "review fixes"):
+- The Preview page had no event permission, so panel edits never moved its dashed outline and
+  handles (the picture did move). Flow 12 now checks the outline against the drawn camera.
+- Moves made while recording slid across the whole idle time before them in the export; keys
+  after a pause are now jumps, drags stay motion; the last drag position is always kept.
+- After recording from the panel, the camera stayed on and the Preview stayed up.
+- A recording that failed to start left the camera unusable until relaunch; an unplugged camera
+  froze the Preview and was not reopened when plugged back in.
+- Bar and Preview positions could be overwritten by the panel; panel edits could be reverted by
+  out-of-order updates; the panel's little preview showed the previous camera edit; Rounded
+  looked like Square; the export's first frame had no camera.
+- The driver's summary ignored failures in flows 12 and 14.
+
+**UI refresh (owner 2026-11-20, ADR-044):** every window now follows macOS conventions:
+- system colours in light and dark, AppKit-sized controls and System Settings-style grouped forms;
+- a red Record button with a summary of what will be recorded;
+- a blurred HUD control bar and a popover-material source switcher (native `NSVisualEffectView`).
+
+Checked on the build Mac in a live driver run (flows 01, 04 and 14: 26/26) and on window
+screenshots.
+
+**What M2 does.** A Preview window shows the composed output with the live camera (any shape,
+size, position, zoom/pan, mirror, border, shadow) while the recorder panel is open or a recording
+runs, and is where the camera is placed (ADR-043). Moves, resizes, shape changes and hiding during a recording become keyframes. The quick
+export and the panel still draw the camera with the same compositor code as the Preview window. macOS
+Video Effects button. One camera session serves preview and recording.
+
+**Measured on the build Mac** (M3 Pro, macOS 26.7.2, LG 3840×1080 pt display at 2×, OBSBOT Tiny 2
+at 1920×1080 30 fps):
+
+| Check | Result | Source |
+|---|---|---|
+| Camera layer GPU vs CPU reference, every shape/option, RGBA and I420 | max difference 0 | `crates/render/tests/camera.rs` |
+| Camera frames read in place from IOSurfaces vs uploaded, 420v and 420f | max difference 0 | `iosurface_camera_frames_match_uploaded_copies` |
+| Geometry Rust vs TS, shared case table | all cases equal | `crates/geometry/tests/camera_cases.json` |
+| Preview window: live frames, placement, camera edits, 9:16 (live, driver flow 12) | 25 fps (FaceTime HD), drawn by the native Metal layer; on screen in the bottom-right; edits arrive at once; a window screenshot shows the camera outline and handles on the drawn camera | `app/driver/flows/12-preview.txt` |
+| Same, webview-frames fallback (`SC_PREVIEW=webview`) | 13/13 checks, 25 fps | flow 12 |
+| Preview resize and outline (live, flow 12): resize to 720×480 pt, then compare the page with the renderer | drawable 1440×896 px = page viewport × 2; the page's camera outline is within 0.03 px of the drawn camera after a panel edit | flow 12 |
+| Preview window absent from a display recording (live, flow 14) | 0 of 57 frames show it | `app/driver/flows/14-preview-capture.txt` |
+| Keyframes while recording (live, flow 14; synthetic + recovery test) | start key at 0 plus the drag; journaled; rebuilt by recovery | flow 14, `camera_keys_are_recorded_journaled_and_recovered` |
+| Export with the camera (unit + real CLI recording, 9:16) | camera drawn where the keys put it, hidden after a hide key; real export checked by eye | `export_camera.rs` |
+| CPU, Preview window + panel shown, camera on (FaceTime HD, about 25 fps), **release**, native Metal layer (ADR-007) | app 17.5–17.9% + its WebKit processes 0.5–0.8% = **18.1–18.4% of one core** in three runs (plan budget: 15%) | CPU time over 15 s of a driver run, MacBook display |
+| Same through webview frames (before the native layer) | app 20.5% + WebKit 9.0% = 29.5% (34.6% before the first 2026-11-20 cuts; 31.7% debug) | same |
+| Same, camera off, release, native layer | **4.3%** (frames only when something changes) | same |
+| Memory, Preview with the live camera for 2 min (release, 3,079 frames presented) | phys_footprint flat at 382–399 MB, RSS settles at about 135 MB: no per-frame growth | `footprint`/`ps` every 10 s |
+| **30-minute soak** (M2 review item 8; release; display + FaceTime HD + mic + system audio; Preview shown; overnight 2026-11-21 01:20, commit 7e1dfc0) | 18/18: 1800.1 s; 0 dropped and 0 writer stalls on every track (camera 53,979 frames, screen 51,864); the Preview drawn natively throughout at 23.6–25.7 fps (camera 30); app CPU 35.5% average, 38.6% max of one core; RSS 145 → 89 MB; phys_footprint 387 → 390 MB (+0.08 MB/min) | `app/driver/run.sh 16-soak`, CPU and memory every 30 s |
+| Same soak before the autorelease fix (two runs, 23:00 and 23:31) | 18/18 both, but phys_footprint grew 389 → 427 MB (+1.4 MB/min, linear). A/B runs of 6 min: Preview hidden 0 growth, Preview without camera +5 MB heap, Preview with camera +10 MB heap and +9 MB GPU. Cause: the Preview's render thread had no autorelease pool; renders and snapshots now drain one (7e1dfc0) | `footprint` by category at minutes 1 and 5 |
+| Local CI (`ci-local-fast`, helpers and GPU required) | 394 Rust + 40 UI tests, 0 failures | |
+
+**Not verified / open:**
+- **The CPU budget is still missed with the camera on, by about 3 points** (about 18% release vs
+  15%). WebKit is out of the per-frame path; what is left is macOS's camera pipeline (CoreMediaIO
+  threads, about 5%), Metal's own command-queue threads, and wgpu's per-frame work on the stage
+  thread (about 3.6%). A Preview capped below the camera's rate would close it.
+- Native Preview layer: a live resize by hand and dragging to a display with another scale were
+  not tried (a programmatic resize is checked in flow 12); photon latency was not measured.
+  Windows and Linux still use webview frames (ADR-007).
+- Real mouse interaction (camera drag and resize in the Preview, the bar's grip) was driven
+  through commands, not real clicks; MANUAL_TEST §10b M1–M7 covers it.
+- No A/V sync measurement of the camera (M1 gap remains).
+- While recording, the Preview presents about 24 fps from a 30 fps camera (it keeps every frame
+  when not recording); it never stalled in the soaks.
+- Seen once on Windows CI (2026-11-21, `stop_before_the_duration_ends_there`): a stop that lands
+  before the first segment has opened leaves that segment without an end time in the project. M1
+  code; the re-run passed and it does not reproduce locally; to look at before M3.
+- Keyframes are not editable until the M3 editor.
+- The Preview refreshes the screen once a second (the camera is live).
 
 M1 delivers (SPEC M1 line plus the 2026-11-19 additions): display, window, application, region and
 system-picker sources; permission onboarding that never prompts by itself; separate crash-safe
@@ -237,8 +416,8 @@ caveats above), objc2-app-kit linking CloudKit and CoreData (trimmed), Skia Free
 
 | # | Question | Options | Where |
 |---|---|---|---|
-| Q-a | Kill loss bound | (1) set `fragment_interval_s` to about 0.5 s (should keep loss under 1 s; file overhead not measured), or (2) restate the target as "≤ fragment interval + encoder latency" and keep 1 s | ADR-008 |
-| Q-b | Tray menu leak (0–1 frame) | (1) accept it as a known exception, (2) change the tray (no menu while recording), or (3) whole-app exclusion if your B4 test shows it works in the release bundle | ADR-010 |
+| Q-a | Kill loss bound | **Answered 2026-11-24:** about 1.08 s with 1 s fragments is accepted, nothing longer; the live kill test fails above 1.1 s and a test keeps fragments at 1 s | ADR-008 |
+| Q-b | Tray menu leak (0–1 frame) | **Fixed 2026-11-24:** while recording, the tray opens our own menu window, excluded before the recording starts (0 of 37 frames in flow 05) | ADR-010 |
 | Q-c | Mic level meter and debug overlay (SPEC v1, on no milestone line) | proposed: M7 (polish and performance pass) | M1_PLAN §1 |
 | Q-d | App audio for unbundled apps | proposed: keep App mode, note in the UI that it isolates apps with a bundle ID | ADR-010 |
 | Q-e (optional) | Drop Skia's default `pdf` feature (and with it expat) | `default-features = false, features = ["textlayout", "embed-freetype", "jpeg"]`; rebuilds Skia once | LICENSES §2.4 |

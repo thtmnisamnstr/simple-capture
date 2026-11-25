@@ -5,18 +5,11 @@ import {
   isExportState,
   isHealth,
   isNotice,
-  isPermissions,
   isPicked,
   isRecordingState,
   isRegionSelected,
   isSourceSpec,
 } from '../src/lib/guards.ts';
-
-test('permissions', () => {
-  assert.ok(isPermissions({ screen: 'granted', camera: 'denied', mic: 'not_determined' }));
-  assert.ok(!isPermissions({ screen: 'yes', camera: 'denied', mic: 'denied' }));
-  assert.ok(!isPermissions(null));
-});
 
 test('source specs', () => {
   assert.ok(isSourceSpec({ kind: 'display', display_id: '1' }));

@@ -1,22 +1,39 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 //! Simple Capture desktop app: Tauri 2 shell (M1 plan §5.2–§5.4).
 
+mod about;
+#[cfg(target_os = "macos")]
+mod appmenu;
 mod commands;
 mod core;
 #[cfg(debug_assertions)]
 mod driver;
 mod dto;
+mod editor;
+mod editor_media;
+mod editor_render;
+mod exports;
+mod library;
+mod live;
+mod meter;
 #[cfg(target_os = "macos")]
 mod objc;
+mod preview;
 mod protocol;
+#[cfg(target_os = "macos")]
+mod sandbox;
 mod settings;
+mod shortcuts;
 mod signals;
+mod sink;
+mod stage;
 mod state;
 mod still;
 mod tray;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use sc_core::journal::StopReason;
 use sc_platform::Platform;
@@ -25,6 +42,7 @@ use tauri::{Manager, RunEvent, WindowEvent};
 use crate::core::Core;
 
 const APP_ID: &str = "com.simplecapture.desktop";
+const LOG_ROTATE_BYTES: u64 = 10 * 1024 * 1024;
 
 fn data_dir() -> PathBuf {
     if let Some(d) = std::env::var_os("SC_DATA_DIR") {
@@ -51,8 +69,12 @@ fn init_tracing(data_dir: &std::path::Path) -> Option<PathBuf> {
         tracing_subscriber::EnvFilter::try_from_env("SC_LOG")
             .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
     };
-    let log_path = data_dir.join("logs").join("simple-capture-app.log");
-    let file = std::fs::create_dir_all(data_dir.join("logs"))
+    let logs = data_dir.join("logs");
+    let log_path = logs.join("simple-capture-app.log");
+    if std::fs::metadata(&log_path).is_ok_and(|m| m.len() > LOG_ROTATE_BYTES) {
+        let _ = std::fs::rename(&log_path, logs.join("simple-capture-app.1.log"));
+    }
+    let file = std::fs::create_dir_all(&logs)
         .and_then(|_| {
             std::fs::OpenOptions::new()
                 .create(true)
@@ -111,36 +133,10 @@ fn driver_active() -> bool {
     false
 }
 
-fn register_hotkey(core: &Arc<Core>) {
-    use tauri_plugin_global_shortcut::{
-        Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
-    };
-    let shortcut = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyS);
-    let c = core.clone();
-    let r = core
-        .app
-        .global_shortcut()
-        .on_shortcut(shortcut, move |_app, _sc, ev| {
-            if ev.state == ShortcutState::Pressed {
-                let c = c.clone();
-                std::thread::spawn(move || {
-                    if let Err(e) = c.hotkey_switch() {
-                        tracing::warn!("hotkey switch: {e}");
-                    }
-                });
-            }
-        });
-    match r {
-        Ok(()) => tracing::info!("hotkey ⌥⇧S registered"),
-        Err(e) => {
-            let error = e.to_string();
-            tracing::warn!("hotkey ⌥⇧S: {error}");
-            core.emit("notice", dto::hotkey_unavailable(&error));
-        }
-    }
-}
-
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    if let Ok(r) = app.path().resource_dir() {
+        sc_text::fonts::set_resource_fonts_dir(r.join("fonts"));
+    }
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     let platform = platform();
@@ -153,6 +149,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         permission_host = ?platform.permission_host(),
         "starting"
     );
+    FIRST_LAUNCH.store(!data.join("settings.json").exists(), Ordering::SeqCst);
     let core = Arc::new(Core::new(
         app.handle().clone(),
         platform,
@@ -171,11 +168,21 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     core.configure_windows()?;
+    stage::spawn(&core);
+    editor_render::spawn(&core);
     let tray = tray::Tray::build(app.handle(), core.clone())?;
     let _ = core.tray.set(tray);
     tracing::info!("tray ready");
     tray::start_timer(core.clone());
-    register_hotkey(&core);
+    let errors = core.apply_shortcuts();
+    if !errors.is_empty() {
+        let text = errors
+            .iter()
+            .map(|(id, e)| format!("{id}: {e}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        core.emit("notice", dto::hotkey_unavailable(&text));
+    }
     signals::attach(core.clone());
     let c = core.clone();
     std::thread::Builder::new()
@@ -184,10 +191,25 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// A menu-bar app shows nothing when it starts, so the first launch and opening it again from
+/// Finder or Launchpad bring up the recorder; otherwise it looks as if nothing happened.
+static FIRST_LAUNCH: AtomicBool = AtomicBool::new(false);
+
+fn show_recorder(app: &tauri::AppHandle) {
+    if let Some(core) = app.try_state::<Arc<Core>>()
+        && let Err(e) = core.show_window("panel", true)
+    {
+        tracing::warn!("show the recorder: {e}");
+    }
+}
+
 fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
     match ev {
         RunEvent::Ready => {
             eprintln!("SC_READY");
+            if FIRST_LAUNCH.load(Ordering::SeqCst) && !driver_active() {
+                show_recorder(app);
+            }
             #[cfg(debug_assertions)]
             if let Some(core) = app.try_state::<Arc<Core>>() {
                 driver::maybe_start(core.inner().clone());
@@ -199,12 +221,69 @@ fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
             ..
         } => {
             api.prevent_close();
+            if label == "panel"
+                && let Some(core) = app.try_state::<Arc<Core>>()
+            {
+                let core = core.inner().clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = core.camera_preview(false) {
+                        tracing::warn!("camera preview: {e}");
+                    }
+                });
+            }
+            if label == "stage"
+                && let Some(core) = app.try_state::<Arc<Core>>()
+            {
+                core.preview_closed();
+            }
+            if label == "editor"
+                && let Some(core) = app.try_state::<Arc<Core>>()
+            {
+                let core = core.inner().clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = core.editor_close() {
+                        tracing::warn!("editor close: {e}");
+                    }
+                });
+            }
             if let Some(w) = app.get_webview_window(&label)
                 && let Err(e) = w.hide()
             {
                 tracing::warn!(label, "hide on close: {e}");
             }
+            if crate::core::FULL_WINDOWS.contains(&label.as_str())
+                && let Some(core) = app.try_state::<Arc<Core>>()
+            {
+                core.settle_activation();
+            }
         }
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Moved(pos),
+            ..
+        } if label == "stage" => {
+            if let (Some(core), Some(w)) =
+                (app.try_state::<Arc<Core>>(), app.get_webview_window(&label))
+            {
+                let p = pos.to_logical::<f64>(w.scale_factor().unwrap_or(1.0));
+                core.preview_moved(p.x, p.y);
+            }
+        }
+        RunEvent::WindowEvent {
+            label,
+            event: WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. },
+            ..
+        } if label == "stage" || label == "editor" => {
+            if let Some(core) = app.try_state::<Arc<Core>>() {
+                if label == "stage" {
+                    core.stage_window_changed();
+                } else {
+                    core.editor_window_changed();
+                }
+            }
+        }
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } if !driver_active() => show_recorder(app),
         RunEvent::ExitRequested { api, code, .. } => {
             let Some(core) = app.try_state::<Arc<Core>>().map(|c| c.inner().clone()) else {
                 return;
@@ -228,6 +307,8 @@ fn main() {
     let builder = tauri::Builder::default();
     #[cfg(target_os = "macos")]
     let builder = builder.activate_ignoring_other_apps(false);
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(appmenu::build).on_menu_event(appmenu::handle);
     let app = builder
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .register_asynchronous_uri_scheme_protocol("sc", protocol::handle)
@@ -255,6 +336,13 @@ fn main() {
             commands::cancel_export,
             commands::reveal,
             commands::recovery_report,
+            commands::camera_preview,
+            commands::preview_state,
+            commands::camera_key_live,
+            commands::show_video_effects,
+            commands::bar_drag,
+            commands::editor,
+            commands::app,
         ])
         .setup(setup)
         .build(tauri::generate_context!());

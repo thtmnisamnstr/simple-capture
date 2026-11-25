@@ -1,6 +1,5 @@
-//! Time, CMTime and Foundation helpers, ported from spike 3 `util.rs`. Waiting helpers never
-//! pump a run loop (plan §4.3 threading contract); `mainloop` does that.
-#![allow(dead_code)]
+//! Time, CMTime and Foundation helpers. Waiting helpers never pump a run loop (plan §4.3
+//! threading contract); `mainloop` does that.
 
 use std::sync::OnceLock;
 use std::sync::mpsc;
@@ -10,7 +9,7 @@ use block2::{DynBlock, RcBlock};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_core_foundation::CFString;
-use objc2_core_media::{CMClock, CMTime, CMTimeFlags};
+use objc2_core_media::{CMTime, CMTimeFlags};
 use objc2_foundation::{NSDictionary, NSError, NSNumber, NSString};
 use sc_core::time::HostTime;
 use sc_platform::{Error, Result};
@@ -43,6 +42,7 @@ pub(crate) fn mach_to_ns(t: u64) -> i64 {
     i64::try_from(ns).unwrap_or(i64::MAX)
 }
 
+#[cfg(test)]
 pub(crate) fn ns_to_mach(ns: i64) -> u64 {
     let (n, d) = timebase();
     let t = u128::from(ns.max(0) as u64) * u128::from(d) / u128::from(n);
@@ -54,9 +54,10 @@ pub(crate) fn host_now() -> HostTime {
 }
 
 /// CMClock host time clock now (same timeline as `mach_now`).
+#[cfg(test)]
 pub(crate) fn host_clock_now() -> CMTime {
     // SAFETY: the host time clock is a process-wide singleton.
-    unsafe { CMClock::host_time_clock().time() }
+    unsafe { objc2_core_media::CMClock::host_time_clock().time() }
 }
 
 pub(crate) fn cmtime_valid(t: &CMTime) -> bool {
@@ -75,11 +76,6 @@ pub(crate) fn cmtime_to_ns(t: CMTime) -> Option<i64> {
 pub(crate) fn ns_to_cmtime(ns: i64) -> CMTime {
     // SAFETY: CMTimeMake has no preconditions.
     unsafe { CMTime::new(ns, 1_000_000_000) }
-}
-
-pub(crate) fn cmtime_secs(t: CMTime) -> f64 {
-    // SAFETY: CMTimeGetSeconds has no preconditions.
-    unsafe { t.seconds() }
 }
 
 pub(crate) fn nsstr(s: &str) -> Retained<NSString> {

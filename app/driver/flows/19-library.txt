@@ -1,0 +1,8 @@
+# Library (M7): lists the recordings made so far with their posters, rendered on demand when the
+# window shows them.
+cmd app {"action":"library"}
+show library
+wait 3000
+eval library document.querySelector('.grid').scrollTop = 99999
+wait 3000
+cmd app {"action":"library"}

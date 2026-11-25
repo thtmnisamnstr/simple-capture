@@ -508,6 +508,28 @@ impl VideoReader for SctrkVideoReader {
     }
 }
 
+struct Primed {
+    inner: Box<dyn VideoReader>,
+    first: Option<DecodedFrame>,
+    then: Option<DecodedFrame>,
+}
+
+impl VideoReader for Primed {
+    fn size(&self) -> SizePx {
+        self.inner.size()
+    }
+
+    fn next_frame(&mut self) -> Result<Option<DecodedFrame>> {
+        if let Some(f) = self.first.take() {
+            return Ok(Some(f));
+        }
+        if let Some(f) = self.then.take() {
+            return Ok(Some(f));
+        }
+        self.inner.next_frame()
+    }
+}
+
 struct SctrkAudioReader {
     first_ns: i64,
     samples: Vec<f32>,
@@ -583,6 +605,31 @@ impl Decoder for SctrkDecoder {
         }))
     }
 
+    /// Like AVAssetReader with a time range: the first frame is the one shown at `from_file_ns`.
+    fn open_video_at(&self, path: &Path, from_file_ns: i64) -> Result<Box<dyn VideoReader>> {
+        let mut r = self.open_video(path)?;
+        let mut shown = None;
+        while let Some(f) = r.next_frame()? {
+            if f.file_ns > from_file_ns {
+                let (first, then) = match shown {
+                    Some(s) => (s, Some(f)),
+                    None => (f, None),
+                };
+                return Ok(Box::new(Primed {
+                    inner: r,
+                    first: Some(first),
+                    then,
+                }));
+            }
+            shown = Some(f);
+        }
+        Ok(Box::new(Primed {
+            inner: r,
+            first: shown,
+            then: None,
+        }))
+    }
+
     /// Places each record at its `file_ns` (zeros fill holes longer than one sample), then
     /// converts channels (duplicate or average) and rate (linear).
     fn open_audio(&self, path: &Path, rate: u32, channels: u16) -> Result<Box<dyn AudioReader>> {
@@ -633,7 +680,9 @@ impl Decoder for SctrkDecoder {
             match data {
                 Some(bytes) => buf.extend(
                     bytes
-                        .chunks_exact(4)
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
                 ),
                 None => buf.resize(buf.len() + frames as usize * ch, 0.0),

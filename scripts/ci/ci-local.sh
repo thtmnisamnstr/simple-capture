@@ -30,8 +30,17 @@ step() {
 ci_files() {
     local rc=0
     if command -v actionlint >/dev/null; then actionlint || rc=1; else echo "actionlint not installed: skipped"; fi
-    if command -v shellcheck >/dev/null; then shellcheck -S warning scripts/ci/*.sh || rc=1; else echo "shellcheck not installed: skipped"; fi
+    if command -v shellcheck >/dev/null; then
+        shellcheck -S warning scripts/ci/*.sh scripts/mas-build.sh scripts/mas-check.sh scripts/appstore-setup.sh \
+            scripts/macos-sign.sh scripts/local-bundle.sh scripts/stage-helpers.sh scripts/make-dmg.sh || rc=1
+    else
+        echo "shellcheck not installed: skipped"
+    fi
+    scripts/mas-check.sh --entitlements || rc=1
     node --test scripts/ci/npm-licenses.test.mjs || rc=1
+    python3 -I scripts/asc/test_asc.py || rc=1
+    python3 -I scripts/asc/asc.py check-metadata || rc=1
+    python3 -I appstore/check.py || rc=1
     return $rc
 }
 

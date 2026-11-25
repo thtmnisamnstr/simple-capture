@@ -9,7 +9,7 @@ use objc2_av_foundation::{
     AVAssetReader, AVAssetReaderStatus, AVAssetReaderTrackOutput, AVAssetTrack, AVMediaTypeAudio,
     AVMediaTypeVideo, AVURLAsset,
 };
-use objc2_core_media::{CMSampleBuffer, CMTime};
+use objc2_core_media::{CMSampleBuffer, CMTime, CMTimeRange, kCMTimePositiveInfinity};
 use objc2_core_video::{kCVPixelBufferIOSurfacePropertiesKey, kCVPixelBufferPixelFormatTypeKey};
 use objc2_foundation::{NSArray, NSDictionary, NSString, NSURL};
 use sc_geometry::SizePx;
@@ -19,7 +19,8 @@ use super::frames::{MacPixelFrame, PIX_420V, asbd_of};
 use super::pcm::{PcmFormat, copy_frames};
 use super::writer::key;
 use crate::util::{
-    as_obj, cfstr_as_ns, cmtime_to_ns, dict, ns_error_text, nsstr, num_b, num_f, num_i,
+    as_obj, cfstr_as_ns, cmtime_to_ns, dict, ns_error_text, ns_to_cmtime, nsstr, num_b, num_f,
+    num_i,
 };
 
 struct Track {
@@ -71,6 +72,7 @@ fn open_track(
     path: &Path,
     video: bool,
     settings: Option<&NSDictionary<NSString, AnyObject>>,
+    from_ns: Option<i64>,
 ) -> Result<Track> {
     let (asset, track) = first_track(path, video)?;
     let track = track.ok_or_else(|| {
@@ -101,6 +103,12 @@ fn open_track(
             )));
         }
         reader.addOutput(&output);
+        if let Some(from) = from_ns.filter(|f| *f > 0) {
+            reader.setTimeRange(CMTimeRange {
+                start: ns_to_cmtime(from),
+                duration: kCMTimePositiveInfinity,
+            });
+        }
         if !reader.startReading() {
             return Err(Error::Other(format!(
                 "startReading {}: {}",
@@ -142,7 +150,7 @@ pub(crate) struct MacVideoReader {
 }
 
 impl MacVideoReader {
-    pub(crate) fn open(path: &Path) -> Result<MacVideoReader> {
+    pub(crate) fn open(path: &Path, from_ns: Option<i64>) -> Result<MacVideoReader> {
         let pf = num_i(i64::from(PIX_420V));
         let empty: Retained<NSDictionary<NSString, AnyObject>> = NSDictionary::new();
         // SAFETY: CoreVideo key constants.
@@ -155,7 +163,7 @@ impl MacVideoReader {
                 ),
             ])
         };
-        let t = open_track(path, true, Some(&settings))?;
+        let t = open_track(path, true, Some(&settings), from_ns)?;
         // SAFETY: plain getter.
         let sz = unsafe { t.track.naturalSize() };
         Ok(MacVideoReader {
@@ -206,7 +214,12 @@ pub(crate) struct MacAudioReader {
 }
 
 impl MacAudioReader {
-    pub(crate) fn open(path: &Path, rate: u32, channels: u16) -> Result<MacAudioReader> {
+    pub(crate) fn open(
+        path: &Path,
+        rate: u32,
+        channels: u16,
+        from_ns: Option<i64>,
+    ) -> Result<MacAudioReader> {
         if rate == 0 || channels == 0 {
             return Err(Error::Other(
                 "open_audio needs rate and channels > 0".into(),
@@ -236,7 +249,7 @@ impl MacAudioReader {
             (&keys[5], as_obj(&*sr)),
             (&keys[6], as_obj(&*ch)),
         ]);
-        let t = open_track(path, false, Some(&settings))?;
+        let t = open_track(path, false, Some(&settings), from_ns)?;
         let mut r = MacAudioReader {
             t,
             rate,
@@ -291,7 +304,9 @@ impl MacAudioReader {
         let bytes = copy_frames(&sb, &fmt, 0, frames)?;
         let data = bytes.into_iter().next().unwrap_or_default();
         self.pending.extend(
-            data.chunks_exact(4)
+            data.as_chunks::<4>()
+                .0
+                .iter()
                 .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
         );
         self.have_frames += i64::from(frames);
@@ -348,7 +363,7 @@ pub(crate) fn probe(path: &Path) -> Result<TrackProbe> {
             }
         },
     };
-    let t = match open_track(path, video, None) {
+    let t = match open_track(path, video, None, None) {
         Ok(t) => t,
         Err(e) => return Ok(not_readable(e.to_string())),
     };

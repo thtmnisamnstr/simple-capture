@@ -1,7 +1,7 @@
 #!/bin/bash
 # cargo-deny (licenses, bans, advisories, sources) plus graph checks cargo-deny cannot express.
-# docs/LICENSES.md §2.1, M1 plan wp-ci. Needs cargo-deny 0.22.0 (`cargo install --locked
-# cargo-deny@0.22.0`). Advisories need network for the RustSec DB unless SC_DENY_OFFLINE=1.
+# docs/LICENSES.md §2.1, M1 plan wp-ci. Needs cargo-deny 0.22.1 (`cargo install --locked
+# cargo-deny@0.22.1`). Advisories need network for the RustSec DB unless SC_DENY_OFFLINE=1.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -9,7 +9,7 @@ fail=0
 DESKTOP_TARGETS=(aarch64-apple-darwin x86_64-apple-darwin x86_64-pc-windows-msvc x86_64-unknown-linux-gnu)
 HTTP_CRATES=(reqwest hyper ureq isahc curl curl-sys attohttpc surf)
 
-command -v cargo-deny >/dev/null || { echo "deny.sh: cargo-deny missing (cargo install --locked cargo-deny@0.22.0)" >&2; exit 1; }
+command -v cargo-deny >/dev/null || { echo "deny.sh: cargo-deny missing (cargo install --locked cargo-deny@0.22.1)" >&2; exit 1; }
 
 offline=()
 [ "${SC_DENY_OFFLINE:-0}" = 1 ] && offline=(--offline)

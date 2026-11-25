@@ -1,19 +1,24 @@
 //! App state and every operation behind the commands, tray, hotkey and debug driver.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
+#[cfg(not(target_os = "macos"))]
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak, mpsc};
 use std::time::{Duration, Instant};
 
 use sc_core::journal::StopReason;
-use sc_core::project::{Background, Fit, ProjectV1, Via};
+use sc_core::project::{ProjectV1, Via};
 use sc_export::probe::ProbeV1;
 use sc_export::{ExportJob, ExportObserver, ExportProgress, ExportState, QuickExportRequest};
-use sc_geometry::{PointF, RectPt, SizePx};
+#[cfg(debug_assertions)]
+use sc_geometry::RectPt;
+use sc_geometry::SizePx;
 use sc_platform::{
     AudioBuffer, DeviceStream, FrameSink, OverlayRole, PermissionKind, PermissionStatus,
-    PickedSource, PickerRequest, Platform, Resolution, SourceEvent, VideoFrame, WindowId,
+    PickedSource, PickerRequest, Platform, Resolution, SharedCamera, SourceEvent, VideoFrame,
+    WindowId, WithSharedCamera,
 };
 use sc_record::recovery::RecoveryReport;
 use sc_record::{HealthSnapshot, Notice, Session, SessionObserver, SessionState};
@@ -21,35 +26,69 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager};
 
 use crate::dto::{self, RecordRequestDto, RequestEnv, SourceSpecDto};
+use crate::preview::StagePage;
 use crate::settings::{CanvasDto, RecorderSettings, SettingsStore};
 use crate::state::{Input, Phase};
 use crate::still::{self, StillCache};
 
-pub const WINDOWS: [(&str, OverlayRole); 7] = [
+/// Windows that make the app a regular app (Dock icon, menu bar, focus) while they are open.
+pub const FULL_WINDOWS: [&str; 4] = ["editor", "library", "diagnostics", "about"];
+
+pub const WINDOWS: [(&str, OverlayRole); 13] = [
     ("panel", OverlayRole::Panel),
     ("onboarding", OverlayRole::Onboarding),
     ("bar", OverlayRole::FloatingBar),
     ("switcher", OverlayRole::Popover),
+    ("traymenu", OverlayRole::Popover),
     ("region", OverlayRole::RegionOverlay),
     ("pick", OverlayRole::PickOverlay),
     ("saved", OverlayRole::Saved),
+    ("stage", OverlayRole::Stage),
+    ("editor", OverlayRole::Editor),
+    ("library", OverlayRole::Editor),
+    ("diagnostics", OverlayRole::Editor),
+    ("about", OverlayRole::Editor),
 ];
 
 pub type Reply = Result<Value, String>;
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+/// Pointer and window positions (global points) when a bar drag began.
+type BarDrag = ((f64, f64), (f64, f64));
+
+pub(crate) fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|p| p.into_inner())
 }
 
 pub struct Core {
     pub app: AppHandle,
     pub platform: Arc<dyn Platform>,
+    pub camera: Arc<SharedCamera>,
+    /// The plugged-in device screen the panel or Preview shows (iPhone, iPad).
+    pub screens: Arc<SharedCamera>,
+    mic_meter: Mutex<Option<(String, Box<dyn sc_platform::DeviceStream>)>>,
+    pub live: crate::live::LiveHub,
+    pub preview: Mutex<crate::preview::PreviewState>,
+    pub editor: crate::editor::EditorHost,
+    bar_drag: Mutex<Option<BarDrag>>,
     pub data_dir: PathBuf,
+    pub diagnostics_busy: std::sync::atomic::AtomicBool,
     projects_dir: PathBuf,
     settings: SettingsStore,
+    settings_write: Mutex<()>,
     phase: Mutex<Phase>,
     session: Mutex<Option<Session>>,
     rec_started: Mutex<Option<Instant>>,
+    paused_total: Mutex<std::time::Duration>,
+    paused_since: Mutex<Option<Instant>>,
+    /// The number of the recording start in progress (its countdown included), 0 when none.
+    start_claim: AtomicU64,
+    start_seq: AtomicU64,
+    /// The number of the start whose countdown was cancelled.
+    countdown_cancel: AtomicU64,
+    last_request: Mutex<Option<RecordRequestDto>>,
+    raw_after_export: Mutex<HashMap<String, PathBuf>>,
+    /// Files this session's exports wrote: with the license files, all `open_file` launches.
+    exported: Mutex<HashSet<PathBuf>>,
     window_ids: Mutex<Vec<(String, WindowId)>>,
     picks: Mutex<HashMap<String, PickedSource>>,
     stills: Mutex<StillCache>,
@@ -60,9 +99,15 @@ pub struct Core {
     watcher: Mutex<Option<Box<dyn DeviceStream>>>,
     last_health: Mutex<Option<(Instant, i64)>>,
     last_project: Mutex<Option<PathBuf>>,
+    shortcut_errors: Mutex<BTreeMap<String, String>>,
+    shortcuts_paused: AtomicBool,
+    camera_hidden_for_switch: AtomicBool,
+    folder_moves: Mutex<Vec<(PathBuf, String)>>,
     last_export: Mutex<Option<String>>,
     ui_log: Mutex<Vec<String>>,
     exiting: AtomicBool,
+    /// The system picker was switched on (macOS then lists the app in its Sharing menu).
+    picker_on: AtomicBool,
     pub launch_done: AtomicBool,
     pub exit_done: AtomicBool,
     pub no_key_windows: bool,
@@ -77,15 +122,34 @@ impl Core {
         projects_dir: PathBuf,
         no_key_windows: bool,
     ) -> Core {
+        let (platform, camera) = WithSharedCamera::new(platform);
+        let screens = platform.screens();
         Core {
             settings: SettingsStore::new(&data_dir),
+            settings_write: Mutex::new(()),
             app,
             platform,
+            camera,
+            screens,
+            mic_meter: Mutex::new(None),
+            live: crate::live::LiveHub::default(),
+            preview: Mutex::new(crate::preview::PreviewState::default()),
+            editor: crate::editor::EditorHost::default(),
+            bar_drag: Mutex::new(None),
             data_dir,
+            diagnostics_busy: std::sync::atomic::AtomicBool::new(false),
             projects_dir,
             phase: Mutex::new(Phase::Idle),
             session: Mutex::new(None),
             rec_started: Mutex::new(None),
+            paused_total: Mutex::new(std::time::Duration::ZERO),
+            paused_since: Mutex::new(None),
+            start_claim: AtomicU64::new(0),
+            start_seq: AtomicU64::new(0),
+            countdown_cancel: AtomicU64::new(0),
+            last_request: Mutex::new(None),
+            raw_after_export: Mutex::new(HashMap::new()),
+            exported: Mutex::new(HashSet::new()),
             window_ids: Mutex::new(Vec::new()),
             picks: Mutex::new(HashMap::new()),
             stills: Mutex::new(StillCache::default()),
@@ -96,9 +160,14 @@ impl Core {
             watcher: Mutex::new(None),
             last_health: Mutex::new(None),
             last_project: Mutex::new(None),
+            shortcut_errors: Mutex::new(BTreeMap::new()),
+            shortcuts_paused: AtomicBool::new(false),
+            camera_hidden_for_switch: AtomicBool::new(false),
+            folder_moves: Mutex::new(Vec::new()),
             last_export: Mutex::new(None),
             ui_log: Mutex::new(Vec::new()),
             exiting: AtomicBool::new(false),
+            picker_on: AtomicBool::new(false),
             launch_done: AtomicBool::new(false),
             exit_done: AtomicBool::new(false),
             no_key_windows,
@@ -111,9 +180,16 @@ impl Core {
     }
 
     fn advance(&self, input: Input) -> Result<Phase, String> {
-        let mut p = lock(&self.phase);
-        let next = p.next(input)?;
-        *p = next.clone();
+        let (before, next) = {
+            let mut p = lock(&self.phase);
+            let next = p.next(input)?;
+            (std::mem::replace(&mut *p, next.clone()), next)
+        };
+        if is_recording(&before) != is_recording(&next)
+            && let Err(e) = self.refresh_camera()
+        {
+            tracing::warn!("camera after {next:?}: {e}");
+        }
         Ok(next)
     }
 
@@ -139,10 +215,15 @@ impl Core {
         })
     }
 
+    pub fn projects_dir(&self) -> PathBuf {
+        self.projects_dir.clone()
+    }
+
     pub fn last_project(&self) -> Option<PathBuf> {
         lock(&self.last_project).clone()
     }
 
+    #[cfg(debug_assertions)]
     pub fn last_export(&self) -> Option<String> {
         lock(&self.last_export).clone()
     }
@@ -156,14 +237,109 @@ impl Core {
         }
     }
 
+    #[cfg(debug_assertions)]
     pub fn take_ui_log(&self) -> Vec<String> {
         std::mem::take(&mut *lock(&self.ui_log))
     }
 
+    /// Recorded time so far, paused time left out (what the bar and tray show).
     pub fn elapsed_ns(&self) -> i64 {
-        lock(&self.rec_started)
-            .map(|t| i64::try_from(t.elapsed().as_nanos()).unwrap_or(i64::MAX))
-            .unwrap_or(0)
+        let Some(t) = *lock(&self.rec_started) else {
+            return 0;
+        };
+        let paused = *lock(&self.paused_total)
+            + lock(&self.paused_since).map_or(std::time::Duration::ZERO, |p| p.elapsed());
+        i64::try_from(t.elapsed().saturating_sub(paused).as_nanos()).unwrap_or(i64::MAX)
+    }
+
+    pub fn is_paused(&self) -> bool {
+        lock(&self.paused_since).is_some()
+    }
+
+    pub fn pause_recording(&self) -> Reply {
+        let guard = lock(&self.session);
+        let s = guard.as_ref().ok_or("not recording")?;
+        s.pause().map_err(|e| e.to_string())?;
+        lock(&self.paused_since).get_or_insert_with(Instant::now);
+        drop(guard);
+        self.emit(
+            "recording-paused",
+            json!({ "paused": true, "elapsed_ns": self.elapsed_ns() }),
+        );
+        self.refresh_tray();
+        Ok(Value::Null)
+    }
+
+    pub fn resume_recording(&self) -> Reply {
+        let guard = lock(&self.session);
+        let s = guard.as_ref().ok_or("not recording")?;
+        s.resume().map_err(|e| e.to_string())?;
+        if let Some(p) = lock(&self.paused_since).take() {
+            *lock(&self.paused_total) += p.elapsed();
+        }
+        drop(guard);
+        self.emit(
+            "recording-paused",
+            json!({ "paused": false, "elapsed_ns": self.elapsed_ns() }),
+        );
+        self.refresh_tray();
+        Ok(Value::Null)
+    }
+
+    pub fn toggle_pause(&self) -> Reply {
+        if self.is_paused() {
+            self.resume_recording()
+        } else {
+            self.pause_recording()
+        }
+    }
+
+    /// Throws the current recording away and starts a new one with the same request.
+    pub fn restart_recording(self: &Arc<Self>) -> Reply {
+        let req = lock(&self.last_request)
+            .clone()
+            .ok_or("nothing to restart")?;
+        let _claim = self.claim_start()?;
+        self.discard_recording()?;
+        self.start_recording_now(req)
+    }
+
+    pub fn cancel_countdown(&self) -> Reply {
+        let id = self.start_claim.load(Ordering::SeqCst);
+        if id != 0 {
+            self.countdown_cancel.store(id, Ordering::SeqCst);
+        }
+        Ok(Value::Null)
+    }
+
+    /// A recording start (its countdown included) is under way.
+    pub fn starting(&self) -> bool {
+        self.start_claim.load(Ordering::SeqCst) != 0
+    }
+
+    /// Makes this the one recording start until the returned claim drops.
+    fn claim_start(&self) -> Result<StartClaim<'_>, String> {
+        let id = self.start_seq.fetch_add(1, Ordering::SeqCst) + 1;
+        self.start_claim
+            .compare_exchange(0, id, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| "A recording is already starting.".to_string())?;
+        Ok(StartClaim { core: self, id })
+    }
+
+    /// Hotkey: hide or show the camera in the recording from now on.
+    pub fn toggle_camera(&self) -> Reply {
+        let mut settings = self.settings.load();
+        settings.camera_key.visible = !settings.camera_key.visible;
+        let key = settings.camera_key.clone();
+        self.settings.save(&settings)?;
+        self.emit(
+            "settings-changed",
+            serde_json::to_value(&settings).unwrap_or(Value::Null),
+        );
+        if let Some(s) = lock(&self.session).as_ref() {
+            s.camera_key(key).map_err(|e| e.to_string())?;
+        }
+        Ok(Value::Null)
     }
 
     /// Main thread: swaps every window to our non-activating panel and records its ID.
@@ -176,6 +352,14 @@ impl Core {
                 .ok_or_else(|| format!("window {label} missing from tauri.conf.json"))?;
             let id = configure_one(&*self.platform, &w, role)
                 .map_err(|e| format!("configure window {label}: {e}"))?;
+            #[cfg(target_os = "macos")]
+            match label {
+                "bar" => apply_material(&w, sc_capture_macos::material::Material::Hud, 16.0),
+                "switcher" | "traymenu" => {
+                    apply_material(&w, sc_capture_macos::material::Material::Popover, 12.0)
+                }
+                _ => {}
+            }
             tracing::info!(label, id = id.0, ?role, "configured window");
             ids.push((label.to_string(), id));
         }
@@ -198,20 +382,85 @@ impl Core {
             .app
             .get_webview_window(label)
             .ok_or_else(|| format!("no window {label:?}"))?;
+        let full = FULL_WINDOWS.contains(&label);
         if key && !self.no_key_windows {
-            return w.show().map_err(|e| format!("show {label}: {e}"));
+            #[cfg(target_os = "macos")]
+            if full {
+                let _ = self
+                    .app
+                    .set_activation_policy(tauri::ActivationPolicy::Regular);
+            }
+            w.show().map_err(|e| format!("show {label}: {e}"))?;
+            if full && let Err(e) = w.set_focus() {
+                tracing::warn!(label, "focus: {e}");
+            }
+        } else {
+            show_without_key(&w)?;
         }
-        show_without_key(&w)
+        if label == "panel"
+            && let Err(e) = self.camera_preview(true)
+        {
+            tracing::warn!("camera preview: {e}");
+        }
+        Ok(())
     }
 
     pub fn hide_window(&self, label: &str) {
+        if label == "panel"
+            && let Err(e) = self.camera_preview(false)
+        {
+            tracing::warn!("camera preview: {e}");
+        }
         if let Some(w) = self.app.get_webview_window(label)
             && let Err(e) = w.hide()
         {
             tracing::warn!(label, "hide failed: {e}");
         }
+        if FULL_WINDOWS.contains(&label) {
+            self.settle_activation();
+        }
     }
 
+    /// A menu-bar app again once no full window (editor, Library, About, Diagnostics) is open.
+    pub fn settle_activation(&self) {
+        #[cfg(target_os = "macos")]
+        if !self.no_key_windows {
+            let open = FULL_WINDOWS.iter().any(|l| {
+                self.app
+                    .get_webview_window(l)
+                    .and_then(|w| w.is_visible().ok())
+                    .unwrap_or(false)
+            });
+            if !open {
+                let _ = self
+                    .app
+                    .set_activation_policy(tauri::ActivationPolicy::Accessory);
+            }
+        }
+    }
+
+    /// Debug driver: a PNG of one of our windows as the screen shows it.
+    #[cfg(debug_assertions)]
+    pub fn shot_window(&self, label: &str, path: &Path) -> Reply {
+        let id = lock(&self.window_ids)
+            .iter()
+            .find(|(l, _)| l == label)
+            .map(|(_, id)| *id)
+            .ok_or_else(|| format!("no window {label}"))?;
+        let img = self
+            .platform
+            .screen()
+            .snapshot(
+                &sc_platform::SourceSpec::Window { window: id },
+                SizePx { w: 4096, h: 4096 },
+            )
+            .map_err(|e| e.to_string())?;
+        let png = sc_text::encode_png(&img).map_err(|e| e.to_string())?;
+        std::fs::write(path, png).map_err(|e| e.to_string())?;
+        Ok(json!({ "w": img.size.w, "h": img.size.h }))
+    }
+
+    #[cfg(debug_assertions)]
     pub fn window_rects(&self) -> Value {
         let ids = lock(&self.window_ids).clone();
         let list: Vec<Value> = ids
@@ -347,7 +596,12 @@ impl Core {
         let cams = self.platform.camera().devices();
         let mics = self.platform.mic().devices();
         if let (Err(c), Err(m)) = (&cams, &mics) {
-            return Err(format!("devices: camera: {c}; mic: {m}"));
+            let (c, m) = (c.to_string(), m.to_string());
+            return Err(if c == m {
+                c
+            } else {
+                format!("camera: {c}; mic: {m}")
+            });
         }
         Ok(json!({
             "cameras": cams.unwrap_or_default(),
@@ -366,13 +620,95 @@ impl Core {
         Ok(Value::Null)
     }
 
+    pub fn show_video_effects(&self) -> Reply {
+        if !self.platform.capabilities().mic_modes {
+            return Err("video effects are not available on this system".into());
+        }
+        self.platform
+            .camera()
+            .show_video_effects()
+            .map_err(|e| e.to_string())?;
+        Ok(Value::Null)
+    }
+
     pub fn get_settings(&self) -> Reply {
         serde_json::to_value(self.settings.load()).map_err(|e| e.to_string())
     }
 
-    pub fn set_settings(&self, s: RecorderSettings) -> Reply {
+    /// The window positions in `s` are ignored: the app keeps those itself. The change is
+    /// announced in save order, before the camera catches up.
+    pub fn set_settings(&self, mut s: RecorderSettings) -> Reply {
+        let (before, v) = {
+            let _write = lock(&self.settings_write);
+            let current = self.settings.load();
+            s.bar_at = current.bar_at;
+            s.preview_at = current.preview_at;
+            s.shortcuts = current.shortcuts.clone();
+            self.settings.save(&s)?;
+            let v = serde_json::to_value(&s).map_err(|e| e.to_string())?;
+            self.emit("settings-changed", v.clone());
+            (current.camera_key, v)
+        };
+        if s.camera_key != before {
+            self.send_camera_key(&s.camera_key, true);
+        }
+        if let Err(e) = self.refresh_camera() {
+            tracing::warn!("camera after settings: {e}");
+        }
+        Ok(v)
+    }
+
+    pub fn edit_settings_pub(
+        &self,
+        f: impl FnOnce(&mut RecorderSettings),
+    ) -> Result<RecorderSettings, String> {
+        let s = self.edit_settings(f)?;
+        self.emit(
+            "settings-changed",
+            serde_json::to_value(&s).unwrap_or(Value::Null),
+        );
+        Ok(s)
+    }
+
+    pub fn shortcut_errors(&self) -> MutexGuard<'_, BTreeMap<String, String>> {
+        lock(&self.shortcut_errors)
+    }
+
+    /// The corner camera was hidden for a switch to the camera that did not happen.
+    pub fn show_camera_after_failed_switch(&self) {
+        if !self.camera_hidden_for_switch.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        let key = self.settings.load().camera_key;
+        if let Some(s) = lock(&self.session).as_ref()
+            && let Err(e) = s.camera_key(key)
+        {
+            tracing::warn!("camera key after a failed switch: {e}");
+        }
+    }
+
+    pub fn current_settings(&self) -> RecorderSettings {
+        self.settings.load()
+    }
+
+    pub fn shortcuts_paused(&self) -> bool {
+        self.shortcuts_paused.load(Ordering::SeqCst)
+    }
+
+    pub fn set_shortcuts_paused(&self, paused: bool) {
+        self.shortcuts_paused.store(paused, Ordering::SeqCst);
+    }
+
+    /// Loads, changes and saves the settings under the write lock.
+    fn edit_settings(
+        &self,
+        f: impl FnOnce(&mut RecorderSettings),
+    ) -> Result<RecorderSettings, String> {
+        let _write = lock(&self.settings_write);
+        let mut s = self.settings.load();
+        f(&mut s);
         self.settings.save(&s)?;
-        serde_json::to_value(s).map_err(|e| e.to_string())
+        Ok(s)
     }
 
     pub fn get_capabilities(&self) -> Reply {
@@ -381,26 +717,34 @@ impl Core {
         let probe = lock(&self.probe).clone();
         let per: Vec<dto::DisplayProbeDto> = displays
             .iter()
-            .map(|d| {
-                let allows = |r| {
-                    probe
-                        .as_ref()
-                        .and_then(|p| p.allows_60fps(&d.id, r))
-                        .unwrap_or(false)
-                };
-                dto::DisplayProbeDto {
+            .filter_map(|d| {
+                let allows = |r| probe.as_ref().and_then(|p| p.allows_60fps(&d.id, r));
+                Some(dto::DisplayProbeDto {
                     display_id: d.id.0.clone(),
-                    can_60fps_native: allows(Resolution::Native),
-                    can_60fps_1x: allows(Resolution::OneX),
-                }
+                    can_60fps_native: allows(Resolution::Native)?,
+                    can_60fps_1x: allows(Resolution::OneX)?,
+                })
             })
             .collect();
-        Ok(dto::capabilities(&caps, &per))
+        let mut v = dto::capabilities(&caps, &per);
+        v["own_clicks"] = json!(!caps.show_clicks && self.platform.desktop().pointer().is_ok());
+        Ok(v)
     }
 
-    pub fn preview_still(&self, source: SourceSpecDto, canvas: CanvasDto) -> Reply {
+    /// `camera_key`: the placement to show, when the caller has one newer than the saved settings.
+    pub fn preview_still(
+        &self,
+        source: SourceSpecDto,
+        canvas: CanvasDto,
+        camera_key: Option<sc_core::project::CameraKey>,
+    ) -> Reply {
         let spec = source.to_spec(|id| self.picked(id))?;
-        let snapshot = if self.platform.permissions().status(PermissionKind::Screen)
+        let camera_only = matches!(spec, sc_platform::SourceSpec::Camera { .. });
+        let device = matches!(spec, sc_platform::SourceSpec::Device { .. });
+        let device_frame = device.then(|| self.screens.latest()).flatten();
+        let snapshot = if camera_only || device {
+            None
+        } else if self.platform.permissions().status(PermissionKind::Screen)
             == PermissionStatus::Granted
         {
             match self
@@ -417,24 +761,113 @@ impl Core {
         } else {
             None
         };
-        let size = still::still_canvas(canvas.aspect, snapshot.as_ref().map(|s| s.size));
-        let bg = match &canvas.background_image {
-            Some(p) => Background::Image {
-                asset: p.clone(),
-                sha256: String::new(),
-                fit: Fit::Cover,
-                focus_norm: PointF { x: 0.5, y: 0.5 },
-            },
-            None => canvas.background.clone(),
+        let settings = self.settings.load();
+        let key = camera_key.unwrap_or(settings.camera_key);
+        let cam_frame = settings
+            .camera
+            .as_ref()
+            .filter(|_| key.visible || camera_only)
+            .and_then(|_| self.camera.latest());
+        let screen_frame = snapshot
+            .as_ref()
+            .map(|s| sc_platform::FrameBuffer(Arc::new(still::rgba_to_nv12(s))));
+        let main = if camera_only {
+            cam_frame.as_ref().map(|f| &f.buffer)
+        } else if device {
+            device_frame.as_ref().map(|f| &f.buffer)
+        } else {
+            screen_frame.as_ref()
         };
-        let png =
-            still::compose_png(&bg, size, Path::new("/"), snapshot.as_ref()).or_else(|e| {
-                tracing::warn!("still: {e}; retrying with the canvas background");
-                still::compose_png(&canvas.background, size, Path::new("/"), snapshot.as_ref())
-            })?;
+        let size = still::still_canvas(canvas.aspect, main.map(|f| f.0.size()));
+        let (bg, bg_dir) = still::canvas_background(&canvas);
+        let placement = sc_core::camera::camera_at(std::slice::from_ref(&key), 0);
+        let cam = cam_frame
+            .as_ref()
+            .filter(|_| !camera_only)
+            .zip(placement.as_ref())
+            .map(|(f, p)| (p, &f.buffer));
+        let png = still::compose_png(&bg, size, &bg_dir, main, cam, canvas.fit).or_else(|e| {
+            tracing::warn!("still: {e}; retrying with a plain background");
+            still::compose_png(
+                &still::plain_background(),
+                size,
+                &bg_dir,
+                main,
+                cam,
+                canvas.fit,
+            )
+        })?;
         let id = sc_core::ids::new_id();
         lock(&self.stills).insert(id.clone(), png);
         Ok(json!(still::still_url(&id)))
+    }
+
+    /// Gives a recording a new title. Its folder follows the title, except while the editor has
+    /// it open (the editor moves it when it closes) or it is exporting.
+    pub fn rename_recording(&self, dir: &Path, title: &str) -> Result<PathBuf, String> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err("A recording needs a name.".into());
+        }
+        if self.editor_dir().as_deref() == Some(dir) {
+            self.editor_retitle(title)?;
+            self.renamed(dir, dir, title);
+            return Ok(dir.to_path_buf());
+        }
+        let mut p = ProjectV1::load(dir).map_err(|e| e.to_string())?;
+        p.title = title.to_string();
+        p.save(dir).map_err(|e| e.to_string())?;
+        self.renamed(dir, dir, title);
+        Ok(self.move_folder_to_title(dir, title))
+    }
+
+    /// Moves `dir` to match `title`, or after the export that is reading it ends. Retries for a
+    /// second: Windows refuses while a reader that is shutting down still holds a file.
+    pub fn move_folder_to_title(&self, dir: &Path, title: &str) -> PathBuf {
+        let exporting = matches!(&*lock(&self.phase), Phase::Exporting { project_dir, .. } if project_dir == dir);
+        if exporting {
+            lock(&self.folder_moves).push((dir.to_path_buf(), title.to_string()));
+            return dir.to_path_buf();
+        }
+        let mut last = None;
+        for _ in 0..10 {
+            match sc_core::folder::rename_project_dir(dir, title) {
+                Ok(to) => {
+                    if to != dir {
+                        self.renamed(dir, &to, title);
+                    }
+                    return to;
+                }
+                Err(e) => last = Some(e),
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        if let Some(e) = last {
+            tracing::warn!(dir = %dir.display(), "rename folder: {e}");
+        }
+        dir.to_path_buf()
+    }
+
+    /// The recording in `from` is now titled `title` and lives in `to`.
+    pub fn renamed(&self, from: &Path, to: &Path, title: &str) {
+        if from != to {
+            {
+                let mut last = lock(&self.last_project);
+                if last.as_deref() == Some(from) {
+                    *last = Some(to.to_path_buf());
+                }
+            }
+            if let Phase::Saved { project_dir } = &mut *lock(&self.phase)
+                && project_dir == from
+            {
+                *project_dir = to.to_path_buf();
+            }
+        }
+        self.emit(
+            "project-renamed",
+            json!({ "from": from, "to": to, "title": title }),
+        );
+        self.emit("library-changed", json!({}));
     }
 
     pub fn still_png(&self, id: &str) -> Option<Arc<Vec<u8>>> {
@@ -447,10 +880,29 @@ impl Core {
             let _ = tx.send(p);
         }));
         let p = rx.recv().map_err(|_| "image chooser dropped".to_string())?;
+        #[cfg(target_os = "macos")]
+        let p = p.map(|p| {
+            let keep = self.settings.load().canvas.background_image;
+            crate::sandbox::keep_background_image(&self.data_dir, &p, keep.as_deref())
+        });
         Ok(p.map(|p| json!(p.to_string_lossy())).unwrap_or(Value::Null))
     }
 
+    /// Opens a file an export of this session wrote, or a license file, in its default app.
+    pub fn open_file(&self, path: &Path) -> Reply {
+        let exported = lock(&self.exported).contains(path);
+        if !exported && !crate::about::is_license_file(&self.app, path) {
+            return Err("Only a finished export or a license file can be opened.".into());
+        }
+        #[cfg(target_os = "macos")]
+        let _ = crate::sandbox::reach_export_folder(&self.data_dir, path);
+        open_path(path)?;
+        Ok(Value::Null)
+    }
+
     pub fn reveal(&self, path: &str) -> Reply {
+        #[cfg(target_os = "macos")]
+        let _ = crate::sandbox::reach_export_folder(&self.data_dir, Path::new(path));
         self.platform
             .desktop()
             .reveal(Path::new(path))
@@ -510,6 +962,7 @@ impl Core {
         self.set_purpose(purpose)?;
         let purpose = purpose.to_string();
         let core = Arc::downgrade(self);
+        self.picker_on.store(true, Ordering::SeqCst);
         self.platform.picker().present(
             PickerRequest {
                 exclude: self.window_ids(),
@@ -539,11 +992,22 @@ impl Core {
                     tracing::warn!("system picker switch: {e}");
                 }
             }
-            Ok(None) => self.emit("pick-cancelled", json!({"purpose": purpose})),
+            Ok(None) => self.release_picker(),
             Err(e) => {
                 tracing::warn!("system picker: {e}");
-                self.emit("pick-cancelled", json!({"purpose": purpose}));
+                self.release_picker();
             }
+        }
+    }
+
+    /// Switches the system picker off when no recording needs it, so macOS drops the app from
+    /// its Sharing menu; macOS keeps a switched-on picker listed even after the app quits.
+    fn release_picker(&self) {
+        if self.phase().is_recording() || !self.picker_on.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        if let Err(e) = self.platform.picker().set_active(false) {
+            tracing::warn!("system picker off: {e}");
         }
     }
 
@@ -585,6 +1049,7 @@ impl Core {
     }
 
     /// What the region overlay does when the user confirms a region.
+    #[cfg(debug_assertions)]
     pub fn region_selected(&self, display_id: &str, region: RectPt) -> Reply {
         let purpose = self.purpose();
         self.hide_window("region");
@@ -602,6 +1067,7 @@ impl Core {
     }
 
     /// What the pick overlay does when the user clicks a window or display.
+    #[cfg(debug_assertions)]
     pub fn source_picked(&self, source: SourceSpecDto) -> Reply {
         let purpose = self.purpose();
         self.hide_window("pick");
@@ -622,6 +1088,64 @@ impl Core {
     }
 
     pub fn start_recording(self: &Arc<Self>, req: RecordRequestDto) -> Reply {
+        self.phase().next(Input::Start)?;
+        let claim = self.claim_start()?;
+        let n = if self.no_key_windows {
+            0
+        } else {
+            req.settings.countdown_s
+        };
+        if n > 0 {
+            self.refresh_tray();
+            if self.platform.capabilities().exclusion != sc_platform::ExclusionKind::AutoHide {
+                self.hide_window("panel");
+            }
+            self.place_bar();
+            if let Err(e) = self.show_window("bar", false) {
+                tracing::warn!("{e}");
+            }
+            for left in (1..=n).rev() {
+                self.emit("countdown", json!({ "left": left }));
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                if self.countdown_cancel.load(Ordering::SeqCst) == claim.id {
+                    self.emit("countdown", json!({ "left": 0, "cancelled": true }));
+                    self.hide_window("bar");
+                    return Ok(json!({ "cancelled": true }));
+                }
+            }
+            self.emit("countdown", json!({ "left": 0 }));
+        }
+        self.start_recording_now(req)
+    }
+
+    fn start_recording_now(self: &Arc<Self>, mut req: RecordRequestDto) -> Reply {
+        self.phase().next(Input::Start)?;
+        if let Some(id) = req.settings.mic.clone() {
+            let mics = self.platform.mic().devices().unwrap_or_default();
+            if let Some(to) = stand_in(&mics, &id) {
+                tracing::warn!("mic {id} can't be used; recording with {to:?}");
+                req.settings.mic = to;
+            }
+        }
+        if let Some(id) = req.settings.camera.clone() {
+            let cams = self.platform.camera().devices().unwrap_or_default();
+            if let Some(to) = stand_in(&cams, &id) {
+                tracing::warn!("camera {id} can't be used; recording with {to:?}");
+                if let crate::dto::SourceSpecDto::Camera { device_id } = &mut req.source
+                    && *device_id == id
+                {
+                    match &to {
+                        Some(t) => device_id.clone_from(t),
+                        None => return Err("The chosen camera can't be used right now.".into()),
+                    }
+                }
+                req.settings.camera = to;
+            }
+        }
+        lock(&self.preview).switched_to = None;
+        *lock(&self.last_request) = Some(req.clone());
+        *lock(&self.paused_total) = std::time::Duration::ZERO;
+        *lock(&self.paused_since) = None;
         let spec = req.source.to_spec(|id| self.picked(id))?;
         std::fs::create_dir_all(&self.projects_dir)
             .map_err(|e| format!("create {}: {e}", self.projects_dir.display()))?;
@@ -648,8 +1172,15 @@ impl Core {
             "recording-state",
             dto::recording_state(&SessionState::Preparing, 0),
         );
-        if let Err(e) = self.show_window("bar", false) {
-            tracing::warn!("{e}");
+        if self.platform.capabilities().exclusion == sc_platform::ExclusionKind::AutoHide {
+            for (label, _) in WINDOWS {
+                self.hide_window(label);
+            }
+        } else {
+            self.place_bar();
+            if let Err(e) = self.show_window("bar", false) {
+                tracing::warn!("{e}");
+            }
         }
         let obs = Arc::new(Observer {
             core: Arc::downgrade(self),
@@ -723,9 +1254,26 @@ impl Core {
             Via::OwnChooser
         };
         let spec = source.to_spec(|id| self.picked(id))?;
+        let to_camera = matches!(spec, sc_platform::SourceSpec::Camera { .. });
         let guard = lock(&self.session);
         let s = guard.as_ref().ok_or("not recording")?;
         s.switch_source(spec, via).map_err(|e| e.to_string())?;
+        let key = self.settings.load().camera_key;
+        self.camera_hidden_for_switch
+            .store(to_camera && key.visible, Ordering::SeqCst);
+        if key.visible
+            && let Err(e) = s.camera_key(sc_core::project::CameraKey {
+                visible: !to_camera,
+                ..key
+            })
+        {
+            tracing::warn!("camera key after a switch: {e}");
+        }
+        let mut p = lock(&self.preview);
+        p.switched_to = Some(source.clone());
+        if let Some((src, _)) = p.stage.as_mut() {
+            *src = source;
+        }
         Ok(Value::Null)
     }
 
@@ -751,6 +1299,7 @@ impl Core {
                     s.take();
                 }
                 self.on_failed(error);
+                self.release_picker();
                 return;
             }
             SessionState::Preparing => {}
@@ -771,18 +1320,70 @@ impl Core {
         {
             return;
         }
+        self.release_picker();
         *lock(&self.rec_started) = None;
         *lock(&self.last_health) = None;
         *lock(&self.last_project) = Some(project_dir.clone());
-        self.emit(
-            "recording-state",
-            dto::recording_state(&SessionState::Finalized { project_dir }, 0),
-        );
-        self.hide_window("bar");
-        if let Err(e) = self.show_window("saved", false) {
-            tracing::warn!("{e}");
+        let project_dir_for_editor = project_dir.clone();
+        let project = sc_core::project::ProjectV1::load(&project_dir).ok();
+        let duration = project.as_ref().and_then(|p| p.duration_ns());
+        let mut kinds: Vec<&str> = Vec::new();
+        for t in project.iter().flat_map(|p| &p.recording.tracks) {
+            let k = match t.kind {
+                sc_core::project::TrackKind::Screen => "screen",
+                sc_core::project::TrackKind::Camera => "camera",
+                sc_core::project::TrackKind::Mic => "mic",
+                sc_core::project::TrackKind::SystemAudio => "system_audio",
+                sc_core::project::TrackKind::DeviceAudio => "device_audio",
+            };
+            if !kinds.contains(&k) {
+                kinds.push(k);
+            }
         }
+        let mut state = dto::recording_state(&SessionState::Finalized { project_dir }, 0);
+        state["duration_ns"] = json!(duration);
+        state["tracks"] = json!(kinds);
+        self.emit("recording-state", state);
+        self.hide_window("bar");
+        self.after_recording(project_dir_for_editor);
         self.refresh_tray();
+    }
+
+    /// What happens when a recording is saved: the editor opens with it, unless the
+    /// settings ask for the Saved window.
+    fn after_recording(&self, project_dir: PathBuf) {
+        let Some(core) = self.app.try_state::<Arc<Core>>().map(|c| c.inner().clone()) else {
+            return;
+        };
+        match self.settings.load().after_recording {
+            crate::settings::AfterRecording::Saved => {
+                if let Err(e) = self.show_window("saved", false) {
+                    tracing::warn!("{e}");
+                }
+                return;
+            }
+            crate::settings::AfterRecording::QuickExport => {
+                if let Err(e) = self.show_window("saved", false) {
+                    tracing::warn!("{e}");
+                }
+                std::thread::spawn(move || {
+                    if let Err(e) = core.export_with_last_settings(&project_dir) {
+                        tracing::warn!("export after recording: {e}");
+                        core.emit("notice", json!({ "kind": "export_failed", "error": e }));
+                    }
+                });
+                return;
+            }
+            crate::settings::AfterRecording::Editor => {}
+        }
+        std::thread::spawn(move || {
+            if let Err(e) = core.editor_open(&project_dir) {
+                tracing::warn!("editor after recording: {e}");
+                if let Err(e) = core.show_window("saved", false) {
+                    tracing::warn!("{e}");
+                }
+            }
+        });
     }
 
     fn on_failed(&self, error: &str) {
@@ -799,12 +1400,32 @@ impl Core {
             ),
         );
         self.hide_window("bar");
+        if let Err(e) = self.show_window("panel", false) {
+            tracing::warn!("{e}");
+        }
         self.refresh_tray();
     }
 
     pub fn refresh_tray(&self) {
         if let Some(t) = self.tray.get() {
-            t.refresh(&self.phase(), self.elapsed_ns());
+            t.refresh(
+                &self.phase(),
+                self.elapsed_ns(),
+                self.is_paused(),
+                self.starting(),
+            );
+        }
+    }
+
+    /// The record hotkey and the tray's Start/Stop item: stops a recording, cancels a countdown
+    /// (a second press must not start a second one), or starts.
+    pub fn start_stop(self: &Arc<Self>) -> Reply {
+        if self.phase().is_recording() {
+            self.stop_recording()
+        } else if self.starting() {
+            self.cancel_countdown()
+        } else {
+            self.tray_start()
         }
     }
 
@@ -824,6 +1445,80 @@ impl Core {
                 Ok(Value::Null)
             }
         }
+    }
+
+    pub fn probe_snapshot(&self) -> Option<ProbeV1> {
+        lock(&self.probe).clone()
+    }
+
+    /// Starts an export of `project_dir` through `start`; returns the job id.
+    pub fn run_export(
+        self: &Arc<Self>,
+        project_dir: &str,
+        start: impl FnOnce(Arc<dyn ExportObserver>) -> sc_export::Result<ExportJob>,
+    ) -> Reply {
+        let job_id = sc_core::ids::new_id();
+        let before = self.phase();
+        self.advance(Input::ExportStart {
+            project_dir: PathBuf::from(project_dir),
+            job: job_id.clone(),
+        })?;
+        let obs: Arc<dyn ExportObserver> = Arc::new(ExportObs {
+            core: Arc::downgrade(self),
+            id: job_id.clone(),
+        });
+        match start(obs) {
+            Ok(job) => {
+                lock(&self.exports).insert(job_id.clone(), job);
+                *lock(&self.last_export) = Some(job_id.clone());
+                Ok(json!(job_id))
+            }
+            Err(e) => {
+                *lock(&self.phase) = before;
+                Err(format!("export: {e}"))
+            }
+        }
+    }
+
+    /// The export sheet's last format and its remembered settings, without the sheet.
+    pub fn export_with_last_settings(self: &Arc<Self>, project_dir: &Path) -> Reply {
+        let store = crate::exports::load(&self.data_dir);
+        let format = store
+            .last_format
+            .unwrap_or(sc_export::settings::Format::Mp4);
+        let key = serde_json::to_value(format)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        let settings = store
+            .per_format
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| sc_export::settings::ExportSettings::for_format(format))
+            .normalized();
+        #[cfg(target_os = "macos")]
+        let stage = crate::sandbox::export_stage(&self.data_dir, &settings, project_dir)?;
+        #[cfg(not(target_os = "macos"))]
+        let stage = None;
+        let platform = self.platform.clone();
+        let d = project_dir.to_path_buf();
+        let r = self.run_export(&project_dir.to_string_lossy(), move |obs| {
+            ExportJob::start_staged(
+                platform,
+                sc_export::plan::ExportRequest {
+                    project_dir: d,
+                    settings,
+                    out_path: None,
+                    canvas: None,
+                },
+                stage,
+                obs,
+            )
+        })?;
+        if let Some(id) = r.as_str() {
+            lock(&self.raw_after_export).insert(id.to_string(), project_dir.to_path_buf());
+        }
+        Ok(r)
     }
 
     pub fn quick_export(self: &Arc<Self>, project_dir: &str, size: &str) -> Reply {
@@ -848,6 +1543,7 @@ impl Core {
             Ok(job) => {
                 lock(&self.exports).insert(job_id.clone(), job);
                 *lock(&self.last_export) = Some(job_id.clone());
+                lock(&self.raw_after_export).insert(job_id.clone(), PathBuf::from(project_dir));
                 Ok(json!(job_id))
             }
             Err(e) => {
@@ -865,6 +1561,9 @@ impl Core {
     }
 
     fn on_export_state(&self, id: &str, s: &ExportState) {
+        if let ExportState::Done { path } = s {
+            lock(&self.exported).insert(path.clone());
+        }
         self.emit("export-state", dto::export_state(id, s));
         if matches!(
             s,
@@ -878,6 +1577,28 @@ impl Core {
                 });
             }
             let _ = self.advance(Input::ExportEnd);
+            let mut trashed = None;
+            let dir = lock(&self.raw_after_export).remove(id);
+            if let (ExportState::Done { .. }, Some(dir)) = (s, dir)
+                && self.settings.load().delete_raw_after_export
+                && self.editor_dir().as_deref() != Some(dir.as_path())
+            {
+                match self.platform.desktop().trash(&dir) {
+                    Ok(()) => {
+                        tracing::info!(dir = %dir.display(), "raw files moved to the Trash after export");
+                        self.emit("library-changed", json!({}));
+                        trashed = Some(dir);
+                    }
+                    Err(e) => tracing::warn!("delete raw files after export: {e}"),
+                }
+            }
+            let moves: Vec<(PathBuf, String)> = lock(&self.folder_moves).drain(..).collect();
+            for (dir, title) in moves {
+                let open = self.editor_dir().as_deref() == Some(dir.as_path());
+                if !open && trashed.as_ref() != Some(&dir) {
+                    self.move_folder_to_title(&dir, &title);
+                }
+            }
         }
     }
 
@@ -944,6 +1665,28 @@ impl Core {
         tracing::info!(ms = t0.elapsed().as_millis() as u64, "launch tasks done");
     }
 
+    /// Off the main thread, since opening a camera blocks: closes `lost` if it is the open camera,
+    /// then opens the preview's camera again if it is missing (unplugged, then plugged back in).
+    fn camera_in_background(self: &Arc<Self>, lost: Option<String>) {
+        let core = Arc::downgrade(self);
+        let spawned = std::thread::Builder::new()
+            .name("camera-devices".into())
+            .spawn(move || {
+                let Some(core) = core.upgrade() else { return };
+                if let Some(id) = lost {
+                    tracing::warn!(device = id, "camera unplugged");
+                    core.camera.device_lost(&id);
+                    core.screens.device_lost(&id);
+                }
+                if let Err(e) = core.refresh_camera() {
+                    tracing::warn!("camera after a device change: {e}");
+                }
+            });
+        if let Err(e) = spawned {
+            tracing::warn!("camera device thread: {e}");
+        }
+    }
+
     pub fn on_system_event(self: &Arc<Self>, e: SourceEvent) {
         match e {
             SourceEvent::DevicesChanged { kind } => {
@@ -951,7 +1694,14 @@ impl Core {
                     "devices-changed",
                     json!({"kind": format!("{kind:?}").to_lowercase()}),
                 );
+                if kind == sc_platform::DeviceKind::Camera {
+                    self.camera_in_background(None);
+                }
             }
+            SourceEvent::DeviceLost {
+                kind: sc_platform::DeviceKind::Camera,
+                device_id,
+            } => self.camera_in_background(Some(device_id)),
             SourceEvent::OwnWindowsChanged => {
                 if lock(&self.session).is_none() {
                     return;
@@ -998,13 +1748,41 @@ impl Core {
                 tracing::info!(id, "export cancelled on exit: {e}");
             }
         }
+        if self.editor_dir().is_some()
+            && let Err(e) = self.editor_close()
+        {
+            tracing::warn!("editor on exit: {e}");
+        }
         if let Some(w) = lock(&self.watcher).take()
             && let Err(e) = w.stop()
         {
             tracing::warn!("stop system watcher: {e}");
         }
+        self.release_picker();
         self.exit_done.store(true, Ordering::SeqCst);
         self.app.exit(code);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn apply_material(
+    w: &tauri::WebviewWindow,
+    material: sc_capture_macos::material::Material,
+    radius: f64,
+) {
+    let label = w.label().to_string();
+    let applied = w.with_webview(move |pw| {
+        let Some(wk) = std::ptr::NonNull::new(pw.inner()) else {
+            return;
+        };
+        // SAFETY: Tauri runs this on the main thread with the live WKWebView.
+        if let Err(e) = unsafe { sc_capture_macos::material::material_under(wk, material, radius) }
+        {
+            tracing::warn!(label, "window material: {e}");
+        }
+    });
+    if let Err(e) = applied {
+        tracing::warn!("window material: {e}");
     }
 }
 
@@ -1018,7 +1796,17 @@ fn configure_one(
     unsafe { platform.overlays().configure(raw, role) }.map_err(|e| e.to_string())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+fn configure_one(
+    platform: &dyn Platform,
+    w: &tauri::WebviewWindow,
+    role: OverlayRole,
+) -> Result<WindowId, String> {
+    let raw = w.hwnd().map_err(|e| e.to_string())?.0;
+    unsafe { platform.overlays().configure(raw, role) }.map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "linux")]
 fn configure_one(
     platform: &dyn Platform,
     _w: &tauri::WebviewWindow,
@@ -1041,19 +1829,46 @@ fn show_without_key(w: &tauri::WebviewWindow) -> Result<(), String> {
     w.show().map_err(|e| e.to_string())
 }
 
-fn open_url(url: &str) -> Result<(), String> {
-    let program = if cfg!(target_os = "macos") {
-        "open"
-    } else if cfg!(windows) {
-        "explorer"
-    } else {
-        "xdg-open"
-    };
-    std::process::Command::new(program)
-        .arg(url)
+fn open_path(path: &Path) -> Result<(), String> {
+    if !path.is_absolute() || !path.is_file() {
+        return Err(format!("{} is not a file", path.display()));
+    }
+    #[cfg(target_os = "macos")]
+    return sc_capture_macos::workspace::open_file(path).map_err(|e| e.to_string());
+    #[cfg(not(target_os = "macos"))]
+    launch(path.as_os_str())
+}
+
+pub(crate) fn open_url(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    return sc_capture_macos::workspace::open_url(url).map_err(|e| e.to_string());
+    #[cfg(not(target_os = "macos"))]
+    launch(OsStr::new(url))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn launch(target: &OsStr) -> Result<(), String> {
+    let program = opener();
+    std::process::Command::new(&program)
+        .arg(target)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("{program} {url}: {e}"))
+        .map_err(|e| format!("{} {}: {e}", program.display(), Path::new(target).display()))
+}
+
+/// The system's opener, by full path where it has a fixed home, so that a program of the same
+/// name earlier on `PATH` can't stand in for it.
+#[cfg(not(target_os = "macos"))]
+fn opener() -> PathBuf {
+    if cfg!(windows) {
+        std::env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+            .join("explorer.exe")
+    } else {
+        PathBuf::from("xdg-open")
+    }
 }
 
 /// A menu of ours began tracking: its window may appear a moment after the notification, so the
@@ -1116,11 +1931,33 @@ impl SessionObserver for Observer {
     fn on_health(&self, h: &HealthSnapshot) {
         if let Some(c) = self.core.upgrade() {
             *lock(&c.last_health) = Some((Instant::now(), h.rec_ns));
-            c.emit("health", dto::health(h));
+            let mut v = dto::health(h);
+            if let Some(o) = v.as_object_mut() {
+                o.insert("elapsed_ns".into(), json!(c.elapsed_ns()));
+                o.insert("paused".into(), json!(c.is_paused()));
+            }
+            c.emit("health", v);
+            c.refresh_tray();
+        }
+    }
+    fn on_level(&self, track: sc_platform::AudioTrackKind, peak: f32) {
+        if track != sc_platform::AudioTrackKind::Mic {
+            return;
+        }
+        if let Some(c) = self.core.upgrade() {
+            let db = if peak <= 1e-6 {
+                -120.0
+            } else {
+                20.0 * peak.log10()
+            };
+            c.emit("mic-level", json!({ "peak_db": db }));
         }
     }
     fn on_notice(&self, n: &Notice) {
         if let Some(c) = self.core.upgrade() {
+            if matches!(n, Notice::SwitchFailed { .. } | Notice::SourceLost { .. }) {
+                c.show_camera_after_failed_switch();
+            }
             c.emit("notice", dto::notice(n));
         }
     }
@@ -1156,5 +1993,501 @@ impl FrameSink for SystemSink {
         if let Some(c) = self.core.upgrade() {
             c.on_system_event(e);
         }
+    }
+}
+
+/// Released on every way out of a start: cancelled, failed, or handed over to the recording.
+struct StartClaim<'a> {
+    core: &'a Core,
+    id: u64,
+}
+
+impl Drop for StartClaim<'_> {
+    fn drop(&mut self) {
+        let _ =
+            self.core
+                .start_claim
+                .compare_exchange(self.id, 0, Ordering::SeqCst, Ordering::SeqCst);
+        self.core.refresh_tray();
+    }
+}
+
+fn is_recording(p: &Phase) -> bool {
+    matches!(p, Phase::Recording | Phase::Switching | Phase::Stopping)
+}
+
+impl Core {
+    pub fn exiting(&self) -> bool {
+        self.exiting.load(Ordering::SeqCst)
+    }
+
+    /// The recorder panel opened (`true`) or closed. The camera and the preview window run while
+    /// the panel is open or a recording is on (ADR-041, ADR-043).
+    pub fn camera_preview(&self, active: bool) -> Reply {
+        lock(&self.preview).panel_open = active;
+        self.refresh_camera()
+    }
+
+    /// Runs the panel's microphone level while the panel is open, a mic is chosen and allowed,
+    /// and nothing records (the recorder then owns the mic).
+    fn refresh_mic_meter(&self, s: &crate::settings::RecorderSettings, recording: bool) {
+        let want = s.mic.clone().filter(|_| {
+            !recording
+                && !self.no_key_windows
+                && lock(&self.preview).panel_open
+                && self
+                    .platform
+                    .permissions()
+                    .status(sc_platform::PermissionKind::Microphone)
+                    == sc_platform::PermissionStatus::Granted
+        });
+        let mut cur = lock(&self.mic_meter);
+        if cur.as_ref().map(|(d, _)| d.as_str()) == want.as_deref() {
+            return;
+        }
+        if let Some((_, stream)) = cur.take() {
+            let _ = stream.stop();
+        }
+        if let Some(device) = want {
+            let sink = Arc::new(crate::meter::MeterSink {
+                app: self.app.clone(),
+                last: Mutex::new((Instant::now(), 0.0)),
+            });
+            match self.platform.mic().start(&device, sink) {
+                Ok(stream) => *cur = Some((device, stream)),
+                Err(e) => tracing::debug!("mic meter: {e}"),
+            }
+        }
+    }
+
+    /// Opens or releases the camera and shows or hides the preview window to match the settings.
+    pub fn refresh_camera(&self) -> Reply {
+        let s = self.settings.load();
+        let recording = is_recording(&self.phase());
+        self.refresh_mic_meter(&s, recording);
+        let active = lock(&self.preview).panel_open || recording;
+        let device = if active { s.camera.clone() } else { None };
+        let busy = device.as_ref().filter(|_| !recording).and_then(|id| {
+            let cams = self.platform.camera().devices().unwrap_or_default();
+            cams.into_iter()
+                .find(|c| &c.id == id)
+                .and_then(|c| c.unavailable)
+        });
+        let device = if busy.is_some() { None } else { device };
+        if let Err(e) = self.camera.set_limit(s.camera_quality.limit()) {
+            tracing::warn!("camera quality: {e}");
+        }
+        let camera_error = busy.or_else(|| {
+            self.camera
+                .set_preview(device.clone())
+                .err()
+                .map(|e| e.to_string())
+        });
+        if let Some(e) = &camera_error {
+            tracing::warn!("camera preview: {e}");
+        }
+        let source = lock(&self.preview)
+            .switched_to
+            .clone()
+            .filter(|_| recording)
+            .or_else(|| s.source.clone());
+        let phone = match &source {
+            Some(crate::dto::SourceSpecDto::Device { device_id }) if active => {
+                Some(device_id.clone())
+            }
+            _ => None,
+        };
+        if let Err(e) = self.screens.set_preview(phone) {
+            tracing::warn!("device screen preview: {e}");
+        }
+        let show = active && s.preview_shown && source.is_some();
+        let place = {
+            let mut p = lock(&self.preview);
+            p.key = Some(s.camera_key.clone());
+            p.stage = source.filter(|_| show).map(|src| (src, s.canvas.clone()));
+            show && !std::mem::replace(&mut p.placed, true)
+        };
+        if show {
+            if place {
+                self.place_preview(&s);
+            }
+            self.show_window("stage", false)?;
+        } else {
+            self.hide_window("stage");
+            self.live.clear("stage");
+        }
+        match camera_error {
+            Some(e) if !recording => Err(format!("camera: {e}")),
+            _ => Ok(json!({ "shown": show })),
+        }
+    }
+
+    /// First showing: where it was last moved to, if still on a display; otherwise the bottom-right
+    /// corner of the recorded display.
+    fn place_preview(&self, s: &RecorderSettings) {
+        let Some(w) = self.app.get_webview_window("stage") else {
+            return;
+        };
+        let displays = self.platform.screen().displays().unwrap_or_default();
+        let size = w
+            .outer_size()
+            .ok()
+            .map(|p| p.to_logical::<f64>(w.scale_factor().unwrap_or(1.0)))
+            .map_or((560.0, 360.0), |l| (l.width, l.height));
+        let fits = |p: &sc_geometry::PointF| {
+            displays.iter().any(|d| {
+                let f = d.frame_pt;
+                p.x >= f.x && p.y >= f.y && p.x + size.0 <= f.x + f.w && p.y + size.1 <= f.y + f.h
+            })
+        };
+        let at = s.preview_at.filter(fits).or_else(|| {
+            crate::preview::display_for(s, &displays).map(|d| {
+                let f = d.frame_pt;
+                sc_geometry::PointF {
+                    x: f.x + f.w - size.0 - 24.0,
+                    y: f.y + f.h - size.1 - 96.0,
+                }
+            })
+        });
+        if let Some(at) = at {
+            lock(&self.preview).placed_at = Some(at);
+            if let Err(e) = w.set_position(LogicalPosition::new(at.x, at.y)) {
+                tracing::warn!("place preview: {e}");
+            }
+        }
+    }
+
+    /// Reshapes the Preview window to the frame's `ratio` (width / height), keeping about its area
+    /// and its bottom-right corner, within the display it is on.
+    pub fn fit_stage_window(&self, ratio: f64) {
+        let Some(w) = self.app.get_webview_window("stage") else {
+            return;
+        };
+        let scale = w.scale_factor().unwrap_or(1.0);
+        let (Ok(inner), Ok(pos)) = (w.inner_size(), w.outer_position()) else {
+            return;
+        };
+        let inner = inner.to_logical::<f64>(scale);
+        let pos = pos.to_logical::<f64>(scale);
+        let display = self
+            .platform
+            .screen()
+            .displays()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|d| {
+                let f = d.frame_pt;
+                pos.x >= f.x && pos.x < f.x + f.w && pos.y >= f.y && pos.y < f.y + f.h
+            });
+        let max = display.as_ref().map_or((1600.0, 1000.0), |d| {
+            (d.frame_pt.w * 0.6, d.frame_pt.h * 0.6)
+        });
+        let (nw, nh) =
+            crate::preview::reshaped((inner.width, inner.height), ratio, (240.0, 160.0), max);
+        if (nw - inner.width).abs() < 2.0 && (nh - inner.height).abs() < 2.0 {
+            return;
+        }
+        let mut x = pos.x + inner.width - nw;
+        let mut y = pos.y + inner.height - nh;
+        if let Some(d) = &display {
+            let f = d.frame_pt;
+            x = x.clamp(f.x, (f.x + f.w - nw).max(f.x));
+            y = y.clamp(f.y, (f.y + f.h - nh).max(f.y));
+        }
+        lock(&self.preview).placed_at = Some(sc_geometry::PointF { x, y });
+        if let Err(e) = w
+            .set_size(LogicalSize::new(nw, nh))
+            .and_then(|_| w.set_position(LogicalPosition::new(x, y)))
+        {
+            tracing::warn!("reshape preview: {e}");
+        }
+    }
+
+    /// The preview window's close button turns the preview off (the panel's "Show preview").
+    pub fn preview_closed(&self) {
+        if self.settings.load().preview_shown {
+            let _write = lock(&self.settings_write);
+            let mut s = self.settings.load();
+            s.preview_shown = false;
+            match self.settings.save(&s) {
+                Ok(()) => self.emit("settings-changed", json!(s)),
+                Err(e) => tracing::warn!("preview off: {e}"),
+            }
+        }
+        if let Err(e) = self.refresh_camera() {
+            tracing::warn!("preview off: {e}");
+        }
+    }
+
+    /// The preview window was moved: remembered for next time.
+    pub fn preview_moved(self: &Arc<Self>, x: f64, y: f64) {
+        let at = sc_geometry::PointF { x, y };
+        {
+            let mut p = lock(&self.preview);
+            if p.placed_at
+                .is_some_and(|q| (q.x - x).abs() < 1.0 && (q.y - y).abs() < 1.0)
+            {
+                return;
+            }
+            if p.moved_to.replace(at).is_some() {
+                return;
+            }
+        }
+        let core = Arc::downgrade(self);
+        let spawned = std::thread::Builder::new()
+            .name("preview-moved".into())
+            .spawn(move || {
+                std::thread::sleep(Duration::from_millis(400));
+                let Some(core) = core.upgrade() else { return };
+                let Some(at) = lock(&core.preview).moved_to.take() else {
+                    return;
+                };
+                if let Err(e) = core.edit_settings(|s| s.preview_at = Some(at)) {
+                    tracing::warn!("remember preview position: {e}");
+                }
+            });
+        if let Err(e) = spawned {
+            tracing::warn!("preview position thread: {e}");
+        }
+    }
+
+    /// What the stage renderer draws, or `None` while the stage is hidden.
+    pub fn stage_inputs(&self) -> Option<crate::stage::StageInputs> {
+        let (src, canvas, key) = {
+            let b = lock(&self.preview);
+            let (src, canvas) = b.stage.clone()?;
+            (src, canvas, b.key.clone())
+        };
+        let (background, background_dir) = still::canvas_background(&canvas);
+        Some(crate::stage::StageInputs {
+            source: src.to_spec(|id| self.picked(id)).ok(),
+            aspect: canvas.aspect,
+            fit: canvas.fit,
+            background,
+            background_dir,
+            key: key.filter(|k| k.visible),
+        })
+    }
+
+    /// Kept current by [`Core::stage_window_changed`]; measured once when unknown.
+    pub fn stage_page(&self) -> Option<StagePage> {
+        if let Some(page) = lock(&self.preview).page {
+            return Some(page);
+        }
+        let page = self.measure_stage_page()?;
+        lock(&self.preview).page = Some(page);
+        Some(page)
+    }
+
+    fn measure_stage_page(&self) -> Option<StagePage> {
+        let w = self.app.get_webview_window("stage")?;
+        let scale = w.scale_factor().unwrap_or(1.0);
+        let l = w.inner_size().ok()?.to_logical::<f64>(scale);
+        Some(StagePage {
+            w: l.width,
+            h: l.height,
+            scale,
+        })
+    }
+
+    /// Main thread: the preview window was resized or moved to a display with another scale.
+    pub fn stage_window_changed(&self) {
+        let page = self.measure_stage_page();
+        #[cfg(target_os = "macos")]
+        let page = self.fit_stage_view().or(page);
+        lock(&self.preview).page = page;
+    }
+
+    /// Main thread: refits the native preview view, if there is one, and returns the page.
+    #[cfg(target_os = "macos")]
+    fn fit_stage_view(&self) -> Option<StagePage> {
+        crate::sink::refit(lock(&self.preview).view?)
+    }
+
+    pub fn stage_presented(&self, frame: crate::preview::StageFrame) {
+        let mut p = lock(&self.preview);
+        p.frames += 1;
+        p.last = Some(frame);
+    }
+
+    /// A `CAMetalLayer` under the preview window's page (ADR-007), valid while that window lives.
+    #[cfg(target_os = "macos")]
+    pub fn stage_layer(&self) -> Result<std::ptr::NonNull<std::ffi::c_void>, String> {
+        let (layer, view, page) = crate::sink::attach_layer(&self.app, "stage")?;
+        {
+            let mut p = lock(&self.preview);
+            p.view = Some(view);
+            p.page = Some(page);
+        }
+        std::ptr::NonNull::new(layer as *mut std::ffi::c_void).ok_or_else(|| "null layer".into())
+    }
+
+    /// A camera placement while it is being dragged in the preview: shown at once (and a keyframe
+    /// while recording) but not saved; the preview saves the settings when the drag ends.
+    /// `last`: the end of a drag, always sent.
+    pub fn camera_key_live(&self, key: sc_core::project::CameraKey, last: bool) -> Reply {
+        lock(&self.preview).key = Some(key.clone());
+        self.send_camera_key(&key, last);
+        Ok(Value::Null)
+    }
+
+    /// During a recording, `key` becomes a camera keyframe now. Drags send at most 30 a second
+    /// (`force` sends regardless, for the last position and discrete edits).
+    fn send_camera_key(&self, key: &sc_core::project::CameraKey, force: bool) {
+        if !is_recording(&self.phase()) {
+            return;
+        }
+        {
+            let mut b = lock(&self.preview);
+            let now = Instant::now();
+            if !force
+                && b.last_key_sent
+                    .is_some_and(|t| now.duration_since(t) < Duration::from_millis(33))
+            {
+                return;
+            }
+            b.last_key_sent = Some(now);
+        }
+        if let Some(s) = lock(&self.session).as_ref()
+            && let Err(e) = s.camera_key(key.clone())
+        {
+            tracing::warn!("camera key: {e}");
+        }
+    }
+
+    /// The control bar where it was last moved to, if that is still on a display; otherwise at
+    /// the bottom centre of the recorded display, clear of the Dock.
+    fn place_bar(&self) {
+        let Some(w) = self.app.get_webview_window("bar") else {
+            return;
+        };
+        let s = self.settings.load();
+        let displays = self.platform.screen().displays().unwrap_or_default();
+        let size = w
+            .outer_size()
+            .ok()
+            .map(|p| p.to_logical::<f64>(w.scale_factor().unwrap_or(1.0)))
+            .map_or((520.0, 56.0), |l| (l.width, l.height));
+        let on_screen = |p: &sc_geometry::PointF| {
+            displays.iter().any(|d| {
+                let f = d.frame_pt;
+                p.x >= f.x && p.y >= f.y && p.x + size.0 <= f.x + f.w && p.y + size.1 <= f.y + f.h
+            })
+        };
+        let at = s.bar_at.filter(on_screen).or_else(|| {
+            crate::preview::display_for(&s, &displays).map(|d| {
+                let f = d.frame_pt;
+                sc_geometry::PointF {
+                    x: f.x + (f.w - size.0) / 2.0,
+                    y: f.y + f.h - size.1 - 96.0,
+                }
+            })
+        });
+        if let Some(at) = at
+            && let Err(e) = w.set_position(LogicalPosition::new(at.x, at.y))
+        {
+            tracing::warn!("place bar: {e}");
+        }
+    }
+
+    /// Dragging the control bar by its grip: `phase` is `begin`, `move` or `end`; `x`, `y` are
+    /// global points. The end position is remembered.
+    pub fn bar_drag(&self, phase: &str, x: f64, y: f64) -> Reply {
+        let w = self.app.get_webview_window("bar").ok_or("no bar window")?;
+        let scale = w.scale_factor().unwrap_or(1.0);
+        let pos = w
+            .outer_position()
+            .map_err(|e| e.to_string())?
+            .to_logical::<f64>(scale);
+        match phase {
+            "begin" => {
+                *lock(&self.bar_drag) = Some(((x, y), (pos.x, pos.y)));
+            }
+            "move" => {
+                if let Some(((px, py), (wx, wy))) = *lock(&self.bar_drag) {
+                    w.set_position(LogicalPosition::new(wx + x - px, wy + y - py))
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+            "end" => {
+                if lock(&self.bar_drag).take().is_some() {
+                    let at = sc_geometry::PointF { x: pos.x, y: pos.y };
+                    self.edit_settings(|s| s.bar_at = Some(at))?;
+                }
+            }
+            other => return Err(format!("bar_drag: unknown phase {other:?}")),
+        }
+        Ok(Value::Null)
+    }
+
+    pub fn preview_state(&self) -> Reply {
+        let p = lock(&self.preview);
+        Ok(json!({
+            "shown": p.stage.is_some(),
+            "key": p.key,
+            "frame": p.frames,
+            "native": p.last.is_some_and(|f| f.native),
+            "page": p.page.map(|g| json!({"w": g.w, "h": g.h, "scale": g.scale})),
+            "drawable": p.last.map(|f| f.drawable),
+            "canvas": p.last.map(|f| f.canvas),
+            "camera_px": p.last.and_then(|f| f.camera).map(|r| json!([r.x, r.y, r.w, r.h])),
+            "camera_open": self.camera.open_device(),
+        }))
+    }
+}
+
+/// The device to use instead of `id` when it is gone or busy: the default one, else the first
+/// usable one, else none. `None` when `id` can be used.
+fn stand_in(devices: &[sc_platform::CaptureDevice], id: &str) -> Option<Option<String>> {
+    let usable = |d: &&sc_platform::CaptureDevice| {
+        d.unavailable.is_none() && d.kind_hint.as_deref() != Some("screen")
+    };
+    if devices.iter().filter(usable).any(|d| d.id == id) {
+        return None;
+    }
+    let pick = devices
+        .iter()
+        .filter(usable)
+        .find(|d| d.is_default)
+        .or_else(|| devices.iter().find(usable));
+    Some(pick.map(|d| d.id.clone()))
+}
+
+#[cfg(test)]
+mod stand_in_tests {
+    use super::stand_in;
+    use sc_platform::CaptureDevice;
+
+    fn dev(id: &str, default: bool, unavailable: bool) -> CaptureDevice {
+        CaptureDevice {
+            id: id.into(),
+            name: id.into(),
+            model_id: None,
+            is_default: default,
+            kind_hint: None,
+            unavailable: unavailable.then(|| "busy".into()),
+        }
+    }
+
+    #[test]
+    fn a_usable_device_stays() {
+        assert_eq!(
+            stand_in(&[dev("a", true, false), dev("b", false, false)], "b"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_gone_or_busy_device_gives_way_to_the_default_then_any() {
+        let list = [
+            dev("phone", false, true),
+            dev("mac", true, false),
+            dev("usb", false, false),
+        ];
+        assert_eq!(stand_in(&list, "phone"), Some(Some("mac".into())));
+        assert_eq!(stand_in(&list, "headset"), Some(Some("mac".into())));
+        let list = [dev("phone", true, true), dev("usb", false, false)];
+        assert_eq!(stand_in(&list, "phone"), Some(Some("usb".into())));
+        assert_eq!(stand_in(&[dev("phone", true, true)], "phone"), Some(None));
     }
 }

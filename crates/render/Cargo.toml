@@ -16,8 +16,20 @@ simple-capture-geometry.workspace = true
 simple-capture-platform.workspace = true
 wgpu.workspace = true
 pollster.workspace = true
-bytemuck.workspace = true
 tracing.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+wgpu-hal = { workspace = true, features = ["metal"] }
+objc2.workspace = true
+objc2-core-foundation.workspace = true
+objc2-core-video.workspace = true
+objc2-io-surface.workspace = true
+objc2-metal.workspace = true
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+simple-capture-capture-macos.workspace = true
+objc2-core-foundation.workspace = true
+objc2-core-video.workspace = true
 
 [lints]
 workspace = true

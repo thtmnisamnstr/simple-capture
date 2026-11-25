@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use sc_geometry::{RectPt, RectPx, SizePx};
 use serde::{Deserialize, Serialize};
 
-use crate::project::{EndReason, SourceDescriptor, StartReason, SystemAudioMode, Via};
+use crate::project::{CameraKey, EndReason, SourceDescriptor, StartReason, SystemAudioMode, Via};
 use crate::{ClockKind, Error, Result};
 
 pub const FILE_NAME: &str = "journal.jsonl";
@@ -72,7 +72,7 @@ pub enum JournalEvent {
         at_rec_ns: i64,
         dur_ns: i64,
     },
-    /// Written from M7; folded by recovery now.
+    /// Folded by recovery into the project's pauses.
     Pause {
         host_ns: i64,
     },
@@ -96,6 +96,9 @@ pub enum JournalEvent {
         host_ns: i64,
         rec_ns: i64,
         tracks: Vec<HealthEntry>,
+    },
+    CameraKeys {
+        keys: Vec<CameraKey>,
     },
     Stop {
         stop_host_ns: i64,

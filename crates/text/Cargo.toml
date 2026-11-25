@@ -1,6 +1,6 @@
 [package]
 name = "simple-capture-text"
-description = "Skia (FreeType build): background raster, image decode; text layout from M4"
+description = "Skia (FreeType build): backgrounds, image decode, text overlays"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,7 +14,8 @@ name = "sc_text"
 simple-capture-core.workspace = true
 simple-capture-geometry.workspace = true
 skia-safe.workspace = true
-tracing.workspace = true
+fontdb.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

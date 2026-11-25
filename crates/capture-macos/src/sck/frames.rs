@@ -11,8 +11,7 @@ use objc2_core_video::{
 use sc_geometry::SizePx;
 use sc_platform::{Error, NativeAudio, NativeFrame, Nv12View, Result};
 
-pub(crate) const PIX_420V: u32 = u32::from_be_bytes(*b"420v");
-pub(crate) const PIX_420F: u32 = u32::from_be_bytes(*b"420f");
+pub(crate) use crate::av::{PIX_420F, PIX_420V};
 
 /// A retained SCK screen sample buffer.
 pub struct ScFrame {
@@ -113,6 +112,9 @@ impl ScAudio {
 impl NativeAudio for ScAudio {
     fn as_any(&self) -> &dyn Any {
         &self.sb
+    }
+    fn to_f32(&self) -> Option<Vec<f32>> {
+        crate::av::pcm::to_f32(&self.sb)
     }
 }
 

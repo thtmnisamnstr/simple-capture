@@ -1,14 +1,16 @@
 //! Recorder-panel stills (ARCHITECTURE §9), served as `sc://still/<id>.png`.
 
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sc_core::image::RgbaImage;
-use sc_core::project::Background;
-use sc_geometry::{Aspect, Ratio, RectPx, SizePx, contain_fit, even_round};
+use sc_core::project::{Background, Fit};
+use sc_geometry::{Aspect, PointF, Ratio, RectPx, SizePx, even_round};
 use sc_platform::{CpuNv12Frame, FrameBuffer};
 use sc_render::{FrameJob, OutputFormat, ScreenLayer};
+
+use crate::settings::CanvasDto;
 
 pub const STILL_LONG_SIDE: u32 = 960;
 const KEEP: usize = 8;
@@ -33,75 +35,110 @@ pub fn still_canvas(aspect: Aspect, content: Option<SizePx>) -> SizePx {
     }
 }
 
-/// Premultiplied sRGB RGBA → NV12, BT.709 limited range. Odd sizes are cropped to even.
+/// Premultiplied sRGB RGBA → NV12, BT.709 limited range, in the integer maths of the renderer's
+/// I420 output. Odd sizes are cropped to even.
 pub fn rgba_to_nv12(img: &RgbaImage) -> CpuNv12Frame {
     let w = (img.size.w / 2 * 2).max(2);
     let h = (img.size.h / 2 * 2).max(2);
     let size = SizePx { w, h };
     let mut out = CpuNv12Frame::black(size, false);
-    let px = |x: u32, y: u32| -> (f64, f64, f64) {
-        let x = x.min(img.size.w.saturating_sub(1));
-        let y = y.min(img.size.h.saturating_sub(1));
-        let i = y as usize * img.stride + x as usize * 4;
-        match img.data.get(i..i + 4) {
-            // Premultiplied over black equals the premultiplied value.
-            Some(p) => (
-                f64::from(p[0]) / 255.0,
-                f64::from(p[1]) / 255.0,
-                f64::from(p[2]) / 255.0,
-            ),
-            None => (0.0, 0.0, 0.0),
-        }
-    };
-    let luma = |(r, g, b): (f64, f64, f64)| 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    for y in 0..h {
-        for x in 0..w {
-            let yv = 16.0 + 219.0 * luma(px(x, y));
-            out.y[(y * w + x) as usize] = yv.round().clamp(0.0, 255.0) as u8;
-        }
-    }
+    let (wu, hu) = (w as usize, h as usize);
+    let (iw, ih) = (img.size.w.max(1) as usize, img.size.h.max(1) as usize);
     let uv_stride = out.uv_stride();
-    for cy in 0..h / 2 {
-        for cx in 0..w / 2 {
-            let mut acc = (0.0, 0.0, 0.0);
-            for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                let p = px(cx * 2 + dx, cy * 2 + dy);
-                acc = (acc.0 + p.0 / 4.0, acc.1 + p.1 / 4.0, acc.2 + p.2 / 4.0);
+    let mut cols = Vec::with_capacity(wu);
+    cols.extend((0..wu).map(|x| x.min(iw - 1) * 4));
+    for cy in 0..hu / 2 {
+        let rows = [
+            (2 * cy).min(ih - 1) * img.stride,
+            (2 * cy + 1).min(ih - 1) * img.stride,
+        ];
+        for cx in 0..wu / 2 {
+            let mut sum = [0i32; 3];
+            for (dy, row) in rows.iter().enumerate() {
+                for dx in 0..2 {
+                    let x = 2 * cx + dx;
+                    let i = row + cols[x];
+                    let (r, g, b) = match img.data.get(i..i + 3) {
+                        Some(p) => (i32::from(p[0]), i32::from(p[1]), i32::from(p[2])),
+                        None => (0, 0, 0),
+                    };
+                    let yv = (11_966 * r + 40_254 * g + 4_064 * b + 1_081_344) >> 16;
+                    out.y[(2 * cy + dy) * wu + x] = yv.clamp(0, 255) as u8;
+                    sum = [sum[0] + r, sum[1] + g, sum[2] + b];
+                }
             }
-            let yl = luma(acc);
-            let cb = (acc.2 - yl) / 1.8556;
-            let cr = (acc.0 - yl) / 1.5748;
-            let i = cy as usize * uv_stride + cx as usize * 2;
-            out.uv[i] = (128.0 + 224.0 * cb).round().clamp(0.0, 255.0) as u8;
-            out.uv[i + 1] = (128.0 + 224.0 * cr).round().clamp(0.0, 255.0) as u8;
+            let u = (-6_596 * sum[0] - 22_189 * sum[1] + 28_785 * sum[2] + 33_685_504) >> 18;
+            let v = (28_785 * sum[0] - 26_145 * sum[1] - 2_640 * sum[2] + 33_685_504) >> 18;
+            let i = cy * uv_stride + cx * 2;
+            out.uv[i] = u.clamp(0, 255) as u8;
+            out.uv[i + 1] = v.clamp(0, 255) as u8;
         }
     }
     out
+}
+
+/// The recorder's background and the folder its image is read from. The chosen image can be
+/// anywhere on disk, but `sc_text` only reads an image named inside a folder.
+pub fn canvas_background(canvas: &CanvasDto) -> (Background, PathBuf) {
+    let Some(image) = canvas.background_image.as_deref().map(Path::new) else {
+        return (canvas.background.clone(), PathBuf::from("/"));
+    };
+    let (dir, name) = match (image.parent(), image.file_name().and_then(|n| n.to_str())) {
+        (Some(dir), Some(name)) => (dir.to_path_buf(), name.to_string()),
+        _ => (PathBuf::from("/"), image.to_string_lossy().into_owned()),
+    };
+    let bg = Background::Image {
+        asset: name,
+        sha256: String::new(),
+        fit: Fit::Cover,
+        focus_norm: PointF { x: 0.5, y: 0.5 },
+    };
+    (bg, dir)
+}
+
+/// What shows when the chosen background can't be drawn.
+pub fn plain_background() -> Background {
+    CanvasDto::default().background
 }
 
 pub fn compose_png(
     background: &Background,
     canvas: SizePx,
     project_dir: &Path,
-    snapshot: Option<&RgbaImage>,
+    main: Option<&FrameBuffer>,
+    camera: Option<(&sc_core::camera::CameraPlacement, &FrameBuffer)>,
+    fit: sc_core::project::Fit,
 ) -> Result<Vec<u8>, String> {
     let bg = sc_text::rasterize_background(background, canvas, project_dir)
         .map_err(|e| format!("still background: {e}"))?;
-    let frame = snapshot.map(|s| FrameBuffer(Arc::new(rgba_to_nv12(s))));
-    let screen = frame.as_ref().map(|f| {
+    let screen = main.map(|f| {
         let size = f.0.size();
-        ScreenLayer {
-            frame: f,
-            src: RectPx {
+        let (src, dst) = sc_player::video::place(
+            fit,
+            sc_geometry::PointF { x: 0.5, y: 0.5 },
+            canvas,
+            RectPx {
                 x: 0,
                 y: 0,
                 w: size.w,
                 h: size.h,
             },
-            dst: contain_fit(canvas, size),
+        );
+        ScreenLayer {
+            frame: f,
+            src,
+            dst,
+            redact: &[],
         }
     });
+    let camera = camera.map(|(p, f)| {
+        let rects = sc_geometry::camera_rects(canvas, f.0.size(), p.shape.aspect(), &p.pose);
+        sc_render::camera_layer(p, f, rects.dst)
+    });
     let job = FrameJob {
+        text: &[],
+        background_key: None,
+        camera,
         canvas,
         background: &bg,
         screen,
@@ -186,14 +223,14 @@ mod tests {
             stride: 20,
             data: vec![128; 60],
         };
-        for p in img.data.chunks_exact_mut(4) {
+        for p in img.data.as_chunks_mut::<4>().0 {
             p[3] = 255;
         }
         let f = rgba_to_nv12(&img);
         assert_eq!(f.size, SizePx { w: 4, h: 2 });
         assert!(f.y.iter().all(|&v| (125..=127).contains(&v)), "{:?}", f.y);
         assert!(f.uv.iter().all(|&v| v == 128));
-        for p in img.data.chunks_exact_mut(4) {
+        for p in img.data.as_chunks_mut::<4>().0 {
             p.copy_from_slice(&[255, 0, 0, 255]);
         }
         let f = rgba_to_nv12(&img);
@@ -213,7 +250,16 @@ mod tests {
             data: vec![255; 64 * 64 * 4],
         };
         let canvas = still_canvas(Aspect::R16x9, None);
-        let png = compose_png(&bg, canvas, Path::new("/nonexistent"), Some(&snap)).expect("png");
+        let frame = FrameBuffer(Arc::new(rgba_to_nv12(&snap)));
+        let png = compose_png(
+            &bg,
+            canvas,
+            Path::new("/nonexistent"),
+            Some(&frame),
+            None,
+            Fit::Contain,
+        )
+        .expect("png");
         let img = sc_text::decode_image(&png).expect("decode");
         assert_eq!(img.size, canvas);
         let at = |x: usize, y: usize| &img.data[y * img.stride + x * 4..y * img.stride + x * 4 + 4];
@@ -222,8 +268,48 @@ mod tests {
             "edge is background"
         );
         assert!(at(480, 270)[0] > 200, "centre is the snapshot");
-        let plain = compose_png(&bg, canvas, Path::new("/nonexistent"), None).expect("png");
+        let plain = compose_png(
+            &bg,
+            canvas,
+            Path::new("/nonexistent"),
+            None,
+            None,
+            Fit::Contain,
+        )
+        .expect("png");
         assert!(plain.starts_with(b"\x89PNG"));
+    }
+
+    #[test]
+    fn an_image_anywhere_on_disk_is_the_background() {
+        let dir = std::env::temp_dir().join(format!(
+            "sc-still-{}-{}",
+            std::process::id(),
+            sc_core::ids::new_id()
+        ));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let red = RgbaImage {
+            size: SizePx { w: 8, h: 8 },
+            stride: 32,
+            data: [255, 0, 0, 255].repeat(64),
+        };
+        let file = dir.join("red background.png");
+        std::fs::write(&file, sc_text::encode_png(&red).expect("encode")).expect("write");
+        let canvas = CanvasDto {
+            background_image: Some(file.to_string_lossy().into_owned()),
+            ..CanvasDto::default()
+        };
+        let (bg, from) = canvas_background(&canvas);
+        let size = still_canvas(Aspect::R16x9, None);
+        let png = compose_png(&bg, size, &from, None, None, Fit::Contain);
+        let _ = std::fs::remove_dir_all(&dir);
+        let img = sc_text::decode_image(&png.expect("png")).expect("decode");
+        let px = &img.data[..4];
+        assert!(px[0] > 200 && px[1] < 30 && px[2] < 30, "{px:?}");
+        assert_eq!(
+            canvas_background(&CanvasDto::default()).0,
+            CanvasDto::default().background
+        );
     }
 
     #[test]

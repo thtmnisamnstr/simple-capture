@@ -430,6 +430,7 @@ fn kind_text(k: TrackKind) -> &'static str {
         TrackKind::Camera => "camera",
         TrackKind::Mic => "mic",
         TrackKind::SystemAudio => "system_audio",
+        TrackKind::DeviceAudio => "device_audio",
     }
 }
 
@@ -439,6 +440,7 @@ fn source_text(s: &SourceDescriptor) -> String {
         SourceDescriptor::Window { window_id, .. } => format!("window {window_id}"),
         SourceDescriptor::Application { display_id, .. } => format!("app on {display_id}"),
         SourceDescriptor::Region { display_id, .. } => format!("region on {display_id}"),
+        SourceDescriptor::Camera { device_id, .. } => format!("camera {device_id}"),
     }
 }
 
