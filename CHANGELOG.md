@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-11-25)
 
 The first release of Simple Capture: a screen recorder and editor for macOS, Windows and Linux
 with no account and no network connections.
