@@ -43,7 +43,7 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// `sc://thumb/<step_ms>/<index>.png` and `sc://peaks/v1` of the project open in the editor.
+/// `sc://thumb/<step_ms>/<index>.png` (`cthumb` for the camera) and `sc://peaks/v1` of the project open in the editor.
 fn editor_file(
     core: &Core,
     host: Option<&str>,
@@ -110,12 +110,17 @@ fn editor_file(
     }
     let dir = core.editor_dir()?;
     let (file, ctype) = match host.as_str() {
-        "thumb" => {
+        "thumb" | "cthumb" => {
+            let lane = if host == "cthumb" {
+                crate::editor_media::Lane::Camera
+            } else {
+                crate::editor_media::Lane::Screen
+            };
             let mut parts = path.trim_start_matches('/').split('/');
             let step: i64 = parts.next()?.parse().ok()?;
             let index: i64 = parts.next()?.strip_suffix(".png")?.parse().ok()?;
             (
-                crate::editor_media::thumb_path(&dir, step, index),
+                crate::editor_media::lane_thumb_path(&dir, lane, step, index),
                 "image/png",
             )
         }

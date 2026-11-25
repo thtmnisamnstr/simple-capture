@@ -7,8 +7,9 @@ use std::sync::{Arc, Weak};
 
 use sc_core::image::RgbaImage;
 use sc_core::project::{ProjectV1, TrackKind};
-use sc_decode::{SegmentFrameSource, TrackAudio};
+use sc_decode::{SegmentFrameSource, TrackAudio, TrackFrameSource};
 use sc_geometry::{Ratio, SizePx};
+use sc_platform::FrameBuffer;
 use sc_render::{Backend, Compositor, FrameJob, OutputFormat, ScreenLayer};
 use serde_json::json;
 
@@ -31,8 +32,8 @@ pub fn peaks_path(dir: &Path, kind: &str) -> PathBuf {
     }
 }
 
-pub fn thumb_path(dir: &Path, step_ms: i64, index: i64) -> PathBuf {
-    thumbs_dir(dir).join(format!("t{step_ms}-{index}.png"))
+pub fn lane_thumb_path(dir: &Path, lane: Lane, step_ms: i64, index: i64) -> PathBuf {
+    thumbs_dir(dir).join(format!("{}{step_ms}-{index}.png", lane.prefix()))
 }
 
 pub fn thumb_step_ms(rec_len_ns: i64) -> i64 {
@@ -186,10 +187,15 @@ fn window_peaks(
     Ok(peaks)
 }
 
+fn ratio_size(ratio: Ratio) -> SizePx {
+    SizePx {
+        w: ((f64::from(THUMB_H) * ratio.as_f64()).round() as u32).max(2) & !1,
+        h: THUMB_H,
+    }
+}
+
 fn thumbs(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
     let len = project.duration_ns().unwrap_or(0).max(0);
-    let step_ms = thumb_step_ms(len);
-    let count = ((len / 1_000_000 + step_ms - 1) / step_ms).max(1);
     let ratio = project
         .recording
         .screen
@@ -203,17 +209,127 @@ fn thumbs(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
             })
         })
         .unwrap_or(Ratio::new(16, 9));
-    let size = SizePx {
-        w: ((f64::from(THUMB_H) * ratio.as_f64()).round() as u32).max(2) & !1,
-        h: THUMB_H,
+    let Some(c) = current(core, session) else {
+        return;
     };
+    let decoder = c.platform.decoder();
+    drop(c);
+    let mut screen: Option<SegmentFrameSource> = None;
+    let opened = render_thumbs(
+        core,
+        session,
+        dir,
+        len,
+        Lane::Screen,
+        ratio_size(ratio),
+        |t| {
+            if screen.is_none() {
+                screen = Some(
+                    SegmentFrameSource::open(project, dir, decoder.clone())
+                        .map_err(|e| e.to_string())?,
+                );
+            }
+            let Some(src) = screen.as_mut() else {
+                return Ok(None);
+            };
+            Ok(src
+                .frame_at(t)
+                .map_err(|e| e.to_string())?
+                .filter(|f| f.content_px.w > 0 && f.content_px.h > 0)
+                .map(|f| (f.frame, f.content_px)))
+        },
+    );
+    if !opened {
+        return;
+    }
+    let Some(overlay) = project.camera_layout.overlays.first() else {
+        return;
+    };
+    let Some(track) = project
+        .recording
+        .tracks
+        .iter()
+        .find(|t| t.id == overlay.track_id)
+    else {
+        return;
+    };
+    let ratio = track
+        .video
+        .as_ref()
+        .filter(|v| v.size_px.w > 0 && v.size_px.h > 0)
+        .map_or(Ratio::new(16, 9), |v| Ratio::of(v.size_px));
+    let mut camera: Option<TrackFrameSource> = None;
+    render_thumbs(
+        core,
+        session,
+        dir,
+        len,
+        Lane::Camera,
+        ratio_size(ratio),
+        |t| {
+            if camera.is_none() {
+                camera = TrackFrameSource::open(project, dir, decoder.clone(), &overlay.track_id)
+                    .map_err(|e| e.to_string())?;
+            }
+            let Some(src) = camera.as_mut() else {
+                return Ok(None);
+            };
+            Ok(src.frame_at(t).map_err(|e| e.to_string())?.map(|f| {
+                let size = f.0.size();
+                let rect = sc_geometry::RectPx {
+                    x: 0,
+                    y: 0,
+                    w: size.w,
+                    h: size.h,
+                };
+                (f, rect)
+            }))
+        },
+    );
+}
+
+#[derive(Clone, Copy)]
+pub enum Lane {
+    Screen,
+    Camera,
+}
+
+impl Lane {
+    fn prefix(self) -> &'static str {
+        match self {
+            Lane::Screen => "t",
+            Lane::Camera => "c",
+        }
+    }
+
+    fn event_key(self) -> &'static str {
+        match self {
+            Lane::Screen => "thumbs",
+            Lane::Camera => "camera_thumbs",
+        }
+    }
+}
+
+/// Renders the missing thumbnails of one lane, announcing them in batches; `frame` gives the
+/// lane's frame at a recording time and the part of it to show. False when the editor moved on.
+fn render_thumbs(
+    core: &Weak<Core>,
+    session: u64,
+    dir: &Path,
+    len: i64,
+    lane: Lane,
+    size: SizePx,
+    mut frame: impl FnMut(i64) -> Result<Option<(FrameBuffer, sc_geometry::RectPx)>, String>,
+) -> bool {
+    let step_ms = thumb_step_ms(len);
+    let count = ((len / 1_000_000 + step_ms - 1) / step_ms).max(1);
     let announce = |ready: &[i64]| {
         if let Some(c) = current(core, session) {
             c.emit(
                 "editor-media",
                 json!({
                     "session": session,
-                    "thumbs": { "step_ms": step_ms, "count": count, "w": size.w, "h": size.h, "ready": ready },
+                    lane.event_key(): { "step_ms": step_ms, "count": count, "w": size.w, "h": size.h, "ready": ready },
                 }),
             );
         }
@@ -221,27 +337,16 @@ fn thumbs(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
     let order = coarse_to_fine(count);
     let (have, todo): (Vec<i64>, Vec<i64>) = order
         .iter()
-        .partition(|i| thumb_path(dir, step_ms, **i).exists());
+        .partition(|i| lane_thumb_path(dir, lane, step_ms, **i).exists());
     announce(&have);
     if todo.is_empty() {
-        return;
+        return true;
     }
-    let Some(c) = current(core, session) else {
-        return;
-    };
-    let mut source = match SegmentFrameSource::open(project, dir, c.platform.decoder()) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!("thumbs: {e}");
-            return;
-        }
-    };
-    drop(c);
     let mut compositor = match Compositor::new(Backend::Auto) {
         Ok(c) => c,
         Err(e) => {
             tracing::warn!("thumbs: {e}");
-            return;
+            return false;
         }
     };
     let black = RgbaImage {
@@ -252,31 +357,22 @@ fn thumbs(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
     let mut batch = Vec::new();
     for i in todo {
         if current(core, session).is_none() {
-            return;
+            return false;
         }
         let t = (i * step_ms * 1_000_000).min((len - 1).max(0));
-        let frame = match source.frame_at(t) {
+        let shown = match frame(t) {
             Ok(f) => f,
             Err(e) => {
-                tracing::warn!("thumb {i}: {e}");
-                continue;
+                tracing::warn!("{} thumb {i}: {e}", lane.event_key());
+                return true;
             }
         };
-        let screen = frame
-            .as_ref()
-            .filter(|f| f.content_px.w > 0 && f.content_px.h > 0)
-            .map(|f| ScreenLayer {
-                frame: &f.frame,
-                src: f.content_px,
-                dst: sc_geometry::contain_fit(
-                    size,
-                    SizePx {
-                        w: f.content_px.w,
-                        h: f.content_px.h,
-                    },
-                ),
-                redact: &[],
-            });
+        let screen = shown.as_ref().map(|(f, src)| ScreenLayer {
+            frame: f,
+            src: *src,
+            dst: sc_geometry::contain_fit(size, SizePx { w: src.w, h: src.h }),
+            redact: &[],
+        });
         let job = FrameJob {
             text: &[],
             canvas: size,
@@ -297,7 +393,8 @@ fn thumbs(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
                 .map_err(|e| e.to_string())
             });
         match png.and_then(|b| {
-            sc_core::fsio::atomic_write(&thumb_path(dir, step_ms, i), &b).map_err(|e| e.to_string())
+            sc_core::fsio::atomic_write(&lane_thumb_path(dir, lane, step_ms, i), &b)
+                .map_err(|e| e.to_string())
         }) {
             Ok(()) => batch.push(i),
             Err(e) => tracing::warn!("thumb {i}: {e}"),
@@ -308,6 +405,7 @@ fn thumbs(core: &Weak<Core>, session: u64, dir: &Path, project: &ProjectV1) {
         }
     }
     announce(&batch);
+    true
 }
 
 #[cfg(test)]
@@ -326,5 +424,18 @@ mod tests {
         sorted.sort_unstable();
         assert_eq!(sorted, (0..9).collect::<Vec<_>>());
         assert_eq!(coarse_to_fine(1), vec![0]);
+    }
+
+    #[test]
+    fn each_lane_keeps_its_own_thumbnails() {
+        let d = Path::new("/p");
+        assert_eq!(
+            lane_thumb_path(d, Lane::Screen, 1000, 3),
+            Path::new("/p/thumbs/t1000-3.png")
+        );
+        assert_eq!(
+            lane_thumb_path(d, Lane::Camera, 1000, 3),
+            Path::new("/p/thumbs/c1000-3.png")
+        );
     }
 }

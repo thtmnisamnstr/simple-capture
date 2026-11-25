@@ -28,6 +28,7 @@
     selected,
     range,
     thumbs,
+    cameraThumbs = null,
     peaks,
     snapping = true,
     pxPerSec = $bindable(40),
@@ -69,6 +70,7 @@
     onselectblur?: (id: string) => void;
     onblurmove?: (id: string, start: number, end: number) => void;
     thumbs: Thumbs | null;
+    cameraThumbs?: Thumbs | null;
     peaks: Uint8Array | null;
     snapping?: boolean;
     pxPerSec?: number;
@@ -145,32 +147,34 @@
   let dropAt = $state<number | null>(null);
   let pointerX = 0;
 
-  const images = new Map<number, HTMLImageElement>();
-  const failures = new Map<number, number>();
+  const images = new Map<string, HTMLImageElement>();
+  const failures = new Map<string, number>();
   let imageTick = $state(0);
 
-  function thumbImage(i: number): HTMLImageElement | null {
-    if (!thumbs || !thumbs.ready.has(i)) return null;
-    let img = images.get(i);
+  function thumbImage(lane: Lane, i: number): HTMLImageElement | null {
+    const set = lane === 'camera' ? cameraThumbs : thumbs;
+    if (!set || !set.ready.has(i)) return null;
+    const key = `${lane}:${set.step_ms}:${i}`;
+    let img = images.get(key);
     if (!img) {
       img = new Image();
       img.onload = () => imageTick++;
       img.onerror = () => {
-        const n = (failures.get(i) ?? 0) + 1;
-        failures.set(i, n);
+        const n = (failures.get(key) ?? 0) + 1;
+        failures.set(key, n);
         if (n < 3) {
-          images.delete(i);
+          images.delete(key);
           setTimeout(() => imageTick++, 500);
         }
       };
-      img.src = `${scUrl('thumb')}/${thumbs.step_ms}/${i}.png`;
-      images.set(i, img);
+      img.src = `${scUrl(lane === 'camera' ? 'cthumb' : 'thumb')}/${set.step_ms}/${i}.png`;
+      images.set(key, img);
     }
     return img.complete && img.naturalWidth > 0 ? img : null;
   }
 
   $effect(() => {
-    if (thumbs === null) {
+    if (thumbs === null && cameraThumbs === null) {
       images.clear();
       failures.clear();
     }
@@ -414,7 +418,8 @@
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, H);
     const thumbH = 42;
-    const tileW = thumbs ? Math.max(24, (thumbs.w / thumbs.h) * thumbH) : 76;
+    const set = lane === 'camera' ? cameraThumbs : thumbs;
+    const tileW = set ? Math.max(24, (set.w / set.h) * thumbH) : 76;
     clips.forEach((c, i) => {
       if (c.hidden) return;
       const x0 = x(st[i]) - scrollX;
@@ -426,12 +431,12 @@
       g.clip();
       g.fillStyle = lane === 'camera' ? 'rgba(48,176,199,0.32)' : 'rgba(128,128,140,0.28)';
       g.fillRect(x0, 0, x1 - x0, H);
-      for (let tx = Math.max(x0, x0 + Math.floor((0 - x0) / tileW) * tileW); lane === 'screen' && tx < Math.min(x1, w); tx += tileW) {
+      for (let tx = Math.max(x0, x0 + Math.floor((0 - x0) / tileW) * tileW); set && tx < Math.min(x1, w); tx += tileW) {
         const mid = st[i] + ((tx + tileW / 2 - x0) / pxPerSec) * NS;
         const loc = locate(clips, st, Math.min(mid, st[i + 1] - 1));
-        if (!loc || !thumbs) continue;
-        const idx = Math.min(thumbs.count - 1, Math.max(0, Math.round(loc.rec_ns / (thumbs.step_ms * 1e6))));
-        const img = thumbImage(idx);
+        if (!loc) continue;
+        const idx = Math.min(set.count - 1, Math.max(0, Math.round(loc.rec_ns / (set.step_ms * 1e6))));
+        const img = thumbImage(lane, idx);
         if (img) g.drawImage(img, tx, 2, tileW, thumbH);
       }
       if (wave) {
@@ -461,7 +466,7 @@
   }
 
   $effect(() => {
-    void [clips, cameraClips, camCanvas, scrollX, viewW, pxPerSec, thumbs, peaks, cameraPeaks, imageTick];
+    void [clips, cameraClips, camCanvas, scrollX, viewW, pxPerSec, thumbs, cameraThumbs, peaks, cameraPeaks, imageTick];
     draw();
   });
 </script>

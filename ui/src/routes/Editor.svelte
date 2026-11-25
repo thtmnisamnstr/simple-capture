@@ -57,6 +57,7 @@
   let clipboardNs = $state(0);
   let frame = $state<EditorFrame | null>(null);
   let thumbs = $state<Thumbs | null>(null);
+  let cameraThumbs = $state<Thumbs | null>(null);
   let timelineH = $state(150);
   let peaks = $state<Uint8Array | null>(null);
   let micPeaks = $state<Uint8Array | null>(null);
@@ -170,6 +171,7 @@
     selected = [];
     range = null;
     thumbs = null;
+    cameraThumbs = null;
     peaks = null;
     micPeaks = null;
     systemPeaks = null;
@@ -216,14 +218,16 @@
       }),
       onEvent('editor-frame', isObject, (f) => (frame = f as unknown as EditorFrame)),
       onEvent('editor-media', isObject, (m) => {
-        const v = m as { peaks?: boolean; thumbs?: { step_ms: number; count: number; w: number; h: number; ready: number[] } };
+        type Ready = { step_ms: number; count: number; w: number; h: number; ready: number[] };
+        const v = m as { peaks?: boolean; thumbs?: Ready; camera_thumbs?: Ready };
         if (v.peaks) void loadPeaks();
-        if (v.thumbs) {
-          const t = v.thumbs;
-          const ready = thumbs && thumbs.step_ms === t.step_ms ? new Set(thumbs.ready) : new Set<number>();
+        const merge = (had: Thumbs | null, t: Ready): Thumbs => {
+          const ready = had && had.step_ms === t.step_ms ? new Set(had.ready) : new Set<number>();
           for (const i of t.ready) ready.add(i);
-          thumbs = { step_ms: t.step_ms, count: t.count, w: t.w, h: t.h, ready };
-        }
+          return { step_ms: t.step_ms, count: t.count, w: t.w, h: t.h, ready };
+        };
+        if (v.thumbs) thumbs = merge(thumbs, v.thumbs);
+        if (v.camera_thumbs) cameraThumbs = merge(cameraThumbs, v.camera_thumbs);
       }),
       onEvent('editor-open', isObject, () => void load()),
       onEvent('project-renamed', isObject, (r) => {
@@ -1128,6 +1132,7 @@
             if (b && span) void edit({ op: 'upsert_redaction', item: { ...b, start_rec_ns: span[0], end_rec_ns: span[1] } });
           }}
           {thumbs}
+          {cameraThumbs}
           {snapping}
           peaks={overlay ? systemPeaks : peaks}
           cameraClips={overlay ? camClips : null}
