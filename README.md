@@ -48,7 +48,7 @@ macOS 14 or later on Apple silicon, three ways to the same app:
   Apple, so it opens normally and keeps its Screen Recording, Camera and Microphone permissions
   across updates. Check a download against `SHA256SUMS.txt`, or with
   `gh attestation verify <file> --repo thtmnisamnstr/simple-capture`.
-- **Homebrew:** `brew install --cask thtmnisamnstr/tap/simple-capture` installs that DMG, and
+- **Homebrew:** `brew install --cask thtmnisamnstr/simple-capture/simple-capture` installs that DMG, and
   `brew upgrade` updates it.
 - **Mac App Store:** coming soon, with updates through the App Store.
 

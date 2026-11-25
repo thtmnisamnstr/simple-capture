@@ -74,11 +74,11 @@ Azure Trusted Signing (Artifact Signing) or an OV certificate.
 
 ## Homebrew
 
-The cask lives in its own tap, `thtmnisamnstr/homebrew-tap` (`Casks/simple-capture.rb`):
-`brew install --cask thtmnisamnstr/tap/simple-capture`. The tap's hourly `bump.yml` reads the
+The cask lives in its own tap, `thtmnisamnstr/homebrew-simple-capture` (`Casks/simple-capture.rb`):
+`brew install --cask thtmnisamnstr/simple-capture/simple-capture`. The tap's hourly `bump.yml` reads the
 latest published release and updates the cask's version and SHA-256, so a release reaches
 Homebrew within about an hour of Publish. To do it now:
-`gh workflow run bump.yml -R thtmnisamnstr/homebrew-tap`. The cask's URL uses the DMG's
+`gh workflow run bump.yml -R thtmnisamnstr/homebrew-simple-capture`. The cask's URL uses the DMG's
 release name (`Simple.Capture_<version>_aarch64.dmg`), so keep that name. One-time: the tap
 repository (`Casks/simple-capture.rb`, `bump.yml`, `tests.yml`) is created right after v0.1.0
 is published, because a draft's files can't be downloaded; the `brew` command works from then

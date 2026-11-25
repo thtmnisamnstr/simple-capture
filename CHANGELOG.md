@@ -37,7 +37,7 @@ with no account and no network connections.
 
 ### Distribution
 - macOS: the DMG on GitHub Releases, Homebrew
-  (`brew install --cask thtmnisamnstr/tap/simple-capture`), and the Mac App Store, all the same
+  (`brew install --cask thtmnisamnstr/simple-capture/simple-capture`), and the Mac App Store, all the same
   sandboxed app with an LGPL-only FFmpeg. The DMG is signed with a Developer ID and notarized,
   so permissions survive updates, and opens on a drag-to-Applications window. Media keys can't
   be shortcuts on a Mac. The store and DMG copies replace each other, so use one or the other.
