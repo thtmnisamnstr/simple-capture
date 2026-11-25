@@ -1080,7 +1080,18 @@ impl Core {
         self.start_recording_now(req)
     }
 
-    fn start_recording_now(self: &Arc<Self>, req: RecordRequestDto) -> Reply {
+    fn start_recording_now(self: &Arc<Self>, mut req: RecordRequestDto) -> Reply {
+        if let Some(id) = req.settings.mic.clone() {
+            let mics = self.platform.mic().devices().unwrap_or_default();
+            if !mics.iter().any(|m| m.id == id) {
+                let fallback = mics.iter().find(|m| m.is_default).or(mics.first());
+                tracing::warn!(
+                    "mic {id} is not connected; recording with {:?}",
+                    fallback.map(|m| &m.name)
+                );
+                req.settings.mic = fallback.map(|m| m.id.clone());
+            }
+        }
         *lock(&self.last_request) = Some(req.clone());
         *lock(&self.paused_total) = std::time::Duration::ZERO;
         *lock(&self.paused_since) = None;
@@ -1336,6 +1347,9 @@ impl Core {
             ),
         );
         self.hide_window("bar");
+        if let Err(e) = self.show_window("panel", false) {
+            tracing::warn!("{e}");
+        }
         self.refresh_tray();
     }
 

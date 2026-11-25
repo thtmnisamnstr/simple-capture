@@ -135,6 +135,8 @@
     { value: '9:16', label: '9:16' },
   ];
 
+  const micMissing = $derived(!!settings?.mic && loaded && !devices.mics.some((m) => m.id === settings!.mic));
+  const fallbackMic = $derived(devices.mics.find((m) => m.is_default) ?? devices.mics[0] ?? null);
   const screenGranted = $derived(perms?.screen === 'granted');
   const all = $derived({ displays, windows: list?.windows ?? [], apps: list?.apps ?? [] });
   const source = $derived(settings?.source ?? null);
@@ -748,12 +750,18 @@
               <select id="mic" aria-label="Microphone" bind:value={settings.mic}>
                 <option value={null}>None</option>
                 {#each devices.mics as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
+                {#if micMissing}<option value={settings.mic}>Not connected</option>{/if}
               </select>
               {#if caps?.mic_modes && settings.mic}
                 <button class="icon" title="Mic Mode" aria-label="Mic Mode" onclick={() => run(() => api.showMicModes())}>⋯</button>
               {/if}
             </div>
           </div>
+          {#if micMissing}
+            <p class="caption mic-missing">
+              The chosen microphone isn’t connected. Recordings use {fallbackMic?.name ?? 'no microphone'} until it is.
+            </p>
+          {/if}
           {#if settings.mic && micDb !== null}
             <div class="meter" role="meter" aria-label="Microphone level" aria-valuemin={-60} aria-valuemax={0} aria-valuenow={Math.round(micDb)}>
               <span style:width={`${Math.max(0, Math.min(100, ((micDb + 60) / 60) * 100))}%`} class:hot={micDb > -3}></span>
@@ -913,6 +921,10 @@
 </div>
 
 <style>
+  .mic-missing {
+    margin: 0;
+    padding: 0 12px 8px;
+  }
   .panel {
     display: flex;
     flex-direction: column;
