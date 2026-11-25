@@ -568,7 +568,12 @@ impl Core {
         let cams = self.platform.camera().devices();
         let mics = self.platform.mic().devices();
         if let (Err(c), Err(m)) = (&cams, &mics) {
-            return Err(format!("devices: camera: {c}; mic: {m}"));
+            let (c, m) = (c.to_string(), m.to_string());
+            return Err(if c == m {
+                c
+            } else {
+                format!("camera: {c}; mic: {m}")
+            });
         }
         Ok(json!({
             "cameras": cams.unwrap_or_default(),

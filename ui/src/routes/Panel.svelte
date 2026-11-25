@@ -62,8 +62,14 @@
     if (tab !== 'iphone') return;
     const refresh = async () => {
       if (document.visibilityState !== 'visible') return;
-      const d = await api.listDevices().catch(() => null);
-      if (d) devices = d;
+      const d = await api.listDevices().catch((e) => {
+        devicesError = errorText(e);
+        return null;
+      });
+      if (d) {
+        devices = d;
+        devicesError = null;
+      }
       await loadSources();
     };
     void refresh();
@@ -74,6 +80,7 @@
   const PREVIEW_W = 316;
   const PREVIEW_H = 138;
   let still = $state<string | null>(null);
+  let devicesError = $state<string | null>(null);
   let stillPx = $state<{ w: number; h: number } | null>(null);
   let bgOpen = $state(false);
   let error = $state<string | null>(null);
@@ -191,7 +198,10 @@
         api.getCapabilities(),
         api.listDisplays(),
         api.getSettings(),
-        api.listDevices(),
+        api.listDevices().catch((e) => {
+          devicesError = errorText(e);
+          return { cameras: [], mics: [] } as DevicesDto;
+        }),
         api.recoveryReport(),
       ]);
       perms = p;
@@ -765,7 +775,10 @@
               {/if}
             </div>
           </div>
-          {#if micMissing}
+          {#if devicesError}
+            <p class="caption mic-missing" role="alert">{devicesError}.</p>
+          {/if}
+          {#if micMissing && !devicesError}
             <p class="caption mic-missing">
               {micBusy ? `${micBusy}.` : 'The chosen microphone isn’t connected.'} Recordings use {fallbackMic?.name ?? 'no microphone'} until it {micBusy ? 'is free' : 'is'}.
             </p>

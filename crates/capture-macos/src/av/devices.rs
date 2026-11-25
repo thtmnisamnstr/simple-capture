@@ -75,13 +75,14 @@ unsafe extern "C" {
     ) -> i32;
 }
 
-static SCREENS_ALLOWED: (Mutex<bool>, std::sync::Condvar) =
+static CAMERA_SYSTEM_UP: (Mutex<bool>, std::sync::Condvar) =
     (Mutex::new(false), std::sync::Condvar::new());
 
 /// Lets plugged-in iPhones and iPads show up as capture devices (their screens, as QuickTime
-/// records them). They appear a moment later, with a device-connected notification. Runs on its
-/// own thread: the call waits on the system's device service, which a stuck Continuity Camera
-/// can hold up indefinitely.
+/// records them). They appear a moment later, with a device-connected notification. It is also
+/// the first call into the camera system, which starts it; that can hang for good when a camera
+/// extension stops answering, so it runs on its own thread and [`camera_system_ready`] says when
+/// it is safe to touch AVFoundation's devices (which would otherwise hang the main thread too).
 pub(crate) fn allow_screen_devices() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
@@ -108,8 +109,8 @@ pub(crate) fn allow_screen_devices() {
                 if status != 0 {
                     tracing::warn!(status, "could not allow device screens");
                 }
-                *SCREENS_ALLOWED.0.lock().unwrap_or_else(|p| p.into_inner()) = true;
-                SCREENS_ALLOWED.1.notify_all();
+                *CAMERA_SYSTEM_UP.0.lock().unwrap_or_else(|p| p.into_inner()) = true;
+                CAMERA_SYSTEM_UP.1.notify_all();
             });
         if let Err(e) = spawned {
             tracing::warn!("allow device screens: {e}");
@@ -117,22 +118,31 @@ pub(crate) fn allow_screen_devices() {
     });
 }
 
-fn screen_devices_allowed(wait: std::time::Duration) -> bool {
+pub(crate) fn camera_system_ready() -> Result<()> {
     allow_screen_devices();
-    let done = SCREENS_ALLOWED.0.lock().unwrap_or_else(|p| p.into_inner());
-    let (done, _) = SCREENS_ALLOWED
+    static WAITED: AtomicBool = AtomicBool::new(false);
+    let wait = if WAITED.swap(true, Ordering::Relaxed) {
+        std::time::Duration::ZERO
+    } else {
+        CAMERA_SYSTEM_WAIT
+    };
+    let up = CAMERA_SYSTEM_UP.0.lock().unwrap_or_else(|p| p.into_inner());
+    let (up, _) = CAMERA_SYSTEM_UP
         .1
-        .wait_timeout_while(done, wait, |d| !*d)
+        .wait_timeout_while(up, wait, |u| !*u)
         .unwrap_or_else(|p| p.into_inner());
-    *done
+    if *up {
+        Ok(())
+    } else {
+        Err(Error::Other(CAMERA_SYSTEM_STUCK.into()))
+    }
 }
+
+const CAMERA_SYSTEM_WAIT: std::time::Duration = std::time::Duration::from_secs(3);
+const CAMERA_SYSTEM_STUCK: &str = "macOS's camera system isn't responding, so cameras and microphones can't be used. Restarting the Mac fixes it";
 
 /// Plugged-in devices whose screen can be recorded.
 fn screen_devices() -> Vec<Retained<AVCaptureDevice>> {
-    if !screen_devices_allowed(std::time::Duration::from_secs(2)) {
-        tracing::warn!("device screens not allowed yet; the system's device service is slow");
-        return Vec::new();
-    }
     // SAFETY: framework constants; discovery needs no permission and never prompts.
     unsafe {
         let Some(muxed) = AVMediaTypeMuxed else {
@@ -163,6 +173,7 @@ fn offers(dev: &AVCaptureDevice, kind: DeviceKind) -> Result<bool> {
 }
 
 fn discover(kind: DeviceKind) -> Result<Vec<Retained<AVCaptureDevice>>> {
+    camera_system_ready()?;
     // SAFETY: framework constants; discovery needs no permission and never prompts.
     unsafe {
         let types: Vec<&NSString> = match kind {
@@ -297,6 +308,7 @@ fn start_within(
 }
 
 pub(crate) fn list(kind: DeviceKind) -> Result<Vec<CaptureDevice>> {
+    camera_system_ready()?;
     let mirroring = iphone_mirroring_open();
     // SAFETY: plain getters.
     let default_id = unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media_type(kind)?) }
@@ -332,6 +344,7 @@ pub(crate) fn list(kind: DeviceKind) -> Result<Vec<CaptureDevice>> {
 }
 
 fn find(kind: DeviceKind, id: &str) -> Result<Retained<AVCaptureDevice>> {
+    camera_system_ready()?;
     // SAFETY: plain lookup.
     let dev = unsafe { AVCaptureDevice::deviceWithUniqueID(&nsstr(id)) }
         .ok_or_else(|| Error::NotFound(format!("{kind:?} device {id}")))?;
@@ -865,6 +878,7 @@ pub(crate) fn show_mic_modes() -> Result<()> {
 }
 
 pub(crate) fn show_system_ui(ui: AVCaptureSystemUserInterface) -> Result<()> {
+    camera_system_ready()?;
     let show = move || {
         // SAFETY: AppKit-side system UI request; on the main thread here.
         unsafe { AVCaptureDevice::showSystemUserInterface(ui) }
