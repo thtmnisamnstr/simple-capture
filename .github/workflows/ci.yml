@@ -14,9 +14,11 @@ name: ci
 # with the cached LGPL FFmpeg helper that every macOS build ships; Ubuntu sets SC_REQUIRE_GPU=1 (lavapipe). Windows and macOS
 # runners have no wgpu adapter we rely on, so GPU tests may print SKIPPED: there.
 
+# Branches are tested through their pull request; pushes to main fill the caches that pull
+# requests and release tags restore.
 on:
   push:
-    branches: [main, 'm[0-9]*']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
