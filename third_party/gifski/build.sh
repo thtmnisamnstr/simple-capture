@@ -28,10 +28,15 @@ MAC=false
 VERSION=$(pin gifski version)
 CRATE=$(fetch gifski)
 LICENSE=$(fetch gifski license_url license_file license_sha256)
+LOCK="$TP_ROOT/gifski/$(pin gifski lock_file)"
+want=$(pin gifski lock_sha256)
+got=$(sha256_of "$LOCK")
+[ "$got" = "$want" ] || die "sha256 mismatch for $LOCK: expected $want, got $got"
 SRC="$TP_BUILD/gifski-$VERSION"
 OUT="$TP_OUT/$PLAT"
 mkdir -p "$OUT"
 unpack "$CRATE" "$SRC"
+cp "$LOCK" "$SRC/Cargo.lock"
 
 $MAC && export MACOSX_DEPLOYMENT_TARGET=14.0
 export CARGO_TARGET_DIR="$TP_BUILD/gifski-target"
@@ -51,6 +56,7 @@ cargo tree --manifest-path "$SRC/Cargo.toml" --locked --target "$TRIPLE" -e norm
     --format '{p} {l}' | sort -u > "$OUT/gifski.deps.txt"
 {
     echo "gifski $VERSION ($(pin gifski git_commit)), crate sha256 $(pin gifski sha256)"
+    echo "Cargo.lock: third_party/gifski/$(pin gifski lock_file), sha256 $(pin gifski lock_sha256)"
     echo "cargo build --release --locked --target $TRIPLE --bin gifski (default features: binary, gifsicle; no video)"
     echo "MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-} lto=true codegen-units=1 strip=symbols"
     rustc -vV

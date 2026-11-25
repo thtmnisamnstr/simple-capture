@@ -492,7 +492,7 @@ if log is not None and basic("16-soak", log):
         check("16-soak", "a 1080p export of the whole take finishes", bool(ex) and ex[-1]["state"] == "done",
               [x.get("state") for x in ex])
         if ex and ex[-1]["state"] == "done" and FFMPEG:
-            probe = os.path.join(os.path.dirname(FFMPEG), "ffprobe")
+            probe = os.path.join(os.path.dirname(FFMPEG), "sc-ffprobe")
             r = subprocess.run([probe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
                                 ex[-1].get("path", "")], capture_output=True, text=True)
             try:
@@ -548,7 +548,7 @@ if basic("17-editor", log):
         ex = [x for x in events(log, "export-state") if x.get("state") == "done"]
         check("17-editor", "export done", bool(ex), [x.get("state") for x in events(log, "export-state")])
         if ex and FFMPEG:
-            probe = os.path.join(os.path.dirname(FFMPEG), "ffprobe")
+            probe = os.path.join(os.path.dirname(FFMPEG), "sc-ffprobe")
             out = ex[0].get("path", "")
             dur = None
             if os.path.exists(probe) and os.path.exists(out):
@@ -578,7 +578,7 @@ if basic("17-editor", log):
             check("17-editor", "text item autosaved", len(pj) == 1 and pj[0].get("content") == "DRIVER TEXT",
                   [t.get("content") for t in pj])
         done = [x.get("path", "") for x in events(log, "export-state") if x.get("state") == "done"]
-        probe_bin = os.path.join(os.path.dirname(FFMPEG), "ffprobe") if FFMPEG else ""
+        probe_bin = os.path.join(os.path.dirname(FFMPEG), "sc-ffprobe") if FFMPEG else ""
 
         def codec_of(path):
             if not (probe_bin and os.path.exists(probe_bin) and os.path.exists(path)):
@@ -634,7 +634,7 @@ if basic("27-tracks", log):
         ex = [x for x in events(log, "export-state") if x.get("state") == "done"]
         check("27-tracks", "export done", bool(ex), [x.get("state") for x in events(log, "export-state")])
         if ex and FFMPEG:
-            probe = os.path.join(os.path.dirname(FFMPEG), "ffprobe")
+            probe = os.path.join(os.path.dirname(FFMPEG), "sc-ffprobe")
             out = ex[0].get("path", "")
             total = spans(mid["doc"]["edl"]["clips"])[-1][1] / 1e9
             dur = None

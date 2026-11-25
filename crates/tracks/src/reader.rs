@@ -26,12 +26,7 @@ pub struct StreamInfo {
 
 fn command(ffmpeg: &Path) -> Command {
     let mut cmd = Command::new(ffmpeg);
-    cmd.stdin(Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000);
-    }
+    sc_helpers::hide_console(&mut cmd).stdin(Stdio::null());
     cmd
 }
 
@@ -255,8 +250,8 @@ impl AudioReader for HelperAudioReader {
             }
         }
         let n = got / (4 * self.channels) * self.channels;
-        for (o, b) in out.iter_mut().zip(self.bytes[..n * 4].chunks_exact(4)) {
-            *o = f32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+        for (o, b) in out.iter_mut().zip(self.bytes[..n * 4].as_chunks::<4>().0) {
+            *o = f32::from_le_bytes(*b);
         }
         Ok(n)
     }

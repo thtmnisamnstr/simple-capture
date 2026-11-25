@@ -3,7 +3,7 @@
 ## 0.1.0 (unreleased)
 
 The first release of Simple Capture: a screen recorder and editor for macOS, Windows and Linux
-with no account and no network.
+with no account and no network connections.
 
 ### Record
 - A display, a window, an app, a region, a camera, or an iPhone or iPad plugged in by cable
@@ -13,6 +13,10 @@ with no account and no network.
 - Switch sources while recording; a window resized mid-take gets a new section at its new size.
 - Pause, resume and restart a take; click highlights; output shapes original, 16:9, 4:3, 1:1,
   4:5 and 9:16 with a solid, gradient or image background, and Fit or Fill per section.
+- A countdown before the take, which Escape, Cancel or the record shortcut cancels. Image
+  backgrounds show in the live previews too.
+- The recorder opens by itself on the first launch, and when Simple Capture is opened again
+  from Finder or Launchpad.
 
 ### Edit
 - Trim, split, cut, copy, paste, reorder, speed changes with pitch kept, J/K/L shuttle,
@@ -30,18 +34,31 @@ with no account and no network.
   Teams, YouTube, and vertical video; per-format frame rates, sizes, estimates and named presets.
 
 ### Distribution
-- The macOS app and DMG are signed with a Developer ID and notarized, so permissions survive
-  updates. The DMG opens on a drag-to-Applications window.
+- macOS: the DMG on GitHub Releases, or Homebrew:
+  `brew install --cask thtmnisamnstr/tap/simple-capture`. The app and DMG are signed with a
+  Developer ID and notarized, so permissions survive updates. The DMG opens on a
+  drag-to-Applications window.
+- A Mac App Store edition of the same version: sandboxed, with an LGPL-only FFmpeg and no gifski.
+  Best H.264 and HEVC exports use Apple's VideoToolbox encoders instead of x264 and x265, GIFs
+  use FFmpeg's palette instead of gifski, and media keys can't be shortcuts. In its About
+  window, the FFmpeg entry's Source code button opens the GitHub release that holds the FFmpeg
+  source. It installs as the same app as the DMG, so use one or the other.
+- Release files carry SHA256SUMS.txt and build provenance attestations
+  (`gh attestation verify <file> --repo thtmnisamnstr/simple-capture`).
+- Windows: one NSIS setup `.exe`, a per-user install, and no console window. Linux: `.deb` and
+  `.AppImage`; the `.deb` installs its helpers as `sc-ffmpeg`, `sc-ffprobe` and `sc-gifski`, so
+  they never clash with the system's.
 - Simple Capture checks permissions without asking; macOS asks only when you press Allow.
 
 ### Library and diagnostics
 - A library of every recording with posters, Edit, Export, Show, Move to Trash, and what was
-  recovered from damaged takes.
+  recovered from damaged takes. Move to Trash never deletes for good: on Windows, a recording
+  the Recycle Bin can't take stays where it is, with a message.
 - A self-test report (`simple-capture --self-test`, or About → Diagnostics) with no recordings in
   it.
 
 ### Known limits
-- The Windows installers are not code-signed, so SmartScreen asks to confirm them.
+- The Windows installer is not code-signed, so SmartScreen asks to confirm it.
 - The Windows and Linux builds are experimental: they pass CI but have not been tried on a real
   desktop yet.
 - Linux records what the system's share dialog picks (displays and windows), and hides the

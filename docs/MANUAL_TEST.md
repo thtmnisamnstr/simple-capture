@@ -578,16 +578,16 @@ bar.
   APP="target/release/bundle/macos/Simple Capture.app"
   codesign -dv --entitlements - "$APP" 2>&1 | grep -E 'flags|Identifier|camera|audio-input'
   plutil -p "$APP/Contents/Info.plist" | grep -E 'UsageDescription|CFBundleIdentifier'
-  codesign -dv "$APP/Contents/MacOS/ffmpeg" 2>&1 | grep -E 'Signature|flags'
+  for h in sc-ffmpeg sc-ffprobe sc-gifski; do codesign -dv "$APP/Contents/MacOS/$h" 2>&1 | grep -E 'Signature|flags'; done
   ```
 - Expect: `flags=0x10002(adhoc,runtime)` (hardened runtime), `Identifier=com.simplecapture.desktop`,
   the camera and audio-input entitlements, the three usage strings (camera, microphone, system
-  audio), and signed ffmpeg/ffprobe sidecars.
+  audio), and signed sc-ffmpeg/sc-ffprobe/sc-gifski sidecars.
 - Look: the command output.
 
 **B1. Never-granted: onboarding and lists without a prompt**
-- Do: `open "$APP"`. Tray → Open Recorder. Click the Windows and Apps tabs. Click
-  "Permissions needed".
+- Do: `open "$APP"`. Tray → Open Recorder (on a first launch the recorder opens by itself).
+  Click the Windows and Apps tabs. Click "Permissions needed".
 - Expect: no prompt appears from opening the app, the panel, the tabs or the onboarding window
   (status is read without asking). Windows/Apps say "Allow Screen Recording to list windows and
   apps." with Allow… and Use the System Picker…. Onboarding shows "Not asked yet" (or the real state) for
@@ -635,6 +635,19 @@ bar.
 - Expect: no Simple Capture icon left in the menu bar; the dev host's grants are unchanged (the
   next `just run` shows no prompt).
 - Look: menu bar, `pgrep -lf "Simple Capture.app"` prints nothing, §12.
+
+**B7. First launch and opening it again**
+- Do: with the bundle quit, start it as on a new Mac, with an empty data folder:
+  ```bash
+  d=$(mktemp -d); open -n --env SC_DATA_DIR="$d" "$APP"
+  ```
+  Close the recorder panel, then open Simple Capture again while it runs (double-click it in
+  Finder, or `open "$APP"`). Change one recorder setting (for example 30 → 60 fps), quit from
+  the tray, and start it once more with `open -n --env SC_DATA_DIR="$d" "$APP"`.
+- Expect: the first launch opens the recorder panel by itself, without a prompt. Opening the
+  running app again brings the panel back. The last launch shows only the menu-bar icon (it is
+  no longer a first launch). No focus change other than the panel itself.
+- Look: screen, menu bar, §12.
 
 ---
 
@@ -853,6 +866,45 @@ In the editor with any recording, press ⌘E:
 | Y11 | After recording, type a name in the summary's Name field | The Library and the editor show that name; exports use it |
 | Y12 | Library: sort by Longest, Largest, Name; ⌘-click and ⇧-click several; ⌘A | Order changes and is remembered; the footer shows the count and size; Move N to Trash asks once |
 
+## 10h. Mac App Store edition (TestFlight, owner only)
+
+The store build: `gh workflow run app-store.yml -f tag=v<version> -f submit=false` uploads it
+without submitting (docs/RELEASING.md, Mac App Store), and the TestFlight app installs it. It is
+sandboxed, has its own permission grants (an Apple Distribution signature) and keeps its
+settings in `~/Library/Containers/com.simplecapture.desktop`. Quit every other Simple Capture
+first; if the DMG edition is in /Applications, move it to the Trash (both are
+`Simple Capture.app` with the same ID). Write each prompt in §12 with "TestFlight" as the app.
+A failure here holds the submission: report it.
+
+AS0 can run on this Mac before the first upload: the `mas` build without the sandbox, under the
+dev host's grants. The next `just run` builds the normal app again.
+
+```bash
+pnpm --dir ui build
+cargo build --locked -p simple-capture-app --features mas
+scripts/lib/live.sh tools/macos-dev-host/run.sh target/debug/simple-capture-app
+```
+
+| # | Step | Expected |
+|---|---|---|
+| AS0 | Dev host, `mas` build: record a display with TextEdit frontmost; click the floating bar's pause and resume, then type in TextEdit | TextEdit stays frontmost and takes the typing after each click |
+| AS1 | Install from TestFlight and open it from Launchpad (first launch) | The recorder panel opens by itself; the menu-bar icon appears; no prompt yet |
+| AS2 | Close the panel; open Simple Capture again from Finder (Applications) or Launchpad | The recorder panel comes back |
+| AS3 | "Permissions needed" → Allow… for Screen Recording; follow macOS (System Settings, Quit & Reopen); then Allow… for Camera and for Microphone | Each prompt names Simple Capture (Camera and Microphone with our usage strings); afterwards the Permissions window says Granted for all three and the banner is gone |
+| AS4 | Record a display 20 s with a camera, the mic and system audio (music playing) | The editor opens; screen, camera, voice and music play in step; the recording is in ~/Movies/Simple Capture |
+| AS5 | Record a window 15 s, resizing it once | Only that window is recorded, letterboxed after the resize; none of our windows in it |
+| AS6 | Plug in an iPhone or iPad (unlocked, trusted) → the recorder's iPhone tab → record 15 s with sound playing on it | It is listed and its screen and sound are recorded. If it is missing or black, report it: the build may need the `device.usb` entitlement |
+| AS7 | Record a display with TextEdit frontmost; click the floating bar (pause, resume) and drag the camera Preview window, typing in TextEdit after each | TextEdit stays frontmost and keeps the typing. The store build leaves out `_setPreventsActivation:`; if Simple Capture takes focus, report it |
+| AS8 | Export MP4 to the default folder | The file is in ~/Movies/Simple Capture and plays in QuickTime; Show in Finder finds it |
+| AS9 | Export → Choose… another folder (Desktop or Documents) → Export | The file is in that folder and plays |
+| AS10 | Tray → Quit; open the app again; export another recording without choosing the folder again | It saves to the folder from AS9, with no "Choose the folder again" message |
+| AS11 | Export: pick MP4 with H.264, then HEVC, then GIF, and look at the Encoder row each time | Without touching it, Fast is selected for H.264 and HEVC and Palette for GIF; Best Quality and Best Quality (gifski) are greyed out |
+| AS12 | Export MP4, H.264 (Fast) | It plays; `strings <file> \| grep -c x264` prints 0 (VideoToolbox; the DMG edition's Best Quality writes x264's settings into the file); nothing in the sheet mentions x264 or x265 |
+| AS13 | Export GIF (Palette) | The GIF (FFmpeg's palette) plays in a browser |
+| AS14 | Optional: export to a folder on another disk | It finishes after a short copy at 100%; it needs free space on the Movies disk, where it is encoded first |
+| AS15 | About Simple Capture → Privacy Policy | The browser opens docs/PRIVACY.md on GitHub |
+| AS16 | About → Licenses → FFmpeg export helper → Source code | LGPL-2.1-or-later; the note says the source is attached to this version's GitHub release, and the Source code button opens `https://github.com/thtmnisamnstr/simple-capture/releases/tag/v<version>` in the browser, which (once the release is published) has `simple-capture-helper-sources.tar.gz`; no x264, x265 or gifski entries |
+
 ## 11. Results log
 
 Copy this table into the M1 review notes (or STATUS) with one line per step run.
@@ -863,14 +915,14 @@ Copy this table into the M1 review notes (or STATUS) with one line per step run.
 | … | | | | |
 
 Steps: L1–L4, S1–S13, W1–W6, P1–P7, E1–E4, H1–H8, K1–K2, C1 (three clap offsets in ms), O1 (paste
-the soak summary), B0–B6, M1–M7.
+the soak summary), B0–B7, M1–M7, AS0–AS16 (store build).
 
 ## 12. Prompt log
 
 Every Screen Recording, Camera, Microphone or system-audio prompt, reminder or alert seen, with the
 path that led to it.
 
-| Date | App (dev host / release bundle) | Path (what you clicked, step ID) | Prompt or alert (exact wording) | Your answer | Notes |
+| Date | App (dev host / release bundle / TestFlight) | Path (what you clicked, step ID) | Prompt or alert (exact wording) | Your answer | Notes |
 |---|---|---|---|---|---|
 | | | | | | |
 

@@ -18,6 +18,7 @@ use crate::core::Core;
 pub const THUMB_H: u32 = 96;
 pub const PEAKS_PER_S: u32 = 100;
 const PEAK_RATE: u32 = 8_000;
+const MAX_PEAK_BINS: u32 = 24 * 60 * 60 * PEAKS_PER_S;
 const MAX_THUMBS: i64 = 400;
 
 pub fn thumbs_dir(dir: &Path) -> PathBuf {
@@ -164,7 +165,14 @@ fn window_peaks(
     tracks: &[String],
 ) -> Result<Vec<f32>, String> {
     let len = project.duration_ns().unwrap_or(0).max(0);
-    let bins = (i128::from(len) * i128::from(PEAKS_PER_S) / 1_000_000_000) as usize;
+    let bins = i128::from(len) * i128::from(PEAKS_PER_S) / 1_000_000_000;
+    if bins > i128::from(MAX_PEAK_BINS) {
+        return Err(format!(
+            "The recording claims to last more than {} hours, which can't be right, so its sound can't be read.",
+            len / 3_600_000_000_000
+        ));
+    }
+    let bins = bins as usize;
     let per_bin = (PEAK_RATE / PEAKS_PER_S) as usize;
     let mut peaks = vec![0f32; bins];
     for id in tracks {

@@ -124,9 +124,16 @@ pub fn poster(
     Ok(file)
 }
 
-/// `name` names a project folder directly inside `root` (no separators, no `..`).
+/// `name` names a project folder directly inside `root` (no separators, drive prefixes or `..`).
 pub fn project_in(root: &Path, name: &str) -> Option<std::path::PathBuf> {
-    let ok = !name.is_empty() && !name.contains(['/', '\\']) && name != ".." && name != ".";
+    let ok = !name.is_empty()
+        && !name.contains(['/', '\\', '\0'])
+        && !(cfg!(windows) && name.contains(':'))
+        && name != ".."
+        && name != ".";
+    if !ok {
+        return None;
+    }
     let dir = root.join(name);
-    (ok && sc_core::folder::is_project_dir(&dir)).then_some(dir)
+    (dir.parent() == Some(root) && sc_core::folder::is_project_dir(&dir)).then_some(dir)
 }

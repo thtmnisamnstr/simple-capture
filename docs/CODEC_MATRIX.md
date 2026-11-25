@@ -32,7 +32,7 @@ Important caveats:
 | Editor decode | `AVAssetReader` producing IOSurface-backed NV12 (420v) | **verified** (S3) | 7680x2160 HEVC: 302 fps decode, 344 fps with import and preview render; seek median 54 ms, max 142 ms (three runs). Camera 1080p: 1599 fps, seek 11 ms. AVAssetReader reads a SIGKILLed fragmented `.mov` completely. Readers cannot seek: recreate on a keyframe (R-dec). |
 | Frames into wgpu | `CVMetalTextureCache` makes R8 (Y) and RG8 (CbCr) Metal textures from the IOSurface; `wgpu-hal` wraps them; WGSL BT.709 limited-range shader | **verified** (S3) | Zero-copy: IOSurface ids match on both planes, the same Metal texture object, 39 µs per 7680x2160 frame. PSNR against an ffmpeg reference conversion 79.3 dB (screen). Keep the source CVPixelBuffer alive until GPU work finishes (R-dec). |
 | Preview to UI | `CAMetalLayer` NSView under a transparent WKWebView (wgpu FIFO surface); fallback raw frames into WebGL2 | **verified** (S2) | Native path 60.1 fps of 60 at 20% total CPU; WebGL2 fallback 58.5-59.9 fps. Send webview frames at the preview's device-pixel size (S2). |
-| Export encode + mux | Bundled static GPL FFmpeg 9.0.2 helper (`third_party/ffmpeg/build-macos.sh`) | **verified** (S1) | arm64 built and benchmarked; x86_64 cross-built and only smoke-tested under Rosetta. See section 2. |
+| Export encode + mux | Bundled static GPL FFmpeg 9.1 helper (`third_party/ffmpeg/build-macos.sh`) | **verified** (S1) | arm64 built and benchmarked; x86_64 cross-built and only smoke-tested under Rosetta. See section 2. |
 | GIF | Bundled gifski 1.34.0 helper (Y4M on stdin) | **verified** (S1) | arm64 only; gifski x86_64 not built yet. FFmpeg palette mode as the alternative. |
 
 ### Windows (M6)
@@ -183,7 +183,7 @@ Run once per machine and cache the result keyed by OS version, helper version an
 7. **Native recording headroom:** an HEVC (and H.264) encode at the display's native size and the chosen fps. Offer 60 fps only when it keeps up; S3 measured 46 fps HEVC at 7680x2160 on the M3 Pro, which rules out 60 fps there. **M1 probe v1 (the probe-size rule, ADR-009):** at launch, HEVC at 60 fps for every connected display's native and 1× size; 60 fps is offered for a source only if its display reached ≥ 78 fps (1.3 × 60). M3 Pro: 3024x1964 117.9 fps, 1512x982 386.8 fps; `h264_videotoolbox -allow_sw 0` opens at 3840 and 4096 x2160, fails at 4098 (M1:export). Delivered with `--fps 60` on a changing test screen: 50.8–52.5 fps (M1:e2e).
 8. **Native decode paths:** AVAssetReader for HEVC/H.264 on macOS; MF DXVA on Windows; VAAPI on Linux.
 9. **gifski** is present and is version 1.32 or later (needed for Y4M on stdin; we ship 1.34.0) (R-eco).
-10. **Helper integrity:** binary present, version string matches the pinned build (`9.0.2-simple-capture`), with a clear error if missing (S1 tested the missing-helper message).
+10. **Helper integrity:** binary present, version string matches the pinned build (`9.1-simple-capture`), with a clear error if missing (S1 tested the missing-helper message).
 
 ## 4. Open items
 

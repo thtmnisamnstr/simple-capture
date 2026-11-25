@@ -46,10 +46,10 @@ APP="$RUN/bin/simple-capture-app"
 export SC_DEVTOOLS="$RUN/bin/sc-devtools"
 FFMPEG=""
 if [ -x "$MAIN/third_party/out/macos-arm64/ffmpeg" ]; then
-  cp "$MAIN/third_party/out/macos-arm64/ffmpeg" "$RUN/bin/ffmpeg" && FFMPEG="$RUN/bin/ffmpeg"
-  cp "$MAIN/third_party/out/macos-arm64/ffprobe" "$RUN/bin/ffprobe" 2>/dev/null
-  export SC_FFMPEG="$FFMPEG"
+  cp "$MAIN/third_party/out/macos-arm64/ffmpeg" "$RUN/bin/sc-ffmpeg" && FFMPEG="$RUN/bin/sc-ffmpeg"
+  cp "$MAIN/third_party/out/macos-arm64/ffprobe" "$RUN/bin/sc-ffprobe" 2>/dev/null
 fi
+export SC_FFMPEG="$FFMPEG"
 cd "$RUN" || exit 1
 
 fixture_start || exit 1
@@ -165,7 +165,7 @@ if [ "${SC_KEEP_MEDIA:-0}" != 1 ]; then
   find "$RUN/projects" -type f \( -name '*.mov' -o -name '*.mp4' -o -name '*.m4a' -o -name '*.wav' -o -name '*.part' \
     -o -name '*.gif' -o -name '*.webm' -o -name '*.mkv' \) -delete
   find "$RUN/projects" -type d -name thumbs -prune -exec rm -rf {} +
-  rm -f "$RUN/bin/simple-capture-app" "$RUN/bin/sc-devtools" "$RUN/bin/ffmpeg" "$RUN/bin/ffprobe"
+  rm -f "$RUN/bin/simple-capture-app" "$RUN/bin/sc-devtools" "$RUN/bin/sc-ffmpeg" "$RUN/bin/sc-ffprobe"
 fi
 rsync -a --exclude bin --exclude thumbs --exclude shots --exclude '*.mov' --exclude '*.mp4' --exclude '*.m4a' --exclude '*.wav' --exclude '*.gif' --exclude '*.webm' --exclude '*.mkv' "$RUN/" "$OUT/"
 echo "app-driver: report $OUT/report.json (exit $rc)" >&2

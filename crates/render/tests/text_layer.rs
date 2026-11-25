@@ -108,7 +108,9 @@ fn gpu_matches_cpu_for_placed_scaled_rotated_and_faded_text() {
     let bg = RgbaImage {
         data: pat
             .data
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .flat_map(|p| [p[0], p[1], p[2], 255])
             .collect(),
         ..pat

@@ -78,14 +78,22 @@ impl Report<'_> {
 }
 
 pub fn redact(s: &str) -> String {
+    let mut homes: Vec<String> = ["HOME", "USERPROFILE"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .map(|h| h.to_string_lossy().to_string())
+        .collect();
+    // A sandboxed app's $HOME is its container, while the paths it reports are under the real
+    // home folder.
+    if cfg!(target_os = "macos")
+        && let Some(u) = std::env::var_os("USER")
+    {
+        homes.push(format!("/Users/{}", u.to_string_lossy()));
+    }
+    homes.sort_by_key(|h| std::cmp::Reverse(h.len()));
     let mut out = s.to_string();
-    for var in ["HOME", "USERPROFILE"] {
-        if let Some(h) = std::env::var_os(var) {
-            let h = h.to_string_lossy().to_string();
-            if h.len() > 3 {
-                out = out.replace(&h, "~");
-            }
-        }
+    for h in homes.iter().filter(|h| h.len() > 3) {
+        out = out.replace(h.as_str(), "~");
     }
     out
 }
@@ -380,7 +388,7 @@ fn inspect(file: &Path) -> Result<Inspected, String> {
             seconds: None,
         });
     };
-    let out = Command::new(ffprobe)
+    let out = sc_helpers::hide_console(&mut Command::new(ffprobe))
         .args([
             "-v",
             "error",

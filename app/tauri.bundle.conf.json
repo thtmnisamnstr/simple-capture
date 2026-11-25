@@ -5,9 +5,9 @@
       "app"
     ],
     "externalBin": [
-      "binaries/ffmpeg",
-      "binaries/ffprobe",
-      "binaries/gifski"
+      "binaries/sc-ffmpeg",
+      "binaries/sc-ffprobe",
+      "binaries/sc-gifski"
     ],
     "macOS": {
       "signingIdentity": "-",

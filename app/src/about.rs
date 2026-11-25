@@ -23,11 +23,30 @@ fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
+/// The page the About window links to; App Store review asks for an in-app privacy policy link.
+const PRIVACY_POLICY: &str =
+    "https://github.com/thtmnisamnstr/simple-capture/blob/main/docs/PRIVACY.md";
+
+#[cfg(not(feature = "mas"))]
+const FFMPEG_LICENSE: &str = "GPL-2.0-or-later";
+#[cfg(not(feature = "mas"))]
+const FFMPEG_NOTE: &str = "A separate program the app runs to encode exports, built with x264, x265, SVT-AV1, libvpx, \
+     Opus and Vorbis, and with networking turned off. Its complete source code is attached to \
+     this version's release on GitHub.";
+
+#[cfg(feature = "mas")]
+const FFMPEG_LICENSE: &str = "LGPL-2.1-or-later";
+#[cfg(feature = "mas")]
+const FFMPEG_NOTE: &str = "A separate program the app runs to encode exports, built with SVT-AV1, libvpx, Opus and \
+     Vorbis, and with networking turned off. Its complete source code is attached to this \
+     version's release on GitHub.";
+
 struct Entry {
     title: &'static str,
     license: &'static str,
     note: &'static str,
     files: Vec<PathBuf>,
+    source: bool,
 }
 
 fn files_in(dir: &Path, filter: impl Fn(&str) -> bool + Copy) -> Vec<PathBuf> {
@@ -66,35 +85,35 @@ fn entries(bundled: Option<PathBuf>) -> Vec<Entry> {
         license: "MIT",
         note: "This app. It has no networking code: nothing you record leaves this computer.",
         files: [app_license].into_iter().filter(|p| p.is_file()).collect(),
+        source: false,
     }];
     out.push(Entry {
         title: "FFmpeg export helper",
-        license: "GPL-2.0-or-later",
-        note: "A separate program the app runs to encode exports, built with x264, x265, \
-               SVT-AV1, libvpx, Opus and Vorbis, and with networking turned off. Its source \
-               code is published with each release.",
+        license: FFMPEG_LICENSE,
+        note: FFMPEG_NOTE,
         files: files_in(&helpers, |n| !n.starts_with("gifski")),
+        source: true,
     });
-    let gifski = {
-        let mut f = files_in(&helpers, |n| n.starts_with("gifski"));
-        if f.is_empty() {
+    if !cfg!(feature = "mas") {
+        let mut gifski = files_in(&helpers, |n| n.starts_with("gifski"));
+        if gifski.is_empty() {
             let dev = repo()
                 .join("third_party/out")
                 .join(sc_helpers::platform_dir_name())
                 .join("gifski.LICENSE");
             if dev.is_file() {
-                f.push(dev);
+                gifski.push(dev);
             }
         }
-        f
-    };
-    out.push(Entry {
-        title: "gifski GIF helper",
-        license: "AGPL-3.0-or-later",
-        note: "A separate program the app runs to make GIFs. Its source code is published \
-               with each release.",
-        files: gifski,
-    });
+        out.push(Entry {
+            title: "gifski GIF helper",
+            license: "AGPL-3.0-or-later",
+            note: "A separate program the app runs to make GIFs. Its source code is published \
+                   with each release.",
+            files: gifski,
+            source: true,
+        });
+    }
     out.push(Entry {
         title: "Fonts for text overlays",
         license: "OFL-1.1, Apache-2.0",
@@ -102,12 +121,14 @@ fn entries(bundled: Option<PathBuf>) -> Vec<Entry> {
                Caveat, Baloo 2, Tilt Neon, Sedgwick Ave Display, Courier Prime, Special Elite \
                and Noto Color Emoji.",
         files: files_in(&fonts, |n| n.starts_with("LICENSE")),
+        source: false,
     });
     out.push(Entry {
         title: "Rust libraries",
         license: "MIT, Apache-2.0, BSD and others",
         note: "Every library compiled into the app, with its license text.",
         files: notices.into_iter().filter(|p| p.is_file()).collect(),
+        source: false,
     });
     out
 }
@@ -117,6 +138,11 @@ fn allowed(bundled: Option<PathBuf>, path: &Path) -> bool {
         .iter()
         .flat_map(|e| e.files.iter())
         .any(|f| f == path)
+}
+
+/// One of the license files the About window lists.
+pub fn is_license_file(app: &tauri::AppHandle, path: &Path) -> bool {
+    allowed(licenses_dir(app), path)
 }
 
 impl Core {
@@ -130,6 +156,7 @@ impl Core {
                     "title": e.title,
                     "license": e.license,
                     "note": e.note,
+                    "source": e.source,
                     "files": e.files.iter().map(|f| json!({
                         "name": f.file_name().map(|n| n.to_string_lossy().into_owned()),
                         "path": f,
@@ -143,7 +170,7 @@ impl Core {
                         .and_then(Value::as_str)
                         .ok_or("missing argument \"path\"")?,
                 );
-                if !allowed(licenses_dir(&self.app), &path) {
+                if !is_license_file(&self.app, &path) {
                     return Err("not a license file".into());
                 }
                 std::fs::read_to_string(&path)
@@ -158,17 +185,21 @@ impl Core {
             "cancel_countdown" => self.cancel_countdown(),
             "toggle_camera" => self.toggle_camera(),
             #[cfg(target_os = "macos")]
-            "open_iphone_mirroring" => std::process::Command::new("/usr/bin/open")
-                .args(["-b", "com.apple.ScreenContinuity"])
-                .status()
-                .map_err(|e| e.to_string())
-                .and_then(|s| {
-                    if s.success() {
-                        Ok(Value::Null)
-                    } else {
+            "open_iphone_mirroring" => {
+                match sc_capture_macos::workspace::open_app("com.apple.ScreenContinuity") {
+                    Ok(()) => Ok(Value::Null),
+                    Err(sc_platform::Error::NotFound(_)) => {
                         Err("iPhone Mirroring needs macOS 15 or later".into())
                     }
-                }),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            "open_privacy_policy" => crate::core::open_url(PRIVACY_POLICY).map(|()| Value::Null),
+            "open_source_release" => crate::core::open_url(concat!(
+                "https://github.com/thtmnisamnstr/simple-capture/releases/tag/v",
+                env!("CARGO_PKG_VERSION")
+            ))
+            .map(|()| Value::Null),
             "tray_item" => crate::tray::on_item(
                 self,
                 args.get("id")

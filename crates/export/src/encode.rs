@@ -5,6 +5,8 @@
 
 use std::path::Path;
 
+use sc_geometry::SizePx;
+
 use crate::settings::{
     AudioCodec, Encoder, ExportSettings, Format, GifMode, Loop, Quality, VideoCodec,
 };
@@ -51,6 +53,63 @@ pub fn video_encoder(video: VideoCodec, enc: Encoder) -> Option<&'static str> {
     })
 }
 
+/// `software_kbps` lets VideoToolbox use Apple's software encoder, which H.264 frames over
+/// 4096 px need and which takes only a bitrate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VideoPick {
+    pub encoder: &'static str,
+    pub software_kbps: Option<u32>,
+}
+
+const SOFTWARE_BPP: [f64; 3] = [0.034, 0.056, 0.1];
+
+fn software_kbps(q: Quality, canvas: SizePx, fps: u32) -> u32 {
+    if let Quality::Custom { kbps: Some(k), .. } = q {
+        return k;
+    }
+    let px_per_s = f64::from(canvas.w) * f64::from(canvas.h) * f64::from(fps.max(1));
+    (px_per_s * SOFTWARE_BPP[tier(q)] / 1000.0).round().max(1.0) as u32
+}
+
+/// `Best` takes the encoder the settings name, or the VideoToolbox one when the helper lacks it
+/// (an LGPL helper has no x264 or x265). `works` runs only for codecs that have a hardware
+/// encoder.
+pub fn pick_video_encoder(
+    st: &ExportSettings,
+    canvas: SizePx,
+    fps: u32,
+    works: impl Fn(&str) -> bool,
+    h264_hw_fits: impl FnOnce() -> bool,
+) -> Option<VideoPick> {
+    let named = video_encoder(st.video, st.encoder)?;
+    let as_named = Some(VideoPick {
+        encoder: named,
+        software_kbps: None,
+    });
+    if st.encoder == Encoder::Fast {
+        return as_named;
+    }
+    let Some(hw) = video_encoder(st.video, Encoder::Fast).filter(|hw| *hw != named) else {
+        return as_named;
+    };
+    if works(named) || !works(hw) {
+        return as_named;
+    }
+    let software = hw == "h264_videotoolbox" && !h264_hw_fits();
+    Some(VideoPick {
+        encoder: hw,
+        software_kbps: software.then(|| software_kbps(st.quality, canvas, fps)),
+    })
+}
+
+/// Palette when gifski is asked for but missing, so a build without gifski still makes GIFs.
+pub fn gif_mode(asked: GifMode, gifski_found: impl FnOnce() -> bool) -> GifMode {
+    match asked {
+        GifMode::Gifski if !gifski_found() => GifMode::Palette,
+        m => m,
+    }
+}
+
 pub fn audio_encoder(audio: AudioCodec) -> Option<&'static str> {
     Some(match audio {
         AudioCodec::Aac => AAC,
@@ -63,7 +122,25 @@ pub fn audio_encoder(audio: AudioCodec) -> Option<&'static str> {
     })
 }
 
-fn video_quality(st: &ExportSettings, enc: &str) -> Vec<String> {
+fn bitrate(k: u32) -> Vec<String> {
+    let rate = format!("{k}k");
+    s(&[
+        "-b:v",
+        &rate,
+        "-maxrate",
+        &rate,
+        "-bufsize",
+        &format!("{}k", k * 2),
+    ])
+}
+
+fn video_quality(st: &ExportSettings, pick: VideoPick) -> Vec<String> {
+    let enc = pick.encoder;
+    if let Some(k) = pick.software_kbps {
+        let mut a = s(&["-allow_sw", "1"]);
+        a.extend(bitrate(k));
+        return a;
+    }
     let t = tier(st.quality);
     let custom_crf = match st.quality {
         Quality::Custom { crf: Some(c), .. } => Some(c),
@@ -78,15 +155,7 @@ fn video_quality(st: &ExportSettings, enc: &str) -> Vec<String> {
         && enc != "prores_ks"
         && enc != "prores_videotoolbox"
     {
-        let rate = format!("{k}k");
-        return s(&[
-            "-b:v",
-            &rate,
-            "-maxrate",
-            &rate,
-            "-bufsize",
-            &format!("{}k", k * 2),
-        ]);
+        return bitrate(k);
     }
     match enc {
         "libx264" => {
@@ -188,10 +257,29 @@ fn ffmpeg_prefix() -> Vec<String> {
     ])
 }
 
-/// ffmpeg arguments for a video export: Y4M on stdin, the mixed WAV at `wav` when there is one,
-/// the file at `out`.
+/// ffmpeg arguments for a video export with the encoder the settings name: Y4M on stdin, the
+/// mixed WAV at `wav` when there is one, the file at `out`.
 pub fn video_args(st: &ExportSettings, wav: Option<&Path>, out: &Path) -> Option<Vec<String>> {
-    let venc = video_encoder(st.video, st.encoder)?;
+    let encoder = video_encoder(st.video, st.encoder)?;
+    video_args_with(
+        st,
+        VideoPick {
+            encoder,
+            software_kbps: None,
+        },
+        wav,
+        out,
+    )
+}
+
+/// [`video_args`] with the encoder [`pick_video_encoder`] chose.
+pub fn video_args_with(
+    st: &ExportSettings,
+    pick: VideoPick,
+    wav: Option<&Path>,
+    out: &Path,
+) -> Option<Vec<String>> {
+    let venc = pick.encoder;
     let aenc = wav.and(audio_encoder(st.audio));
     let mut a = ffmpeg_prefix();
     if let (Some(w), Some(_)) = (wav, aenc) {
@@ -204,7 +292,7 @@ pub fn video_args(st: &ExportSettings, wav: Option<&Path>, out: &Path) -> Option
     }
     if let Some(rgb) = rgb_pix(venc) {
         a.extend(s(&["-vf", &format!("{TAG_709},{TO_RGB}"), "-c:v", venc]));
-        a.extend(video_quality(st, venc));
+        a.extend(video_quality(st, pick));
         a.extend(s(&["-pix_fmt", rgb]));
     } else {
         let (filter, tags) = if st.video == VideoCodec::Vp8 {
@@ -213,7 +301,7 @@ pub fn video_args(st: &ExportSettings, wav: Option<&Path>, out: &Path) -> Option
             (TAG_709, ["bt709", "bt709", "bt709"])
         };
         a.extend(s(&["-vf", filter, "-c:v", venc]));
-        a.extend(video_quality(st, venc));
+        a.extend(video_quality(st, pick));
         let pix = match venc {
             "prores_ks" => "yuv422p10le",
             "prores_videotoolbox" => "p210le",
@@ -445,5 +533,137 @@ mod tests {
         assert!(has(&a, ["-c:v", "libwebp_anim"]) && has(&a, ["-pix_fmt", "bgra"]));
         assert!(has(&a, ["-quality", "75"]) && has(&a, ["-loop", "3"]) && has(&a, ["-f", "webp"]));
         assert!(a.contains(&"-an".to_string()) && !a.contains(&"-colorspace".to_string()));
+    }
+
+    const UHD: SizePx = SizePx { w: 3840, h: 2160 };
+    const FIVE_K: SizePx = SizePx { w: 5120, h: 2880 };
+
+    fn without(missing: &'static [&'static str]) -> impl Fn(&str) -> bool {
+        move |name| !missing.contains(&name)
+    }
+
+    fn pick(st: &ExportSettings, size: SizePx, missing: &'static [&'static str]) -> VideoPick {
+        pick_video_encoder(st, size, 30, without(missing), || {
+            size.w.max(size.h) <= 4096
+        })
+        .expect("an encoder")
+    }
+
+    #[test]
+    fn a_complete_helper_runs_the_encoder_the_settings_name() {
+        let out = Path::new("o.mp4");
+        for video in [VideoCodec::H264, VideoCodec::Hevc, VideoCodec::Av1] {
+            for encoder in [Encoder::Best, Encoder::Fast] {
+                let st = ExportSettings {
+                    video,
+                    encoder,
+                    ..ExportSettings::for_format(Format::Mp4)
+                };
+                let Some(named) = video_encoder(video, encoder) else {
+                    continue;
+                };
+                let p = pick(&st, FIVE_K, &[]);
+                assert_eq!(
+                    p,
+                    VideoPick {
+                        encoder: named,
+                        software_kbps: None
+                    }
+                );
+                assert_eq!(
+                    video_args_with(&st, p, None, out),
+                    video_args(&st, None, out)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn best_without_x264_or_x265_uses_the_hardware_encoder() {
+        const LGPL: &[&str] = &["libx264", "libx265"];
+        let mut st = ExportSettings::for_format(Format::Mp4);
+        let p = pick(&st, UHD, LGPL);
+        if cfg!(target_os = "macos") {
+            assert_eq!(p.encoder, "h264_videotoolbox");
+            assert_eq!(p.software_kbps, None);
+            let a = video_args_with(&st, p, None, Path::new("o.mp4")).expect("args");
+            assert!(has(&a, ["-allow_sw", "0"]) && has(&a, ["-q:v", "60"]));
+            st.video = VideoCodec::Hevc;
+            let h = pick(&st, FIVE_K, LGPL);
+            assert_eq!(h.encoder, "hevc_videotoolbox");
+            assert_eq!(h.software_kbps, None, "HEVC opens over 4096 px");
+            let a = video_args_with(&st, h, None, Path::new("o.mp4")).expect("hevc");
+            assert!(has(&a, ["-tag:v", "hvc1"]) && has(&a, ["-allow_sw", "0"]));
+        } else {
+            assert_eq!(p.encoder, "libx264", "no hardware encoder to fall back to");
+        }
+    }
+
+    #[test]
+    fn hardware_h264_too_small_for_the_frame_uses_apples_software_encoder() {
+        if !cfg!(target_os = "macos") {
+            return;
+        }
+        let mut st = ExportSettings::for_format(Format::Mp4);
+        let p = pick(&st, FIVE_K, &["libx264"]);
+        assert_eq!(p.encoder, "h264_videotoolbox");
+        assert_eq!(p.software_kbps, Some(24_773));
+        let a = video_args_with(&st, p, None, Path::new("o.mp4")).expect("args");
+        assert!(has(&a, ["-allow_sw", "1"]) && has(&a, ["-b:v", "24773k"]));
+        assert!(has(&a, ["-maxrate", "24773k"]) && has(&a, ["-bufsize", "49546k"]));
+        assert!(!a.contains(&"-q:v".to_string()) && !has(&a, ["-allow_sw", "0"]));
+        st.quality = Quality::High;
+        assert_eq!(pick(&st, FIVE_K, &["libx264"]).software_kbps, Some(44_237));
+        st.quality = Quality::Custom {
+            crf: None,
+            kbps: Some(9000),
+        };
+        let c = pick(&st, FIVE_K, &["libx264"]);
+        assert_eq!(c.software_kbps, Some(9000));
+        let a = video_args_with(&st, c, None, Path::new("o.mp4")).expect("custom");
+        assert!(has(&a, ["-allow_sw", "1"]) && has(&a, ["-b:v", "9000k"]));
+    }
+
+    #[test]
+    fn the_named_encoder_stays_when_no_fallback_works() {
+        let st = ExportSettings::for_format(Format::Mp4);
+        let p = pick(&st, UHD, &["libx264", "h264_videotoolbox"]);
+        assert_eq!(p.encoder, "libx264");
+        assert_eq!(p.software_kbps, None);
+    }
+
+    #[test]
+    fn availability_is_only_asked_when_a_fallback_exists() {
+        let never = |name: &str| -> bool { panic!("asked about {name}") };
+        let no_size = || -> bool { panic!("asked about the size") };
+        let fast = ExportSettings {
+            encoder: Encoder::Fast,
+            ..ExportSettings::for_format(Format::Mp4)
+        };
+        let _ = pick_video_encoder(&fast, FIVE_K, 30, never, no_size);
+        let av1 = ExportSettings {
+            video: VideoCodec::Av1,
+            ..ExportSettings::for_format(Format::Mp4)
+        };
+        let p = pick_video_encoder(&av1, FIVE_K, 30, never, no_size).expect("av1");
+        assert_eq!(p.encoder, "libsvtav1");
+        let webp = ExportSettings::for_format(Format::Webp);
+        let p = pick_video_encoder(&webp, FIVE_K, 30, never, no_size).expect("webp");
+        assert_eq!(p.encoder, "libwebp_anim");
+        let x264 = ExportSettings::for_format(Format::Mp4);
+        let p = pick_video_encoder(&x264, FIVE_K, 30, |_| true, no_size).expect("x264");
+        assert_eq!(p.encoder, "libx264");
+        if !cfg!(target_os = "macos") {
+            let p = pick_video_encoder(&x264, FIVE_K, 30, never, no_size).expect("x264");
+            assert_eq!(p.encoder, "libx264");
+        }
+    }
+
+    #[test]
+    fn gifs_use_the_palette_when_gifski_is_missing() {
+        assert_eq!(gif_mode(GifMode::Gifski, || true), GifMode::Gifski);
+        assert_eq!(gif_mode(GifMode::Gifski, || false), GifMode::Palette);
+        let unasked = || -> bool { panic!("palette never looks for gifski") };
+        assert_eq!(gif_mode(GifMode::Palette, unasked), GifMode::Palette);
     }
 }

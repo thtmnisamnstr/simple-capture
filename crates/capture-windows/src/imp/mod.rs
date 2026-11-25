@@ -138,7 +138,7 @@ pub fn platform() -> Arc<dyn Platform> {
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
     let ffmpeg = sc_helpers::locate(sc_helpers::HelperKind::Ffmpeg)
-        .unwrap_or_else(|_| PathBuf::from("ffmpeg.exe"));
+        .unwrap_or_else(|_| sc_helpers::bundled_path(sc_helpers::HelperKind::Ffmpeg));
     Arc::new(WindowsPlatform {
         screen: Screen,
         mic: CpalMic {

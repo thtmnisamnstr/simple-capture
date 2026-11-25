@@ -680,7 +680,9 @@ impl Decoder for SctrkDecoder {
             match data {
                 Some(bytes) => buf.extend(
                     bytes
-                        .chunks_exact(4)
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
                 ),
                 None => buf.resize(buf.len() + frames as usize * ch, 0.0),

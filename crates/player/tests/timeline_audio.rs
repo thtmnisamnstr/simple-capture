@@ -36,7 +36,7 @@ fn setup(len_ms: i64) -> (TempDir, ProjectV1) {
 fn read(a: &mut TimelineAudio, frames: usize) -> Vec<f32> {
     let mut out = vec![f32::NAN; frames * 2];
     a.read(&mut out).expect("read");
-    out.chunks_exact(2).map(|f| f[0]).collect()
+    out.as_chunks::<2>().0.iter().map(|f| f[0]).collect()
 }
 
 fn timeline(dir: &TempDir, p: &ProjectV1, clips: Vec<Clip>) -> TimelineAudio {

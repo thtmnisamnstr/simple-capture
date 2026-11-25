@@ -126,7 +126,7 @@ Notes:
 | Preview transport (ADR-007) | **Webview frames** (URI pull, WebGL2). Native CAMetalLayer under the webview works [S2] but is off | **Webview frames.** Native DirectComposition visual compiles [S5], never run | **Webview frames.** Wayland `wl_subsurface` passed in Docker with software rendering [S6]; X11 native child failed, so X11 stays on webview frames |
 | Own-UI exclusion | SCContentFilter with our windows listed one by one, on every stream (**verified [S3]**) | SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE), set when each window is created | Auto-hide overlapping overlays |
 | Hotkeys | tauri-plugin-global-shortcut | same | GlobalShortcuts portal on Wayland, global-hotkey on X11 |
-| Export | FFmpeg 9.0.2 static GPL sidecar + gifski sidecar (**verified [S1]**) | FFmpeg built by us from pinned sources with `--disable-network` + gifski built with cargo (ADR-013); not built yet | same as Windows |
+| Export | FFmpeg 9.1 static GPL sidecar + gifski sidecar (**verified [S1]**) | FFmpeg built by us from pinned sources with `--disable-network` + gifski built with cargo (ADR-013); not built yet | same as Windows |
 
 M1 CI may skip helper builds on Windows and Linux; those helpers come later (ADR-013). The
 placeholder capture crates there must still compile and pass tests.

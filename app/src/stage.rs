@@ -6,7 +6,7 @@
 //! and the page only learns the frame size. Elsewhere, or with `SC_PREVIEW=webview`, it renders
 //! at the window's size in points and sends I420 frames to the page ("webview frames").
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
@@ -20,7 +20,7 @@ use sc_render::{Backend, Compositor, FrameJob, ScreenLayer};
 use crate::core::Core;
 use crate::preview::StageFrame;
 use crate::sink::Sink;
-use crate::still::rgba_to_nv12;
+use crate::still::{plain_background, rgba_to_nv12};
 
 /// At most 60 draws a second: a 30 fps cap beat against the camera's own 30 fps and skipped
 /// about one frame in five; between new frames the loop waits on the camera instead.
@@ -47,6 +47,8 @@ pub struct StageInputs {
     pub aspect: sc_geometry::Aspect,
     pub fit: sc_core::project::Fit,
     pub background: Background,
+    /// The folder `background`'s image is read from.
+    pub background_dir: PathBuf,
     pub key: Option<sc_core::project::CameraKey>,
 }
 
@@ -76,7 +78,8 @@ pub fn render_loop(core: Weak<Core>) {
         }
     };
     let mut snap: Option<Snap> = None;
-    let mut bg: Option<(Background, SizePx, RgbaImage)> = None;
+    let mut bg: Option<RgbaImage> = None;
+    let mut bg_for: Option<(Background, PathBuf, SizePx)> = None;
     let mut bg_key = 0u64;
     let mut shown: Option<Shown> = None;
     let mut sink: Option<Sink> = None;
@@ -169,17 +172,22 @@ pub fn render_loop(core: Weak<Core>) {
             core.fit_stage_window(r);
         }
         let canvas = fit(ratio, drawable);
-        if bg
-            .as_ref()
-            .is_none_or(|(b, s, _)| *b != inputs.background || *s != canvas)
-        {
-            match sc_text::rasterize_background(&inputs.background, canvas, Path::new("/")) {
-                Ok(img) => {
-                    bg = Some((inputs.background.clone(), canvas, img));
-                    bg_key += 1;
-                }
-                Err(e) => tracing::warn!("stage background: {e}"),
-            }
+        if bg_for.as_ref().is_none_or(|(b, d, s)| {
+            *b != inputs.background || *d != inputs.background_dir || *s != canvas
+        }) {
+            bg_for = Some((
+                inputs.background.clone(),
+                inputs.background_dir.clone(),
+                canvas,
+            ));
+            bg = sc_text::rasterize_background(&inputs.background, canvas, &inputs.background_dir)
+                .or_else(|e| {
+                    tracing::warn!("stage background: {e}");
+                    sc_text::rasterize_background(&plain_background(), canvas, Path::new("/"))
+                })
+                .map_err(|e| tracing::warn!("stage background: {e}"))
+                .ok();
+            bg_key += 1;
         }
         let now_showing = Shown {
             camera: cam_frame.as_ref().map(|f| f.pts),
@@ -200,7 +208,7 @@ pub fn render_loop(core: Weak<Core>) {
             feed.wait_newer(seen, IDLE_WAIT);
             continue;
         }
-        if let Some((_, _, background)) = &bg {
+        if let Some(background) = &bg {
             let main = if camera_only {
                 cam_frame.as_ref().map(|f| &f.buffer)
             } else if device {

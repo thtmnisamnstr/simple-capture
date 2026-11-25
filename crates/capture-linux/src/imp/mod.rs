@@ -153,7 +153,7 @@ pub fn node_stream(
 
 pub fn platform() -> Arc<dyn Platform> {
     let ffmpeg = sc_helpers::locate(sc_helpers::HelperKind::Ffmpeg)
-        .unwrap_or_else(|_| PathBuf::from("ffmpeg"));
+        .unwrap_or_else(|_| sc_helpers::bundled_path(sc_helpers::HelperKind::Ffmpeg));
     Arc::new(LinuxPlatform {
         screen: Screen,
         mic: CpalMic {

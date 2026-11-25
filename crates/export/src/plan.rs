@@ -257,6 +257,11 @@ pub fn plan(project: &ProjectV1, req: &ExportRequest, now: LocalDateTime) -> Res
         ));
     }
     let mut st = st;
+    if st.format == Format::Gif {
+        st.gif.mode = crate::encode::gif_mode(st.gif.mode, || {
+            sc_helpers::locate(sc_helpers::HelperKind::Gifski).is_ok()
+        });
+    }
     let mut canvas = req.canvas.unwrap_or_else(|| output_size(project, &st));
     let has_audio = st.audio != AudioCodec::None
         && !st.is_animation()

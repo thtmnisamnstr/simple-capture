@@ -2,7 +2,7 @@
 //! `extra`, so a rewrite never drops data written by a newer version.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use sc_geometry::{Aspect, PointF, Ratio, RectPt, RectPx, SizePx};
 use serde::{Deserialize, Serialize};
@@ -318,6 +318,35 @@ pub enum TrackKind {
     SystemAudio,
     /// The sound of a plugged-in device whose screen is recorded (an iPhone over USB).
     DeviceAudio,
+}
+
+impl Track {
+    /// The track's file inside `dir`; an error when `file` is not [`is_project_relative`].
+    pub fn path_in(&self, dir: &Path) -> Result<PathBuf> {
+        file_in(dir, &self.file)
+    }
+}
+
+/// True when `rel` is a non-empty relative path of plain names: no root, drive, `.` or `..`.
+/// Files named in project.json and the journal must pass, so a copied or damaged project
+/// can't make the app read outside its own folder.
+pub fn is_project_relative(rel: &str) -> bool {
+    !rel.is_empty()
+        && !rel.contains('\0')
+        && Path::new(rel)
+            .components()
+            .all(|c| matches!(c, Component::Normal(_)))
+}
+
+/// `rel` inside the project folder `dir`; an error when it is not [`is_project_relative`].
+pub fn file_in(dir: &Path, rel: &str) -> Result<PathBuf> {
+    if is_project_relative(rel) {
+        Ok(dir.join(rel))
+    } else {
+        Err(Error::Invalid(format!(
+            "{rel:?} is not a file inside the project folder"
+        )))
+    }
 }
 
 impl TrackKind {
@@ -782,7 +811,8 @@ impl ProjectV1 {
         }
     }
 
-    /// Reads `<dir>/project.json`. Unknown fields are kept in each struct's `extra`.
+    /// Reads `<dir>/project.json`. Unknown fields are kept in each struct's `extra`. A track
+    /// whose file is not [`is_project_relative`] makes the whole project an error.
     pub fn load(dir: &Path) -> Result<ProjectV1> {
         let path = dir.join(Self::FILE_NAME);
         let bytes = std::fs::read(&path).map_err(|e| Error::io_at(e, "read", &path))?;
@@ -797,7 +827,22 @@ impl ProjectV1 {
                 Self::SCHEMA_VERSION
             )));
         }
-        serde_json::from_slice(&bytes).map_err(|e| Error::Json(format!("{}: {e}", path.display())))
+        let project: ProjectV1 = serde_json::from_slice(&bytes)
+            .map_err(|e| Error::Json(format!("{}: {e}", path.display())))?;
+        if let Some(t) = project
+            .recording
+            .tracks
+            .iter()
+            .find(|t| !is_project_relative(&t.file))
+        {
+            return Err(Error::Invalid(format!(
+                "{}: track {} names {:?}, which is not a file inside the project folder",
+                path.display(),
+                t.id,
+                t.file
+            )));
+        }
+        Ok(project)
     }
 
     /// Writes `<dir>/project.json` atomically (temp, fsync, rename, fsync folder).
@@ -854,8 +899,46 @@ impl ProjectV1 {
 /// Copies a PNG/JPEG (recognised by its magic bytes) into
 /// `<project_dir>/assets/background-<sha256[0..12]>.<png|jpg>` and returns the cover-fit, centred
 /// image background that points at it. Copying the same image twice reuses the file.
+/// The largest background image accepted, in bytes.
+pub const MAX_BACKGROUND_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Reads a background image file: a regular file of at most [`MAX_BACKGROUND_BYTES`], so a
+/// device or pipe chosen by mistake can't exhaust memory or block.
+pub fn read_background_file(path: &Path) -> Result<Vec<u8>> {
+    use std::io::Read;
+    let file =
+        std::fs::File::open(path).map_err(|e| Error::io_at(e, "read background image", path))?;
+    let meta = file
+        .metadata()
+        .map_err(|e| Error::io_at(e, "read background image", path))?;
+    if !meta.is_file() {
+        return Err(Error::Invalid(format!(
+            "background image is not a file: {}",
+            path.display()
+        )));
+    }
+    let too_big = || {
+        Error::Invalid(format!(
+            "background image is larger than {} MB: {}",
+            MAX_BACKGROUND_BYTES / (1024 * 1024),
+            path.display()
+        ))
+    };
+    if meta.len() > MAX_BACKGROUND_BYTES {
+        return Err(too_big());
+    }
+    let mut bytes = Vec::with_capacity(meta.len() as usize);
+    file.take(MAX_BACKGROUND_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| Error::io_at(e, "read background image", path))?;
+    if bytes.len() as u64 > MAX_BACKGROUND_BYTES {
+        return Err(too_big());
+    }
+    Ok(bytes)
+}
+
 pub fn copy_background_asset(src: &Path, project_dir: &Path) -> Result<Background> {
-    let bytes = std::fs::read(src).map_err(|e| Error::io_at(e, "read background image", src))?;
+    let bytes = read_background_file(src)?;
     let ext = image_ext(&bytes).ok_or_else(|| {
         Error::Invalid(format!(
             "background image must be PNG or JPEG: {}",
@@ -887,5 +970,102 @@ fn image_ext(bytes: &[u8]) -> Option<&'static str> {
         Some("jpg")
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const EXAMPLE: &str = include_str!("../tests/data/architecture_example.json");
+
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new() -> Scratch {
+            let dir = std::env::temp_dir().join(format!(
+                "sc-core-project-{}-{}",
+                std::process::id(),
+                crate::ids::new_id()
+            ));
+            std::fs::create_dir_all(&dir).expect("scratch dir");
+            Scratch(dir)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn with_track_file(file: &str) -> Scratch {
+        let dir = Scratch::new();
+        let mut v: Value = serde_json::from_str(EXAMPLE).expect("example parses");
+        v["recording"]["tracks"][1]["file"] = Value::String(file.to_string());
+        std::fs::write(
+            dir.0.join(ProjectV1::FILE_NAME),
+            serde_json::to_vec(&v).expect("ser"),
+        )
+        .expect("write");
+        dir
+    }
+
+    #[test]
+    fn plain_relative_names_are_project_files() {
+        for ok in ["tracks/screen-000.mov", "camera.mov", "a/./b.mov"] {
+            assert!(is_project_relative(ok), "{ok}");
+        }
+        let root = Path::new("/projects/x.sc");
+        assert_eq!(
+            file_in(root, "tracks/mic.mov").expect("inside"),
+            root.join("tracks/mic.mov")
+        );
+    }
+
+    #[test]
+    fn absolute_parent_and_dot_paths_are_refused() {
+        for bad in [
+            "",
+            "/etc/passwd",
+            "../secret.mov",
+            "tracks/../../secret.mov",
+            "./tracks/mic.mov",
+            "..",
+            "tracks/mic\0.mov",
+        ] {
+            assert!(!is_project_relative(bad), "{bad:?}");
+            assert!(matches!(
+                file_in(Path::new("/p"), bad),
+                Err(Error::Invalid(_))
+            ));
+        }
+        #[cfg(windows)]
+        for bad in ["C:\\secret.mov", "D:secret.mov", "\\\\server\\share\\x.mov"] {
+            assert!(!is_project_relative(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn load_refuses_a_track_outside_the_folder() {
+        let dir = with_track_file("../../elsewhere/secret.mov");
+        let err = ProjectV1::load(&dir.0).expect_err("outside track refused");
+        assert!(
+            matches!(&err, Error::Invalid(m) if m.contains("screen-1")),
+            "{err}"
+        );
+        let abs = with_track_file("/Users/x/secret.mov");
+        assert!(matches!(ProjectV1::load(&abs.0), Err(Error::Invalid(_))));
+    }
+
+    #[test]
+    fn load_keeps_tracks_inside_the_folder() {
+        let dir = with_track_file("tracks/screen-001.mov");
+        let p = ProjectV1::load(&dir.0).expect("load");
+        let t = &p.recording.tracks[1];
+        assert_eq!(
+            t.path_in(&dir.0).expect("inside"),
+            dir.0.join("tracks/screen-001.mov")
+        );
     }
 }

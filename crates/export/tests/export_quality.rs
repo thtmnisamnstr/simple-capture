@@ -95,8 +95,10 @@ fn luma_frames(file: &Path) -> Vec<Vec<u8>> {
         String::from_utf8_lossy(&out.stderr)
     );
     out.stdout
-        .chunks_exact((W * H) as usize)
-        .map(<[u8]>::to_vec)
+        .as_chunks::<{ (W * H) as usize }>()
+        .0
+        .iter()
+        .map(|f| f.to_vec())
         .collect()
 }
 
@@ -178,7 +180,9 @@ fn x264_best_beats_hardware_fast_at_the_same_size_on_text() {
                 .expect("render")
                 .0;
             f.data
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|p| rgb_to_yuv709([p[0], p[1], p[2]]).0)
                 .collect()
         })

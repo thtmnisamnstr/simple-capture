@@ -1,8 +1,10 @@
 //! Capability probe v1 (ARCHITECTURE §11, plan §10 item 11). Cache file
 //! `<cache_dir>/probe-v1.json`, keyed by helper sha256 + OS version + display sizes.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use sc_geometry::{SizePx, even_round};
@@ -87,8 +89,7 @@ pub fn os_version() -> String {
     #[cfg(target_os = "macos")]
     {
         let get = |arg: &str| {
-            Command::new("/usr/bin/sw_vers")
-                .arg(arg)
+            sc_helpers::hide_console(Command::new("/usr/bin/sw_vers").arg(arg))
                 .stdin(Stdio::null())
                 .output()
                 .ok()
@@ -205,49 +206,67 @@ pub fn encoder_works(ffmpeg: &Path, name: &str) -> bool {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    wait_ok(cmd.spawn())
+    wait_ok(sc_helpers::hide_console(&mut cmd).spawn())
 }
 
-fn vt_h264_opens(ffmpeg: &Path, size: SizePx) -> bool {
-    let child = Command::new(ffmpeg)
-        .args([
-            "-hide_banner",
-            "-v",
-            "error",
-            "-nostdin",
-            "-f",
-            "lavfi",
-            "-i",
-        ])
-        .arg(format!("testsrc2=s={}x{}:r=30:d=0.2", size.w, size.h))
-        .args([
-            "-c:v",
-            "h264_videotoolbox",
-            "-allow_sw",
-            "0",
-            "-f",
-            "null",
-            "-",
-        ])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-    let Ok(mut child) = child else {
-        return false;
-    };
-    let t0 = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(st)) => return st.success(),
-            Ok(None) if t0.elapsed() < VT_TIMEOUT => std::thread::sleep(Duration::from_millis(20)),
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return false;
-            }
-        }
+fn working() -> &'static Mutex<HashSet<(PathBuf, String)>> {
+    static W: OnceLock<Mutex<HashSet<(PathBuf, String)>>> = OnceLock::new();
+    W.get_or_init(Default::default)
+}
+
+fn remember_working(ffmpeg: &Path, p: &ProbeV1) {
+    let mut w = working().lock().unwrap_or_else(PoisonError::into_inner);
+    for (name, _) in p.encoders.iter().filter(|(_, ok)| *ok) {
+        w.insert((ffmpeg.to_path_buf(), name.clone()));
     }
+}
+
+/// Answered by this process's probe or a test encode. Failures are not remembered, so a busy
+/// hardware encoder gets another try.
+pub fn encoder_available(ffmpeg: &Path, name: &str) -> bool {
+    let key = (ffmpeg.to_path_buf(), name.to_owned());
+    if working()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .contains(&key)
+    {
+        return true;
+    }
+    let ok = encoder_works(ffmpeg, name);
+    if ok {
+        working()
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(key);
+    }
+    ok
+}
+
+pub fn vt_h264_opens(ffmpeg: &Path, size: SizePx) -> bool {
+    let mut cmd = Command::new(ffmpeg);
+    cmd.args([
+        "-hide_banner",
+        "-v",
+        "error",
+        "-nostdin",
+        "-f",
+        "lavfi",
+        "-i",
+    ])
+    .arg(format!("testsrc2=s={}x{}:r=30:d=0.2", size.w, size.h))
+    .args([
+        "-c:v",
+        "h264_videotoolbox",
+        "-allow_sw",
+        "0",
+        "-f",
+        "null",
+        "-",
+    ])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null());
+    wait_ok(sc_helpers::hide_console(&mut cmd).spawn())
 }
 
 fn hevc_fps(platform: &dyn Platform, size: SizePx) -> Option<f64> {
@@ -334,7 +353,7 @@ fn run_steps(platform: &dyn Platform, displays: &[DisplayInfo], st: &Steps) -> R
             hevc_fps_1x: fps_1x,
         });
     }
-    Ok(ProbeV1 {
+    let probe = ProbeV1 {
         schema: 1,
         created_at: sc_core::folder::rfc3339(&platform.local_now()),
         os_version: os_version(),
@@ -343,7 +362,11 @@ fn run_steps(platform: &dyn Platform, displays: &[DisplayInfo], st: &Steps) -> R
         displays: probes,
         quarantined: st.quarantined.to_vec(),
         encoders,
-    })
+    };
+    if let Some(ff) = &ffmpeg {
+        remember_working(ff, &probe);
+    }
+    Ok(probe)
 }
 
 fn matches_cache(p: &ProbeV1, displays: &[DisplayInfo], sha: Option<&str>, os: &str) -> bool {
@@ -402,10 +425,14 @@ pub fn load_or_run(
     if crashed.is_none()
         && let Some(p) = prev
     {
-        let sha = sc_helpers::locate(HelperKind::Ffmpeg)
-            .ok()
-            .and_then(|f| sc_core::sha::sha256_file(&f).ok());
+        let ffmpeg = sc_helpers::locate(HelperKind::Ffmpeg).ok();
+        let sha = ffmpeg
+            .as_deref()
+            .and_then(|f| sc_core::sha::sha256_file(f).ok());
         if matches_cache(&p, displays, sha.as_deref(), &os_version()) {
+            if let Some(ff) = &ffmpeg {
+                remember_working(ff, &p);
+            }
             return Ok(p);
         }
     }
@@ -422,4 +449,34 @@ pub fn load_or_run(
     bytes.push(b'\n');
     sc_core::fsio::atomic_write(&path, &bytes)?;
     Ok(probe)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_probe_answers_for_encoders_it_saw_work() {
+        let ffmpeg = std::env::temp_dir().join(format!("sc-no-ffmpeg-{}", std::process::id()));
+        let probe = ProbeV1 {
+            schema: 1,
+            created_at: String::new(),
+            os_version: String::new(),
+            helper: None,
+            vt_h264_opens: Vec::new(),
+            displays: Vec::new(),
+            quarantined: vec!["enc:libx265".into()],
+            encoders: vec![("libx264".into(), true), ("libx265".into(), false)],
+        };
+        remember_working(&ffmpeg, &probe);
+        assert!(encoder_available(&ffmpeg, "libx264"));
+        assert!(
+            !encoder_available(&ffmpeg, "libx265"),
+            "tried again, and there is no helper"
+        );
+        assert!(!encoder_available(
+            &ffmpeg.with_extension("other"),
+            "libx264"
+        ));
+    }
 }

@@ -490,7 +490,10 @@ function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
     const ok = { best: true, fast: true };
     return {
       store: { last_format: 'mp4', per_format: {}, presets: [{ name: 'Web 720p', settings: { format: 'mp4' } }] },
-      available: { video: { h264: ok, hevc: ok, av1: { best: true, fast: false }, vp9: { best: true, fast: false }, vp8: { best: true, fast: false }, prores: ok }, gifski: true },
+      available:
+        q.get('edition') === 'mas'
+          ? { video: { h264: { best: false, fast: true }, hevc: { best: false, fast: true }, av1: { best: true, fast: false }, vp9: { best: true, fast: false }, vp8: { best: true, fast: false }, prores: ok }, gifski: false }
+          : { video: { h264: ok, hevc: ok, av1: { best: true, fast: false }, vp9: { best: true, fast: false }, vp8: { best: true, fast: false }, prores: ok }, gifski: true },
       recording_fps: 30,
       reference: { w: 3024, h: 1964 },
       ratio: [16, 9],

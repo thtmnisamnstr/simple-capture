@@ -143,17 +143,13 @@ pub fn works(ffmpeg: &Path, encoder: &str) -> bool {
     );
     args.extend(output_args(encoder, size, 30, 30, 0.1));
     args.extend(["-f".into(), "null".into(), "-".into()]);
-    let mut cmd = Command::new(ffmpeg);
-    cmd.args(&args)
+    sc_helpers::hide_console(&mut Command::new(ffmpeg))
+        .args(&args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000);
-    }
-    cmd.status().is_ok_and(|s| s.success())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
 }
 
 fn cache() -> &'static Mutex<HashMap<(String, bool), &'static str>> {

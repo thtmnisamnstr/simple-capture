@@ -304,7 +304,9 @@ impl MacAudioReader {
         let bytes = copy_frames(&sb, &fmt, 0, frames)?;
         let data = bytes.into_iter().next().unwrap_or_default();
         self.pending.extend(
-            data.chunks_exact(4)
+            data.as_chunks::<4>()
+                .0
+                .iter()
                 .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
         );
         self.have_frames += i64::from(frames);

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
@@ -123,6 +123,19 @@ impl ExportJob {
         req: ExportRequest,
         obs: Arc<dyn ExportObserver>,
     ) -> Result<ExportJob> {
+        ExportJob::start_staged(platform, req, None, obs)
+    }
+
+    /// [`ExportJob::start_with`], except that with `stage` set the helper writes the file and
+    /// its temporary files in that folder, and the finished file then moves to the planned path.
+    /// A sandboxed helper reaches only the folders the app's entitlements name, not a folder the
+    /// person let the app use at run time.
+    pub fn start_staged(
+        platform: Arc<dyn Platform>,
+        req: ExportRequest,
+        stage: Option<PathBuf>,
+        obs: Arc<dyn ExportObserver>,
+    ) -> Result<ExportJob> {
         obs.on_state(&ExportState::Preparing);
         let project = ProjectV1::load(&req.project_dir).map_err(|e| {
             Error::Other(format!(
@@ -131,11 +144,21 @@ impl ExportJob {
             ))
         })?;
         let plan = crate::plan::plan(&project, &req, platform.local_now())?;
+        if plan.settings.gif.mode != req.settings.gif.mode {
+            tracing::info!("no gifski helper; the GIF uses FFmpeg's palette");
+        }
         if let Some(parent) = plan.out_path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| Error::Other(format!("sc_export: {}: {e}", parent.display())))?;
         }
-        let part = PartFile::create(&plan.out_path)?;
+        let dest = PartFile::create(&plan.out_path)?;
+        let (part, dest) = match &stage {
+            None => (dest, None),
+            Some(dir) => (
+                PartFile::create(&staged_path(dir, &plan.out_path)?)?,
+                Some(dest),
+            ),
+        };
         let control = Arc::new(Control::default());
         let c = control.clone();
         let worker = std::thread::Builder::new()
@@ -151,7 +174,7 @@ impl ExportJob {
                     t0: Instant::now(),
                     last: Mutex::new(None),
                 };
-                let r = w.run(part);
+                let r = w.run(part, dest);
                 match &r {
                     Ok(path) => obs.on_state(&ExportState::Done { path: path.clone() }),
                     Err(Error::Other(m)) if m == CANCELED => obs.on_state(&ExportState::Canceled),
@@ -205,13 +228,13 @@ impl Worker {
         Ok(())
     }
 
-    fn run(&self, part: PartFile) -> Result<PathBuf> {
+    fn run(&self, part: PartFile, dest: Option<PartFile>) -> Result<PathBuf> {
         let plan = &self.plan;
         let st = &plan.settings;
         let mut wav_part = None;
         if plan.audio {
             let wav_final = {
-                let mut s = plan.out_path.as_os_str().to_owned();
+                let mut s = part.final_path().as_os_str().to_owned();
                 s.push(".wav");
                 PathBuf::from(s)
             };
@@ -252,7 +275,7 @@ impl Worker {
             } else {
                 let ffmpeg = sc_helpers::locate(HelperKind::Ffmpeg)?;
                 let palette = PartFile::create(&{
-                    let mut s = plan.out_path.as_os_str().to_owned();
+                    let mut s = part.final_path().as_os_str().to_owned();
                     s.push(".palette");
                     PathBuf::from(s)
                 })?;
@@ -272,18 +295,43 @@ impl Worker {
             }
         } else {
             let ffmpeg = sc_helpers::locate(HelperKind::Ffmpeg)?;
-            let args = encode::video_args(st, wav_part.as_ref().map(|w| w.path()), part.path())
-                .ok_or_else(|| {
-                    Error::Other(format!(
-                        "sc_export: no encoder for {:?} {:?} here",
-                        st.video, st.encoder
-                    ))
-                })?;
+            let no_encoder = || {
+                Error::Other(format!(
+                    "sc_export: no encoder for {:?} {:?} here",
+                    st.video, st.encoder
+                ))
+            };
+            let pick = encode::pick_video_encoder(
+                st,
+                plan.canvas,
+                plan.fps,
+                |name| crate::probe::encoder_available(&ffmpeg, name),
+                || crate::probe::vt_h264_opens(&ffmpeg, plan.canvas),
+            )
+            .ok_or_else(no_encoder)?;
+            self.check_cancel()?;
+            if Some(pick.encoder) != encode::video_encoder(st.video, st.encoder)
+                || pick.software_kbps.is_some()
+            {
+                tracing::info!(
+                    encoder = pick.encoder,
+                    software_kbps = ?pick.software_kbps,
+                    "export encoder fallback"
+                );
+            }
+            let wav = wav_part.as_ref().map(|w| w.path());
+            let args =
+                encode::video_args_with(st, pick, wav, part.path()).ok_or_else(no_encoder)?;
             self.encode(ffmpeg, args, &mut renderer, 0, passes)?;
         }
         self.check_cancel()?;
         drop(wav_part);
-        Ok(part.commit()?)
+        let Some(dest) = dest else {
+            return Ok(part.commit()?);
+        };
+        move_over(part.path(), dest.path())?;
+        drop(part);
+        Ok(dest.commit()?)
     }
 
     fn encode(
@@ -374,5 +422,67 @@ impl Worker {
             }
         }
         Ok(())
+    }
+}
+
+fn staged_path(stage: &Path, out: &Path) -> Result<PathBuf> {
+    let (Some(stem), Some(ext)) = (out.file_stem(), out.extension()) else {
+        return Err(Error::Other(format!(
+            "sc_export: {} has no file name",
+            out.display()
+        )));
+    };
+    crate::plan::free_path(
+        stage,
+        &format!(".export {}", stem.to_string_lossy()),
+        &ext.to_string_lossy(),
+    )
+}
+
+fn move_over(from: &Path, to: &Path) -> Result<()> {
+    if std::fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    std::fs::copy(from, to).map(|_| ()).map_err(|e| {
+        Error::Other(format!(
+            "sc_export: copy {} to {}: {e}",
+            from.display(),
+            to.display()
+        ))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn staged_names_are_hidden_and_free() {
+        let dir = std::env::temp_dir().join(format!("sc-stage-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let out = Path::new("/elsewhere/My Edit.mp4");
+        let first = staged_path(&dir, out).expect("free");
+        assert_eq!(first, dir.join(".export My Edit.mp4"));
+        let held = PartFile::create(&first).expect("part");
+        assert_eq!(
+            staged_path(&dir, out).expect("free"),
+            dir.join(".export My Edit 2.mp4")
+        );
+        drop(held);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_over_replaces_the_reserved_part() {
+        let dir = std::env::temp_dir().join(format!("sc-move-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let from = dir.join("a.part");
+        let to = dir.join("b.part");
+        std::fs::write(&from, b"encoded").expect("write");
+        std::fs::write(&to, b"").expect("write");
+        move_over(&from, &to).expect("move");
+        assert!(!from.exists());
+        assert_eq!(std::fs::read(&to).expect("read"), b"encoded");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

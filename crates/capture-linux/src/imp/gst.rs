@@ -61,13 +61,13 @@ fn frame_bytes(size: SizePx) -> u64 {
     u64::from(size.w) * u64::from(size.h) * 3 / 2
 }
 
-fn describe(encoder: &str, path: &Path, size: SizePx, fps: u32, kbps: u32, gop: u32) -> String {
-    let location = path.to_string_lossy().replace('"', "\\\"");
+/// The output file is set on `sink` afterwards, so no path is ever parsed as pipeline syntax.
+fn describe(encoder: &str, size: SizePx, fps: u32, kbps: u32, gop: u32) -> String {
     format!(
         "appsrc name=src format=time block=false max-bytes={} \
          caps=video/x-raw,format=NV12,width={},height={},framerate={fps}/1 \
          ! queue ! {encoder} {} ! h264parse ! video/x-h264,profile=(string){{high,main,constrained-baseline}} \
-         ! matroskamux ! filesink location=\"{location}\"",
+         ! matroskamux ! filesink name=sink",
         frame_bytes(size) * QUEUED_FRAMES,
         size.w,
         size.h,
@@ -92,7 +92,10 @@ pub fn usable_encoder() -> Option<&'static str> {
         }
         let w = GstWriters {
             encoder: enc,
-            helper: HelperWriters::new(PathBuf::from("ffmpeg")),
+            helper: HelperWriters::new(
+                sc_helpers::locate(sc_helpers::HelperKind::Ffmpeg)
+                    .unwrap_or_else(|_| sc_helpers::bundled_path(sc_helpers::HelperKind::Ffmpeg)),
+            ),
         };
         match w.encode_benchmark(SizePx { w: 256, h: 144 }, 30, 5, VideoCodec::Hevc) {
             Ok(_) => true,
@@ -187,7 +190,7 @@ struct Pipe {
 }
 
 impl Pipe {
-    fn open(desc: &str, max_bytes: u64) -> Result<Pipe> {
+    fn open(desc: &str, location: &Path, max_bytes: u64) -> Result<Pipe> {
         gst::init().map_err(|e| gst_error("init", e))?;
         let pipeline = gst::parse::launch(desc)
             .map_err(|e| gst_error("pipeline", e))?
@@ -197,6 +200,11 @@ impl Pipe {
             .by_name("src")
             .and_then(|e| e.downcast::<gst_app::AppSrc>().ok())
             .ok_or_else(|| Error::Other("GStreamer: no appsrc".into()))?;
+        let sink = pipeline
+            .by_name("sink")
+            .filter(|e| e.has_property_with_type("location", gst::glib::Type::STRING))
+            .ok_or_else(|| Error::Other("GStreamer: no filesink".into()))?;
+        sink.set_property("location", location);
         pipeline
             .set_state(gst::State::Playing)
             .map_err(|e| gst_error("start", e))?;
@@ -295,7 +303,8 @@ impl GstVideoWriter {
                 .clamp(500.0, 200_000.0) as u32;
         std::fs::File::create(path)?;
         let pipe = Pipe::open(
-            &describe(encoder, path, size, fps, kbps, gop),
+            &describe(encoder, size, fps, kbps, gop),
+            path,
             frame_bytes(size) * QUEUED_FRAMES,
         )?;
         let (tx, rx) = sync_channel(VIDEO_QUEUE);

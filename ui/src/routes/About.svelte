@@ -17,6 +17,24 @@
       .catch((e) => (error = errorText(e)));
   });
 
+  async function privacy() {
+    error = null;
+    try {
+      await appApi.openPrivacyPolicy();
+    } catch (e) {
+      error = errorText(e);
+    }
+  }
+
+  async function source() {
+    error = null;
+    try {
+      await appApi.openSourceRelease();
+    } catch (e) {
+      error = errorText(e);
+    }
+  }
+
   async function view(title: string, f: LicenseFile) {
     error = null;
     try {
@@ -69,6 +87,7 @@
               {#each e.files as f (f.path)}
                 <button class="link" onclick={() => view(e.title, f)}>{f.html ? 'Open notices' : f.name}</button>
               {/each}
+              {#if e.source}<button class="link" onclick={source}>Source code</button>{/if}
             </div>
           {:else}
             <p class="caption muted">Included in release builds.</p>
@@ -78,6 +97,7 @@
     </div>
     {#if error}<p class="warn" role="alert"><Icon name="warning" size={14} /><span>{error}</span></p>{/if}
     <footer>
+      <button class="link" onclick={privacy}>Privacy Policy</button>
       <button onclick={() => showWindow('diagnostics')}>Diagnostics…</button>
     </footer>
   {/if}
@@ -165,6 +185,7 @@
   }
   footer {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
   }
 </style>

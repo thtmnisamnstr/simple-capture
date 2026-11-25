@@ -1,3 +1,4 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 //! Simple Capture desktop app: Tauri 2 shell (M1 plan §5.2–§5.4).
 
 mod about;
@@ -19,6 +20,8 @@ mod meter;
 mod objc;
 mod preview;
 mod protocol;
+#[cfg(all(feature = "mas", target_os = "macos"))]
+mod sandbox;
 mod settings;
 mod shortcuts;
 mod signals;
@@ -30,7 +33,7 @@ mod tray;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use sc_core::journal::StopReason;
 use sc_platform::Platform;
@@ -39,6 +42,7 @@ use tauri::{Manager, RunEvent, WindowEvent};
 use crate::core::Core;
 
 const APP_ID: &str = "com.simplecapture.desktop";
+const LOG_ROTATE_BYTES: u64 = 10 * 1024 * 1024;
 
 fn data_dir() -> PathBuf {
     if let Some(d) = std::env::var_os("SC_DATA_DIR") {
@@ -65,8 +69,12 @@ fn init_tracing(data_dir: &std::path::Path) -> Option<PathBuf> {
         tracing_subscriber::EnvFilter::try_from_env("SC_LOG")
             .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
     };
-    let log_path = data_dir.join("logs").join("simple-capture-app.log");
-    let file = std::fs::create_dir_all(data_dir.join("logs"))
+    let logs = data_dir.join("logs");
+    let log_path = logs.join("simple-capture-app.log");
+    if std::fs::metadata(&log_path).is_ok_and(|m| m.len() > LOG_ROTATE_BYTES) {
+        let _ = std::fs::rename(&log_path, logs.join("simple-capture-app.1.log"));
+    }
+    let file = std::fs::create_dir_all(&logs)
         .and_then(|_| {
             std::fs::OpenOptions::new()
                 .create(true)
@@ -141,6 +149,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         permission_host = ?platform.permission_host(),
         "starting"
     );
+    FIRST_LAUNCH.store(!data.join("settings.json").exists(), Ordering::SeqCst);
     let core = Arc::new(Core::new(
         app.handle().clone(),
         platform,
@@ -182,10 +191,25 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// A menu-bar app shows nothing when it starts, so the first launch and opening it again from
+/// Finder or Launchpad bring up the recorder; otherwise it looks as if nothing happened.
+static FIRST_LAUNCH: AtomicBool = AtomicBool::new(false);
+
+fn show_recorder(app: &tauri::AppHandle) {
+    if let Some(core) = app.try_state::<Arc<Core>>()
+        && let Err(e) = core.show_window("panel", true)
+    {
+        tracing::warn!("show the recorder: {e}");
+    }
+}
+
 fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
     match ev {
         RunEvent::Ready => {
             eprintln!("SC_READY");
+            if FIRST_LAUNCH.load(Ordering::SeqCst) && !driver_active() {
+                show_recorder(app);
+            }
             #[cfg(debug_assertions)]
             if let Some(core) = app.try_state::<Arc<Core>>() {
                 driver::maybe_start(core.inner().clone());
@@ -258,6 +282,8 @@ fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
                 }
             }
         }
+        #[cfg(target_os = "macos")]
+        RunEvent::Reopen { .. } if !driver_active() => show_recorder(app),
         RunEvent::ExitRequested { api, code, .. } => {
             let Some(core) = app.try_state::<Arc<Core>>().map(|c| c.inner().clone()) else {
                 return;

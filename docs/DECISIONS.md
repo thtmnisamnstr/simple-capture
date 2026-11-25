@@ -507,6 +507,12 @@ they are not a substitute for an M1 run.
      record an explicit exception here (see docs/LICENSES.md, "Networking"). Not checked yet.
 - **Consequences:** The FFmpeg GPG signature is unverified, because gpg is not installed. Whether to
   ship ffprobe (20 MB per architecture) is decided in M5.
+- **Update 2026-11-24 (pins refreshed):** FFmpeg 9.1, SVT-AV1 4.3.1 (now from GitHub, the
+  project's canonical home) and nv-codec-headers 11.1.5.4 (still the 11.1 line, so drivers 470+).
+  The FFmpeg 9.1 tarball's GPG signature is verified, which closes the first consequence above.
+  gifski builds `--locked` against `third_party/gifski/gifski-1.34.0.Cargo.lock`: the crate's own
+  lockfile with crossbeam-epoch raised to 0.9.20 (RUSTSEC-2026-0204). Checksums and cross-checks
+  are in `third_party/versions.toml`.
 
 ## ADR-014: gifski is a separate sidecar
 - **Status:** Accepted (spec).
@@ -1681,7 +1687,7 @@ they are not a substitute for an M1 run.
   (GPL stays in the helper); with no such encoder, or `SC_MEDIA=helper`, the helper records as
   before.
 - **NVENC in the helpers:** the Linux and Windows FFmpeg helpers gain `h264_nvenc` and
-  `hevc_nvenc` (nv-codec-headers 11.1.5.3, MIT, header only; the driver loads at run time, so
+  `hevc_nvenc` (nv-codec-headers 11.1 line, 11.1.5.4 since 2026-11-24, MIT, header only; the driver loads at run time, so
   no new link dependency and drivers 470+ work). The helper's encoder probe already tries them
   first, so Fast exports and helper-written tracks use an NVIDIA GPU when there is one.
 
@@ -1808,3 +1814,114 @@ they are not a substitute for an M1 run.
 - **Limits:** APNG files are large, and macOS Preview and Quick Look show only the first frame.
 - **Update 2026-11-24:** the owner does not want APNG; the app offers WebP only (the helper
   keeps its APNG and PNG encoders, unused). The sheet's order is MP4, MOV, WebM, GIF, WebP.
+
+## ADR-057: Mac App Store edition
+
+- **Status:** Accepted (owner, 2026-11-24). Replaces the SPEC non-goal "App Store or notarized
+  distribution"; the notarized DMG already shipped under ADR-003.
+- **Context:** the owner wants 0.1.0 on the Mac App Store as well as on GitHub Releases and the
+  Homebrew tap. The DMG's contents can't go there as they are:
+  1. **Licensing.** Its helpers are a GPL-2.0-or-later FFmpeg with x264 and x265, and an
+     AGPL-3.0-or-later gifski that contains GPL-3.0-or-later libimagequant. The FSF holds that the
+     App Store's usage rules add restrictions that GPLv2 §6 and GPLv3/AGPLv3 §10 forbid. GNU Go
+     was pulled in 2010 and VLC for iOS in 2011 after a copyright holder complained, and VLC
+     came back in 2013 only after libVLC moved to the LGPL. Any one copyright holder could have
+     the app removed.
+  2. **Sandbox.** The store requires the App Sandbox for the app and every executable inside it
+     (guideline 2.4.5), and public APIs only (2.5.1).
+  3. **Signing.** The store takes Apple Distribution signatures with a provisioning profile, not
+     Developer ID.
+- **Decision:**
+  - **One version, one tag.** The store edition is built from the same `v*` tag as the GitHub and
+    Homebrew release, with the same bundle ID `com.simplecapture.desktop` (ADR-001) and version,
+    arm64 only, `LSMinimumSystemVersion` 14.0. CI sets the build number (`CFBundleVersion`),
+    because every upload needs a new one.
+  - **Sandboxed build behind the cargo feature `mas`.** The app crate's `mas` feature turns on
+    the feature of the same name in the crates under it (today only `capture-macos`) and gates
+    everything the sandbox or App Review needs done differently: for example security-scoped
+    access to a chosen export folder, NSWorkspace instead of spawning `/usr/bin/open`, and no
+    private `_setPreventsActivation:` selector. Without the feature the Developer ID build
+    behaves exactly as before. The helpers are signed with only `app-sandbox` and `inherit`.
+  - **Entitlements** (`app/macos/entitlements.mas.plist`): the App Sandbox; camera and
+    microphone (plus the hardened runtime's `audio-input`); Movies folder read/write, where
+    recordings and default exports go; user-selected read/write with app-scoped bookmarks, so a
+    chosen export folder stays usable after a relaunch; and `network.client`. The app makes no
+    network connections. WKWebView, which draws every window, runs its WebContent and
+    Networking XPC services under the host app's sandbox, and they need `network.client` even
+    for local content such as Tauri's custom protocol, so the entitlement stays. App Privacy
+    remains "Data Not Collected", and the review notes (`appstore/review.json`) explain the
+    entitlement. No `device.usb`: iPhone and iPad capture goes through Core Media I/O's screen
+    devices under `device.camera`.
+  - **Found at launch.** A menu-bar app shows nothing when it starts, and App Review rejects an
+    app the reviewer can't find (guideline 2.1). So the app, in every edition, opens the
+    recorder panel on its first launch (no `settings.json` yet) and, on macOS, when it is opened
+    again from Finder or Launchpad while running; other launches show only the menu-bar icon.
+    The review notes say so.
+  - **LGPL helpers, no gifski.** The store edition bundles `sc-ffmpeg` and `sc-ffprobe` built
+    from the same pinned sources and script without `--enable-gpl`, x264 and x265, and without
+    `--enable-version3`, so they are LGPL-2.1-or-later. VideoToolbox (H.264, HEVC, ProRes),
+    SVT-AV1, libvpx, Opus, Vorbis and libwebp stay, so every format (MP4, MOV, WebM, GIF, WebP)
+    remains. `sc-gifski` is left out. The store build doesn't come from the GitHub release page,
+    so About → Licenses carries the source offer: the FFmpeg entry has a Source code button
+    that opens the GitHub release of the same tag (`releases/tag/v<version>`), which holds the
+    helper sources archive. Details: docs/LICENSES.md §3.4.
+  - **What store users lose, and the fallbacks.** "Best" H.264 and HEVC (x264, x265) run on the
+    VideoToolbox encoder instead, with Apple's software encoder at a bitrate from the quality
+    preset for H.264 frames over 4096 px (`pick_video_encoder` in crates/export). A gifski GIF
+    is made in palette mode instead (`gif_mode`). Default settings and Quick Export therefore
+    work with either helper set, at less quality per byte than x264/x265. The SPEC's SSIM
+    check of x264 against Fast applies to the Developer ID edition. Media keys can't be global
+    shortcuts in the store edition: global-hotkey catches them with a CGEventTap, which needs
+    Input Monitoring, so the Shortcuts settings refuse them there.
+  - **Signing.** The app and helpers are signed with an Apple Distribution identity (team
+    K9LZ5QLRFQ) and a Mac App Store provisioning profile embedded as
+    `Contents/embedded.provisionprofile`; `productbuild` packs a `.pkg` signed with the Mac
+    Installer Distribution identity ("3rd Party Mac Developer Installer").
+  - **Automation.** `.github/workflows/app-store.yml` runs when a GitHub release is published
+    (and by hand, with the tag as input): it builds the LGPL helpers and the `mas` app from the
+    tag, signs, packs, uploads through the App Store Connect API (`scripts/asc/asc.py`), waits
+    for processing, creates or reuses the App Store version, attaches the build, and submits
+    for review. Every run also syncs the listing from `appstore/` (texts, URLs, screenshots,
+    categories, age rating, review notes), so App Store Connect is never edited by hand for
+    those; the first run makes the app free in every territory, and later runs leave price and
+    availability alone. Its API key has the **App Manager** role, because the Developer role
+    (the notarization key, `APPLE_API_KEY_*`) can upload but not submit. A temporary **Admin**
+    key lets `scripts/appstore-setup.sh` register the bundle ID, create the distribution
+    certificates and profile, store them as repository secrets and look up the app's ID; the
+    owner revokes it afterwards and reruns the script with `--renew-certs` when the
+    certificates expire.
+  - **What's New** comes from the version's section of CHANGELOG.md (`## <version>`), so release
+    notes are written once. CHANGELOG.md covers every edition, so the blocks about another one
+    (Linux, Android, iOS, gifski, x264, x265, Windows the operating system) are left out, and
+    the rest, as plain text, must pass `appstore/check.py` before the build (at most 4000
+    characters; no prices, "free", "beta" or GitHub-build encoders). The first version sends
+    none; for later ones a missing section fails the run instead of shipping stale text.
+  - **Owner-only steps** (no API exists, or they are the owner's personal data or legal
+    choices): create the app record (the API has no `POST /v1/apps`), App Privacy ("Data Not
+    Collected"), agreements, EU DSA trader status, generating API keys, the App Review contact
+    (typed once, or stored as `ASC_REVIEW_CONTACT_*` secrets), and the first TestFlight run
+    that approves Screen Recording, Camera and Microphone. Steps in docs/RELEASING.md, "Mac App
+    Store".
+- **Consequences:**
+  - Two macOS builds per release; the DMG and the Homebrew cask stay the full edition. Both
+    install `Simple Capture.app` with the same ID, so one replaces the other. Switching asks
+    for the permissions again (different signatures), and the store edition keeps its settings
+    in its sandbox container.
+  - The LGPL is not risk-free on the store either: Bradley Kuhn argued that the store terms
+    conflict with it just as with the GPL (LGPL-2.1 §10 also forbids further restrictions). In
+    practice LGPL FFmpeg ships in many store apps without enforcement. Open option: a custom
+    licence agreement in App Store Connect that leaves the LGPL rights intact.
+  - Arm64 only: since June 2026 App Store Connect accepts Mac apps without Intel code when
+    their minimum is macOS 13 or later. If the upload is still rejected (ITMS-90981), the
+    fallback is a universal build.
+  - wry sets two private WebKit keys by key-value coding (picture-in-picture and
+    `drawsBackground`); low risk, and they can't be removed without patching wry.
+  - Exports to a folder outside Movies are encoded in the recording's folder first and then
+    moved there (copied when it is on another disk): the helper's inherited sandbox reaches
+    Movies, a static entitlement, but not a folder granted at run time. Such an export needs
+    free space on the Movies disk.
+  - Without `_setPreventsActivation:`, clicking the floating bar or an overlay might activate
+    the app and take focus from the app being recorded.
+  - Unverified until the first TestFlight run (docs/MANUAL_TEST.md §10h): iPhone and iPad
+    capture under the sandbox (it may need `com.apple.security.device.usb` after all), exports
+    to a chosen folder after a relaunch, and the focus behaviour above.

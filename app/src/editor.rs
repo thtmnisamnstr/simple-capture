@@ -9,6 +9,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use sc_core::edit::{Clipboard, EditOp, History, Limits, copy_clips, copy_range};
+use sc_core::project::MAX_BACKGROUND_BYTES;
 use sc_core::project::{ProjectState, ProjectV1, TrackKind};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -510,8 +511,19 @@ impl Core {
 
     fn editor_background_image(&self, path: &str) -> Reply {
         let dir = self.with_session(|s| Ok(s.dir.clone()))?;
-        let bg = sc_core::project::copy_background_asset(Path::new(path), &dir)
-            .map_err(|e| e.to_string())?;
+        let src = Path::new(path);
+        let meta = std::fs::metadata(src).map_err(|e| format!("{}: {e}", src.display()))?;
+        if !meta.is_file() {
+            return Err(format!("{} is not an image file.", src.display()));
+        }
+        if meta.len() > MAX_BACKGROUND_BYTES {
+            return Err(format!(
+                "{} is too large for a background (the limit is {} MB).",
+                src.display(),
+                MAX_BACKGROUND_BYTES / (1024 * 1024)
+            ));
+        }
+        let bg = sc_core::project::copy_background_asset(src, &dir).map_err(|e| e.to_string())?;
         serde_json::to_value(bg).map_err(|e| e.to_string())
     }
 

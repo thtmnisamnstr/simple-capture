@@ -5,7 +5,7 @@ import { inTauri, viaMock } from './api.ts';
 import { basename, scUrl } from './format.ts';
 
 export interface LicenseFile { name: string; path: string; html: boolean }
-export interface LicenseEntry { title: string; license: string; note: string; files: LicenseFile[] }
+export interface LicenseEntry { title: string; license: string; note: string; files: LicenseFile[]; source?: boolean }
 export interface AboutInfo { version: string; os: string; arch: string; licenses: LicenseEntry[] }
 export interface DiagnosticsDone {
   passed: number;
@@ -39,6 +39,8 @@ export const appApi = {
   recStatus: () => call<{ paused: boolean; elapsed_ns: number }>('rec_status'),
   trayItem: (id: string) => call<unknown>('tray_item', { id }),
   licenseText: (path: string) => call<string>('license_text', { path }),
+  openPrivacyPolicy: () => call<null>('open_privacy_policy'),
+  openSourceRelease: () => call<null>('open_source_release'),
   runDiagnostics: () => call<null>('diagnostics_run'),
   library: () => call<Library>('library'),
   trash: (name: string) => call<null>('library_trash', { name }),

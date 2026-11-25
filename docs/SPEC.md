@@ -73,6 +73,7 @@ These are the defaults. Validate them with the M0 spikes (small throwaway protot
     - macOS: build static arm64 + x86_64 binaries from source with a pinned script. markus-perl/ffmpeg-build-script (MIT) is a good reference; skip its non-free options.
     - Windows/Linux (owner decision 2026-11-19): build our own from pinned sources with --disable-network, like macOS (FFmpeg-Builds' MIT scripts may be adapted). Prebuilt BtbN releases are not used, because they include network protocols.
   - gifski (AGPL-3.0): built from source with cargo in CI for each target.
+  - Mac App Store edition (owner 2026-11-24, ADR-057): the store's terms conflict with the GPL and AGPL, so it ships an LGPL-2.1-or-later ffmpeg and ffprobe (no --enable-gpl, x264 or x265) and no gifski. Best H.264/HEVC falls back to VideoToolbox and GIF to palette mode.
   - Linux in-process decoding and hardware encoding: LGPL shared FFmpeg libraries, also built by us with --disable-network.
 - Never link x264, x265, gifski, or libimagequant into the app. No fdk-aac or anything else nonfree.
 - Every release includes each helper's license, version, build flags, and exact source (or a link to it). Add an About → Licenses screen and third-party notices (cargo-about plus an npm license tool).
@@ -123,6 +124,7 @@ These are the defaults. Validate them with the M0 spikes (small throwaway protot
 
 ### Recording flow
 - Tray/menu-bar app. Global hotkeys: open recorder, start/stop, pause/resume, toggle camera. On Linux, use the GlobalShortcuts portal where available; otherwise fall back to the tray menu.
+- The recorder panel opens by itself on the first launch and, on macOS, when the running app is opened again from Finder or Launchpad (2026-11-25, ADR-057); other launches show only the tray icon.
 - The recorder panel remembers the last choices. Before recording, check permissions, free disk space, and devices. Optional 3-2-1 countdown.
 - While recording, show a small floating bar (stop, pause/resume, restart, discard, timer, mic level) that's excluded from capture where the OS allows, plus a timer in the tray.
 - When recording stops, the editor opens. Settings can change this to "quick export with last settings" or "just save to Library".
@@ -252,6 +254,7 @@ Other references:
   - Hardened runtime with camera/mic entitlements; sign the helpers too.
   - Sign every build with one stable Apple Development identity (a free personal team works). Ad-hoc signing makes macOS forget the Screen Recording permission on every build. Document "tccutil reset ScreenCapture <bundle-id>". (2026-11-19: the owner has no identity and may not create one. Until one exists, run development builds of the app through the Simple Capture Dev host, and expect ad-hoc-signed release builds to ask for permissions again after each update. See DECISIONS ADR-003.)
   - macOS 15+ may periodically re-ask permission for apps that don't use the system screen picker (SCContentSharingPicker). Owner decision 2026-11-19: use the system picker only if equivalent system pickers can be used on Windows and Linux too (ADR-028).
+  - Distribution (owner 2026-11-24, ADR-003, ADR-057): a Developer ID-signed, notarized DMG on GitHub Releases and through the Homebrew tap, and a sandboxed Mac App Store edition built from the same tag with the cargo feature `mas`, LGPL-only helpers and no gifski. The store edition's sandbox entitlements include `com.apple.security.network.client`, because WKWebView's WebContent and Networking processes need it in any sandboxed app, even for local content; the app itself still makes no network connections.
   - Development (decided 2026-11-19): every dev/spike/test binary that needs a privacy permission runs as a child of one fixed host app, "Simple Capture Dev" (com.simplecapture.dev, tools/macos-dev-host), which is signed once and never rebuilt, so the owner approves each permission once. No per-spike bundles or bundle IDs.
 - Windows:
   - Disable the yellow capture border where Windows 11 allows it. Region capture = a cropped display capture.
@@ -323,4 +326,4 @@ At each ★, stop, summarize, tell me what to test, and wait for my OK.
 - Ask before adding dependencies, changing the architecture or stack, or dropping a requirement. Log decisions in docs/DECISIONS.md and keep docs/STATUS.md current.
 - Have working software at every milestone, macOS first. Windows/Linux work must never block macOS milestones, but those platforms must keep compiling and passing tests.
 - Check assumptions with tiny spikes and update the spec rather than guessing.
-- Out of scope for v1: cloud or share links, transcription/AI, drawing/annotations, auto-zoom, background beautification (padding, rounded corners, shadows around the screen; the letterbox background for the output aspect ratio is in scope), transitions or an effects library, layering anything beyond screen + camera + text, live streaming, App Store or notarized distribution.
+- Out of scope for v1: cloud or share links, transcription/AI, drawing/annotations, auto-zoom, background beautification (padding, rounded corners, shadows around the screen; the letterbox background for the output aspect ratio is in scope), transitions or an effects library, layering anything beyond screen + camera + text, live streaming. (App Store and notarized distribution were here until the owner decided on 2026-11-24 to ship both; see Platform notes and DECISIONS ADR-057.)

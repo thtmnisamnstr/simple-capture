@@ -10,8 +10,8 @@ Sources: S1-S4 are the M0 spikes (`spikes/01-helpers`, `02-preview-transport`, `
 |---|---|---|
 | Simple Capture's own code | MIT | The app binary and CLI. |
 | Everything linked into the app binary (Rust crates, C/C++ libraries compiled into crates, the TypeScript UI bundle) | MIT, Apache-2.0, Apache-2.0 WITH LLVM-exception, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, Unicode-3.0, CC0-1.0, plus MPL-2.0 only as a named per-crate exception | Statically or dynamically linked, no restrictions beyond notices. |
-| LGPL code | LGPL-2.1-or-later (or LGPL-3.0-or-later) | **Linux only**, and **only dynamically linked**: the FFmpeg `lgpl-shared` libraries for in-process decode and hardware recording encode. Ship the `.so` files unmodified as separate files so users can replace them. |
-| GPL / AGPL code | GPL-2.0-or-later, GPL-3.0-or-later, AGPL-3.0-or-later | **Only as separate bundled executables** (Tauri sidecars) that we start as processes and talk to over pipes. Never linked into the app. Today: `ffmpeg`, `ffprobe` (if shipped) and `gifski`. |
+| LGPL code | LGPL-2.1-or-later (or LGPL-3.0-or-later) | **Linux:** only dynamically linked, the FFmpeg `lgpl-shared` libraries for in-process decode and hardware recording encode. Ship the `.so` files unmodified as separate files so users can replace them. **Mac App Store edition:** the `sc-ffmpeg` and `sc-ffprobe` executables, whose whole program is LGPL-2.1-or-later with its full source published (§3.4); never linked into the app. |
+| GPL / AGPL code | GPL-2.0-or-later, GPL-3.0-or-later, AGPL-3.0-or-later | **Only as separate bundled executables** (Tauri sidecars) that we start as processes and talk to over pipes. Never linked into the app. Today: `ffmpeg`, `ffprobe` (if shipped) and `gifski`, bundled as `sc-ffmpeg`, `sc-ffprobe` and `sc-gifski`. Never in the Mac App Store edition (§3.4). |
 | Non-free code | none | Never. No `--enable-nonfree`, no fdk-aac, no BtbN `nonfree` variant. |
 | Fonts | SIL OFL-1.1, Apache-2.0 | Bundled with their license files (section 6). |
 | Icons | MIT, ISC | Section 7. |
@@ -24,7 +24,7 @@ All three run on every PR on all three OSes (spec, "Engineering and testing"), a
 
 ### 2.1 cargo-deny (Rust)
 
-Use cargo-deny 0.22.0 (MSRV 1.95, matching our toolchain; 0.21.0 is the fallback pin) (R-eco). Outline of `deny.toml`:
+Use cargo-deny 0.22.1 (MSRV 1.95; 0.21.0 is the fallback pin) (R-eco). Outline of `deny.toml`:
 
 ```toml
 [graph]
@@ -113,18 +113,18 @@ Kept as a hand-maintained list in `third_party/` and included in the notices.
 
 Built from source by `third_party/ffmpeg/build-macos.sh` (S1). Pins, URLs and SHA-256 values are in `third_party/versions.toml`; each build records its inputs in `third_party/out/macos-<arch>/`.
 
-- **Version:** FFmpeg 9.0.2, `--extra-version=simple-capture` (reports `9.0.2-simple-capture`).
+- **Version:** FFmpeg 9.1, `--extra-version=simple-capture` (reports `9.1-simple-capture`).
 - **Result license:** **GPL-2.0-or-later** (`--enable-gpl`, no `--enable-version3`, no `--enable-nonfree`; every linked library is GPLv2-compatible) (S1).
-- **Targets:** arm64 (built, benchmarked, validated), x86_64 (cross-built, smoke-tested under Rosetta only). Deployment target macOS 14.0, built against SDK 26.5 (`vtool`).
+- **Targets:** arm64 (built, benchmarked, validated), x86_64 (cross-built, smoke-tested under Rosetta only; last built for 9.0.2). Deployment target macOS 14.0, built against SDK 26.5 (`vtool`).
 - **Links to:** only libSystem, libc++, and the AudioToolbox, VideoToolbox, CoreFoundation, CoreMedia, CoreVideo and CoreServices frameworks (`otool -L`; the build script fails on anything else). These are operating-system components.
 - **No networking:** `--disable-network`, only the `file` and `pipe` protocols, no socket or getaddrinfo imports (S1 verification).
 
 | Library | Version | License | Source (exact URL and SHA-256 in versions.toml) | Checksum cross-check |
 |---|---|---|---|---|
-| FFmpeg | 9.0.2 | LGPL-2.1-or-later code, GPL-2.0-or-later as configured | https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz | Homebrew formula matches. **GPG signature not verified** (gpg not installed). |
+| FFmpeg | 9.1 | LGPL-2.1-or-later code, GPL-2.0-or-later as configured | https://ffmpeg.org/releases/ffmpeg-9.1.tar.xz | Upstream GPG signature verified (release key `FCF986EA…58D8`); Homebrew formula matches; contents equal git tag n9.1. |
 | x264 | 0.165.r3222, stable branch commit b35605ac | GPL-2.0-or-later | code.videolan.org archive of b35605ac | No upstream checksum; tarball identical to a git clone (`diff -r`). |
 | x265 | 4.3 | GPL-2.0-or-later | github.com/Multicorewareinc/x265 release 4.3 | GitHub asset digest and Homebrew match. |
-| SVT-AV1 | 4.3.0 | BSD-3-Clause-Clear AND AOM Patent License 1.0 | gitlab.com/AOMediaCodec/SVT-AV1 tag v4.3.0 | Matches markus-perl pin. |
+| SVT-AV1 | 4.3.1 | BSD-3-Clause-Clear AND AOM Patent License 1.0 | github.com/AOMediaCodec/SVT-AV1 tag v4.3.1 (the project's canonical home since GitLab stopped at v4.3.0) | No upstream checksum; tarball identical to a git clone (`diff -r`); v4.3.0 is the same commit on GitLab and GitHub. |
 | libvpx | 1.17.0 | BSD-3-Clause (plus Google's PATENTS grant) | github.com/webmproject/libvpx tag v1.17.0 | Homebrew and markus-perl match. |
 | Opus | 1.6.1 | BSD-3-Clause | downloads.xiph.org | Upstream SHA256SUMS, Homebrew, markus-perl match. |
 | libogg | 1.3.6 | BSD-3-Clause | downloads.xiph.org | Upstream SHA256SUMS, markus-perl match. |
@@ -147,11 +147,12 @@ Configure flags (full line in `third_party/out/macos-arm64/ffmpeg.configure.txt`
 (plus explicit decoder, muxer, demuxer, parser, hwaccel and filter allow lists)
 ```
 
-Known gaps: there is no AV1 decoder (S1). Sizes: arm64 ffmpeg 20,273,336 B and ffprobe 20,097,672 B; x86_64 ffmpeg 29,354,544 B. Shipping ffprobe is optional (decide in M5).
+Known gaps: there is no AV1 decoder (S1). Sizes (9.1): arm64 ffmpeg 20,970,216 B and ffprobe 20,761,512 B; x86_64 ffmpeg 29,354,544 B (9.0.2). Shipping ffprobe is optional (decide in M5).
 
 ### 3.2 gifski (built by us, all OSes)
 
 - **Version:** gifski 1.34.0 from the crates.io `.crate` (SHA-256 `c246c795…1190`, matches the registry checksum; git tag 1.34.0, commit 1060eab4), built with `cargo build --release --locked --bin gifski` (`third_party/gifski/build.sh`) (S1).
+- **Lockfile:** the build replaces the crate's `Cargo.lock` with `third_party/gifski/gifski-1.34.0.Cargo.lock` (SHA-256 pinned in versions.toml), which differs only in crossbeam-epoch 0.9.18 → 0.9.20 for RUSTSEC-2026-0204. `cargo audit -f` on it reports no advisories (2026-11-24). Neither Dependabot nor cargo-deny reads this lockfile, so re-run `cargo audit -f` on it when touching the helpers.
 - **Features:** defaults only (`binary`, `gifsicle`); the `video` feature, which links FFmpeg, is never enabled.
 - **Result license:** **AGPL-3.0-or-later**. It contains libimagequant 4.4.1 (**GPL-3.0-or-later**); every other compiled crate is permissive (list with licenses in `third_party/out/macos-arm64/gifski.deps.txt`, 52 lines).
 - **Open question:** the default `gifsicle` feature compiles a Rust port of gifsicle's lossy-LZW code (`src/gifsicle.rs` in the pinned crate; it has no licence header of its own, and the crate declares only `AGPL-3.0-or-later`), and gifsicle is GPL-2.0 upstream. The combined binary is still distributed under AGPL-3.0-or-later, but check that module's provenance (who wrote the port, from which gifsicle/giflossy code, under which licence) before M5, or build with `--no-default-features --features binary` if we drop "lossy" (S1 verification). Not resolved in M0.
@@ -174,6 +175,16 @@ From FFmpeg-Builds (formerly BtbN/FFmpeg-Builds, now `github.com/FFmpeg-Builds/F
   2. **Networking.** These are general-purpose builds. If they keep FFmpeg's network protocols (likely), the shipped helper and the Linux in-process libraries contain networking code, which conflicts with the spec's "no networking code anywhere". The app never passes them a URL, but the code is there. Options: build our own Windows/Linux helpers with FFmpeg-Builds' MIT scripts plus `--disable-network`, or record an explicit exception in DECISIONS.md. **This needs the owner's decision.**
   3. **Windows floor.** FFmpeg-Builds states Windows 10 22H2 as its minimum, newer than the spec's Windows 10 2004 (R-eco). Either update the spec or build our own.
 
+### 3.4 Mac App Store edition (macOS)
+
+The App Store's usage rules add restrictions that GPL-2.0 §6 and GPL-3.0/AGPL-3.0 §10 forbid (the FSF's position; GNU Go was removed in 2010 and VLC for iOS in 2011 after copyright holders complained). So the store edition (DECISIONS ADR-057) ships no GPL or AGPL code:
+
+- **`sc-ffmpeg` and `sc-ffprobe`: LGPL-2.1-or-later.** The same pinned FFmpeg sources and `build-macos.sh`, built without `--enable-gpl`, `--enable-libx264`, `--enable-libx265` and those encoders. No `--enable-version3`, so LGPL-3.0's installation-information terms don't arise for a signed store bundle. Linked in: SVT-AV1 (BSD-3-Clause-Clear and the AOM Patent License), and libvpx, Opus, Ogg, Vorbis and libwebp (BSD-3-Clause; libvpx and libwebp with Google's patent grants), plus the same Apple frameworks as §3.1. Networking stays off.
+- **Not shipped:** x264, x265, gifski and libimagequant. Best H.264/HEVC exports fall back to VideoToolbox and GIFs to palette mode.
+- **Notices:** FFmpeg's LGPL-2.1 text (`COPYING.LGPLv2.1`) and `LICENSE.md` and the notices of the permissive libraries above (the §5 set without x264, x265 and gifski) are bundled in `Contents/Resources/licenses` (staged by `scripts/stage-helpers.sh --mas` into `app/gen/licenses-mas`) and shown in About → Licenses.
+- **Corresponding source:** the GitHub release of the same tag, `https://github.com/thtmnisamnstr/simple-capture/releases/tag/v<version>`. Its `simple-capture-helper-sources.tar.gz` holds every pinned tarball and `third_party/` (the scripts that build both variants), kept for at least three years like every release (§5). The store build is not downloaded from that page, so §5's "equivalent access" does not cover it; instead the FFmpeg entry in About → Licenses says its complete source is attached to this version's GitHub release and has a **Source code** button that opens that release page (`releases/tag/v<version>` of the running version). That button is the store edition's equivalent of a written offer.
+- **Residual risk:** the LGPL also forbids further restrictions (§10), so the store terms are not settled for it either; LGPL FFmpeg ships in many store apps without enforcement. A custom licence agreement in App Store Connect that leaves the LGPL rights intact would lower the risk (open).
+
 ## 4. Patents
 
 - **H.264, HEVC and AAC** are covered by patent pools (Via LA, Access Advance and others). The spec accepts this for personal use; wider or commercial distribution may need licenses. Using an OS encoder (VideoToolbox, Media Foundation) for Fast exports does not settle the patent question for files people distribute, so treat both paths the same.
@@ -188,14 +199,14 @@ For each OS and architecture, next to the helpers inside the app bundle and in t
 
 1. **License texts** for every helper and every library linked into it (`third_party/out/<os>-<arch>/licenses/ffmpeg/*`: FFmpeg COPYING.GPLv2 and LICENSE.md, x264 and x265 COPYING, SVT-AV1 LICENSE and PATENTS, libvpx LICENSE and PATENTS, Opus, Ogg and Vorbis COPYING; plus `gifski.LICENSE`, **and, not yet collected**, libimagequant's GPL-3.0 text and `COPYRIGHT` (pngquant notice) and the notices of every permissive crate in `gifski.deps.txt`; see section 3.2). For BtbN builds, their bundled license files.
 2. **Version and build record:** `ffmpeg.configure.txt`, `ffmpeg.buildconf.txt`, `ffmpeg.sources.txt` (versions and SHA-256), `gifski.buildinfo.txt`, `gifski.deps.txt`.
-3. **Corresponding source.** GPL/AGPL require us to provide it, not just link upstream. Attach to every GitHub release a source archive containing every pinned tarball (FFmpeg, x264, x265, SVT-AV1, libvpx, Opus, Ogg, Vorbis, the gifski crate with its vendored dependencies) **plus our build scripts** (`third_party/`, which count as the scripts that control compilation). Distributing it from the same release page as the binaries satisfies "equivalent access". Also include a written offer in the notices as a fallback. For BtbN binaries, mirror their matching source and scripts the same way. Keep these for at least three years per release.
+3. **Corresponding source.** GPL/AGPL require us to provide it, not just link upstream. Attach to every GitHub release a source archive containing every pinned tarball (FFmpeg, x264, x265, SVT-AV1, libvpx, Opus, Ogg, Vorbis, the gifski crate with its vendored dependencies) **plus our build scripts** (`third_party/`, which count as the scripts that control compilation). Distributing it from the same release page as the binaries satisfies "equivalent access". Also include a written offer in the notices as a fallback. For BtbN binaries, mirror their matching source and scripts the same way. Keep these for at least three years per release. Every edition's About → Licenses also has a **Source code** button on the FFmpeg entry (and the gifski entry, outside the store edition) that opens the release of the running version. The Mac App Store edition is not downloaded from that page, so for it that button is the source offer (§3.4).
 4. **Rust notices** from cargo-about, **npm notices** from the pnpm license list, and the **native components list** from section 2.4 (including the FreeType credit).
 5. **Font licenses** for every bundled font (section 6).
 6. **Patent note** (section 4).
 
-The spec's definition of done also requires a check that the app binary contains no GPL/AGPL code: CI runs cargo-deny and the npm check, and a script confirms no `x264`, `x265`, `gifski` or `imagequant` symbols in the app binary.
+The Mac App Store edition ships the §3.4 set instead (no x264, x265 or gifski texts). The spec's definition of done also requires a check that the app binary contains no GPL/AGPL code: CI runs cargo-deny and the npm check, and a script confirms no `x264`, `x265`, `gifski` or `imagequant` symbols in the app binary.
 
-macOS signing note: tauri-bundler signs sidecars with the app's identity **and the app's entitlements** (no per-sidecar option), so ffmpeg and gifski would inherit camera/mic entitlements. Narrower entitlements would need a custom signing step; ADR-003 accepts the inherited ones for v1 (R-eco).
+macOS signing note: tauri-bundler signs sidecars with the app's identity **and the app's entitlements** (no per-sidecar option), so ffmpeg and gifski would inherit camera/mic entitlements. Narrower entitlements would need a custom signing step; ADR-003 accepts the inherited ones for v1 (R-eco). The Mac App Store edition does have that step: `scripts/mas-build.sh` signs its helpers itself with only `app-sandbox` and `inherit` (`app/macos/helper.mas.entitlements.plist`).
 
 ## 6. Fonts
 
@@ -274,4 +285,4 @@ Current use: **no Cap code is in this repository.** The MIT crates `scap-screenc
 | No Cap or Kap code in M1 | none adapted; the only "ported" code is our own spike code | THIRD_PARTY.md |
 | Release bundle sidecars | ffmpeg and ffprobe signed `adhoc,runtime` with the app's entitlements (inherited, as §5 notes) | M1:app-shell (bundle inspected, never launched) |
 
-Still open from M0 (unchanged in M1): gifski notice texts (libimagequant GPL-3.0 text and COPYRIGHT, the permissive crates in `gifski.deps.txt`), the gifsicle-feature provenance question, the FFmpeg GPG signature, BtbN for Windows/Linux (M6), and the Apache-2.0 fonts question (§6). M1 ships no GIF export and bundles no fonts, so none of these blocks M1. Since M4 the app bundles the ADR-020 fonts with their license files (THIRD_PARTY.md, "Fonts (app)"); Special Elite is the one Apache-2.0 font, accepted under the spec's Licensing section.
+Still open from M0 (unchanged in M1): gifski notice texts (libimagequant GPL-3.0 text and COPYRIGHT, the permissive crates in `gifski.deps.txt`), the gifsicle-feature provenance question, BtbN for Windows/Linux (M6), and the Apache-2.0 fonts question (§6). M1 ships no GIF export and bundles no fonts, so none of these blocks M1. Since M4 the app bundles the ADR-020 fonts with their license files (THIRD_PARTY.md, "Fonts (app)"); Special Elite is the one Apache-2.0 font, accepted under the spec's Licensing section. Since the FFmpeg 9.1 pin (2026-11-24) the FFmpeg tarball's GPG signature is verified (versions.toml `cross_check`).

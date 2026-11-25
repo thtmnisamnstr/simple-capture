@@ -57,7 +57,9 @@ pub fn item_id(label_or_id: &str) -> Option<&'static str> {
         (l == *id
             || l == *label
             || l == plain
-            || l.eq_ignore_ascii_case("Stop Recording") && *id == "start-stop")
+            || (l.eq_ignore_ascii_case("Stop Recording")
+                || l.eq_ignore_ascii_case("Cancel Countdown"))
+                && *id == "start-stop")
             .then_some(*id)
     })
 }
@@ -119,7 +121,8 @@ impl Tray {
         })
     }
 
-    pub fn refresh(&self, phase: &Phase, elapsed_ns: i64, paused: bool) {
+    /// `counting`: a recording start, its countdown included, is under way.
+    pub fn refresh(&self, phase: &Phase, elapsed_ns: i64, paused: bool, counting: bool) {
         let recording = phase.is_recording();
         let title = recording.then(|| {
             if paused {
@@ -164,6 +167,8 @@ impl Tray {
         }
         let text = if recording {
             "Stop Recording"
+        } else if counting {
+            "Cancel Countdown"
         } else {
             "Start Recording"
         };
@@ -251,13 +256,7 @@ pub fn show_recording_menu(core: &Arc<Core>) {
 pub fn on_item(core: &Arc<Core>, id: &str) -> Reply {
     match id {
         "open" => core.show_window("panel", true).map(|_| Value::Null),
-        "start-stop" => {
-            if core.phase().is_recording() {
-                core.stop_recording()
-            } else {
-                core.tray_start()
-            }
-        }
+        "start-stop" => core.start_stop(),
         "switch" => {
             if let Some(t) = core.tray.get() {
                 t.below_icon(&core.app, "switcher");
@@ -308,6 +307,7 @@ mod tests {
         assert_eq!(item_id("Switch Source…"), Some("switch"));
         assert_eq!(item_id("Switch Source"), Some("switch"));
         assert_eq!(item_id("Stop Recording"), Some("start-stop"));
+        assert_eq!(item_id("Cancel Countdown"), Some("start-stop"));
         assert_eq!(item_id("quit"), Some("quit"));
         assert_eq!(item_id("Frob"), None);
     }

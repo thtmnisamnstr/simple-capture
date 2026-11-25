@@ -2,7 +2,7 @@ use std::ffi::c_void;
 use std::sync::Mutex;
 
 use objc2::runtime::{AnyClass, AnyObject};
-use objc2::{ClassType, MainThreadMarker, MainThreadOnly, define_class, sel};
+use objc2::{ClassType, MainThreadMarker, MainThreadOnly, define_class};
 use objc2_app_kit::{
     NSPanel, NSResponder, NSWindow, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
@@ -175,7 +175,10 @@ impl OverlayWindows for MacOverlays {
             }
         }
         win.setStyleMask(win.styleMask() | NSWindowStyleMask::NonactivatingPanel);
-        if super::content::responds(obj, sel!(_setPreventsActivation:)) {
+        // A private selector: App Store review (Guideline 2.5.1) rejects it, so that build relies
+        // on the non-activating style alone.
+        #[cfg(not(feature = "mas"))]
+        if super::content::responds(obj, objc2::sel!(_setPreventsActivation:)) {
             let _: () = unsafe { objc2::msg_send![obj, _setPreventsActivation: true] };
         }
         if let Some(panel) = unsafe { (obj as *const AnyObject as *const NSPanel).as_ref() } {

@@ -352,7 +352,7 @@ pub(crate) fn rgba_to_i420(rgba: &[u8], canvas: SizePx) -> Vec<u8> {
     let mut out = vec![0u8; w * h + 2 * cw * ch];
     let (yp, rest) = out.split_at_mut(w * h);
     let (up, vp) = rest.split_at_mut(cw * ch);
-    for (i, px) in rgba.chunks_exact(4).enumerate() {
+    for (i, px) in rgba.as_chunks::<4>().0.iter().enumerate() {
         yp[i] = maths::rgb_to_y(i32::from(px[0]), i32::from(px[1]), i32::from(px[2])) as u8;
     }
     for cy in 0..ch {

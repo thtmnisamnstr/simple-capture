@@ -14,7 +14,7 @@ pub struct HelperInfo {
 }
 
 fn stdout_of(path: &Path, args: &[&str]) -> Result<Option<String>> {
-    let out = Command::new(path)
+    let out = crate::hide_console(&mut Command::new(path))
         .args(args)
         .stdin(Stdio::null())
         .output()

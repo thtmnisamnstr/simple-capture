@@ -125,7 +125,7 @@ pub fn fit_packed(
     let dx = (out.w - dw) / 2;
     let dy = (out.h - dh) / 2;
     let mut buf = vec![0u8; out.w as usize * out.h as usize * 4];
-    for alpha in buf.chunks_exact_mut(4) {
+    for alpha in buf.as_chunks_mut::<4>().0 {
         alpha[3] = 255;
     }
     let xs: Vec<usize> = (0..dw)
@@ -142,7 +142,7 @@ pub fn fit_packed(
         if dw == size.w {
             drow.copy_from_slice(&srow[..dw as usize * 4]);
         } else {
-            for (d, x) in drow.chunks_exact_mut(4).zip(&xs) {
+            for (d, x) in drow.as_chunks_mut::<4>().0.iter_mut().zip(&xs) {
                 d.copy_from_slice(&srow[x * 4..x * 4 + 4]);
             }
         }

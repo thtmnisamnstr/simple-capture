@@ -9,6 +9,7 @@ third_party/out
 ui/dist/
 ui/node_modules/
 app/binaries/
+app/binaries-mas/
 app/gen/
 __pycache__/
 *.pyc

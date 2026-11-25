@@ -27,8 +27,7 @@ pub fn defaults() -> BTreeMap<String, String> {
 
 fn run(core: &Arc<Core>, action: &str) -> Reply {
     match action {
-        "record" if core.phase().is_recording() => core.stop_recording(),
-        "record" => core.tray_start(),
+        "record" => core.start_stop(),
         "pause" => core.toggle_pause(),
         "switch" => core.hotkey_switch(),
         "camera" => core.toggle_camera(),
@@ -60,6 +59,9 @@ pub fn check(keys: &str) -> Result<Shortcut, String> {
     ];
     if !held.iter().any(|m| lower.split('+').any(|p| p == *m)) {
         return Err("Add ⌘, ⌃ or ⌥ so typing doesn’t trigger it".into());
+    }
+    if cfg!(feature = "mas") && lower.split('+').any(|p| p.starts_with("media")) {
+        return Err("Media keys can’t be shortcuts in the App Store version".into());
     }
     Ok(s)
 }

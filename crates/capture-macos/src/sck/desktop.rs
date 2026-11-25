@@ -123,13 +123,14 @@ impl Desktop for MacDesktop {
             let cell = std::sync::Mutex::new(Some(done));
             let p2 = panel.clone();
             let blk = block2::RcBlock::new(move |resp: isize| {
-                let path = (resp == NSModalResponseOK)
-                    .then(|| {
-                        p2.URL()
-                            .and_then(|u| u.path())
-                            .map(|s| PathBuf::from(s.to_string()))
-                    })
-                    .flatten();
+                let url = (resp == NSModalResponseOK).then(|| p2.URL()).flatten();
+                #[cfg(feature = "mas")]
+                if let Some(u) = &url {
+                    crate::workspace::remember_pick(u);
+                }
+                let path = url
+                    .and_then(|u| u.path())
+                    .map(|s| PathBuf::from(s.to_string()));
                 if let Some(d) = cell.lock().ok().and_then(|mut c| c.take()) {
                     d(path);
                 }

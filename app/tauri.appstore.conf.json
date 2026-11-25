@@ -1,0 +1,17 @@
+{
+  "bundle": {
+    "externalBin": [
+      "binaries-mas/sc-ffmpeg",
+      "binaries-mas/sc-ffprobe"
+    ],
+    "macOS": {
+      "signingIdentity": null,
+      "entitlements": "macos/entitlements.mas.plist"
+    },
+    "resources": {
+      "gen/licenses/": null,
+      "gen/licenses-mas/": "licenses/"
+    },
+    "copyright": "Copyright © 2026 Gavin Johnson. MIT License; the bundled FFmpeg export helpers are LGPL-2.1-or-later."
+  }
+}

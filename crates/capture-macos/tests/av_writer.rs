@@ -445,7 +445,8 @@ fn kill_child_body() {
         .expect("audio writer");
     let start = Instant::now();
     let mut audio_frames = 0u64;
-    for i in 0u32.. {
+    let mut i = 0u32;
+    loop {
         let ns = i64::from(i) * 33_333_333;
         let f = frame(size, i, ns);
         append_retry(v.as_mut(), |w| {
@@ -464,6 +465,7 @@ fn kill_child_body() {
         if let Some(d) = due.checked_duration_since(Instant::now()) {
             std::thread::sleep(d);
         }
+        i += 1;
     }
 }
 

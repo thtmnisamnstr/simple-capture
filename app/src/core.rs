@@ -1,18 +1,20 @@
 //! App state and every operation behind the commands, tray, hotkey and debug driver.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
+#[cfg(not(target_os = "macos"))]
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak, mpsc};
 use std::time::{Duration, Instant};
 
 use sc_core::journal::StopReason;
-use sc_core::project::{Background, Fit, ProjectV1, Via};
+use sc_core::project::{ProjectV1, Via};
 use sc_export::probe::ProbeV1;
 use sc_export::{ExportJob, ExportObserver, ExportProgress, ExportState, QuickExportRequest};
 #[cfg(debug_assertions)]
 use sc_geometry::RectPt;
-use sc_geometry::{PointF, SizePx};
+use sc_geometry::SizePx;
 use sc_platform::{
     AudioBuffer, DeviceStream, FrameSink, OverlayRole, PermissionKind, PermissionStatus,
     PickedSource, PickerRequest, Platform, Resolution, SharedCamera, SourceEvent, VideoFrame,
@@ -78,9 +80,15 @@ pub struct Core {
     rec_started: Mutex<Option<Instant>>,
     paused_total: Mutex<std::time::Duration>,
     paused_since: Mutex<Option<Instant>>,
-    countdown_cancel: std::sync::atomic::AtomicBool,
+    /// The number of the recording start in progress (its countdown included), 0 when none.
+    start_claim: AtomicU64,
+    start_seq: AtomicU64,
+    /// The number of the start whose countdown was cancelled.
+    countdown_cancel: AtomicU64,
     last_request: Mutex<Option<RecordRequestDto>>,
     raw_after_export: Mutex<HashMap<String, PathBuf>>,
+    /// Files this session's exports wrote: with the license files, all `open_file` launches.
+    exported: Mutex<HashSet<PathBuf>>,
     window_ids: Mutex<Vec<(String, WindowId)>>,
     picks: Mutex<HashMap<String, PickedSource>>,
     stills: Mutex<StillCache>,
@@ -136,9 +144,12 @@ impl Core {
             rec_started: Mutex::new(None),
             paused_total: Mutex::new(std::time::Duration::ZERO),
             paused_since: Mutex::new(None),
-            countdown_cancel: std::sync::atomic::AtomicBool::new(false),
+            start_claim: AtomicU64::new(0),
+            start_seq: AtomicU64::new(0),
+            countdown_cancel: AtomicU64::new(0),
             last_request: Mutex::new(None),
             raw_after_export: Mutex::new(HashMap::new()),
+            exported: Mutex::new(HashSet::new()),
             window_ids: Mutex::new(Vec::new()),
             picks: Mutex::new(HashMap::new()),
             stills: Mutex::new(StillCache::default()),
@@ -288,14 +299,31 @@ impl Core {
         let req = lock(&self.last_request)
             .clone()
             .ok_or("nothing to restart")?;
+        let _claim = self.claim_start()?;
         self.discard_recording()?;
         self.start_recording_now(req)
     }
 
     pub fn cancel_countdown(&self) -> Reply {
-        self.countdown_cancel
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let id = self.start_claim.load(Ordering::SeqCst);
+        if id != 0 {
+            self.countdown_cancel.store(id, Ordering::SeqCst);
+        }
         Ok(Value::Null)
+    }
+
+    /// A recording start (its countdown included) is under way.
+    pub fn starting(&self) -> bool {
+        self.start_claim.load(Ordering::SeqCst) != 0
+    }
+
+    /// Makes this the one recording start until the returned claim drops.
+    fn claim_start(&self) -> Result<StartClaim<'_>, String> {
+        let id = self.start_seq.fetch_add(1, Ordering::SeqCst) + 1;
+        self.start_claim
+            .compare_exchange(0, id, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| "A recording is already starting.".to_string())?;
+        Ok(StartClaim { core: self, id })
     }
 
     /// Hotkey: hide or show the camera in the recording from now on.
@@ -751,33 +779,24 @@ impl Core {
             screen_frame.as_ref()
         };
         let size = still::still_canvas(canvas.aspect, main.map(|f| f.0.size()));
-        let bg = match &canvas.background_image {
-            Some(p) => Background::Image {
-                asset: p.clone(),
-                sha256: String::new(),
-                fit: Fit::Cover,
-                focus_norm: PointF { x: 0.5, y: 0.5 },
-            },
-            None => canvas.background.clone(),
-        };
+        let (bg, bg_dir) = still::canvas_background(&canvas);
         let placement = sc_core::camera::camera_at(std::slice::from_ref(&key), 0);
         let cam = cam_frame
             .as_ref()
             .filter(|_| !camera_only)
             .zip(placement.as_ref())
             .map(|(f, p)| (p, &f.buffer));
-        let png =
-            still::compose_png(&bg, size, Path::new("/"), main, cam, canvas.fit).or_else(|e| {
-                tracing::warn!("still: {e}; retrying with the canvas background");
-                still::compose_png(
-                    &canvas.background,
-                    size,
-                    Path::new("/"),
-                    main,
-                    cam,
-                    canvas.fit,
-                )
-            })?;
+        let png = still::compose_png(&bg, size, &bg_dir, main, cam, canvas.fit).or_else(|e| {
+            tracing::warn!("still: {e}; retrying with a plain background");
+            still::compose_png(
+                &still::plain_background(),
+                size,
+                &bg_dir,
+                main,
+                cam,
+                canvas.fit,
+            )
+        })?;
         let id = sc_core::ids::new_id();
         lock(&self.stills).insert(id.clone(), png);
         Ok(json!(still::still_url(&id)))
@@ -861,10 +880,29 @@ impl Core {
             let _ = tx.send(p);
         }));
         let p = rx.recv().map_err(|_| "image chooser dropped".to_string())?;
+        #[cfg(all(feature = "mas", target_os = "macos"))]
+        let p = p.map(|p| {
+            let keep = self.settings.load().canvas.background_image;
+            crate::sandbox::keep_background_image(&self.data_dir, &p, keep.as_deref())
+        });
         Ok(p.map(|p| json!(p.to_string_lossy())).unwrap_or(Value::Null))
     }
 
+    /// Opens a file an export of this session wrote, or a license file, in its default app.
+    pub fn open_file(&self, path: &Path) -> Reply {
+        let exported = lock(&self.exported).contains(path);
+        if !exported && !crate::about::is_license_file(&self.app, path) {
+            return Err("Only a finished export or a license file can be opened.".into());
+        }
+        #[cfg(all(feature = "mas", target_os = "macos"))]
+        let _ = crate::sandbox::reach_export_folder(&self.data_dir, path);
+        open_path(path)?;
+        Ok(Value::Null)
+    }
+
     pub fn reveal(&self, path: &str) -> Reply {
+        #[cfg(all(feature = "mas", target_os = "macos"))]
+        let _ = crate::sandbox::reach_export_folder(&self.data_dir, Path::new(path));
         self.platform
             .desktop()
             .reveal(Path::new(path))
@@ -1050,17 +1088,15 @@ impl Core {
     }
 
     pub fn start_recording(self: &Arc<Self>, req: RecordRequestDto) -> Reply {
-        if self.phase().is_recording() {
-            return Err("already recording".into());
-        }
+        self.phase().next(Input::Start)?;
+        let claim = self.claim_start()?;
         let n = if self.no_key_windows {
             0
         } else {
             req.settings.countdown_s
         };
         if n > 0 {
-            self.countdown_cancel
-                .store(false, std::sync::atomic::Ordering::SeqCst);
+            self.refresh_tray();
             if self.platform.capabilities().exclusion != sc_platform::ExclusionKind::AutoHide {
                 self.hide_window("panel");
             }
@@ -1071,10 +1107,7 @@ impl Core {
             for left in (1..=n).rev() {
                 self.emit("countdown", json!({ "left": left }));
                 std::thread::sleep(std::time::Duration::from_secs(1));
-                if self
-                    .countdown_cancel
-                    .swap(false, std::sync::atomic::Ordering::SeqCst)
-                {
+                if self.countdown_cancel.load(Ordering::SeqCst) == claim.id {
                     self.emit("countdown", json!({ "left": 0, "cancelled": true }));
                     self.hide_window("bar");
                     return Ok(json!({ "cancelled": true }));
@@ -1086,6 +1119,7 @@ impl Core {
     }
 
     fn start_recording_now(self: &Arc<Self>, mut req: RecordRequestDto) -> Reply {
+        self.phase().next(Input::Start)?;
         if let Some(id) = req.settings.mic.clone() {
             let mics = self.platform.mic().devices().unwrap_or_default();
             if let Some(to) = stand_in(&mics, &id) {
@@ -1374,7 +1408,24 @@ impl Core {
 
     pub fn refresh_tray(&self) {
         if let Some(t) = self.tray.get() {
-            t.refresh(&self.phase(), self.elapsed_ns(), self.is_paused());
+            t.refresh(
+                &self.phase(),
+                self.elapsed_ns(),
+                self.is_paused(),
+                self.starting(),
+            );
+        }
+    }
+
+    /// The record hotkey and the tray's Start/Stop item: stops a recording, cancels a countdown
+    /// (a second press must not start a second one), or starts.
+    pub fn start_stop(self: &Arc<Self>) -> Reply {
+        if self.phase().is_recording() {
+            self.stop_recording()
+        } else if self.starting() {
+            self.cancel_countdown()
+        } else {
+            self.tray_start()
         }
     }
 
@@ -1445,10 +1496,14 @@ impl Core {
             .cloned()
             .unwrap_or_else(|| sc_export::settings::ExportSettings::for_format(format))
             .normalized();
+        #[cfg(all(feature = "mas", target_os = "macos"))]
+        let stage = crate::sandbox::export_stage(&self.data_dir, &settings, project_dir)?;
+        #[cfg(not(all(feature = "mas", target_os = "macos")))]
+        let stage = None;
         let platform = self.platform.clone();
         let d = project_dir.to_path_buf();
         let r = self.run_export(&project_dir.to_string_lossy(), move |obs| {
-            ExportJob::start_with(
+            ExportJob::start_staged(
                 platform,
                 sc_export::plan::ExportRequest {
                     project_dir: d,
@@ -1456,6 +1511,7 @@ impl Core {
                     out_path: None,
                     canvas: None,
                 },
+                stage,
                 obs,
             )
         })?;
@@ -1505,6 +1561,9 @@ impl Core {
     }
 
     fn on_export_state(&self, id: &str, s: &ExportState) {
+        if let ExportState::Done { path } = s {
+            lock(&self.exported).insert(path.clone());
+        }
         self.emit("export-state", dto::export_state(id, s));
         if matches!(
             s,
@@ -1770,23 +1829,46 @@ fn show_without_key(w: &tauri::WebviewWindow) -> Result<(), String> {
     w.show().map_err(|e| e.to_string())
 }
 
-pub fn open_path(path: &str) -> Result<(), String> {
-    open_url(path)
+fn open_path(path: &Path) -> Result<(), String> {
+    if !path.is_absolute() || !path.is_file() {
+        return Err(format!("{} is not a file", path.display()));
+    }
+    #[cfg(target_os = "macos")]
+    return sc_capture_macos::workspace::open_file(path).map_err(|e| e.to_string());
+    #[cfg(not(target_os = "macos"))]
+    launch(path.as_os_str())
 }
 
-fn open_url(url: &str) -> Result<(), String> {
-    let program = if cfg!(target_os = "macos") {
-        "open"
-    } else if cfg!(windows) {
-        "explorer"
-    } else {
-        "xdg-open"
-    };
-    std::process::Command::new(program)
-        .arg(url)
+pub(crate) fn open_url(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    return sc_capture_macos::workspace::open_url(url).map_err(|e| e.to_string());
+    #[cfg(not(target_os = "macos"))]
+    launch(OsStr::new(url))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn launch(target: &OsStr) -> Result<(), String> {
+    let program = opener();
+    std::process::Command::new(&program)
+        .arg(target)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("{program} {url}: {e}"))
+        .map_err(|e| format!("{} {}: {e}", program.display(), Path::new(target).display()))
+}
+
+/// The system's opener, by full path where it has a fixed home, so that a program of the same
+/// name earlier on `PATH` can't stand in for it.
+#[cfg(not(target_os = "macos"))]
+fn opener() -> PathBuf {
+    if cfg!(windows) {
+        std::env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+            .join("explorer.exe")
+    } else {
+        PathBuf::from("xdg-open")
+    }
 }
 
 /// A menu of ours began tracking: its window may appear a moment after the notification, so the
@@ -1911,6 +1993,22 @@ impl FrameSink for SystemSink {
         if let Some(c) = self.core.upgrade() {
             c.on_system_event(e);
         }
+    }
+}
+
+/// Released on every way out of a start: cancelled, failed, or handed over to the recording.
+struct StartClaim<'a> {
+    core: &'a Core,
+    id: u64,
+}
+
+impl Drop for StartClaim<'_> {
+    fn drop(&mut self) {
+        let _ =
+            self.core
+                .start_claim
+                .compare_exchange(self.id, 0, Ordering::SeqCst, Ordering::SeqCst);
+        self.core.refresh_tray();
     }
 }
 
@@ -2160,20 +2258,13 @@ impl Core {
             let (src, canvas) = b.stage.clone()?;
             (src, canvas, b.key.clone())
         };
-        let background = match &canvas.background_image {
-            Some(p) => sc_core::project::Background::Image {
-                asset: p.clone(),
-                sha256: String::new(),
-                fit: sc_core::project::Fit::Cover,
-                focus_norm: sc_geometry::PointF { x: 0.5, y: 0.5 },
-            },
-            None => canvas.background.clone(),
-        };
+        let (background, background_dir) = still::canvas_background(&canvas);
         Some(crate::stage::StageInputs {
             source: src.to_spec(|id| self.picked(id)).ok(),
             aspect: canvas.aspect,
             fit: canvas.fit,
             background,
+            background_dir,
             key: key.filter(|k| k.visible),
         })
     }

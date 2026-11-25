@@ -88,6 +88,14 @@
     void load();
   });
 
+  $effect(() => {
+    if (opts && !opts.available.gifski && st.gif.mode === 'gifski') st.gif.mode = 'palette';
+  });
+
+  $effect(() => {
+    if (opts && st.encoder === 'best' && !avail(st.video, 'best') && avail(st.video, 'fast')) st.encoder = 'fast';
+  });
+
   let timer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     const snap = JSON.stringify(st);

@@ -1,14 +1,16 @@
 //! Recorder-panel stills (ARCHITECTURE §9), served as `sc://still/<id>.png`.
 
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use sc_core::image::RgbaImage;
-use sc_core::project::Background;
-use sc_geometry::{Aspect, Ratio, RectPx, SizePx, even_round};
+use sc_core::project::{Background, Fit};
+use sc_geometry::{Aspect, PointF, Ratio, RectPx, SizePx, even_round};
 use sc_platform::{CpuNv12Frame, FrameBuffer};
 use sc_render::{FrameJob, OutputFormat, ScreenLayer};
+
+use crate::settings::CanvasDto;
 
 pub const STILL_LONG_SIDE: u32 = 960;
 const KEEP: usize = 8;
@@ -73,6 +75,30 @@ pub fn rgba_to_nv12(img: &RgbaImage) -> CpuNv12Frame {
         }
     }
     out
+}
+
+/// The recorder's background and the folder its image is read from. The chosen image can be
+/// anywhere on disk, but `sc_text` only reads an image named inside a folder.
+pub fn canvas_background(canvas: &CanvasDto) -> (Background, PathBuf) {
+    let Some(image) = canvas.background_image.as_deref().map(Path::new) else {
+        return (canvas.background.clone(), PathBuf::from("/"));
+    };
+    let (dir, name) = match (image.parent(), image.file_name().and_then(|n| n.to_str())) {
+        (Some(dir), Some(name)) => (dir.to_path_buf(), name.to_string()),
+        _ => (PathBuf::from("/"), image.to_string_lossy().into_owned()),
+    };
+    let bg = Background::Image {
+        asset: name,
+        sha256: String::new(),
+        fit: Fit::Cover,
+        focus_norm: PointF { x: 0.5, y: 0.5 },
+    };
+    (bg, dir)
+}
+
+/// What shows when the chosen background can't be drawn.
+pub fn plain_background() -> Background {
+    CanvasDto::default().background
 }
 
 pub fn compose_png(
@@ -174,7 +200,7 @@ pub fn id_from_path(host: Option<&str>, path: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sc_core::project::{Fit, Rgba};
+    use sc_core::project::Rgba;
 
     #[test]
     fn canvas_sizes() {
@@ -197,14 +223,14 @@ mod tests {
             stride: 20,
             data: vec![128; 60],
         };
-        for p in img.data.chunks_exact_mut(4) {
+        for p in img.data.as_chunks_mut::<4>().0 {
             p[3] = 255;
         }
         let f = rgba_to_nv12(&img);
         assert_eq!(f.size, SizePx { w: 4, h: 2 });
         assert!(f.y.iter().all(|&v| (125..=127).contains(&v)), "{:?}", f.y);
         assert!(f.uv.iter().all(|&v| v == 128));
-        for p in img.data.chunks_exact_mut(4) {
+        for p in img.data.as_chunks_mut::<4>().0 {
             p.copy_from_slice(&[255, 0, 0, 255]);
         }
         let f = rgba_to_nv12(&img);
@@ -252,6 +278,38 @@ mod tests {
         )
         .expect("png");
         assert!(plain.starts_with(b"\x89PNG"));
+    }
+
+    #[test]
+    fn an_image_anywhere_on_disk_is_the_background() {
+        let dir = std::env::temp_dir().join(format!(
+            "sc-still-{}-{}",
+            std::process::id(),
+            sc_core::ids::new_id()
+        ));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let red = RgbaImage {
+            size: SizePx { w: 8, h: 8 },
+            stride: 32,
+            data: [255, 0, 0, 255].repeat(64),
+        };
+        let file = dir.join("red background.png");
+        std::fs::write(&file, sc_text::encode_png(&red).expect("encode")).expect("write");
+        let canvas = CanvasDto {
+            background_image: Some(file.to_string_lossy().into_owned()),
+            ..CanvasDto::default()
+        };
+        let (bg, from) = canvas_background(&canvas);
+        let size = still_canvas(Aspect::R16x9, None);
+        let png = compose_png(&bg, size, &from, None, None, Fit::Contain);
+        let _ = std::fs::remove_dir_all(&dir);
+        let img = sc_text::decode_image(&png.expect("png")).expect("decode");
+        let px = &img.data[..4];
+        assert!(px[0] > 200 && px[1] < 30 && px[2] < 30, "{px:?}");
+        assert_eq!(
+            canvas_background(&CanvasDto::default()).0,
+            CanvasDto::default().background
+        );
     }
 
     #[test]

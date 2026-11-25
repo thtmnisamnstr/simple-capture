@@ -53,7 +53,7 @@ impl TrackAudio {
                     "sc_decode: audio track {track_id} is not in project.json"
                 ))
             })?;
-        let path = dir.join(&track.file);
+        let path = track.path_in(dir)?;
         let open_err = |e: Error| {
             Error::Other(format!(
                 "sc_decode: opening audio track {track_id} ({}): {e}",

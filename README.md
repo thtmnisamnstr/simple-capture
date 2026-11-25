@@ -1,8 +1,8 @@
 # Simple Capture
 
 A desktop screen recorder for macOS, Windows and Linux: record the screen, your camera and
-sound, edit, add text, and export. No account and no network: what you record stays on your
-computer.
+sound, edit, add text, and export. No account, and it makes no network connections: what you
+record stays on your computer.
 
 ## What it does
 
@@ -40,11 +40,25 @@ pass their tests in CI, but have not yet been tried on a real desktop; see `docs
 
 ## Install
 
-Builds are made by the `package` workflow (GitHub Actions → package → a run → Artifacts):
-`.dmg` for macOS, an NSIS setup `.exe` and an `.msi` for Windows, `.deb` and `.AppImage` for
-Linux. The macOS app is signed with a Developer ID and notarized by Apple, so it opens normally
-and keeps its Screen Recording, Camera and Microphone permissions across updates. The Windows
-installers are not code-signed yet, so SmartScreen asks to confirm.
+macOS 14 or later on Apple silicon, three ways to the same version:
+
+- **Download** the `.dmg` from [Releases](https://github.com/thtmnisamnstr/simple-capture/releases)
+  and drag Simple Capture to Applications. It is signed with a Developer ID and notarized by
+  Apple, so it opens normally and keeps its Screen Recording, Camera and Microphone permissions
+  across updates. Check a download against `SHA256SUMS.txt`, or with
+  `gh attestation verify <file> --repo thtmnisamnstr/simple-capture`.
+- **Homebrew:** `brew install --cask thtmnisamnstr/tap/simple-capture` installs that DMG, and
+  `brew upgrade` updates it.
+- **Mac App Store:** coming soon, with updates through the App Store. The store edition is
+  sandboxed, its FFmpeg is LGPL-only and it has no gifski, so "Best" H.264 and HEVC exports use
+  Apple's VideoToolbox encoders instead of x264 and x265, and GIFs use FFmpeg's palette instead
+  of gifski; media keys can't be shortcuts there. Install one edition or the other: both are
+  `Simple Capture.app` with the same bundle ID, so one replaces the other, and switching asks
+  for the permissions again.
+
+Releases also have an NSIS setup `.exe` for Windows (a per-user install, not code-signed yet, so
+SmartScreen asks to confirm) and `.deb` and `.AppImage` for Linux. Builds of any commit are under
+GitHub Actions → package → a run → Artifacts.
 
 ## Build from source
 
@@ -64,17 +78,22 @@ cross-built with mingw-w64), then `scripts/stage-helpers.sh`.
 
 ## Privacy
 
-There is no networking code in the app, and the bundled FFmpeg is built with networking
-disabled. Recordings, settings and self-test reports stay in your Movies/Videos folder and the
-app's data folder.
+Simple Capture makes no network connections: there is no networking code in the app, and the
+bundled FFmpeg is built with networking disabled. The Mac App Store edition holds the sandbox's
+outgoing-network entitlement only because macOS's web view, which draws the app's windows, needs
+it. Recordings, settings and self-test reports stay in your Movies/Videos folder and the app's
+data folder (for the store edition, its sandbox container). The full privacy policy is in
+[docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Licenses
 
 Simple Capture is MIT licensed (`LICENSE`). Exports are encoded by two separate helper programs
 that ship beside the app: FFmpeg (GPL-2.0-or-later, with x264, x265, SVT-AV1, libvpx, Opus and
-Vorbis, libwebp) and gifski (AGPL-3.0-or-later). Their license texts are in the app (About → Licenses) and
-their corresponding source is published with each release. Bundled fonts are under the SIL Open
-Font License or Apache-2.0. Details: `docs/LICENSES.md`, `docs/THIRD_PARTY.md`.
+Vorbis, libwebp) and gifski (AGPL-3.0-or-later). The Mac App Store edition ships an
+LGPL-2.1-or-later FFmpeg without x264 and x265, and no gifski. Their license texts are in the app
+(About → Licenses), and their corresponding source is attached to each GitHub release, which
+the Source code button in About → Licenses opens. Bundled fonts are under the SIL Open Font
+License or Apache-2.0. Details: `docs/LICENSES.md`, `docs/THIRD_PARTY.md`.
 
 ## Documentation
 
@@ -83,3 +102,5 @@ Font License or Apache-2.0. Details: `docs/LICENSES.md`, `docs/THIRD_PARTY.md`.
 - `docs/CODEC_MATRIX.md`: encoders, formats and measured speeds
 - `docs/STATUS.md`: where things stand, open questions
 - `docs/MANUAL_TEST.md`: the hands-on test script
+- `docs/RELEASING.md`: signing, releases, Homebrew and the Mac App Store
+- `docs/PRIVACY.md`: the privacy policy

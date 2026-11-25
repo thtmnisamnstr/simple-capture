@@ -46,7 +46,7 @@ impl CpuNv12Frame {
     pub fn filled(size: SizePx, y: u8, u: u8, v: u8, full_range: bool) -> CpuNv12Frame {
         let uv_len = Self::uv_stride_for(size) * Self::uv_rows_for(size);
         let mut uv = vec![u; uv_len];
-        for pair in uv.chunks_exact_mut(2) {
+        for pair in uv.as_chunks_mut::<2>().0 {
             pair[1] = v;
         }
         CpuNv12Frame {

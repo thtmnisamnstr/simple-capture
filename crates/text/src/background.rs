@@ -206,12 +206,7 @@ fn load_asset(project_dir: &Path, asset: &str) -> Result<Image> {
         )));
     }
     let path = project_dir.join(rel);
-    let bytes = std::fs::read(&path).map_err(|e| {
-        Error::Io(std::io::Error::new(
-            e.kind(),
-            format!("read background image {}: {e}", path.display()),
-        ))
-    })?;
+    let bytes = sc_core::project::read_background_file(&path)?;
     Image::from_encoded(Data::new_copy(&bytes)).ok_or_else(|| {
         Error::Invalid(format!(
             "background image {} is not a PNG or JPEG this build decodes",

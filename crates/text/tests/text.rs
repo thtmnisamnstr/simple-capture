@@ -18,12 +18,19 @@ fn style(family: &str) -> TextStyle {
 }
 
 fn ink(img: &RgbaImage) -> usize {
-    img.data.chunks_exact(4).filter(|p| p[3] > 16).count()
+    img.data
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .filter(|p| p[3] > 16)
+        .count()
 }
 
 fn colorful(img: &RgbaImage) -> usize {
     img.data
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .filter(|p| {
             p[3] > 200 && {
                 let (r, g, b) = (i32::from(p[0]), i32::from(p[1]), i32::from(p[2]));
@@ -236,14 +243,27 @@ fn reveals_grow_and_never_cut_the_box() {
     let mut last = 0;
     for n in [1, 4, 9, p.cluster_count()] {
         let img = p.compose(Reveal::Clusters(n));
-        let shown: usize = img.data.chunks_exact(4).filter(|x| x[0] > 128).count();
+        let shown: usize = img
+            .data
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|x| x[0] > 128)
+            .count();
         assert!(shown >= last, "typewriter at {n}");
         last = shown;
     }
     assert_eq!(p.word_count(), 5);
     let w1 = p.compose(Reveal::Words(1));
     let w5 = p.compose(Reveal::Words(5));
-    let white = |img: &RgbaImage| img.data.chunks_exact(4).filter(|x| x[0] > 128).count();
+    let white = |img: &RgbaImage| {
+        img.data
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|x| x[0] > 128)
+            .count()
+    };
     assert!(white(&w1) < white(&w5));
     assert_eq!(white(&w5), white(&p.compose(Reveal::All)));
 }

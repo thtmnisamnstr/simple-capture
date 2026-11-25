@@ -1,21 +1,24 @@
 # third_party: bundled export helpers
 
 Simple Capture ships two GPL/AGPL programs as **separate executables** (Tauri sidecars). They are
-never linked into the MIT app binary. Everything here is build tooling; build trees go to
-`third_party/build/` and finished binaries to `third_party/out/<os>-<arch>/` (both gitignored).
+never linked into the MIT app binary. The Mac App Store edition ships an LGPL FFmpeg and ffprobe
+instead, and no gifski. Everything here is build tooling; build trees go to `third_party/build/`
+and finished binaries to `third_party/out/<os>-<arch>[-lgpl]/` (both gitignored).
 
 | Path | What |
 |---|---|
 | `versions.toml` | Exact version, URL, SHA-256 and cross-check note for every source tarball |
 | `lib.sh` | `pin` (read versions.toml), `fetch` (download once, always verify SHA-256), `unpack` |
 | `fetch.sh` | Download and verify every pinned source |
-| `ffmpeg/build-macos.sh [arm64\|x86_64]` | Static GPL FFmpeg + ffprobe for macOS (min 14.0) |
-| `gifski/build.sh [arm64\|x86_64]` | gifski CLI from the pinned crates.io source, `--locked` |
+| `ffmpeg/build-macos.sh [arm64\|x86_64]` | Static GPL FFmpeg + ffprobe for macOS (min 14.0); with `SC_FFMPEG_LICENSE=lgpl`, the LGPL Mac App Store variant |
+| `gifski/build.sh [arm64\|x86_64]` | gifski CLI from the pinned crates.io source, `--locked` against `gifski/gifski-<version>.Cargo.lock` |
+| `gifski/gifski-<version>.Cargo.lock` | The crate's own lockfile with security bumps (`lock_note` in versions.toml); replaces the crate's copy before the build |
 
 ```sh
 third_party/fetch.sh
 JOBS=8 third_party/ffmpeg/build-macos.sh arm64   # ~8 min on an M3 Pro under load
 third_party/gifski/build.sh arm64                # ~2 min
+SC_FFMPEG_LICENSE=lgpl JOBS=8 third_party/ffmpeg/build-macos.sh arm64   # Mac App Store helper
 ```
 
 Outputs in `third_party/out/macos-arm64/`:
@@ -27,13 +30,27 @@ Outputs in `third_party/out/macos-arm64/`:
   `licenses/ffmpeg/*` (license and patent files of FFmpeg and every linked library).
 - `gifski`, `gifski.LICENSE`, `gifski.deps.txt` (every Rust crate compiled in, with its license).
 
+Outputs in `third_party/out/macos-arm64-lgpl/` (built in `third_party/build/macos-arm64-lgpl/`):
+the same `ffmpeg`, `ffprobe` and `ffmpeg.*.txt` files, with `licenses/ffmpeg/*` holding FFmpeg's
+`COPYING.LGPLv2.1` in place of `COPYING.GPLv2` and no x264 or x265 files. No gifski.
+`ffmpeg -version` reads `9.1-simple-capture-lgpl`.
+
 ## Licensing rules enforced by the scripts
 
 - FFmpeg: `--enable-gpl`, never `--enable-nonfree`, no `--enable-version3` (no chosen library
   needs it: x264/x265 are GPL-2.0-or-later, libvpx/Opus/Ogg/Vorbis are BSD-3-Clause, SVT-AV1 is
   BSD-3-Clause-Clear + AOMedia patent license; all GPLv2-compatible). The resulting binary is
   GPL-2.0-or-later.
-- `--disable-network` plus only the `file` and `pipe` protocols: the helper cannot open sockets.
+- FFmpeg with `SC_FFMPEG_LICENSE=lgpl`: no `--enable-gpl`, `--enable-version3` or
+  `--enable-nonfree`, and no x264/x265 (never built; the variant has its own build tree, so
+  their libraries are never in its prefix). Every other library, codec, muxer and filter stays:
+  none of the enabled filters needs `--enable-gpl`. The build fails unless configure reports
+  `LGPL version 2.1 or later`. The binary is LGPL-2.1-or-later, and
+  `scripts/ci/notices.sh --check-mas DIR` fails unless a staged or bundled `licenses` folder
+  holds exactly the Mac App Store set (no GPL/AGPL text, x264, x265 or gifski).
+- `--disable-network` plus only the `file` and `pipe` protocols (and `fd` in the LGPL variant,
+  so the sandboxed app can pass the helper an output file it opened): the helper cannot open
+  sockets.
 - `--disable-autodetect`, so nothing from the build machine (Homebrew, SDL, X11, iconv, zlib,
   SecureTransport...) is picked up implicitly. pkg-config is pointed only at the private prefix
   and CMake ignores `/opt/homebrew` and `/usr/local`.
@@ -47,6 +64,10 @@ Outputs in `third_party/out/macos-arm64/`:
 1. Change `version`/`url`/`file` in `versions.toml`, set `sha256` to the value you download.
 2. Cross-check against an upstream checksum or signature and describe it in `cross_check`.
 3. `CLEAN=1 third_party/ffmpeg/build-macos.sh arm64` and re-run the export tests (`SC_REQUIRE_HELPERS=1 cargo test -p simple-capture-export`).
+   FFmpeg or one of its libraries: also `CLEAN=1 SC_FFMPEG_LICENSE=lgpl third_party/ffmpeg/build-macos.sh arm64`.
+4. gifski: start the new `gifski/gifski-<version>.Cargo.lock` from the crate's own `Cargo.lock`,
+   apply only the bumps `cargo audit -f` asks for (`cargo update -p <crate> --precise <version>`),
+   and record `lock_file`, `lock_sha256` and `lock_note`.
 
 ## Known gaps (open, see docs/LICENSES.md §3.2)
 

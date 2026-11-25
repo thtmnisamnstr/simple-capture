@@ -1286,8 +1286,12 @@ mod tests {
         let dir = temp("video");
         let path = dir.join("screen.mp4");
         let size = SizePx { w: 640, h: 360 };
+        let Ok(ffmpeg) = sc_helpers::locate(sc_helpers::HelperKind::Ffmpeg) else {
+            eprintln!("SKIPPED: no ffmpeg helper");
+            return;
+        };
         let factory = MfWriters {
-            helper: HelperWriters::new(PathBuf::from("ffmpeg")),
+            helper: HelperWriters::new(ffmpeg),
         };
         let mut w = factory.video(&path, &spec(size)).expect("writer");
         for i in 0..60i64 {

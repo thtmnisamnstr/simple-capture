@@ -1,7 +1,9 @@
+use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use sc_platform::{Desktop, Error, Pointer, Result};
-use windows::Win32::Foundation::{HANDLE, HGLOBAL};
+use windows::Win32::Foundation::{ERROR_CANCELLED, HANDLE, HGLOBAL};
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
     CoTaskMemFree, CoUninitialize,
@@ -15,11 +17,12 @@ use windows::Win32::System::Memory::{
 use windows::Win32::System::Ole::CF_HDROP;
 use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
 use windows::Win32::UI::Shell::{
-    DROPFILES, FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT,
-    FOS_FORCEFILESYSTEM, FOS_PICKFOLDERS, FileOpenDialog, IFileOpenDialog, SHFILEOPSTRUCTW,
-    SHFileOperationW, SIGDN_FILESYSPATH,
+    DROPFILES, FOF_ALLOWUNDO, FOF_NO_UI, FOFX_RECYCLEONDELETE, FOS_FORCEFILESYSTEM,
+    FOS_PICKFOLDERS, FileOpenDialog, FileOperation, IFileOpenDialog, IFileOperation,
+    IFileOperationProgressSink, IFileOperationProgressSink_Impl, IShellItem,
+    SHCreateItemFromParsingName, SIGDN_FILESYSPATH, TSF_DELETE_RECYCLE_IF_POSSIBLE,
 };
-use windows::core::{BOOL, PCWSTR};
+use windows::core::{BOOL, ComObject, HRESULT, PCWSTR, Ref, implement};
 
 use super::sys::wide;
 
@@ -65,6 +68,167 @@ fn on_sta(folders: bool, done: Box<dyn FnOnce(Option<PathBuf>) + Send>) {
         .spawn(move || done(pick(folders)));
     if let Err(e) = spawned {
         tracing::warn!("file dialog thread: {e}");
+    }
+}
+
+#[implement(IFileOperationProgressSink)]
+struct RecycleOnly {
+    refused: AtomicBool,
+    nuked: AtomicBool,
+}
+
+impl IFileOperationProgressSink_Impl for RecycleOnly_Impl {
+    fn PreDeleteItem(&self, flags: u32, _: Ref<IShellItem>) -> windows::core::Result<()> {
+        // Without this flag the shell is about to delete permanently (no Recycle Bin on the
+        // drive, too large for it, or the bin set to delete at once), and FOF_NO_UI would let it.
+        if flags & TSF_DELETE_RECYCLE_IF_POSSIBLE.0 as u32 != 0 {
+            return Ok(());
+        }
+        self.refused.store(true, Ordering::SeqCst);
+        Err(HRESULT::from_win32(ERROR_CANCELLED.0).into())
+    }
+    fn StartOperations(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn FinishOperations(&self, _: HRESULT) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PreRenameItem(&self, _: u32, _: Ref<IShellItem>, _: &PCWSTR) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PostRenameItem(
+        &self,
+        _: u32,
+        _: Ref<IShellItem>,
+        _: &PCWSTR,
+        _: HRESULT,
+        _: Ref<IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PreMoveItem(
+        &self,
+        _: u32,
+        _: Ref<IShellItem>,
+        _: Ref<IShellItem>,
+        _: &PCWSTR,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PostMoveItem(
+        &self,
+        _: u32,
+        _: Ref<IShellItem>,
+        _: Ref<IShellItem>,
+        _: &PCWSTR,
+        _: HRESULT,
+        _: Ref<IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PreCopyItem(
+        &self,
+        _: u32,
+        _: Ref<IShellItem>,
+        _: Ref<IShellItem>,
+        _: &PCWSTR,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PostCopyItem(
+        &self,
+        _: u32,
+        _: Ref<IShellItem>,
+        _: Ref<IShellItem>,
+        _: &PCWSTR,
+        _: HRESULT,
+        _: Ref<IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PostDeleteItem(
+        &self,
+        _: u32,
+        _: Ref<IShellItem>,
+        hr: HRESULT,
+        recycled: Ref<IShellItem>,
+    ) -> windows::core::Result<()> {
+        if hr.is_ok() && recycled.is_null() {
+            self.nuked.store(true, Ordering::SeqCst);
+        }
+        Ok(())
+    }
+    fn PreNewItem(&self, _: u32, _: Ref<IShellItem>, _: &PCWSTR) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PostNewItem(
+        &self,
+        _: u32,
+        _: Ref<IShellItem>,
+        _: &PCWSTR,
+        _: &PCWSTR,
+        _: u32,
+        _: HRESULT,
+        _: Ref<IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn UpdateProgress(&self, _: u32, _: u32) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn ResetTimer(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn PauseTimer(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+    fn ResumeTimer(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+}
+
+fn recycle(path: &Path) -> Result<()> {
+    let w: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
+    let sink = ComObject::new(RecycleOnly {
+        refused: AtomicBool::new(false),
+        nuked: AtomicBool::new(false),
+    });
+    let r = unsafe {
+        let init = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let r = (|| -> windows::core::Result<bool> {
+            let op: IFileOperation = CoCreateInstance(&FileOperation, None, CLSCTX_INPROC_SERVER)?;
+            op.SetOperationFlags(FOF_ALLOWUNDO | FOF_NO_UI | FOFX_RECYCLEONDELETE)?;
+            let item: IShellItem = SHCreateItemFromParsingName(PCWSTR(w.as_ptr()), None)?;
+            let cookie = op.Advise(&sink.to_interface::<IFileOperationProgressSink>())?;
+            let deleted = op
+                .DeleteItem(&item, None)
+                .and_then(|()| op.PerformOperations());
+            let _ = op.Unadvise(cookie);
+            deleted?;
+            Ok(op.GetAnyOperationsAborted()?.as_bool())
+        })();
+        if init.is_ok() {
+            CoUninitialize();
+        }
+        r
+    };
+    if sink.refused.load(Ordering::SeqCst) {
+        return Err(Error::Other(
+            "This recording can't go to the Recycle Bin (it is too large for it, or the Recycle \
+             Bin is off for its drive), so it was not deleted."
+                .into(),
+        ));
+    }
+    if sink.nuked.load(Ordering::SeqCst) {
+        return Err(Error::Other(
+            "Windows deleted this recording permanently instead of moving it to the Recycle Bin."
+                .into(),
+        ));
+    }
+    match r {
+        Ok(false) => Ok(()),
+        Ok(true) => Err(Error::Other("move to the Recycle Bin was cancelled".into())),
+        Err(e) => Err(Error::Other(format!("move to the Recycle Bin failed: {e}"))),
     }
 }
 
@@ -119,25 +283,17 @@ impl Desktop for WinDesktop {
     }
 
     fn trash(&self, path: &Path) -> Result<()> {
-        let from: Vec<u16> = path
-            .as_os_str()
-            .to_string_lossy()
-            .encode_utf16()
-            .chain([0, 0])
-            .collect();
-        let mut op = SHFILEOPSTRUCTW {
-            wFunc: FO_DELETE,
-            pFrom: windows::core::PCWSTR(from.as_ptr()),
-            fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT).0 as u16,
-            ..Default::default()
-        };
-        let r = unsafe { SHFileOperationW(&mut op) };
-        if r != 0 || op.fAnyOperationsAborted.as_bool() {
-            return Err(Error::Other(format!(
-                "move to the Recycle Bin failed ({r})"
-            )));
-        }
-        Ok(())
+        let path = std::path::absolute(path)?;
+        // IFileOperation needs a single-threaded apartment, and the caller's thread may already
+        // be in the multithreaded one.
+        std::thread::scope(|s| {
+            std::thread::Builder::new()
+                .name("recycle-bin".into())
+                .spawn_scoped(s, || recycle(&path))
+                .map_err(|e| Error::Other(format!("Recycle Bin thread: {e}")))?
+                .join()
+                .map_err(|_| Error::Other("the Recycle Bin thread panicked".into()))?
+        })
     }
 
     fn copy_file(&self, path: &Path) -> Result<()> {

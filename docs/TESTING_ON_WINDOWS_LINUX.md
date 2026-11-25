@@ -39,10 +39,10 @@ inside and need none of this.
 ## 2. Build tools
 
 - **Windows 11:** Visual Studio 2022+ Build Tools (C++), LLVM 22 or newer (`choco install llvm`),
-  `ninja`, Python 3, Node 22 with pnpm, rustup (the toolchain in `rust-toolchain.toml` installs
+  `ninja`, Python 3, Node 26 with pnpm, rustup (the toolchain in `rust-toolchain.toml` installs
   itself). WebView2 ships with Windows 11.
 - **Ubuntu 24.04:** the packages in `.github/actions/setup/action.yml` (both the base list and the
-  `full` list), which include the GStreamer development packages, plus Node 22 with pnpm.
+  `full` list), which include the GStreamer development packages, plus Node 26 with pnpm.
 
 ```bash
 pnpm --dir ui install --frozen-lockfile && pnpm --dir ui build

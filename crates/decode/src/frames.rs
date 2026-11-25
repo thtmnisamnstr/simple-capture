@@ -114,7 +114,7 @@ impl SegmentFrameSource {
                 end,
                 frame_px: s.frame_px,
                 content_px: s.content_px,
-                path: dir.join(&track.file),
+                path: track.path_in(dir)?,
             });
         }
         Ok(SegmentFrameSource {
@@ -269,7 +269,7 @@ impl TrackFrameSource {
         let Some(track) = project.recording.tracks.iter().find(|t| t.id == track_id) else {
             return Ok(None);
         };
-        let path = dir.join(&track.file);
+        let path = track.path_in(dir)?;
         let reader = decoder.open_video(&path)?;
         Ok(Some(TrackFrameSource {
             decoder,

@@ -1,0 +1,330 @@
+name: app-store
+
+# The Mac App Store edition (docs/RELEASING.md): when a GitHub release is published, or on a manual
+# run, builds the sandboxed app from that release's tag with the LGPL helpers and without gifski,
+# signs it with the Apple Distribution identity and the Mac App Store profile, packages the .pkg,
+# uploads it, waits for App Store Connect to process it, syncs the listing from appstore/ and
+# What's New from CHANGELOG.md, and submits the version for review. Without the MAS secrets
+# (scripts/appstore-setup.sh sets them) it skips with a notice.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build, like v0.1.0 (empty means the tag the run is started on, else the latest release)
+        required: false
+        default: ""
+      submit:
+        description: Submit the version for App Review after the upload
+        type: boolean
+        default: true
+      replace_waiting:
+        description: Cancel a submission still waiting for review so this build replaces it
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-store
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  NODE_VERSION: "26"
+  PNPM_VERSION: "12.23.0"
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      ready: ${{ steps.preflight.outputs.ready || 'false' }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      submit: ${{ steps.plan.outputs.submit }}
+      replace_waiting: ${{ steps.plan.outputs.replace_waiting }}
+    steps:
+      - name: Release tag and secrets
+        id: plan
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_SUBMIT: ${{ inputs.submit }}
+          INPUT_REPLACE: ${{ inputs.replace_waiting }}
+          HAVE_SECRETS: >-
+            ${{ secrets.MAS_APP_CERT_P12 != '' && secrets.MAS_INSTALLER_CERT_P12 != ''
+            && secrets.MAS_CERT_PASSWORD != '' && secrets.MAS_PROVISION_PROFILE != ''
+            && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != ''
+            && secrets.ASC_KEY_P8 != '' && secrets.ASC_APP_ID != '' }}
+        run: |
+          if [ "$HAVE_SECRETS" != true ]; then
+            echo "::notice title=App Store::The Mac App Store secrets are not all set (run scripts/appstore-setup.sh); skipping the App Store build."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$EVENT" = release ]; then
+            if [ "$PRERELEASE" = true ]; then
+              echo "::notice title=App Store::A prerelease does not go to the App Store; skipping."
+              echo "ok=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            tag="$RELEASE_TAG"
+            submit=true
+            replace=false
+          else
+            tag="$INPUT_TAG"
+            if [ -z "$tag" ] && [ "$REF_TYPE" = tag ]; then
+              tag="$REF_NAME"
+            fi
+            if [ -z "$tag" ]; then
+              tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName) || {
+                echo "::error title=App Store::There is no published release to build; name the tag: gh workflow run app-store.yml -f tag=v1.2.3"
+                exit 1
+              }
+            fi
+            submit="$INPUT_SUBMIT"
+            replace="$INPUT_REPLACE"
+          fi
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=App Store::The release tag must look like v1.2.3."
+            exit 1
+          fi
+          {
+            echo "ok=true"
+            echo "tag=$tag"
+            echo "version=${tag#v}"
+            echo "submit=$submit"
+            echo "replace_waiting=$replace"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building $tag for the Mac App Store (submit for review: $submit)."
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.plan.outputs.ok == 'true'
+        with:
+          ref: refs/tags/${{ steps.plan.outputs.tag }}
+          persist-credentials: false
+      - name: The tag matches the app's version
+        if: steps.plan.outputs.ok == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: scripts/ci/version-check.sh "$VERSION"
+      - name: The store listing is valid
+        if: steps.plan.outputs.ok == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          python3 -I scripts/asc/asc.py check-metadata
+          if [ -f appstore/check.py ]; then
+            python3 -I appstore/check.py --version "$VERSION"
+          fi
+      - name: App Store Connect can take this version
+        id: preflight
+        if: steps.plan.outputs.ok == 'true'
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+          EVENT: ${{ github.event_name }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          REPLACE_WAITING: ${{ steps.plan.outputs.replace_waiting }}
+        run: |
+          args=(--version "$VERSION")
+          if [ "$REPLACE_WAITING" = true ]; then args+=(--replace-waiting); fi
+          if [ "$EVENT" = release ]; then args+=(--skip-if-submitted); fi
+          result=$(python3 -I scripts/asc/asc.py preflight "${args[@]}")
+          case "$result" in
+            go)
+              echo "ready=true" >> "$GITHUB_OUTPUT"
+              ;;
+            skip:*)
+              echo "::notice title=App Store::${result#skip: }"
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error title=App Store::scripts/asc/asc.py preflight printed neither go nor skip."
+              exit 1
+              ;;
+          esac
+
+  app-store:
+    name: Mac App Store (${{ needs.plan.outputs.tag }})
+    needs: plan
+    if: needs.plan.outputs.ready == 'true'
+    runs-on: macos-26
+    timeout-minutes: 240
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.plan.outputs.tag }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          full: "true"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: UI dependencies
+        shell: bash
+        run: |
+          npm install -g "pnpm@$PNPM_VERSION"
+          pnpm --dir ui install --frozen-lockfile
+      - uses: ./.github/actions/skia-cache
+        with:
+          mode: restore
+          profile: release
+      - name: LGPL helpers (from main's cache when ci.yml saved one, else built from source)
+        id: helpers
+        uses: ./.github/actions/macos-helpers
+        with:
+          variant: lgpl
+      - name: cargo-about
+        shell: bash
+        run: cargo install --locked cargo-about@0.9.3 --features cli
+      - name: Signing keychain and profile
+        shell: bash
+        env:
+          APP_P12: ${{ secrets.MAS_APP_CERT_P12 }}
+          INSTALLER_P12: ${{ secrets.MAS_INSTALLER_CERT_P12 }}
+          P12_PASSWORD: ${{ secrets.MAS_CERT_PASSWORD }}
+          PROFILE_B64: ${{ secrets.MAS_PROVISION_PROFILE }}
+        run: |
+          kc="$RUNNER_TEMP/mas.keychain-db"
+          kcpass="$(uuidgen)"
+          security create-keychain -p "$kcpass" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kcpass" "$kc"
+          printf '%s' "$APP_P12" | base64 --decode > "$RUNNER_TEMP/mas-app.p12"
+          printf '%s' "$INSTALLER_P12" | base64 --decode > "$RUNNER_TEMP/mas-installer.p12"
+          security import "$RUNNER_TEMP/mas-app.p12" -k "$kc" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/mas-installer.p12" -k "$kc" -P "$P12_PASSWORD" \
+            -T /usr/bin/productbuild -T /usr/bin/productsign
+          rm -f "$RUNNER_TEMP/mas-app.p12" "$RUNNER_TEMP/mas-installer.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpass" "$kc" >/dev/null
+          # shellcheck disable=SC2046 # one word per keychain path; the runner's have no spaces
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          app_identity=$(security find-identity -v -p codesigning "$kc" |
+            sed -n 's/.*"\(Apple Distribution: [^"]*\)".*/\1/p' | head -n 1)
+          installer_identity=$(security find-identity -v -p basic "$kc" |
+            sed -n 's/.*"\(3rd Party Mac Developer Installer: [^"]*\)".*/\1/p' | head -n 1)
+          if [ -z "$app_identity" ] || [ -z "$installer_identity" ]; then
+            security find-identity "$kc"
+            echo "::error title=App Store::MAS_APP_CERT_P12 or MAS_INSTALLER_CERT_P12 holds no valid identity (expired, revoked, or missing its intermediate); run scripts/appstore-setup.sh --renew-certs."
+            exit 1
+          fi
+          team=$(sed -n 's/.*(\([A-Z0-9]*\))$/\1/p' <<<"$app_identity")
+          profile="$RUNNER_TEMP/embedded.provisionprofile"
+          printf '%s' "$PROFILE_B64" | base64 --decode > "$profile"
+          plist="$RUNNER_TEMP/mas-profile.plist"
+          security cms -D -i "$profile" > "$plist"
+          pb() { /usr/libexec/PlistBuddy -c "Print :$1" "$plist" 2>/dev/null || true; }
+          app_id=$(pb Entitlements:com.apple.application-identifier)
+          [ -n "$app_id" ] || app_id=$(pb Entitlements:application-identifier)
+          echo "Profile: $(pb Name), for $app_id, expires $(pb ExpirationDate)"
+          rm -f "$plist"
+          if [ "$app_id" != "$team.com.simplecapture.desktop" ]; then
+            echo "::error title=App Store::MAS_PROVISION_PROFILE is not a profile for $team.com.simplecapture.desktop; run scripts/appstore-setup.sh --renew-certs."
+            exit 1
+          fi
+          {
+            echo "SC_MAS_PROFILE=$profile"
+            echo "SC_MAS_APP_IDENTITY=$app_identity"
+            echo "SC_MAS_INSTALLER_IDENTITY=$installer_identity"
+          } >> "$GITHUB_ENV"
+      - name: Build number
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+        run: |
+          build=$(python3 -I scripts/asc/asc.py next-build --at-least "$GITHUB_RUN_NUMBER")
+          echo "CFBundleVersion $build"
+          echo "SC_MAS_BUILD_NUMBER=$build" >> "$GITHUB_ENV"
+      - name: Build, sign, package and check (scripts/mas-build.sh)
+        shell: bash
+        env:
+          SC_MAS_HELPERS: ${{ steps.helpers.outputs.dir }}
+        run: |
+          SC_MAS_JOBS=$(sysctl -n hw.ncpu) scripts/mas-build.sh | tee "$RUNNER_TEMP/mas-build.log"
+          pkg=$(tail -n 1 "$RUNNER_TEMP/mas-build.log")
+          if [ ! -f "$pkg" ] || [ "${pkg##*.}" != pkg ]; then
+            echo "::error title=App Store::scripts/mas-build.sh did not end with the path of a .pkg"
+            exit 1
+          fi
+          echo "MAS_PKG=$pkg" >> "$GITHUB_ENV"
+      - name: Upload to App Store Connect
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          python3 -I scripts/asc/asc.py upload --pkg "$MAS_PKG" --version "$VERSION" \
+            --build "$SC_MAS_BUILD_NUMBER"
+      - name: Wait for processing
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+        run: |
+          python3 -I scripts/asc/asc.py wait-build --version "$VERSION" \
+            --build "$SC_MAS_BUILD_NUMBER" --timeout 3600
+      - name: Version, build, listing and What's New
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+          ASC_REVIEW_CONTACT_FIRST_NAME: ${{ secrets.ASC_REVIEW_CONTACT_FIRST_NAME }}
+          ASC_REVIEW_CONTACT_LAST_NAME: ${{ secrets.ASC_REVIEW_CONTACT_LAST_NAME }}
+          ASC_REVIEW_CONTACT_PHONE: ${{ secrets.ASC_REVIEW_CONTACT_PHONE }}
+          ASC_REVIEW_CONTACT_EMAIL: ${{ secrets.ASC_REVIEW_CONTACT_EMAIL }}
+          REPLACE_WAITING: ${{ needs.plan.outputs.replace_waiting }}
+        run: |
+          replace=()
+          if [ "$REPLACE_WAITING" = true ]; then replace=(--replace-waiting); fi
+          python3 -I scripts/asc/asc.py prepare --version "$VERSION" \
+            --build "$SC_MAS_BUILD_NUMBER" ${replace[@]+"${replace[@]}"}
+      - name: Submit for App Review
+        if: needs.plan.outputs.submit == 'true'
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+        run: python3 -I scripts/asc/asc.py submit --version "$VERSION"
+      - name: Not submitted
+        if: needs.plan.outputs.submit != 'true'
+        run: echo "::notice title=App Store::Build $SC_MAS_BUILD_NUMBER of $VERSION is uploaded and attached; not submitted for review (submit=false)."
+      - name: Remove the signing keychain and key files
+        if: always()
+        shell: bash
+        run: |
+          security delete-keychain "$RUNNER_TEMP/mas.keychain-db" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/mas-app.p12" "$RUNNER_TEMP/mas-installer.p12" \
+            "$RUNNER_TEMP/mas-profile.plist" "$RUNNER_TEMP/embedded.provisionprofile" \
+            "$RUNNER_TEMP"/asc-keys-*

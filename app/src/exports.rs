@@ -19,6 +19,10 @@ pub struct ExportStore {
     pub last_format: Option<Format>,
     pub per_format: BTreeMap<String, ExportSettings>,
     pub presets: Vec<NamedSettings>,
+    /// Security-scoped bookmarks (hex) of the export folders the person picked, by path.
+    #[cfg(all(feature = "mas", target_os = "macos"))]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub folder_bookmarks: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -45,7 +49,7 @@ pub fn load(data: &Path) -> ExportStore {
         .unwrap_or_default()
 }
 
-fn save(data: &Path, s: &ExportStore) -> Result<(), String> {
+pub(crate) fn save(data: &Path, s: &ExportStore) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(s).map_err(|e| e.to_string())?;
     sc_core::fsio::atomic_write(&store_path(data), &bytes).map_err(|e| e.to_string())
 }
@@ -114,6 +118,10 @@ impl Core {
                     out_path: None,
                     canvas: None,
                 };
+                #[cfg(all(feature = "mas", target_os = "macos"))]
+                if let Some(d) = settings.out_dir.as_deref() {
+                    let _ = crate::sandbox::reach_export_folder(&self.data_dir, d);
+                }
                 let p =
                     plan(&project, &req, self.platform.local_now()).map_err(|e| e.to_string())?;
                 let e = estimate(&p);
@@ -149,10 +157,14 @@ impl Core {
                     .per_format
                     .insert(key(settings.format), settings.clone());
                 save(&self.data_dir, &store)?;
+                #[cfg(all(feature = "mas", target_os = "macos"))]
+                let stage = crate::sandbox::export_stage(&self.data_dir, &settings, &dir)?;
+                #[cfg(not(all(feature = "mas", target_os = "macos")))]
+                let stage = None;
                 let platform = self.platform.clone();
                 let d = dir.clone();
                 self.run_export(&dir.to_string_lossy(), move |obs| {
-                    ExportJob::start_with(
+                    ExportJob::start_staged(
                         platform,
                         ExportRequest {
                             project_dir: d,
@@ -160,6 +172,7 @@ impl Core {
                             out_path: None,
                             canvas: None,
                         },
+                        stage,
                         obs,
                     )
                 })
@@ -188,21 +201,23 @@ impl Core {
                 let p = rx
                     .recv()
                     .map_err(|_| "the folder chooser went away".to_string())?;
+                #[cfg(all(feature = "mas", target_os = "macos"))]
+                if let Some(p) = &p {
+                    crate::sandbox::remember_export_folder(&self.data_dir, p);
+                }
                 Ok(p.map(|p| json!(p)).unwrap_or(Value::Null))
             }
             "copy_file" => {
                 let path: String = arg(args, "path")?;
+                #[cfg(all(feature = "mas", target_os = "macos"))]
+                let _ = crate::sandbox::reach_export_folder(&self.data_dir, Path::new(&path));
                 self.platform
                     .desktop()
                     .copy_file(Path::new(&path))
                     .map_err(|e| e.to_string())?;
                 Ok(Value::Null)
             }
-            "open_file" => {
-                let path: String = arg(args, "path")?;
-                crate::core::open_path(&path)?;
-                Ok(Value::Null)
-            }
+            "open_file" => self.open_file(Path::new(&arg::<String>(args, "path")?)),
             other => Err(format!("unknown export action {other:?}")),
         }
     }

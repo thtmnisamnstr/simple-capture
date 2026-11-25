@@ -37,17 +37,18 @@ pub struct ProbeReport {
 
 fn ffprobe_json(file: &Path) -> Result<Value> {
     let ffprobe = sc_helpers::locate(HelperKind::Ffprobe)?;
-    let out = Command::new(&ffprobe)
-        .args([
-            "-v",
-            "error",
-            "-count_packets",
-            "-show_streams",
-            "-show_format",
-        ])
-        .args(["-of", "json"])
-        .arg(file)
-        .stdin(Stdio::null())
+    let mut cmd = Command::new(&ffprobe);
+    cmd.args([
+        "-v",
+        "error",
+        "-count_packets",
+        "-show_streams",
+        "-show_format",
+    ])
+    .args(["-of", "json"])
+    .arg(file)
+    .stdin(Stdio::null());
+    let out = sc_helpers::hide_console(&mut cmd)
         .output()
         .map_err(|e| Error::Other(format!("run {}: {e}", ffprobe.display())))?;
     if !out.status.success() {
