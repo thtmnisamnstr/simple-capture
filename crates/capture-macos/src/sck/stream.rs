@@ -70,7 +70,10 @@ impl MacScreenSource {
             .is_some_and(|c| c.spec == *spec && c.at.elapsed() < SNAPSHOT_FILTER_TTL);
         if !fresh {
             *cached = None;
-            let content = content::shareable(false)?;
+            let content = match spec {
+                SourceSpec::Picked(_) => content::shareable(false).ok(),
+                _ => Some(content::shareable(false)?),
+            };
             let cfg = ScreenStreamConfig {
                 fps: 1,
                 resolution: Resolution::Native,
@@ -82,7 +85,7 @@ impl MacScreenSource {
             *cached = Some(SnapshotFilter {
                 spec: spec.clone(),
                 at: Instant::now(),
-                built: SendBox(build(Some(&content), spec, &cfg)?),
+                built: SendBox(build(content.as_deref(), spec, &cfg)?),
             });
         }
         let Some(filter) = cached.as_ref() else {

@@ -31,7 +31,8 @@ with no account and no network.
 
 ### Distribution
 - The macOS app and DMG are signed with a Developer ID and notarized, so permissions survive
-  updates.
+  updates. The DMG opens on a drag-to-Applications window.
+- Simple Capture checks permissions without asking; macOS asks only when you press Allow.
 
 ### Library and diagnostics
 - A library of every recording with posters, Edit, Export, Show, Move to Trash, and what was

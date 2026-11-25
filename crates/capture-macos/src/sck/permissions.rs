@@ -1,7 +1,7 @@
 use objc2_av_foundation::{
     AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio, AVMediaTypeVideo,
 };
-use objc2_core_graphics::{CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
+use objc2_core_graphics::CGRequestScreenCaptureAccess;
 use objc2_foundation::NSString;
 use sc_platform::{PermissionKind, PermissionStatus, Permissions};
 
@@ -51,9 +51,7 @@ impl Permissions for MacPermissions {
     fn status(&self, k: PermissionKind) -> PermissionStatus {
         match k {
             PermissionKind::Screen => {
-                if CGPreflightScreenCaptureAccess()
-                    || super::content::can_read_other_window_titles()
-                {
+                if super::content::screen_allowed() {
                     PermissionStatus::Granted
                 } else {
                     PermissionStatus::NotDetermined

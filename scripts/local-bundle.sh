@@ -5,7 +5,7 @@
 #   2. "Simple Capture Local Signing", the self-signed certificate: grants survive rebuilds on
 #      this Mac only.
 #   3. Otherwise ad hoc, which macOS treats as a new app on every build.
-#   scripts/local-bundle.sh
+#   scripts/local-bundle.sh [--dmg]   (--dmg also packs, signs and notarizes the installer DMG)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/target/skia}"
@@ -24,3 +24,14 @@ else
 fi
 codesign -d -r- "$APP" 2>&1 | grep designated
 echo "$APP"
+
+if [ "${1:-}" = --dmg ]; then
+  VERSION=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' app/tauri.conf.json)
+  DMG="$CARGO_TARGET_DIR/release/bundle/dmg/Simple Capture_${VERSION}_aarch64.dmg"
+  mkdir -p "$(dirname "$DMG")"
+  scripts/make-dmg.sh "$APP" "$DMG"
+  if security find-identity -v -p codesigning | grep -q '"Developer ID Application: '; then
+    scripts/macos-sign.sh "$DMG"
+  fi
+  echo "$DMG"
+fi

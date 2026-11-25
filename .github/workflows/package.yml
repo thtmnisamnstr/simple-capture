@@ -3,7 +3,7 @@ name: package
 # Installable builds for all three OSes (SPEC M6): the export helpers (FFmpeg with networking
 # off, gifski) built from the pinned sources in third_party/versions.toml, the app bundled with
 # them and every license text, and the corresponding source of the GPL/AGPL helpers.
-#   macOS   .dmg (ad-hoc signed; not notarized, SPEC non-goal)
+#   macOS   .dmg (Developer ID signed and notarized when the secrets are set, else ad hoc)
 #   Windows NSIS setup .exe and .msi
 #   Linux   .deb and .AppImage
 
@@ -97,7 +97,7 @@ jobs:
         include:
           - os: macos-15
             plat: macos-arm64
-            bundles: dmg
+            bundles: app
           - os: windows-2025
             plat: windows-x86_64
             bundles: nsis,msi
@@ -193,22 +193,18 @@ jobs:
         shell: bash
         working-directory: app
         run: |
-          bundles=${{ matrix.bundles }}
-          [ "$DEVID" = true ] && bundles=app
-          ../ui/node_modules/.bin/tauri build --config tauri.bundle.conf.json --bundles "$bundles" -- --locked
-      - name: Sign, notarize and package (macOS, Developer ID)
-        if: env.DEVID == 'true'
+          ../ui/node_modules/.bin/tauri build --config tauri.bundle.conf.json --bundles ${{ matrix.bundles }} -- --locked
+      - name: Sign, notarize and package (macOS)
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           app="$CARGO_TARGET_DIR/release/bundle/macos/Simple Capture.app"
-          scripts/macos-sign.sh "$app"
+          if [ "$DEVID" = true ]; then scripts/macos-sign.sh "$app"; fi
           version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' app/tauri.conf.json)
-          mkdir -p "$CARGO_TARGET_DIR/release/bundle/dmg" "$RUNNER_TEMP/dmg"
-          cp -R "$app" "$RUNNER_TEMP/dmg/"
-          ln -s /Applications "$RUNNER_TEMP/dmg/Applications"
+          mkdir -p "$CARGO_TARGET_DIR/release/bundle/dmg"
           dmg="$CARGO_TARGET_DIR/release/bundle/dmg/Simple Capture_${version}_aarch64.dmg"
-          hdiutil create -volname "Simple Capture" -srcfolder "$RUNNER_TEMP/dmg" -ov -format UDZO "$dmg"
-          scripts/macos-sign.sh "$dmg"
+          scripts/make-dmg.sh "$app" "$dmg"
+          if [ "$DEVID" = true ]; then scripts/macos-sign.sh "$dmg"; fi
       - name: Remove the signing keychain
         if: always() && env.DEVID == 'true'
         shell: bash

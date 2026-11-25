@@ -14,7 +14,16 @@ updates. Without the secrets below, the package workflow still builds an ad hoc 
 2. Notarization credentials, stored once in the keychain (it asks for an app-specific password
    from account.apple.com → Sign-In and Security):
    `xcrun notarytool store-credentials "simple-capture" --apple-id <Apple ID> --team-id <Team ID>`
-3. `scripts/local-bundle.sh` then signs, notarizes and staples the app (`scripts/macos-sign.sh`).
+3. `scripts/local-bundle.sh` then signs, notarizes and staples the app (`scripts/macos-sign.sh`);
+   `scripts/local-bundle.sh --dmg` also builds the installer DMG and notarizes that too.
+
+### The DMG
+
+`scripts/make-dmg.sh` packs the app with dmgbuild (pinned, installed into `target/dmgbuild-venv`),
+which writes the window layout into the image without scripting Finder. The window's look is
+`assets/brand/dmg-background.svg`; after changing it, run `scripts/render-dmg-background.sh`
+(needs Chrome) and commit the TIFF it writes. Labels sit on a mid-green that keeps Finder's
+white (dark mode) and black (light mode) icon labels readable.
 
 ### On GitHub (release builds)
 
