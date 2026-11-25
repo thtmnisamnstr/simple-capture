@@ -2013,6 +2013,52 @@ impl Core {
         }
     }
 
+    /// Reshapes the Preview window to the frame's `ratio` (width / height), keeping about its area
+    /// and its bottom-right corner, within the display it is on.
+    pub fn fit_stage_window(&self, ratio: f64) {
+        let Some(w) = self.app.get_webview_window("stage") else {
+            return;
+        };
+        let scale = w.scale_factor().unwrap_or(1.0);
+        let (Ok(inner), Ok(pos)) = (w.inner_size(), w.outer_position()) else {
+            return;
+        };
+        let inner = inner.to_logical::<f64>(scale);
+        let pos = pos.to_logical::<f64>(scale);
+        let display = self
+            .platform
+            .screen()
+            .displays()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|d| {
+                let f = d.frame_pt;
+                pos.x >= f.x && pos.x < f.x + f.w && pos.y >= f.y && pos.y < f.y + f.h
+            });
+        let max = display.as_ref().map_or((1600.0, 1000.0), |d| {
+            (d.frame_pt.w * 0.6, d.frame_pt.h * 0.6)
+        });
+        let (nw, nh) =
+            crate::preview::reshaped((inner.width, inner.height), ratio, (240.0, 160.0), max);
+        if (nw - inner.width).abs() < 2.0 && (nh - inner.height).abs() < 2.0 {
+            return;
+        }
+        let mut x = pos.x + inner.width - nw;
+        let mut y = pos.y + inner.height - nh;
+        if let Some(d) = &display {
+            let f = d.frame_pt;
+            x = x.clamp(f.x, (f.x + f.w - nw).max(f.x));
+            y = y.clamp(f.y, (f.y + f.h - nh).max(f.y));
+        }
+        lock(&self.preview).placed_at = Some(sc_geometry::PointF { x, y });
+        if let Err(e) = w
+            .set_size(LogicalSize::new(nw, nh))
+            .and_then(|_| w.set_position(LogicalPosition::new(x, y)))
+        {
+            tracing::warn!("reshape preview: {e}");
+        }
+    }
+
     /// The preview window's close button turns the preview off (the panel's "Show preview").
     pub fn preview_closed(&self) {
         if self.settings.load().preview_shown {

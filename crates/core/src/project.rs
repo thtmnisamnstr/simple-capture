@@ -658,6 +658,7 @@ pub struct TextBackground {
 pub enum TextBackgroundKind {
     PerLine,
     Merged,
+    /// Saved by early builds; drawn as `Merged`.
     Inverted,
 }
 

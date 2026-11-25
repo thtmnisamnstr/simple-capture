@@ -148,7 +148,7 @@ Opens automatically after recording. It must stay light and fast.
 - Add text with a button or T; type directly on the preview; multi-line and emoji supported.
 - Fonts: 10–15 curated bundled OFL or Apache-2.0 fonts, each checked to render correctly (no missing glyphs for common Latin text) before it ships (classic, modern, bold condensed, serif, typewriter, handwriting, neon, rounded) plus any installed system font.
 - Color: palette, custom picker, gradient fill, and an eyedropper that samples the video.
-- Styles: plain, outline, drop shadow, glow/neon, uppercase toggle, opacity, and a per-line background box (solid or translucent, rounded, with TikTok-style merged line backgrounds). Also an inverted style (colored box, white text). Alignment, line height, and letter spacing.
+- Styles: plain, outline, drop shadow, glow/neon, uppercase toggle, opacity, and a per-line background box (solid or translucent, rounded, with TikTok-style merged line backgrounds). Also an inverted style preset (colored box, white text). Alignment, line height, and letter spacing.
 - Transform: drag with snap guides (center, thirds, safe margins), a resize handle, a rotate handle (snaps at 0°, ±15°, 90°), and layer order.
 - Timing: each text item has a start and end on the text track (drag the edges; default 3 seconds starting at the playhead).
   - Text is positioned on the edited timeline, not the original recording.

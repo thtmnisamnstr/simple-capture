@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PRESETS, applyPreset, defaultStyle, fontFaceCss, newTextItem, snapAngle, snapPos } from '../src/lib/text.ts';
+import { PRESETS, animDurations, applyPreset, defaultStyle, fontFaceCss, newTextItem, snapAngle, snapPos } from '../src/lib/text.ts';
 
 test('new text copies a remembered style even when it is a reactive proxy', () => {
   const live = (o: object): object =>
@@ -47,4 +47,11 @@ test('font faces become @font-face rules with weight ranges', () => {
   assert.match(css, /font-family:'Inter'/);
   assert.match(css, /Inter%5Bopsz%2Cwght%5D\.ttf/);
   assert.match(css, /font-weight:100 900/);
+});
+
+test('in and out animations share a clip they would overrun, in proportion', () => {
+  const a = (d: number) => ({ kind: 'fade', duration_s: d, easing: 'linear' });
+  assert.deepEqual(animDurations({ in: a(3), out: a(1) }, 10), { in: 3, out: 1 });
+  assert.deepEqual(animDurations({ in: a(3), out: a(1) }, 2), { in: 1.5, out: 0.5 });
+  assert.deepEqual(animDurations({ in: a(4), out: null }, 4), { in: 4, out: 0 });
 });

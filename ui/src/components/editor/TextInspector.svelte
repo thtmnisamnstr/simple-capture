@@ -8,6 +8,7 @@
     OUT_ANIMS,
     PRESETS,
     WEIGHTS,
+    animDurations,
     applyPreset,
     fillColor,
     plainCopy,
@@ -90,6 +91,13 @@
   function useRecent(st: TextStyle) {
     onchange({ ...item, style: plainCopy(st) });
   }
+
+  const lenS = $derived(Math.max(0, (item.end_tl_ns - item.start_tl_ns) / 1e9));
+  const shared = $derived.by(() => {
+    const a = item.anim;
+    if (!a.in || !a.out || a.in.duration_s + a.out.duration_s <= lenS) return null;
+    return animDurations(a, lenS);
+  });
 
   function setAnim(which: 'in' | 'out', kind: string) {
     const cur = item.anim[which];
@@ -261,10 +269,10 @@
       <span class="glabel">Box</span>
       <span class="gcontrol">
         <span class="segmented" role="radiogroup" aria-label="Background box">
-          {#each [['', 'None'], ['per_line', 'Lines'], ['merged', 'Merged'], ['inverted', 'Inverted']] as [k, label] (k)}
+          {#each [['', 'None'], ['per_line', 'Lines'], ['merged', 'Merged']] as [k, label] (k)}
             <button
               role="radio"
-              aria-checked={(s.background?.kind ?? '') === k}
+              aria-checked={(s.background?.kind === 'inverted' ? 'merged' : (s.background?.kind ?? '')) === k}
               onclick={() =>
                 setStyle({
                   background: k
@@ -335,14 +343,17 @@
         {#if a}
           <span class="row">
             <span class="caption">Duration</span>
-            <input type="range" min="0.1" max="3" step="0.05" value={a.duration_s} oninput={(e) => patchAnim(which as 'in' | 'out', { duration_s: Number(e.currentTarget.value) }, `${which}-d`)} />
-            <span class="num tnum">{a.duration_s.toFixed(2)} s</span>
+            <input type="range" min="0.1" max={Math.max(0.1, lenS)} step="0.05" value={Math.min(a.duration_s, lenS)} aria-label="{label} duration" oninput={(e) => patchAnim(which as 'in' | 'out', { duration_s: Number(e.currentTarget.value) }, `${which}-d`)} />
+            <span class="num tnum">{Math.min(a.duration_s, lenS).toFixed(2)} s</span>
             <select value={a.easing} onchange={(e) => patchAnim(which as 'in' | 'out', { easing: e.currentTarget.value })} aria-label="{label} easing">
               {#each EASINGS as [k, name] (k)}<option value={k}>{name}</option>{/each}
             </select>
           </span>
         {/if}
       </div>
+    {#if shared}
+      <p class="caption share">In and out overlap on this {lenS.toFixed(1)} s clip, so they share it: in {shared.in.toFixed(2)} s, then out {shared.out.toFixed(2)} s.</p>
+    {/if}
     {/each}
     <div class="grow stack">
       <span class="row">
@@ -387,6 +398,10 @@
 </div>
 
 <style>
+  .share {
+    margin: 0;
+    padding: 6px 10px 8px;
+  }
   .text-insp {
     display: flex;
     flex-direction: column;

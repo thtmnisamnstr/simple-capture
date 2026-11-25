@@ -73,6 +73,7 @@
   const PREVIEW_W = 316;
   const PREVIEW_H = 138;
   let still = $state<string | null>(null);
+  let stillPx = $state<{ w: number; h: number } | null>(null);
   let bgOpen = $state(false);
   let error = $state<string | null>(null);
   let recording = $state(false);
@@ -146,7 +147,8 @@
     return referenceCanvasSize(settings.canvas.aspect, fixed ?? ratioOf(contentPx), [contentPx]);
   });
   const previewBox = $derived.by(() => {
-    const c = canvasPx ?? { w: 16, h: 10 };
+    const fixed = settings ? aspectRatio(settings.canvas.aspect) : null;
+    const c = canvasPx ?? (fixed ? { w: fixed.num, h: fixed.den } : stillPx) ?? { w: 16, h: 10 };
     const k = Math.min(PREVIEW_W / c.w, PREVIEW_H / c.h);
     return { w: Math.max(1, Math.round(c.w * k)), h: Math.max(1, Math.round(c.h * k)) };
   });
@@ -341,10 +343,12 @@
         .catch(() => {
           if (seq === stillSeq) still = null;
         });
-    stillTimer = setTimeout(() => {
-      fetchStill();
-      if (src.kind === 'camera' || src.kind === 'device') stillTimer = setTimeout(fetchStill, 1500);
-    }, 250);
+    const live = src.kind === 'camera' || src.kind === 'device';
+    const tick = () => {
+      if (document.visibilityState === 'visible') fetchStill();
+      if (live) stillTimer = setTimeout(tick, 1500);
+    };
+    stillTimer = setTimeout(tick, 250);
   });
 
   $effect(() => {
@@ -585,7 +589,10 @@
                 style:height="{previewBox.h}px"
                 style:background={backgroundCss(settings.canvas.background)}
               >
-                {#if still}<img src={still} alt="Preview of the frame" />{/if}
+                {#if still}<img src={still} alt="Preview of the frame" onload={(e) => {
+                  const img = e.currentTarget as HTMLImageElement;
+                  stillPx = { w: img.naturalWidth, h: img.naturalHeight };
+                }} />{/if}
               </div>
             </div>
             {#if canvasPx && mode !== 'camera'}<p class="caption center tnum">{canvasPx.w} × {canvasPx.h} video</p>{/if}

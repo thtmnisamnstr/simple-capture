@@ -280,31 +280,15 @@ pub fn prepare(
             data: px,
         })
     };
-    let inverted = bg.is_some_and(|b| b.kind == TextBackgroundKind::Inverted);
     let boxes = match (bg, &bg_path) {
-        (Some(bg), Some(path)) => {
-            let fill = if inverted {
-                match &style.fill {
-                    TextFill::Solid(c) => color(c),
-                    TextFill::Linear(l) => color(&l.stops[0]),
-                }
-            } else {
-                color(&bg.color)
-            };
-            Some(draw(&|c| {
-                let mut p = Paint::new(fill, None);
-                p.set_anti_alias(true);
-                c.draw_path(path, &p);
-            })?)
-        }
+        (Some(bg), Some(path)) => Some(draw(&|c| {
+            let mut p = Paint::new(color(&bg.color), None);
+            p.set_anti_alias(true);
+            c.draw_path(path, &p);
+        })?),
         _ => None,
     };
-    let text_fill = if inverted {
-        TextFill::Solid(bg.map_or(Rgba([1.0, 1.0, 1.0, 1.0]), |b| b.color))
-    } else {
-        style.fill.clone()
-    };
-    let text = draw(&|c| paint_text(c, &runs, style, &text_fill, block))?;
+    let text = draw(&|c| paint_text(c, &runs, style, &style.fill, block))?;
     let to_px = |x: f32, y: f32| {
         (
             (x - bounds.left) * px_per_unit,

@@ -21,6 +21,14 @@ export interface TextStyle {
   background?: { kind: 'per_line' | 'merged' | 'inverted'; color: Rgba; radius_1080: number; padding_1080: PointF } | null;
 }
 export interface Anim { kind: string; duration_s: number; easing: string }
+
+/** Seconds the in and out animations run on an item `len_s` long; mirrors sc_text::anim::durations_ns. */
+export function animDurations(anim: { in?: Anim | null; out?: Anim | null }, len_s: number): { in: number; out: number } {
+  const i = anim.in ? Math.max(anim.in.duration_s, 0.01) : 0;
+  const o = anim.out ? Math.max(anim.out.duration_s, 0.01) : 0;
+  const k = i + o > len_s && len_s > 0 ? len_s / (i + o) : 1;
+  return { in: i * k, out: o * k };
+}
 export interface TextAnim {
   in?: Anim | null;
   out?: Anim | null;
@@ -178,11 +186,11 @@ export const PRESETS: Preset[] = [
     style: {
       font_family: 'Inter',
       weight: 800,
-      fill: { solid: [1, 0.18, 0.33, 1] },
+      fill: { solid: WHITE },
       outline: null,
       shadow: null,
       glow: null,
-      background: { kind: 'inverted', color: WHITE, radius_1080: 16, padding_1080: { x: 22, y: 6 } },
+      background: { kind: 'merged', color: [1, 0.18, 0.33, 1], radius_1080: 16, padding_1080: { x: 22, y: 6 } },
     },
     css: 'font: 800 13px Inter, system-ui; color: #fff; background: #ff2d55; border-radius: 4px',
   },

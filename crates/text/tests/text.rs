@@ -165,7 +165,7 @@ fn boxed(kind: TextBackgroundKind) -> TextStyle {
 }
 
 #[test]
-fn line_boxes_merge_and_invert() {
+fn line_boxes_merge_and_an_old_inverted_box_draws_merged() {
     let mut fonts = FontLibrary::new().expect("fonts");
     let text = "A longer first line\nshort\nand a third one";
     let per = prepare(
@@ -208,15 +208,10 @@ fn line_boxes_merge_and_invert() {
         "per-line and merged boxes differ ({differ} bytes)"
     );
     let ib = inv.boxes.expect("inverted boxes");
-    let light = |img: &RgbaImage| {
-        img.data
-            .chunks_exact(4)
-            .filter(|p| p[3] > 200 && p[0] > 200)
-            .count()
-    };
-    assert!(
-        light(&ib) > light(&mb),
-        "inverted box takes the text colour"
+    assert_eq!(ib.data, mb.data, "an early Inverted box draws as Merged");
+    assert_eq!(
+        inv.text.data, merged.text.data,
+        "and keeps its own text colour"
     );
 }
 

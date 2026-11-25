@@ -1492,11 +1492,13 @@ they are not a substitute for an M1 run.
     any export size. The box layer and the text layer are separate images; reveals copy text tiles
     over the full box.
   - **Styles:** solid or two-stop linear gradient fill, outline, drop shadow, glow (two blurred
-    strokes), per-line or merged (TikTok) boxes, inverted (box in the text colour, text in the box
-    colour), uppercase, opacity, alignment, line height, letter spacing (1080 units).
+    strokes), per-line or merged (TikTok) boxes (the Inverted preset is white text on a coloured
+    merged box; an `inverted` box saved by early builds draws as merged, with the text and box
+    colours the controls show), uppercase, opacity, alignment, line height, letter spacing (1080 units).
   - **Animations** (pure functions of the time into the item, so every fps samples the same
     curve): in fade, pop, slide ×4, typewriter, word by word, bounce; out fade, pop, slide ×4;
-    loops pulse, wiggle, float; durations capped at half the item; easings linear, ease in/out,
+    loops pulse, wiggle, float; each in or out may last the whole item, and when the two together
+    are longer both shrink in proportion so the in ends where the out starts; easings linear, ease in/out,
     ease in and out, overshoot.
   - **Compositing:** `TextLayer` (premultiplied image + affine + opacity) in the compositor, drawn
     after the camera by a WGSL pass with integer bilinear sampling and blending, mirrored by the

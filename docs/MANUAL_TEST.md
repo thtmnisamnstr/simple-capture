@@ -752,6 +752,8 @@ In the editor with any recording:
 | T10 | Delete a range that covers the text; undo | The text goes with it; undo brings both back |
 | T11 | ⌘C, move the playhead, ⌘V | A copy appears at the playhead |
 | T12 | Export 1080p and 720p | The text looks identical in both and in the preview |
+| T13 | Choose the Inverted preset, then change Text colour and Background colour | Text colour changes the letters and Background colour the box |
+| T14 | On a 3 s text, set In to fade and drag its duration to the end; then add a 1 s Out fade | The In slider reaches 3 s and the fade lasts the whole clip; with the Out added, a note shows them sharing the clip (2.25 s, then 0.75 s) and the text peaks once, at the hand-over |
 
 ## 10e. Export sheet (M5)
 
@@ -817,6 +819,7 @@ In the editor with any recording, press ⌘E:
 | R36 | While recording a display, click the menu bar icon, then click it again; reopen it and choose Pause, then Stop | A menu opens under the icon and closes on the second click; Pause and Stop work; the menu never appears in the recording; when not recording the icon shows the normal menu |
 | R37 | Source → System Picker…, cancel it; then pick a window with it, record 5 s, stop; quit the app | After the cancel, and again after the recording ends, the app is no longer listed in the menu bar's Sharing (screen sharing) menu; nothing is listed after quitting |
 | R38 | With Screen Recording off for Simple Capture (never granted, or denied once), launch it, open the panel with a display source and leave it 30 s; then choose Deny or Open System Settings on the one prompt Allow raises | macOS asks only when you press Allow in Permissions; no prompt comes back on its own, however long the panel stays open |
+| R39 | Choose an iPhone plugged in by cable as the source, with Show preview on; switch the shape through Original, 16:9 and 9:16 | The Frame thumbnail shows the phone screen within a second or two and takes each shape; the Preview window reshapes to each shape (tall for Original and 9:16), keeping its bottom-right corner |
 | Y13 | A recording that crashed (end the app from Activity Monitor while recording, start it again) → Library → What Was Recovered… | The sheet says what was kept and left out; Edit opens what was saved |
 | E36 | Record a 16:9 frame from one window, switch to a much wider window; in the editor put the playhead in the second part → Frame → This section → Fill, drag Keep to Left | Only that part changes: it fills the frame and keeps its left side; the first part is unchanged; the export matches |
 | E37 | J, J, L, L, L, K in the editor | J plays backwards at 1× then 2× (silent, with ◀◀ 2× by the time); L plays forward with sound, again 2×, again 4× (silent); K stops |

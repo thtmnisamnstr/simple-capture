@@ -80,6 +80,7 @@ pub fn render_loop(core: Weak<Core>) {
     let mut bg_key = 0u64;
     let mut shown: Option<Shown> = None;
     let mut sink: Option<Sink> = None;
+    let mut fitted: Option<f64> = None;
     loop {
         let t0 = Instant::now();
         let Some(core) = core.upgrade() else { return };
@@ -89,6 +90,7 @@ pub fn render_loop(core: Weak<Core>) {
         let Some(inputs) = core.stage_inputs() else {
             snap = None;
             shown = None;
+            fitted = None;
             if let Some(sink) = &mut sink {
                 sink.forget_page();
             }
@@ -159,6 +161,13 @@ pub fn render_loop(core: Weak<Core>) {
             .ratio()
             .or(content.map(Ratio::of))
             .unwrap_or(Ratio::new(16, 9));
+        let r = ratio.as_f64();
+        if (inputs.aspect.ratio().is_some() || content.is_some())
+            && fitted.is_none_or(|f| (f - r).abs() > 0.01 * r)
+        {
+            fitted = Some(r);
+            core.fit_stage_window(r);
+        }
         let canvas = fit(ratio, drawable);
         if bg
             .as_ref()

@@ -68,10 +68,21 @@ fn bounce_out(t: f32) -> f32 {
     }
 }
 
-fn duration_ns(a: &Anim, len_ns: i64) -> i64 {
-    ((a.duration_s.max(0.01) * 1e9) as i64)
-        .min(len_ns / 2)
-        .max(1)
+/// How long the in and out animations run on an item `len_ns` long. Each may last the whole item;
+/// when together they are longer, both shrink in proportion so the in ends where the out starts.
+pub fn durations_ns(anim: &TextAnim, len_ns: i64) -> (i64, i64) {
+    let want = |a: &Option<Anim>| a.as_ref().map_or(0.0, |a| a.duration_s.max(0.01) * 1e9);
+    let (i, o) = (want(&anim.in_), want(&anim.out));
+    let len = len_ns.max(1) as f64;
+    let k = if i + o > len { len / (i + o) } else { 1.0 };
+    let fit = |d: f64| {
+        if d > 0.0 {
+            ((d * k) as i64).clamp(1, len_ns.max(1))
+        } else {
+            0
+        }
+    };
+    (fit(i), fit(o))
 }
 
 fn slide(kind: &str, amount: f32) -> (f32, f32) {
@@ -94,8 +105,9 @@ pub fn evaluate(
     words: usize,
 ) -> AnimFrame {
     let mut f = AnimFrame::default();
+    let (in_ns, out_ns) = durations_ns(anim, len_ns);
     if let Some(a) = &anim.in_ {
-        let d = duration_ns(a, len_ns);
+        let d = in_ns;
         if t_ns < d {
             let p = t_ns.max(0) as f32 / d as f32;
             let e = ease(&a.easing, p);
@@ -123,7 +135,7 @@ pub fn evaluate(
         }
     }
     if let Some(a) = &anim.out {
-        let d = duration_ns(a, len_ns);
+        let d = out_ns;
         let left = len_ns - t_ns;
         if left < d {
             let q = 1.0 - left.max(0) as f32 / d as f32;
@@ -223,7 +235,9 @@ mod tests {
     #[test]
     fn durations_are_capped_by_the_item_and_emphasis_loops() {
         let a = with(Some(anim("fade", 10.0)), None);
-        assert_eq!(evaluate(&a, S, 2 * S, 1, 1).opacity, 1.0);
+        assert_eq!(durations_ns(&a, 2 * S), (2 * S, 0));
+        assert!((evaluate(&a, S, 2 * S, 1, 1).opacity - 0.5).abs() < 1e-3);
+        assert_eq!(evaluate(&a, 2 * S, 2 * S, 1, 1).opacity, 1.0);
         let mut e = with(None, None);
         e.emphasis = Some(Emphasis {
             kind: EmphasisKind::Pulse,
@@ -233,6 +247,25 @@ mod tests {
         let quarter = evaluate(&e, S / 4, 5 * S, 1, 1).scale;
         assert!((quarter - 1.07).abs() < 1e-3);
         assert!((evaluate(&e, S + S / 4, 5 * S, 1, 1).scale - quarter).abs() < 1e-4);
+    }
+
+    #[test]
+    fn an_animation_may_last_the_whole_item() {
+        let a = with(Some(anim("fade", 4.0)), None);
+        assert!((evaluate(&a, 2 * S, 4 * S, 1, 1).opacity - 0.5).abs() < 1e-3);
+        let o = with(None, Some(anim("fade", 4.0)));
+        assert!((evaluate(&o, 2 * S, 4 * S, 1, 1).opacity - 0.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn overlapping_in_and_out_share_the_item_in_proportion() {
+        let a = with(Some(anim("fade", 3.0)), Some(anim("fade", 1.0)));
+        assert_eq!(durations_ns(&a, 2 * S), (3 * S / 2, S / 2));
+        assert_eq!(durations_ns(&a, 10 * S), (3 * S, S));
+        let peak = evaluate(&a, 3 * S / 2, 2 * S, 1, 1).opacity;
+        assert!((peak - 1.0).abs() < 1e-3, "{peak}");
+        assert!(evaluate(&a, S, 2 * S, 1, 1).opacity < 1.0);
+        assert!(evaluate(&a, 7 * S / 4, 2 * S, 1, 1).opacity < 1.0);
     }
 
     #[test]
