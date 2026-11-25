@@ -20,7 +20,7 @@ simple-capture-capture-common.workspace = true
 simple-capture-tracks.workspace = true
 simple-capture-helpers.workspace = true
 tracing.workspace = true
-windows-core = "0.62.2"
+windows-core = "0.100.0"
 windows = { version = "0.62.2", features = [
     "Foundation",
     "Graphics",
