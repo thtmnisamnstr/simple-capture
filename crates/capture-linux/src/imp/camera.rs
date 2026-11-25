@@ -46,6 +46,7 @@ pub fn devices() -> Result<Vec<CaptureDevice>> {
             model_id: None,
             is_default: i == 0,
             kind_hint: None,
+            unavailable: None,
         })
         .collect())
 }

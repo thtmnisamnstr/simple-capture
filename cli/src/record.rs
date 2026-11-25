@@ -569,6 +569,7 @@ mod tests {
             model_id: None,
             is_default: default,
             kind_hint: None,
+            unavailable: None,
         }
     }
 

@@ -8,6 +8,7 @@
   import type {
     Aspect,
     CapabilitiesDto,
+    CaptureDevice,
     DevicesDto,
     DisplayInfo,
     PermissionsDto,
@@ -135,8 +136,12 @@
     { value: '9:16', label: '9:16' },
   ];
 
-  const micMissing = $derived(!!settings?.mic && loaded && !devices.mics.some((m) => m.id === settings!.mic));
-  const fallbackMic = $derived(devices.mics.find((m) => m.is_default) ?? devices.mics[0] ?? null);
+  const usable = (d: CaptureDevice) => !d.unavailable;
+  const micMissing = $derived(!!settings?.mic && loaded && !devices.mics.some((m) => m.id === settings!.mic && usable(m)));
+  const fallbackMic = $derived(devices.mics.filter(usable).find((m) => m.is_default) ?? devices.mics.find(usable) ?? null);
+  const micBusy = $derived(devices.mics.find((m) => m.id === settings?.mic)?.unavailable ?? null);
+  const cameraBusy = $derived(devices.cameras.find((c) => c.id === settings?.camera)?.unavailable ?? null);
+  const fallbackCamera = $derived(devices.cameras.filter(usable).find((c) => c.is_default) ?? devices.cameras.find(usable) ?? null);
   const screenGranted = $derived(perms?.screen === 'granted');
   const all = $derived({ displays, windows: list?.windows ?? [], apps: list?.apps ?? [] });
   const source = $derived(settings?.source ?? null);
@@ -288,7 +293,7 @@
   }
 
   function defaultCamera(): string | null {
-    return settings?.camera ?? devices.cameras.find((c) => c.is_default)?.id ?? devices.cameras[0]?.id ?? null;
+    return settings?.camera ?? fallbackCamera?.id ?? null;
   }
 
   function screenSource(): SourceSpecDto | null {
@@ -658,10 +663,13 @@
             <span class="glabel with-icon"><Icon name="camera" />Camera</span>
             <div class="gcontrol">
               <select id="camera" aria-label="Camera" bind:value={settings.camera}>
-                {#each devices.cameras as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
+                {#each devices.cameras as c (c.id)}<option value={c.id} disabled={!!c.unavailable && c.id !== settings.camera}>{c.name}{c.unavailable ? ` (${c.unavailable})` : ''}</option>{/each}
               </select>
             </div>
           </div>
+          {#if cameraBusy}
+            <p class="caption mic-missing">{cameraBusy}. Recordings use {fallbackCamera?.name ?? 'no camera'} until it’s free.</p>
+          {/if}
           <div class="grow">
             <span class="glabel">Quality</span>
             <div class="gcontrol">
@@ -749,8 +757,8 @@
             <div class="gcontrol">
               <select id="mic" aria-label="Microphone" bind:value={settings.mic}>
                 <option value={null}>None</option>
-                {#each devices.mics as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
-                {#if micMissing}<option value={settings.mic}>Not connected</option>{/if}
+                {#each devices.mics as m (m.id)}<option value={m.id} disabled={!!m.unavailable && m.id !== settings.mic}>{m.name}{m.unavailable ? ` (${m.unavailable})` : ''}</option>{/each}
+                {#if micMissing && !micBusy}<option value={settings.mic}>Not connected</option>{/if}
               </select>
               {#if caps?.mic_modes && settings.mic}
                 <button class="icon" title="Mic Mode" aria-label="Mic Mode" onclick={() => run(() => api.showMicModes())}>⋯</button>
@@ -759,7 +767,7 @@
           </div>
           {#if micMissing}
             <p class="caption mic-missing">
-              The chosen microphone isn’t connected. Recordings use {fallbackMic?.name ?? 'no microphone'} until it is.
+              {micBusy ? `${micBusy}.` : 'The chosen microphone isn’t connected.'} Recordings use {fallbackMic?.name ?? 'no microphone'} until it {micBusy ? 'is free' : 'is'}.
             </p>
           {/if}
           {#if settings.mic && micDb !== null}

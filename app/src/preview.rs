@@ -14,6 +14,8 @@ pub struct PreviewState {
     pub key: Option<CameraKey>,
     pub panel_open: bool,
     pub stage: Option<(SourceSpecDto, CanvasDto)>,
+    /// The source a recording switched to; it differs from the saved settings until the take ends.
+    pub switched_to: Option<SourceSpecDto>,
     pub last_key_sent: Option<Instant>,
     pub placed: bool,
     /// Where `place_preview` put the window: the move event that follows is not the user's.

@@ -201,6 +201,9 @@ pub struct CaptureDevice {
     pub model_id: Option<String>,
     pub is_default: bool,
     pub kind_hint: Option<String>,
+    /// Why it can't be used right now (another app holds it), when it can't.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable: Option<String>,
 }
 
 /// Default 1920×1080 @ 30.

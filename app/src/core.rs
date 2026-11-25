@@ -1083,15 +1083,27 @@ impl Core {
     fn start_recording_now(self: &Arc<Self>, mut req: RecordRequestDto) -> Reply {
         if let Some(id) = req.settings.mic.clone() {
             let mics = self.platform.mic().devices().unwrap_or_default();
-            if !mics.iter().any(|m| m.id == id) {
-                let fallback = mics.iter().find(|m| m.is_default).or(mics.first());
-                tracing::warn!(
-                    "mic {id} is not connected; recording with {:?}",
-                    fallback.map(|m| &m.name)
-                );
-                req.settings.mic = fallback.map(|m| m.id.clone());
+            if let Some(to) = stand_in(&mics, &id) {
+                tracing::warn!("mic {id} can't be used; recording with {to:?}");
+                req.settings.mic = to;
             }
         }
+        if let Some(id) = req.settings.camera.clone() {
+            let cams = self.platform.camera().devices().unwrap_or_default();
+            if let Some(to) = stand_in(&cams, &id) {
+                tracing::warn!("camera {id} can't be used; recording with {to:?}");
+                if let crate::dto::SourceSpecDto::Camera { device_id } = &mut req.source
+                    && *device_id == id
+                {
+                    match &to {
+                        Some(t) => device_id.clone_from(t),
+                        None => return Err("The chosen camera can't be used right now.".into()),
+                    }
+                }
+                req.settings.camera = to;
+            }
+        }
+        lock(&self.preview).switched_to = None;
         *lock(&self.last_request) = Some(req.clone());
         *lock(&self.paused_total) = std::time::Duration::ZERO;
         *lock(&self.paused_since) = None;
@@ -1218,7 +1230,9 @@ impl Core {
         {
             tracing::warn!("camera key after a switch: {e}");
         }
-        if let Some((src, _)) = lock(&self.preview).stage.as_mut() {
+        let mut p = lock(&self.preview);
+        p.switched_to = Some(source.clone());
+        if let Some((src, _)) = p.stage.as_mut() {
             *src = source;
         }
         Ok(Value::Null)
@@ -1950,14 +1964,31 @@ impl Core {
         self.refresh_mic_meter(&s, recording);
         let active = lock(&self.preview).panel_open || recording;
         let device = if active { s.camera.clone() } else { None };
+        let busy = device.as_ref().filter(|_| !recording).and_then(|id| {
+            let cams = self.platform.camera().devices().unwrap_or_default();
+            cams.into_iter()
+                .find(|c| &c.id == id)
+                .and_then(|c| c.unavailable)
+        });
+        let device = if busy.is_some() { None } else { device };
         if let Err(e) = self.camera.set_limit(s.camera_quality.limit()) {
             tracing::warn!("camera quality: {e}");
         }
-        let camera_error = self.camera.set_preview(device.clone()).err();
+        let camera_error = busy.or_else(|| {
+            self.camera
+                .set_preview(device.clone())
+                .err()
+                .map(|e| e.to_string())
+        });
         if let Some(e) = &camera_error {
             tracing::warn!("camera preview: {e}");
         }
-        let phone = match &s.source {
+        let source = lock(&self.preview)
+            .switched_to
+            .clone()
+            .filter(|_| recording)
+            .or_else(|| s.source.clone());
+        let phone = match &source {
             Some(crate::dto::SourceSpecDto::Device { device_id }) if active => {
                 Some(device_id.clone())
             }
@@ -1966,15 +1997,11 @@ impl Core {
         if let Err(e) = self.screens.set_preview(phone) {
             tracing::warn!("device screen preview: {e}");
         }
-        let show = active && s.preview_shown && s.source.is_some();
+        let show = active && s.preview_shown && source.is_some();
         let place = {
             let mut p = lock(&self.preview);
             p.key = Some(s.camera_key.clone());
-            p.stage = s
-                .source
-                .clone()
-                .filter(|_| show)
-                .map(|src| (src, s.canvas.clone()));
+            p.stage = source.filter(|_| show).map(|src| (src, s.canvas.clone()));
             show && !std::mem::replace(&mut p.placed, true)
         };
         if show {
@@ -2310,5 +2337,61 @@ impl Core {
             "camera_px": p.last.and_then(|f| f.camera).map(|r| json!([r.x, r.y, r.w, r.h])),
             "camera_open": self.camera.open_device(),
         }))
+    }
+}
+
+/// The device to use instead of `id` when it is gone or busy: the default one, else the first
+/// usable one, else none. `None` when `id` can be used.
+fn stand_in(devices: &[sc_platform::CaptureDevice], id: &str) -> Option<Option<String>> {
+    let usable = |d: &&sc_platform::CaptureDevice| {
+        d.unavailable.is_none() && d.kind_hint.as_deref() != Some("screen")
+    };
+    if devices.iter().filter(usable).any(|d| d.id == id) {
+        return None;
+    }
+    let pick = devices
+        .iter()
+        .filter(usable)
+        .find(|d| d.is_default)
+        .or_else(|| devices.iter().find(usable));
+    Some(pick.map(|d| d.id.clone()))
+}
+
+#[cfg(test)]
+mod stand_in_tests {
+    use super::stand_in;
+    use sc_platform::CaptureDevice;
+
+    fn dev(id: &str, default: bool, unavailable: bool) -> CaptureDevice {
+        CaptureDevice {
+            id: id.into(),
+            name: id.into(),
+            model_id: None,
+            is_default: default,
+            kind_hint: None,
+            unavailable: unavailable.then(|| "busy".into()),
+        }
+    }
+
+    #[test]
+    fn a_usable_device_stays() {
+        assert_eq!(
+            stand_in(&[dev("a", true, false), dev("b", false, false)], "b"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_gone_or_busy_device_gives_way_to_the_default_then_any() {
+        let list = [
+            dev("phone", false, true),
+            dev("mac", true, false),
+            dev("usb", false, false),
+        ];
+        assert_eq!(stand_in(&list, "phone"), Some(Some("mac".into())));
+        assert_eq!(stand_in(&list, "headset"), Some(Some("mac".into())));
+        let list = [dev("phone", true, true), dev("usb", false, false)];
+        assert_eq!(stand_in(&list, "phone"), Some(Some("usb".into())));
+        assert_eq!(stand_in(&[dev("phone", true, true)], "phone"), Some(None));
     }
 }

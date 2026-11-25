@@ -1095,6 +1095,7 @@ impl AudioSource for HubRef {
                 model_id: Some("synthetic".into()),
                 is_default: true,
                 kind_hint: Some("builtin".into()),
+                unavailable: None,
             }],
             _ => Vec::new(),
         })
@@ -1160,6 +1161,7 @@ impl CameraSource for HubRef {
                 model_id: Some("synthetic".into()),
                 is_default: true,
                 kind_hint: Some("builtin".into()),
+                unavailable: None,
             }],
             _ => Vec::new(),
         })

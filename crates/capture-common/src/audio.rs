@@ -60,6 +60,7 @@ pub fn mic_devices() -> Result<Vec<CaptureDevice>> {
                 id,
                 model_id: None,
                 kind_hint: None,
+                unavailable: None,
             }
         })
         .collect())

@@ -41,6 +41,7 @@ export interface CaptureDevice {
   model_id: string | null;
   is_default: boolean;
   kind_hint: string | null;
+  unavailable?: string | null;
 }
 export interface DevicesDto { cameras: CaptureDevice[]; mics: CaptureDevice[]; screens?: CaptureDevice[] }
 

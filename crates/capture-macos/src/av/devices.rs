@@ -75,37 +75,64 @@ unsafe extern "C" {
     ) -> i32;
 }
 
+static SCREENS_ALLOWED: (Mutex<bool>, std::sync::Condvar) =
+    (Mutex::new(false), std::sync::Condvar::new());
+
 /// Lets plugged-in iPhones and iPads show up as capture devices (their screens, as QuickTime
-/// records them). They appear a moment later, with a device-connected notification.
+/// records them). They appear a moment later, with a device-connected notification. Runs on its
+/// own thread: the call waits on the system's device service, which a stuck Continuity Camera
+/// can hold up indefinitely.
 pub(crate) fn allow_screen_devices() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        let address = CmioAddress {
-            selector: u32::from_be_bytes(*b"yes "),
-            scope: u32::from_be_bytes(*b"glob"),
-            element: 0,
-        };
-        let allow: u32 = 1;
-        // SAFETY: the system object (1) takes a UInt32 for this property.
-        let status = unsafe {
-            CMIOObjectSetPropertyData(
-                1,
-                &address,
-                0,
-                std::ptr::null(),
-                4,
-                (&raw const allow).cast(),
-            )
-        };
-        if status != 0 {
-            tracing::warn!(status, "could not allow device screens");
+        let spawned = std::thread::Builder::new()
+            .name("allow-device-screens".into())
+            .spawn(|| {
+                let address = CmioAddress {
+                    selector: u32::from_be_bytes(*b"yes "),
+                    scope: u32::from_be_bytes(*b"glob"),
+                    element: 0,
+                };
+                let allow: u32 = 1;
+                // SAFETY: the system object (1) takes a UInt32 for this property.
+                let status = unsafe {
+                    CMIOObjectSetPropertyData(
+                        1,
+                        &address,
+                        0,
+                        std::ptr::null(),
+                        4,
+                        (&raw const allow).cast(),
+                    )
+                };
+                if status != 0 {
+                    tracing::warn!(status, "could not allow device screens");
+                }
+                *SCREENS_ALLOWED.0.lock().unwrap_or_else(|p| p.into_inner()) = true;
+                SCREENS_ALLOWED.1.notify_all();
+            });
+        if let Err(e) = spawned {
+            tracing::warn!("allow device screens: {e}");
         }
     });
 }
 
+fn screen_devices_allowed(wait: std::time::Duration) -> bool {
+    allow_screen_devices();
+    let done = SCREENS_ALLOWED.0.lock().unwrap_or_else(|p| p.into_inner());
+    let (done, _) = SCREENS_ALLOWED
+        .1
+        .wait_timeout_while(done, wait, |d| !*d)
+        .unwrap_or_else(|p| p.into_inner());
+    *done
+}
+
 /// Plugged-in devices whose screen can be recorded.
 fn screen_devices() -> Vec<Retained<AVCaptureDevice>> {
-    allow_screen_devices();
+    if !screen_devices_allowed(std::time::Duration::from_secs(2)) {
+        tracing::warn!("device screens not allowed yet; the system's device service is slow");
+        return Vec::new();
+    }
     // SAFETY: framework constants; discovery needs no permission and never prompts.
     unsafe {
         let Some(muxed) = AVMediaTypeMuxed else {
@@ -185,7 +212,92 @@ fn kind_hint(dev: &AVCaptureDevice) -> Option<String> {
     }
 }
 
+const IPHONE_MIRRORING: &str = "com.apple.ScreenContinuity";
+
+fn iphone_mirroring_open() -> bool {
+    let id = NSString::from_str(IPHONE_MIRRORING);
+    let apps: Retained<NSArray<objc2_app_kit::NSRunningApplication>> =
+        objc2_app_kit::NSRunningApplication::runningApplicationsWithBundleIdentifier(&id);
+    !apps.is_empty()
+}
+
+/// A camera or microphone that lives on an iPhone or iPad nearby (Continuity), rather than one
+/// plugged into the Mac.
+fn on_a_phone(hint: Option<&str>, model: &str, name: &str) -> bool {
+    matches!(hint, Some("continuity" | "desk_view"))
+        || model.starts_with("iPhone")
+        || model.starts_with("iPad")
+        || name.contains("iPhone")
+}
+
+/// How long a capture session may take to start. A Continuity Camera that is busy (with iPhone
+/// Mirroring, say) or stuck can leave `startRunning` waiting forever.
+const START_LIMIT: std::time::Duration = std::time::Duration::from_secs(8);
+
+struct SendSession(Retained<AVCaptureSession>);
+// SAFETY: AVCaptureSession may be started and stopped from any thread.
+unsafe impl Send for SendSession {}
+
+#[derive(Default)]
+struct Start {
+    done: Option<bool>,
+    gave_up: bool,
+}
+
+/// Starts `session` and says whether it runs, giving up after `limit`. A session that starts
+/// after that is stopped again.
+fn start_within(
+    session: &Retained<AVCaptureSession>,
+    what: String,
+    limit: std::time::Duration,
+) -> bool {
+    let shared = Arc::new((Mutex::new(Start::default()), std::sync::Condvar::new()));
+    let s = SendSession(session.clone());
+    let theirs = shared.clone();
+    let label = what.clone();
+    let spawned = std::thread::Builder::new()
+        .name("capture-start".into())
+        .spawn(move || {
+            let s = s;
+            // SAFETY: blocks until running; off the main thread per the threading contract.
+            let ok = objc_try(&format!("starting {label}"), || unsafe {
+                s.0.startRunning();
+                s.0.isRunning()
+            })
+            .unwrap_or(false);
+            let mut st = theirs.0.lock().unwrap_or_else(|p| p.into_inner());
+            if st.gave_up {
+                if ok {
+                    // SAFETY: as above.
+                    unsafe { s.0.stopRunning() };
+                }
+                tracing::info!("{label} started late and was stopped");
+                return;
+            }
+            st.done = Some(ok);
+            theirs.1.notify_all();
+        });
+    if let Err(e) = spawned {
+        tracing::warn!("starting {what}: {e}");
+        return false;
+    }
+    let st = shared.0.lock().unwrap_or_else(|p| p.into_inner());
+    let (mut st, _) = shared
+        .1
+        .wait_timeout_while(st, limit, |st| st.done.is_none())
+        .unwrap_or_else(|p| p.into_inner());
+    match st.done {
+        Some(ok) => ok,
+        None => {
+            st.gave_up = true;
+            tracing::warn!("{what} did not start within {limit:?}");
+            false
+        }
+    }
+}
+
 pub(crate) fn list(kind: DeviceKind) -> Result<Vec<CaptureDevice>> {
+    let mirroring = iphone_mirroring_open();
     // SAFETY: plain getters.
     let default_id = unsafe { AVCaptureDevice::defaultDeviceWithMediaType(media_type(kind)?) }
         .map(|d| unsafe { d.uniqueID() }.to_string());
@@ -202,12 +314,18 @@ pub(crate) fn list(kind: DeviceKind) -> Result<Vec<CaptureDevice>> {
         if out.iter().any(|c| c.id == id) {
             continue;
         }
+        let hint = kind_hint(&d);
+        let unavailable = (mirroring
+            && hint.as_deref() != Some("screen")
+            && on_a_phone(hint.as_deref(), &model, &name))
+        .then(|| "In use by iPhone Mirroring".to_string());
         out.push(CaptureDevice {
             is_default: default_id.as_deref() == Some(id.as_str()),
             id,
             name,
             model_id: (!model.is_empty()).then_some(model),
-            kind_hint: kind_hint(&d),
+            kind_hint: hint,
+            unavailable,
         });
     }
     Ok(out)
@@ -719,12 +837,7 @@ pub(crate) fn start(
         }
         *state.clock.lock().unwrap_or_else(|p| p.into_inner()) = Some(SendClock(c));
     }
-    // SAFETY: blocks until running; called off the main thread per the threading contract.
-    let ok = objc_try(&format!("starting {kind:?} {device_id}"), || unsafe {
-        session.startRunning();
-        session.isRunning()
-    })
-    .unwrap_or(false);
+    let ok = start_within(&session, format!("{kind:?} {device_id}"), START_LIMIT);
     if !ok {
         state.accepting.store(false, Ordering::Release);
         if let Some(s) = &sound {
