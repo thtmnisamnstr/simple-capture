@@ -3,7 +3,7 @@
   const id = `sc-mark-${Math.random().toString(36).slice(2)}`;
 </script>
 
-<svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="Simple Capture">
+<svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="simple-capture">
   <defs>
     <linearGradient {id} x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#257a59" />

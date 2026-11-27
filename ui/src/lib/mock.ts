@@ -47,7 +47,7 @@ const displays: DisplayInfo[] = [
 
 const app = (pid: number, bundle_id: string) => ({ pid, bundle_id });
 const windows: WindowInfo[] = [
-  { id: 101, title: 'Simple Capture — README.md', app_name: 'Code', app: app(501, 'com.microsoft.VSCode'), frame_pt: { x: 60, y: 60, w: 1100, h: 760 }, display: '1', on_screen: true, layer: 0, z_index: 0 },
+  { id: 101, title: 'simple-capture — README.md', app_name: 'Code', app: app(501, 'com.microsoft.VSCode'), frame_pt: { x: 60, y: 60, w: 1100, h: 760 }, display: '1', on_screen: true, layer: 0, z_index: 0 },
   { id: 102, title: 'Docs', app_name: 'Safari', app: app(502, 'com.apple.Safari'), frame_pt: { x: 300, y: 140, w: 1100, h: 800 }, display: '1', on_screen: true, layer: 0, z_index: 1 },
   { id: 103, title: '', app_name: 'Terminal', app: app(503, 'com.apple.Terminal'), frame_pt: { x: 1700, y: 120, w: 900, h: 600 }, display: '2', on_screen: true, layer: 0, z_index: 2 },
   { id: 104, title: 'Notes', app_name: 'Notes', app: app(504, 'com.apple.Notes'), frame_pt: { x: 2800, y: 80, w: 220, h: 900 }, display: '2', on_screen: true, layer: 0, z_index: 3 },
@@ -128,10 +128,10 @@ const capabilities: CapabilitiesDto = {
 
 const recovery: RecoveryReportDto[] =
   q.get('recovered') === '1'
-    ? [{ dir: '~/Movies/Simple Capture/Recording 2026-11-18 at 21.04.11.sc', outcome: 'recovered', segments: 2, dropped_segments: [], notes: [] }]
+    ? [{ dir: '~/Movies/simple-capture/Recording 2026-11-18 at 21.04.11.sc', outcome: 'recovered', segments: 2, dropped_segments: [], notes: [] }]
     : [];
 
-const PROJECT_DIR = '~/Movies/Simple Capture/Recording 2026-11-19 at 10.00.00.sc';
+const PROJECT_DIR = '~/Movies/simple-capture/Recording 2026-11-19 at 10.00.00.sc';
 const NS = 1_000_000_000;
 
 let recState: RecordingState = { state: 'idle' };
@@ -340,7 +340,7 @@ const handlers: Record<string, Handler> = {
 };
 
 const S = 1_000_000_000;
-const LIB_ROOT = '/Users/me/Movies/Simple Capture';
+const LIB_ROOT = '/Users/me/Movies/simple-capture';
 const libItem = (stamp: string, title: string, mins: number, mb: number, camera: boolean, state = 'finalized') => ({
   dir: `${LIB_ROOT}/${stamp} ${title}.sc`,
   title,
@@ -389,7 +389,7 @@ function mockApp(action: string, a: Record<string, unknown> = {}): unknown {
         os: 'macos',
         arch: 'aarch64',
         licenses: [
-          { title: 'Simple Capture', license: 'MIT', note: 'This app.', files: [{ name: 'LICENSE', path: '/LICENSE', html: false }] },
+          { title: 'simple-capture', license: 'MIT', note: 'This app.', files: [{ name: 'LICENSE', path: '/LICENSE', html: false }] },
         ],
       };
     case 'license_text':
@@ -485,7 +485,7 @@ function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
     const t = String(a.title ?? '').trim();
     if (!t) throw new Error('A recording needs a name.');
     editorTitle = t;
-    return '/Users/me/Movies/Simple Capture/2026-11-21 10.00.00 Recording.sc';
+    return '/Users/me/Movies/simple-capture/2026-11-21 10.00.00 Recording.sc';
   }
   if (action === 'export_options') {
     const ok = { best: true, fast: true };
@@ -498,7 +498,7 @@ function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
       recording_fps: 30,
       reference: { w: 3024, h: 1964 },
       ratio: [16, 9],
-      default_dir: '/Users/me/Movies/Simple Capture',
+      default_dir: '/Users/me/Movies/simple-capture',
     };
   }
   if (action === 'export_estimate') {
@@ -507,7 +507,7 @@ function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
       fps: 30,
       frames: 1710,
       duration_ns: 57 * S,
-      file: '/Users/me/Movies/Simple Capture/2026-11-21 10.00.00 Recording.mp4',
+      file: '/Users/me/Movies/simple-capture/2026-11-21 10.00.00 Recording.mp4',
       bytes_low: 48_000_000,
       bytes_high: 172_000_000,
       seconds: 26,
@@ -529,7 +529,7 @@ function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
   }
   if (action === 'state' || action === 'open') {
     return {
-      project_dir: '/Users/me/Movies/Simple Capture/2026-11-21 10.00.00 Recording.sc',
+      project_dir: '/Users/me/Movies/simple-capture/2026-11-21 10.00.00 Recording.sc',
       title: editorTitle,
       rec_len_ns: 75 * S,
       fps: 30,

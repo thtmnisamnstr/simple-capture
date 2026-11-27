@@ -1,6 +1,6 @@
 # Third-party notices
 
-Attribution for third-party code, recipes, designs and assets adapted into or committed to Simple Capture. The licensing policy, dependency enforcement and bundled helper programs (FFmpeg, gifski) are covered in docs/LICENSES.md; this file is the record of **what we took from whom**.
+Attribution for third-party code, recipes, designs and assets adapted into or committed to simple-capture. The licensing policy, dependency enforcement and bundled helper programs (FFmpeg, gifski) are covered in docs/LICENSES.md; this file is the record of **what we took from whom**.
 
 How to add an entry: append under the project's section (or add a new section) with the project, exact commit or version, license and copyright line, the file(s) it came from, and the file(s) in this repo it went into. Never remove an existing entry; mark it "removed" with a date if the code goes away.
 

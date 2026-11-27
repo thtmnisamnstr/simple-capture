@@ -1993,3 +1993,18 @@ they are not a substitute for an M1 run.
     helpers; for macOS it is the LGPL source offer About → Licenses links to.
   - Without `_setPreventsActivation:` in any build, the focus risk noted in ADR-057 applies to
     the DMG too (MANUAL_TEST AS7).
+
+## ADR-059: The product name is simple-capture
+
+- **Status:** Accepted (owner, 2026-11-27). Updates ADR-001's product name.
+- **Context:** The App Store Connect record is named `simple-capture`. One name across the App
+  Store, the DMG, Homebrew and the code avoids "which one is it".
+- **Decision:** The product name is `simple-capture` everywhere a person sees it: the bundle
+  (`simple-capture.app`), menus, window titles, About, permission prompts, installers
+  (`simple-capture_<version>_aarch64.dmg`, `.deb`, `.AppImage`, `-setup.exe`) and the recordings
+  folder (`Movies/simple-capture`, `Videos/simple-capture`). The bundle ID stays
+  `com.simplecapture.desktop`, so permissions and the sandbox container carry over. The dev host
+  (`Simple Capture Dev.app`) and the local signing certificate keep their names, since renaming
+  either resets permission grants.
+- **Consequences:** v0.1.0 was re-cut under the new name before anyone else installed it.
+  Recordings made earlier stay in `Movies/Simple Capture`; move them by hand.

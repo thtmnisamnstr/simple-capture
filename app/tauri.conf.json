@@ -1,5 +1,5 @@
 {
-  "productName": "Simple Capture",
+  "productName": "simple-capture",
   "version": "0.1.0",
   "identifier": "com.simplecapture.desktop",
   "build": {
@@ -11,7 +11,7 @@
       {
         "label": "panel",
         "url": "index.html#/panel",
-        "title": "Simple Capture",
+        "title": "simple-capture",
         "width": 380,
         "height": 620,
         "resizable": false,
@@ -21,7 +21,7 @@
       {
         "label": "onboarding",
         "url": "index.html#/onboarding",
-        "title": "Simple Capture Permissions",
+        "title": "simple-capture Permissions",
         "width": 520,
         "height": 420,
         "resizable": false,
@@ -32,7 +32,7 @@
       {
         "label": "bar",
         "url": "index.html#/bar",
-        "title": "Simple Capture Recording",
+        "title": "simple-capture Recording",
         "width": 520,
         "height": 56,
         "resizable": false,
@@ -60,7 +60,7 @@
       {
         "label": "traymenu",
         "url": "index.html#/traymenu",
-        "title": "Simple Capture",
+        "title": "simple-capture",
         "width": 240,
         "height": 152,
         "resizable": false,
@@ -125,7 +125,7 @@
       {
         "label": "editor",
         "url": "index.html#/editor",
-        "title": "Simple Capture Editor",
+        "title": "simple-capture Editor",
         "width": 1180,
         "height": 760,
         "minWidth": 820,
@@ -140,7 +140,7 @@
       {
         "label": "library",
         "url": "index.html#/library",
-        "title": "Simple Capture Library",
+        "title": "simple-capture Library",
         "width": 900,
         "height": 620,
         "minWidth": 620,
@@ -154,7 +154,7 @@
       {
         "label": "diagnostics",
         "url": "index.html#/diagnostics",
-        "title": "Simple Capture Diagnostics",
+        "title": "simple-capture Diagnostics",
         "width": 760,
         "height": 640,
         "minWidth": 560,
@@ -168,7 +168,7 @@
       {
         "label": "about",
         "url": "index.html#/about",
-        "title": "About Simple Capture",
+        "title": "About simple-capture",
         "width": 560,
         "height": 620,
         "minWidth": 480,

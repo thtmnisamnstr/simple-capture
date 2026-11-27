@@ -1,6 +1,6 @@
 # Licenses
 
-Status: M0 draft, 2026-11-19; M1 results added 2026-11-20 (§2, §10). This is the licensing policy for Simple Capture, how CI enforces it, and what every release must ship. Attribution for code or designs we adapt lives in docs/THIRD_PARTY.md; this file covers dependencies and bundled programs. It records engineering decisions, not legal advice.
+Status: M0 draft, 2026-11-19; M1 results added 2026-11-20 (§2, §10). This is the licensing policy for simple-capture, how CI enforces it, and what every release must ship. Attribution for code or designs we adapt lives in docs/THIRD_PARTY.md; this file covers dependencies and bundled programs. It records engineering decisions, not legal advice.
 
 Sources: S1-S4 are the M0 spikes (`spikes/01-helpers`, `02-preview-transport`, `03-macos-pipeline`, `04-skia-text`) and their quiet-machine verification passes; R-* are the notes in `docs/research/` (R-mit = cap-mit-crates.md, R-eco = ecosystem.md, R-kap = kap.md, R-rec = cap-recording.md). Each spike now has a REPORT.md (saved at M0 close-out). M1 facts cite the package that produced them as M1:<package> (for example M1:text = wp-text, M1:ci = wp-ci); the reports are not stored in the repo, and docs/STATUS.md §2 is the in-repo record of M1 results.
 
@@ -8,7 +8,7 @@ Sources: S1-S4 are the M0 spikes (`spikes/01-helpers`, `02-preview-transport`, `
 
 | What | Allowed licenses | How it ships |
 |---|---|---|
-| Simple Capture's own code | MIT | The app binary and CLI. |
+| simple-capture's own code | MIT | The app binary and CLI. |
 | Everything linked into the app binary (Rust crates, C/C++ libraries compiled into crates, the TypeScript UI bundle) | MIT, Apache-2.0, Apache-2.0 WITH LLVM-exception, BSD-2-Clause, BSD-3-Clause, ISC, Zlib, Unicode-3.0, CC0-1.0, plus MPL-2.0 only as a named per-crate exception | Statically or dynamically linked, no restrictions beyond notices. |
 | LGPL code | LGPL-2.1-or-later (or LGPL-3.0-or-later) | **Linux:** only dynamically linked, the FFmpeg `lgpl-shared` libraries for in-process decode and hardware recording encode. Ship the `.so` files unmodified as separate files so users can replace them. **macOS (the DMG and the Mac App Store alike):** the `sc-ffmpeg` and `sc-ffprobe` executables, whose whole program is LGPL-2.1-or-later with its full source published (§3.4); never linked into the app. |
 | GPL / AGPL code | GPL-2.0-or-later, GPL-3.0-or-later, AGPL-3.0-or-later | **Only as separate bundled executables** (Tauri sidecars) that we start as processes and talk to over pipes. Never linked into the app. Today, on Windows and Linux: `ffmpeg`, `ffprobe` and `gifski`, bundled as `sc-ffmpeg`, `sc-ffprobe` and `sc-gifski`. Never in any macOS build (§3.4, DECISIONS ADR-058). |

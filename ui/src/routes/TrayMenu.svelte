@@ -40,7 +40,7 @@
   });
 </script>
 
-<div class="menu" role="menu" aria-label="Simple Capture">
+<div class="menu" role="menu" aria-label="simple-capture">
   {#each items as it, i (it?.id ?? `sep${i}`)}
     {#if it}
       <button class="item" role="menuitem" onclick={() => choose(it.id)}>{it.label}</button>

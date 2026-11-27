@@ -18,7 +18,7 @@
 
   <text x="330" y="62" text-anchor="middle" fill="#ffffff"
         font-family="-apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif"
-        font-size="22" font-weight="600" letter-spacing="-0.2">Install Simple Capture</text>
+        font-size="22" font-weight="600" letter-spacing="-0.2">Install simple-capture</text>
   <text x="330" y="88" text-anchor="middle" fill="#ffffff" fill-opacity="0.82"
         font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif"
         font-size="13.5">Drag the app onto the Applications folder.</text>

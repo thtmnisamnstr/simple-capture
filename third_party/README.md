@@ -1,6 +1,6 @@
 # third_party: bundled export helpers
 
-Simple Capture ships its export helpers as **separate executables** (Tauri sidecars), never
+simple-capture ships its export helpers as **separate executables** (Tauri sidecars), never
 linked into the MIT app binary. Every macOS build (the DMG and the Mac App Store edition, which
 are the same app) ships an LGPL FFmpeg and ffprobe without x264 and x265 (H.264 and HEVC come
 from VideoToolbox) and no gifski. Windows and Linux ship a GPL FFmpeg and ffprobe and the AGPL

@@ -79,7 +79,7 @@ The cask lives in its own tap, `thtmnisamnstr/homebrew-simple-capture` (`Casks/s
 latest published release and updates the cask's version and SHA-256, so a release reaches
 Homebrew within about an hour of Publish. To do it now:
 `gh workflow run bump.yml -R thtmnisamnstr/homebrew-simple-capture`. The cask's URL uses the DMG's
-release name (`Simple.Capture_<version>_aarch64.dmg`), so keep that name. One-time: the tap
+release name (`simple-capture_<version>_aarch64.dmg`), so keep that name. One-time: the tap
 repository (`Casks/simple-capture.rb`, `bump.yml`, `tests.yml`) is created right after v0.1.0
 is published, because a draft's files can't be downloaded; the `brew` command works from then
 on.
@@ -131,7 +131,7 @@ go into the repository or a chat.
    | Field | Value |
    |---|---|
    | Platforms | macOS |
-   | Name | Simple Capture |
+   | Name | simple-capture |
    | Primary Language | English (U.S.) |
    | Bundle ID | com.simplecapture.desktop (registered by step 4) |
    | SKU | simple-capture-mac |
@@ -242,7 +242,7 @@ the license set and the package). The `.pkg` path is the last line it prints; th
 `target/skia/release/bundle/mas`. Signed like CI, it needs `SC_MAS_PROFILE` and both
 identities in the keychain; the header of `scripts/mas-build.sh` lists its other variables. It
 shares `target/skia` with `scripts/local-bundle.sh`: while it builds, it moves that script's
-Developer ID app (`release/bundle/macos/Simple Capture.app`) into
+Developer ID app (`release/bundle/macos/simple-capture.app`) into
 `target/skia/release/.mas-build-stash`, and puts it back when it ends, also when it fails. If a
 run is killed, it stays in that folder and the next run refuses to start: move it back into
 `target/skia/release/bundle/macos`, or delete the folder.
@@ -257,7 +257,7 @@ run is killed, it stays in that folder and the next run refuses to start: move i
 3. Tag `main` (`git tag v0.1.0 && git push origin v0.1.0`). The package workflow checks the tag
    against the version, builds every installer and the helpers' source archive, and creates a
    **draft** GitHub release. Asset names are the ones GitHub would give them, with spaces and
-   other special characters turned into `.` (the DMG is `Simple.Capture_<version>_aarch64.dmg`).
+   other special characters turned into `.` (the DMG is `simple-capture_<version>_aarch64.dmg`).
    `SHA256SUMS.txt` lists every asset, and each has a build provenance attestation:
    `gh attestation verify <file> --repo thtmnisamnstr/simple-capture`.
 4. Check the draft's files, then press Publish.

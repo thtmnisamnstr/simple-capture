@@ -1,13 +1,13 @@
-Simple Capture records your screen, your camera and your voice, lets you tidy up the take in a light editor, and exports a file that is ready to send. There is no account, and Simple Capture makes no network connections: what you record stays on your Mac.
+simple-capture records your screen, your camera and your voice, lets you tidy up the take in a light editor, and exports a file that is ready to send. There is no account, and simple-capture makes no network connections: what you record stays on your Mac.
 
 RECORD
 • A display, a window, every window of one app, a region you draw, or only your camera.
 • An iPhone or iPad connected by cable, with its screen and its sound.
 • An optional camera overlay: circle, square, rectangle or rounded rectangle, with mirror, border and shadow. Place, size and zoom it in the live Preview window, which shows exactly what the video will look like.
-• Your microphone and system audio: everything you hear, or only the app you are recording. Simple Capture never records its own sounds.
+• Your microphone and system audio: everything you hear, or only the app you are recording. simple-capture never records its own sounds.
 • Frame shapes for anywhere you post: original, 16:9, 4:3, 1:1, 4:5 and 9:16, with a solid, gradient or image background, and Fit or Fill.
 • 30 or 60 fps at Retina or 1× resolution, the cursor with optional click highlights, and a countdown.
-• Switch to another source while recording, pause and resume, or restart the take. A small control bar, the menu bar and global keyboard shortcuts keep the controls at hand, and none of Simple Capture's own windows appear in the video.
+• Switch to another source while recording, pause and resume, or restart the take. A small control bar, the menu bar and global keyboard shortcuts keep the controls at hand, and none of simple-capture's own windows appear in the video.
 • Every source is saved to its own crash-safe track. If the app is force-quit or crashes, you lose about a second at most, and the next launch recovers the recording.
 
 EDIT
@@ -36,7 +36,7 @@ LIBRARY
 PRIVATE BY DESIGN
 • No account, no sign-in, no ads and no analytics, and the app makes no network connections.
 • Waveforms, silence detection and encoding all happen on your Mac.
-• Recordings are saved in Movies/Simple Capture on your Mac.
+• Recordings are saved in Movies/simple-capture on your Mac.
 • macOS asks for Screen Recording, Camera and Microphone access only when you press Allow, and only for what you use.
 
-Simple Capture is open source under the MIT license. It requires macOS 14 or later on a Mac with Apple silicon.
+simple-capture is open source under the MIT license. It requires macOS 14 or later on a Mac with Apple silicon.

@@ -42,7 +42,7 @@ mod linux {
         assert!(
             p.default_projects_dir()
                 .expect("dir")
-                .ends_with("Simple Capture")
+                .ends_with("simple-capture")
         );
         assert!(p.free_disk_bytes(Path::new(".")).expect("disk") > 0);
         let (a, b) = (p.host_now(), p.host_now());

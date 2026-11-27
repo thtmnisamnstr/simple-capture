@@ -11,8 +11,8 @@ test('reveal label follows the host OS', () => {
 
 test('library posters and dates', async () => {
   const { posterUrl, whenLabel, folderName } = await import('../src/lib/appinfo.ts');
-  assert.equal(posterUrl('/Users/x/Movies/Simple Capture/2026-11-21 10.47.00 Recording.sc', 'Macintosh'), 'sc://poster/2026-11-21%2010.47.00%20Recording.sc.png');
-  assert.equal(posterUrl('C:\\Videos\\Simple Capture\\a.sc', 'Windows NT'), 'http://sc.localhost/poster/a.sc.png');
+  assert.equal(posterUrl('/Users/x/Movies/simple-capture/2026-11-21 10.47.00 Recording.sc', 'Macintosh'), 'sc://poster/2026-11-21%2010.47.00%20Recording.sc.png');
+  assert.equal(posterUrl('C:\\Videos\\simple-capture\\a.sc', 'Windows NT'), 'http://sc.localhost/poster/a.sc.png');
   assert.equal(folderName('/a/b/c.sc/'), 'c.sc');
   const now = new Date(2026, 10, 21, 12, 0);
   assert.match(whenLabel(new Date(2026, 10, 21, 9, 5).toISOString(), now), /^Today /);

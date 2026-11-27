@@ -1,6 +1,6 @@
 [package]
 name = "simple-capture-app"
-description = "Simple Capture desktop app (Tauri 2 shell)"
+description = "simple-capture desktop app (Tauri 2 shell)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

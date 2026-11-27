@@ -14,10 +14,10 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         |id: &str, text: &str, keys: Option<&str>| MenuItem::with_id(app, id, text, true, keys);
     let app_menu = Submenu::with_items(
         app,
-        "Simple Capture",
+        "simple-capture",
         true,
         &[
-            &item("app:about", "About Simple Capture", None)?,
+            &item("app:about", "About simple-capture", None)?,
             &sep()?,
             &item("app:recorder", "Recorder…", Some("CmdOrCtrl+,"))?,
             &item("app:library", "Library", Some("CmdOrCtrl+L"))?,

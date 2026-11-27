@@ -1,13 +1,13 @@
-# Simple Capture Privacy Policy
+# simple-capture Privacy Policy
 
 Effective date: November 25, 2026
 
-Simple Capture is a screen recorder and editor. This policy covers every copy of the app: the
+simple-capture is a screen recorder and editor. This policy covers every copy of the app: the
 one on the Mac App Store and the builds published on GitHub (and installed through Homebrew).
 
 ## In short
 
-Simple Capture collects no data. It has no account, no ads, no analytics and no tracking, and it
+simple-capture collects no data. It has no account, no ads, no analytics and no tracking, and it
 makes no network connections, so nothing you record or do in the app is sent to the developer or
 to anyone else. Your recordings stay on your computer.
 
@@ -18,9 +18,9 @@ personal information from the app, and does not sell or share any data.
 
 ## What stays on your computer
 
-Simple Capture saves these files on your computer, and only there:
+simple-capture saves these files on your computer, and only there:
 
-- **Recordings.** Each recording is a folder in `Movies/Simple Capture` (`Videos/Simple Capture`
+- **Recordings.** Each recording is a folder in `Movies/simple-capture` (`Videos/simple-capture`
   on Windows and Linux) with the recorded tracks, a project file, thumbnails and a log of that
   recording.
 - **Exports.** Saved next to the recordings, or in a folder you choose.
@@ -41,7 +41,7 @@ never sent anywhere by the app.
 
 ## Permissions and why they are used
 
-macOS asks for each permission only when you press Allow in Simple Capture, and only for what
+macOS asks for each permission only when you press Allow in simple-capture, and only for what
 you use:
 
 - **Screen Recording**: to list your windows and apps, and to record the screen and system
@@ -58,7 +58,7 @@ System Settings → Privacy & Security.
 
 ## Network
 
-Simple Capture makes no network connections. The FFmpeg helpers bundled with it are built with
+simple-capture makes no network connections. The FFmpeg helpers bundled with it are built with
 network support turned off. The app does not check for updates itself; the Mac App Store or
 Homebrew handles updates when you install it that way.
 
@@ -68,11 +68,11 @@ files inside the app. The app never uses it to connect anywhere.
 
 ## Apple
 
-When you get Simple Capture from the Mac App Store, Apple handles the download under Apple's
+When you get simple-capture from the Mac App Store, Apple handles the download under Apple's
 own privacy policy. The developer sees only the anonymous, aggregate reports that Apple gives
 every developer. If you have chosen to share analytics with app developers in System Settings →
 Privacy & Security → Analytics & Improvements, Apple may also share anonymous crash reports and
-usage data for Simple Capture with the developer. You control that setting.
+usage data for simple-capture with the developer. You control that setting.
 
 ## Sharing your recordings
 
@@ -81,12 +81,12 @@ export to an email or a chat. The service you send it with handles it under its 
 
 ## Children
 
-Simple Capture collects no data from anyone, including children.
+simple-capture collects no data from anyone, including children.
 
 ## Deleting your data
 
-Move recordings to the Trash from the Library, or delete the `Movies/Simple Capture` folder
-(`Videos/Simple Capture` on Windows and Linux). To remove everything, also delete the settings
+Move recordings to the Trash from the Library, or delete the `Movies/simple-capture` folder
+(`Videos/simple-capture` on Windows and Linux). To remove everything, also delete the settings
 and logs folder listed above for your system, and the app itself.
 
 ## Changes

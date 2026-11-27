@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.1.0 (2026-11-25)
+## 0.1.0 (2026-11-27)
 
-The first release of Simple Capture: a screen recorder and editor for macOS, Windows and Linux
+The first release of simple-capture: a screen recorder and editor for macOS, Windows and Linux
 with no account and no network connections.
 
 ### Record
@@ -15,7 +15,7 @@ with no account and no network connections.
   4:5 and 9:16 with a solid, gradient or image background, and Fit or Fill per section.
 - A countdown before the take, which Escape, Cancel or the record shortcut cancels. Image
   backgrounds show in the live previews too.
-- The recorder opens by itself on the first launch, and when Simple Capture is opened again
+- The recorder opens by itself on the first launch, and when simple-capture is opened again
   from Finder or Launchpad.
 
 ### Edit
@@ -48,7 +48,7 @@ with no account and no network connections.
 - Windows: one NSIS setup `.exe`, a per-user install, and no console window. Linux: `.deb` and
   `.AppImage`; the `.deb` installs its helpers as `sc-ffmpeg`, `sc-ffprobe` and `sc-gifski`, so
   they never clash with the system's.
-- Simple Capture checks permissions without asking; macOS asks only when you press Allow.
+- simple-capture checks permissions without asking; macOS asks only when you press Allow.
 
 ### Library and diagnostics
 - A library of every recording with posters, Edit, Export, Show, Move to Trash, and what was

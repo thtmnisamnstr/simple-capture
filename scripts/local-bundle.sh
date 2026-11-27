@@ -17,7 +17,7 @@ scripts/stage-helpers.sh >/dev/null
 pnpm --dir ui build >/dev/null
 (cd app && nice -n 19 ../ui/node_modules/.bin/tauri build --config tauri.bundle.conf.json \
   --config tauri.bundle.macos.conf.json --bundles app -- --locked -j 4)
-APP="$CARGO_TARGET_DIR/release/bundle/macos/Simple Capture.app"
+APP="$CARGO_TARGET_DIR/release/bundle/macos/simple-capture.app"
 
 devid=0
 if security find-identity -v -p codesigning | grep -q '"Developer ID Application: '; then
@@ -34,7 +34,7 @@ echo "$APP"
 
 if [ "${1:-}" = --dmg ]; then
   VERSION=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' app/tauri.conf.json)
-  DMG="$CARGO_TARGET_DIR/release/bundle/dmg/Simple Capture_${VERSION}_aarch64.dmg"
+  DMG="$CARGO_TARGET_DIR/release/bundle/dmg/simple-capture_${VERSION}_aarch64.dmg"
   mkdir -p "$(dirname "$DMG")"
   scripts/make-dmg.sh "$APP" "$DMG"
   [ $devid = 0 ] || scripts/macos-sign.sh "$DMG"

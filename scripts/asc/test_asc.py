@@ -292,7 +292,7 @@ class Helpers(unittest.TestCase):
 class Listing(Tmp):
     def listing(self):
         files = {
-            "name": "Simple Capture", "subtitle": "Screen Recorder and Editor",
+            "name": "simple-capture", "subtitle": "Screen Recorder and Editor",
             "description": "Records.\n\nEdits.", "keywords": "screen,record",
             "promotional_text": "Promo",
             "support_url": "https://example.com/support",
@@ -322,7 +322,7 @@ class MetadataTests(Listing):
         self.listing()
         meta = asc.load_metadata(self.tmp)
         self.assertEqual(meta.locales["en-US"]["info"], {
-            "name": "Simple Capture", "subtitle": "Screen Recorder and Editor",
+            "name": "simple-capture", "subtitle": "Screen Recorder and Editor",
             "privacyPolicyUrl": "https://example.com/p"})
         self.assertEqual(meta.locales["en-US"]["version"]["description"], "Records.\n\nEdits.")
         self.assertNotIn("whatsNew", meta.locales["en-US"]["version"])
@@ -1045,7 +1045,7 @@ class Signing(Stateful):
 
 class Upload(Stateful):
     def upload(self, *results, helptext="--upload-package --api-key --api-issuer"):
-        pkg = self.write("Simple Capture.pkg", b"pkg")
+        pkg = self.write("simple-capture.pkg", b"pkg")
         runs = []
         queue = list(results)
 

@@ -144,7 +144,7 @@ fn helpers(r: &mut Report) -> Option<PathBuf> {
 
 fn machine(r: &mut Report, p: &dyn Platform) {
     r.line(format!(
-        "Simple Capture {} on {} {} ({})",
+        "simple-capture {} on {} {} ({})",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::OS,
         std::env::consts::ARCH,

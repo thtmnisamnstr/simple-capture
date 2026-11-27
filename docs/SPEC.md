@@ -1,4 +1,4 @@
-# Build "Simple Capture": a local-only screen recorder with a light editor for macOS, Windows, and Linux
+# Build "simple-capture": a local-only screen recorder with a light editor for macOS, Windows, and Linux
 
 Repo: simple-capture. Save this prompt as docs/SPEC.md and treat it as the source of truth. Update it whenever a decision changes.
 
@@ -14,13 +14,13 @@ I'll test mostly on macOS (Apple Silicon), so macOS is first-class. Windows and 
 
 ## Non-negotiables
 - 100% local: no accounts, uploads, telemetry, analytics, update checks, or network requests.
-- Simple Capture's own code is MIT-licensed. GPL/AGPL encoders are allowed only as separate bundled programs (see "Licensing").
+- simple-capture's own code is MIT-licensed. GPL/AGPL encoders are allowed only as separate bundled programs (see "Licensing").
 - Simple flow: recorder panel → record → editor → export. One main track (the recording) plus one text track; no transitions or effects library.
 - Reliability first: never lose a recording.
 - Best tool for each job: use each OS's own media frameworks where they're strongest, the best-quality encoders for export, and FFmpeg only where it's genuinely the best option.
 - Runs smoothly on Apple Silicon, including a base M1 with 8 GB of RAM, and reasonably well on mid-range Windows/Linux laptops.
 - Minimum OS: macOS 14; Windows 10 2004+ (some features need Windows 11); Linux with PipeWire + xdg-desktop-portal (GNOME or KDE, Wayland or X11).
-- Names: product "Simple Capture"; repo and crate prefix simple-capture; CLI simple-capture; app identifier com.simplecapture.desktop (decided 2026-11-19, ADR-001; reverse-DNS, not ending in .app). Dev builds that need permissions use com.simplecapture.dev (Platform notes).
+- Names: product "simple-capture"; repo and crate prefix simple-capture; CLI simple-capture; app identifier com.simplecapture.desktop (decided 2026-11-19, ADR-001; reverse-DNS, not ending in .app). Dev builds that need permissions use com.simplecapture.dev (Platform notes).
 
 ## Primary references: Cap and Kap
 - Cap (CapSoftware/Cap) is the closest existing design to what we're building. It uses:
@@ -90,7 +90,7 @@ These are the defaults. Validate them with the M0 spikes (small throwaway protot
 - Options: 30 fps (default) or 60; native/Retina resolution (default) or 1×; show cursor (on by default); optional click highlight.
 - Output aspect ratio (added 2026-11-19): Original (default), 16:9, 4:3, 1:1, or 9:16 (TikTok). Chosen in the recorder panel before recording and changeable later in the editor. The captured source (window, display, region, application, or anything else) is fit whole inside the chosen frame, and the letterboxed area is filled with a selectable background: a solid color, a gradient, or an image. The recorded files are never altered; the framing is applied by the compositor in the preview and in every export. An application source is captured as the area its windows cover, not the whole display: the union of the app's on-screen windows on that display when the segment starts (ADR-039). Windows moved or opened outside that area later are clipped; switching to the source again, or picking it again, re-crops; an app with no windows there records the whole display.
 - Switch source while recording (added 2026-11-19): during a recording, the user can pick a new window, the full screen, a region, or another source (floating bar button and a hotkey), and the recording continues from the new source without stopping. One recording can show several windows in turn. Audio and camera keep recording without a gap; each source span is fit into the same output frame.
-- Simple Capture's own UI (camera bubble, control bar, countdown, region border) must never appear in recordings:
+- simple-capture's own UI (camera bubble, control bar, countdown, region border) must never appear in recordings:
   - macOS: exclude it with SCContentFilter.
   - Windows: SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE).
   - Linux: portals can't exclude windows, so auto-hide any overlay that overlaps the captured area while recording, and keep the controls in the tray and hotkeys.
@@ -184,7 +184,7 @@ Opens automatically after recording. It must stay light and fast.
 - Output folder and filename template; progress with Cancel; then Reveal / Copy file / Open. Remember the last settings per format and support named presets.
 
 ### Library and safety
-- Each recording is a project folder (raw tracks + project.json + thumbnails) under Movies/Simple Capture (Videos on Windows/Linux). A Library window lists them (thumbnail, date, duration, size) with Edit, Export, Reveal, and Delete.
+- Each recording is a project folder (raw tracks + project.json + thumbnails) under Movies/simple-capture (Videos on Windows/Linux). A Library window lists them (thumbnail, date, duration, size) with Edit, Export, Reveal, and Delete.
 - Crash recovery on launch, a low-disk-space guard, and an optional "delete raw files after export" (off by default).
 - Per-OS onboarding for screen, camera, and mic permissions.
 - A Diagnostics page and a "simple-capture --self-test" CLI command. The self-test:

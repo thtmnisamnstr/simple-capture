@@ -88,7 +88,7 @@ Next steps (App Store Connect, https://appstoreconnect.apple.com):
 EOF
 if [ "$rc" = 3 ]; then
   cat <<'EOF'
-  * Apps > + > New App: platform macOS, name Simple Capture, primary language English (U.S.),
+  * Apps > + > New App: platform macOS, name simple-capture, primary language English (U.S.),
     bundle ID com.simplecapture.desktop, SKU simple-capture-mac. Then run this script again:
     it keeps the certificates and adds ASC_APP_ID.
 EOF

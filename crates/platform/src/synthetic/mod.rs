@@ -551,7 +551,7 @@ impl Platform for SyntheticPlatform {
         Ok(self.hub.0.free_disk_bytes())
     }
     fn default_projects_dir(&self) -> Result<PathBuf> {
-        Ok(std::env::temp_dir().join("Simple Capture synthetic"))
+        Ok(std::env::temp_dir().join("simple-capture synthetic"))
     }
     fn permission_host(&self) -> Option<String> {
         None

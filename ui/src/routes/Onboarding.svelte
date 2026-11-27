@@ -111,7 +111,7 @@
     <span class="app-tile"><Icon name="lock" size={22} /></span>
     <div>
       <h1>Permissions</h1>
-      <p class="caption">macOS asks once for each. Simple Capture checks without asking, and only asks when you press Allow.</p>
+      <p class="caption">macOS asks once for each. simple-capture checks without asking, and only asks when you press Allow.</p>
     </div>
   </header>
 
@@ -128,7 +128,7 @@
           <p class="caption">{row.why}</p>
           {#if row.kind === 'screen' && screenAsked && status !== 'granted'}
             <p class="caption next">
-              In System Settings → Screen Recording, switch on <strong>Simple Capture</strong>. macOS then asks to quit and reopen it;
+              In System Settings → Screen Recording, switch on <strong>simple-capture</strong>. macOS then asks to quit and reopen it;
               choose Quit &amp; Reopen.
             </p>
           {/if}
@@ -152,12 +152,12 @@
     <summary>Why macOS may ask again</summary>
     <div class="more caption">
       <p>
-        This build of Simple Capture is signed ad hoc, so macOS treats every update as a new app and asks for Screen Recording,
-        Camera and Microphone again. If a permission looks stuck, remove Simple Capture from the list in System Settings and allow it
+        This build of simple-capture is signed ad hoc, so macOS treats every update as a new app and asks for Screen Recording,
+        Camera and Microphone again. If a permission looks stuck, remove simple-capture from the list in System Settings and allow it
         again.
       </p>
       <p>
-        On macOS 15 and later, macOS may also remind you from time to time that Simple Capture can see your screen, or ask to let it
+        On macOS 15 and later, macOS may also remind you from time to time that simple-capture can see your screen, or ask to let it
         bypass the private window picker. The <strong>System Picker</strong> source avoids that: macOS shows its own chooser, and what
         you pick there counts as your consent for that recording.
       </p>

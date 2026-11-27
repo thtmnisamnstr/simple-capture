@@ -45,7 +45,7 @@ import urllib.request
 API = "https://api.appstoreconnect.apple.com"
 USER_AGENT = "simple-capture-asc/1"
 BUNDLE_ID = "com.simplecapture.desktop"
-APP_NAME = "Simple Capture"
+APP_NAME = "simple-capture"
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TOKEN_TTL = 1140
 TOKEN_BACKDATE = 15
@@ -1777,7 +1777,7 @@ def build_parser():
     replace.add_argument("--replace-waiting", action="store_true",
                          help="cancel a submission waiting for review to attach this build")
 
-    p = argparse.ArgumentParser(description="App Store Connect automation for Simple Capture.")
+    p = argparse.ArgumentParser(description="App Store Connect automation for simple-capture.")
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("setup", parents=[common],
                        help="bundle ID, certificates, profile and GitHub secrets (owner, once)")

@@ -70,7 +70,7 @@ pub fn default_projects_dir() -> Result<PathBuf> {
         CoTaskMemFree(Some(p.0 as *const _));
         s.map_err(|e| Error::Other(format!("Videos folder: {e}")))?
     };
-    Ok(PathBuf::from(videos).join("Simple Capture"))
+    Ok(PathBuf::from(videos).join("simple-capture"))
 }
 
 fn consent(key: &str) -> Option<String> {

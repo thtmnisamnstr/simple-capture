@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes how Simple Capture is built, and it is the build reference for M1 (macOS
+This document describes how simple-capture is built, and it is the build reference for M1 (macOS
 recording). It is the M0 plan (research notes plus spikes, measured on macOS only) updated with the
 decisions of 2026-11-19: the output canvas (ADR-033), the screen track as segments with source
 switching (ADR-034), the separate system-audio stream (ADR-035), webview-frame preview everywhere
@@ -407,7 +407,7 @@ Folder naming follows ADR-032 (accepted; whether to keep the `.sc` suffix and wh
 a macOS package are still owner questions, §14).
 
 ```
-Movies/Simple Capture/<YYYY-MM-DD HH.MM.SS> <title>.sc/
+Movies/simple-capture/<YYYY-MM-DD HH.MM.SS> <title>.sc/
   project.json          schema-versioned document (atomic writes)
   journal.jsonl         append-only recording events (fsync'd), folded into project.json on stop
   cursor.jsonl          cursor positions + clicks, per segment (for the optional click highlight)

@@ -294,8 +294,8 @@
       <h2 id="rec-h">{r.state === 'damaged' ? `“${r.title}” is damaged` : `“${r.title}” was recovered`}</h2>
       <p class="caption">
         {r.state === 'damaged'
-          ? 'Simple Capture stopped unexpectedly during this recording, and some of it could not be read. What could be read is kept, and you can still edit and export it.'
-          : 'Simple Capture stopped unexpectedly during this recording. It was rebuilt from what was saved; at most the last second or so is missing.'}
+          ? 'simple-capture stopped unexpectedly during this recording, and some of it could not be read. What could be read is kept, and you can still edit and export it.'
+          : 'simple-capture stopped unexpectedly during this recording. It was rebuilt from what was saved; at most the last second or so is missing.'}
       </p>
       {#if r.recovery?.dropped?.length}
         <h3>Left out</h3>

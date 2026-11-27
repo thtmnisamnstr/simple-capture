@@ -62,7 +62,7 @@
     <header class="hero">
       <span class="logo"><Logo size={52} /></span>
       <div>
-        <h1>Simple Capture</h1>
+        <h1>simple-capture</h1>
         <p class="caption tnum">
           Version {info?.version ?? '…'}{info ? ` · ${OS[info.os] ?? info.os} ${info.arch}` : ''}
         </p>

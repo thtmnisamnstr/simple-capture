@@ -275,7 +275,7 @@ impl Platform for LinuxPlatform {
     }
 
     fn default_projects_dir(&self) -> Result<PathBuf> {
-        Ok(sys::videos_dir().join("Simple Capture"))
+        Ok(sys::videos_dir().join("simple-capture"))
     }
 
     fn permission_host(&self) -> Option<String> {

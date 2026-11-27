@@ -692,7 +692,7 @@ if basic("18-diagnostics", log):
     about = [s["result"] for s in steps(log, 'cmd app {"action":"about"}')]
     lic = (about[0] or {}).get("licenses", []) if about else []
     check("18-diagnostics", "About lists the app, helpers, fonts and libraries",
-          len(lic) >= 5 and any(e.get("files") for e in lic if e.get("title") == "Simple Capture"),
+          len(lic) >= 5 and any(e.get("files") for e in lic if e.get("title") == "simple-capture"),
           [(e.get("title"), len(e.get("files", []))) for e in lic])
     rep = d.get("report")
     if rep:

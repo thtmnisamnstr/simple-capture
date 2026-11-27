@@ -258,7 +258,7 @@ pub trait Platform: Send + Sync {
     /// Devices, sleep/wake, own menus.
     fn watch_system(&self, sink: Arc<dyn FrameSink>) -> Result<Box<dyn DeviceStream>>;
     fn free_disk_bytes(&self, path: &Path) -> Result<u64>;
-    /// Movies/Simple Capture.
+    /// Movies/simple-capture.
     fn default_projects_dir(&self) -> Result<PathBuf>;
     /// `"com.simplecapture.dev"` when SC_DEV_HOST=1.
     fn permission_host(&self) -> Option<String>;

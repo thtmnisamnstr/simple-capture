@@ -3,7 +3,7 @@
 # Env: JOBS (default: all cores), MACOS_MIN (default 14.0), CLEAN=1 to rebuild every library,
 #      SC_FFMPEG_LICENSE=lgpl (default) or gpl.
 #
-# Static FFmpeg export helper for Simple Capture, never nonfree. lgpl (every macOS build: the DMG
+# Static FFmpeg export helper for simple-capture, never nonfree. lgpl (every macOS build: the DMG
 # and the Mac App Store edition): LGPL-2.1-or-later without x264 and x265 (never built; H.264 and
 # HEVC come from VideoToolbox), into out/macos-<arch>. gpl (local experiments only, never
 # shipped): the same feature set plus x264 and x265, GPL-2.0-or-later, into out/macos-<arch>-gpl.

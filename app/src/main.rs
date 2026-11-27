@@ -1,5 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-//! Simple Capture desktop app: Tauri 2 shell (M1 plan §5.2–§5.4).
+//! simple-capture desktop app: Tauri 2 shell (M1 plan §5.2–§5.4).
 
 mod about;
 #[cfg(target_os = "macos")]
@@ -122,7 +122,7 @@ fn projects_dir(p: &dyn Platform) -> PathBuf {
     }
     p.default_projects_dir().unwrap_or_else(|e| {
         tracing::warn!("default projects folder: {e}");
-        std::env::temp_dir().join("Simple Capture")
+        std::env::temp_dir().join("simple-capture")
     })
 }
 

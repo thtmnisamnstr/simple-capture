@@ -106,4 +106,4 @@ Then the features added after M7 (§10c E18–E25, §10f R12–R17, §10g Y9–Y
 
 A short report with: the OS and GPU, which path section 4 found, each failing step with what
 happened, the last 200 lines of the log after any failure, and the CPU numbers from BT6. Delete
-the test recordings afterwards (they are in Videos/Simple Capture or ~/Videos/Simple Capture).
+the test recordings afterwards (they are in Videos/simple-capture or ~/Videos/simple-capture).

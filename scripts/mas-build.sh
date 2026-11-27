@@ -64,7 +64,7 @@ cd "$(dirname "$0")/.."
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$PWD/target/skia}"
 REL="$CARGO_TARGET_DIR/release"
 OUT="$REL/bundle/mas"
-APP="$OUT/Simple Capture.app"
+APP="$OUT/simple-capture.app"
 
 if [ "$adhoc" = 1 ]; then
   SIGNER=-
@@ -81,7 +81,7 @@ else
 fi
 
 STASH="$REL/.mas-build-stash"
-SHARED=("bundle/macos/Simple Capture.app")
+SHARED=("bundle/macos/simple-capture.app")
 absent=()
 restore_shared() {
   local p
@@ -133,7 +133,7 @@ PY
     --bundles app -- --locked -j "${SC_MAS_JOBS:-4}")
   rm -rf "$APP"
   mkdir -p "$OUT"
-  mv "$REL/bundle/macos/Simple Capture.app" "$APP"
+  mv "$REL/bundle/macos/simple-capture.app" "$APP"
 else
   if ! [ "$src_app" -ef "$APP" ]; then
     rm -rf "$APP"
@@ -148,7 +148,7 @@ SC_SIGN_IDENTITY=$SIGNER SC_ENTITLEMENTS=app/macos/entitlements.appstore.plist S
   scripts/macos-sign.sh "$APP" >&2
 
 VERSION=$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")
-PKG="$OUT/Simple Capture_${VERSION}_mas.pkg"
+PKG="$OUT/simple-capture_${VERSION}_mas.pkg"
 rm -f "$PKG"
 pkgsign=()
 [ "$adhoc" = 1 ] || pkgsign=(--sign "$INSTALLER_IDENTITY")

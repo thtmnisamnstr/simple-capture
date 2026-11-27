@@ -9,7 +9,7 @@ fn main() {
         std::fs::create_dir_all(&dist).expect("create ui/dist");
         std::fs::write(
             &index,
-            "<!doctype html><meta charset=\"utf-8\"><title>Simple Capture</title>\
+            "<!doctype html><meta charset=\"utf-8\"><title>simple-capture</title>\
              <p>UI not built: run <code>just build</code>.</p>\n",
         )
         .expect("write placeholder ui/dist/index.html");

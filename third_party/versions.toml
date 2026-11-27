@@ -1,4 +1,4 @@
-# Pinned sources for the bundled export helpers (Simple Capture).
+# Pinned sources for the bundled export helpers (simple-capture).
 #
 # Every artifact here is downloaded at build time only, into third_party/build/downloads,
 # and is rejected unless its SHA-256 matches. `third_party/fetch.sh` is the only reader.

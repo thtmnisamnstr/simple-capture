@@ -120,12 +120,12 @@ pub fn free_disk_bytes(path: &Path) -> Result<u64> {
     Ok(u64::from(st.f_bavail) * st.f_frsize)
 }
 
-/// `~/Movies/Simple Capture` (not created here), under the real home folder rather than the
+/// `~/Movies/simple-capture` (not created here), under the real home folder rather than the
 /// sandbox container that `$HOME` names.
 pub fn default_projects_dir() -> Result<PathBuf> {
     Ok(crate::workspace::real_home()?
         .join("Movies")
-        .join("Simple Capture"))
+        .join("simple-capture"))
 }
 
 pub fn local_now() -> LocalDateTime {
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn projects_dir_is_under_movies() {
         let d = default_projects_dir().expect("HOME");
-        assert!(d.ends_with("Movies/Simple Capture"), "{}", d.display());
+        assert!(d.ends_with("Movies/simple-capture"), "{}", d.display());
     }
 
     #[test]

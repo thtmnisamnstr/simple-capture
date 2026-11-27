@@ -1,6 +1,6 @@
 # Mac App Store listing
 
-The App Store Connect metadata for the Mac App Store build of Simple Capture (bundle ID
+The App Store Connect metadata for the Mac App Store build of simple-capture (bundle ID
 `com.simplecapture.desktop`, platform `MAC_OS`). The app-store workflow sends these files
 through the App Store Connect API (`scripts/asc/asc.py prepare`) on every run, so an edit made
 in App Store Connect is overwritten by the next run. Edit them here, so the listing stays under

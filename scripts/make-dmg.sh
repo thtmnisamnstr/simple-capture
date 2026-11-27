@@ -14,4 +14,4 @@ fi
 rm -f "$OUT"
 "$VENV/bin/dmgbuild" -s app/macos/dmg-settings.py \
   -D app="$APP" -D background="$PWD/assets/brand/dmg-background.tiff" \
-  "Simple Capture" "$OUT"
+  "simple-capture" "$OUT"

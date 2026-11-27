@@ -230,7 +230,7 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          app="$CARGO_TARGET_DIR/release/bundle/macos/Simple Capture.app"
+          app="$CARGO_TARGET_DIR/release/bundle/macos/simple-capture.app"
           if [ "$DEVID" = true ]; then
             scripts/macos-sign.sh "$app"
             scripts/mas-check.sh --dmg "$app"
@@ -240,7 +240,7 @@ jobs:
           fi
           version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' app/tauri.conf.json)
           mkdir -p "$CARGO_TARGET_DIR/release/bundle/dmg"
-          dmg="$CARGO_TARGET_DIR/release/bundle/dmg/Simple Capture_${version}_aarch64.dmg"
+          dmg="$CARGO_TARGET_DIR/release/bundle/dmg/simple-capture_${version}_aarch64.dmg"
           scripts/make-dmg.sh "$app" "$dmg"
           if [ "$DEVID" = true ]; then scripts/macos-sign.sh "$dmg"; fi
       - name: Remove the signing keychain
@@ -313,6 +313,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
-            --title "Simple Capture ${GITHUB_REF_NAME#v}" \
+            --title "simple-capture ${GITHUB_REF_NAME#v}" \
             --notes "Installers for macOS, and experimental builds for Windows and Linux. See CHANGELOG.md. The helpers' corresponding source is simple-capture-helper-sources.tar.gz. Check a download against SHA256SUMS.txt, or its build provenance with \`gh attestation verify <file> --repo $GITHUB_REPOSITORY\`." \
             release/*

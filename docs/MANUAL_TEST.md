@@ -47,7 +47,7 @@ cargo build --locked -p simple-capture-cli -p sc-devtools
 
 | What | Where |
 |---|---|
-| Projects | `~/Movies/Simple Capture/<YYYY-MM-DD HH.MM.SS> <title>.sc/` (a plain folder) |
+| Projects | `~/Movies/simple-capture/<YYYY-MM-DD HH.MM.SS> <title>.sc/` (a plain folder) |
 | Inside a project | `project.json` (state, segments, tracks, health), `journal.jsonl` (one event per line), `session.log`, `tracks/screen-000.mov`, `screen-001.mov`, … one per segment, `tracks/camera.mov`, `tracks/mic.mov`, `tracks/system_audio.mov` |
 | Exports | next to the project folder: `<project name without .sc>.mp4` (then ` 2.mp4`, …) |
 | App log | the `just run` terminal, and `~/Library/Application Support/com.simplecapture.desktop/logs/simple-capture-app.log` |
@@ -63,7 +63,7 @@ Paste once into the terminal you use for checks (not the one running `just run`)
 cd ~/Documents/Development/simple-capture
 FFPROBE="$PWD/third_party/out/macos-arm64/ffprobe"
 SC="$PWD/target/debug/simple-capture"
-sclast() { ls -dt "${SC_PROJECTS_DIR:-$HOME/Movies/Simple Capture}"/*.sc | head -1; }
+sclast() { ls -dt "${SC_PROJECTS_DIR:-$HOME/Movies/simple-capture}"/*.sc | head -1; }
 scsize() { "$FFPROBE" -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate:format=duration -of compact=p=0 "$1"; }
 scshow() {
   local d="${1:-$(sclast)}"
@@ -124,7 +124,7 @@ fail (note the frame time and which window).
 
 **L3. Recorder panel**
 - Do: tray → Open Recorder.
-- Expect: the "Simple Capture" panel with grouped sections Source (Displays / Windows / Apps),
+- Expect: the "simple-capture" panel with grouped sections Source (Displays / Windows / Apps),
   Frame, Camera, Audio and Video, and a footer with the chosen source and a red Record button. No
   "Permissions needed" banner (all three grants held). If a recording from an earlier crash exists,
   a yellow "A recording from a previous session was recovered." line with Show in Finder. The
@@ -578,9 +578,9 @@ bar.
 
 **B0. Build and inspect**
 - Do: `just bundle` (`scripts/local-bundle.sh --dmg`). The bundle is
-  `target/skia/release/bundle/macos/Simple Capture.app` (the path is printed). Then:
+  `target/skia/release/bundle/macos/simple-capture.app` (the path is printed). Then:
   ```bash
-  APP="target/skia/release/bundle/macos/Simple Capture.app"
+  APP="target/skia/release/bundle/macos/simple-capture.app"
   codesign -dv --entitlements - "$APP" 2>&1 | grep -E 'flags|Identifier|app-sandbox|camera|audio-input'
   plutil -p "$APP/Contents/Info.plist" | grep -E 'UsageDescription|CFBundleIdentifier'
   ls "$APP/Contents/MacOS"
@@ -631,24 +631,24 @@ bar.
 
 **B5. Camera and microphone prompts**
 - Do: onboarding → Camera → Allow…; Microphone → Allow…. Then record with a camera and mic.
-- Expect: each prompt shows our usage string: "Simple Capture records your camera when you turn
-  the camera on for a recording." / "Simple Capture records your microphone when you choose a
+- Expect: each prompt shows our usage string: "simple-capture records your camera when you turn
+  the camera on for a recording." / "simple-capture records your microphone when you choose a
   microphone for a recording."; after granting, the recording has `camera.mov` and `mic.mov`.
 - Look: the prompts, `scshow`, §12.
 
 **B6. Clean up**
 - Do: quit the bundle. Optionally remove its grants in System Settings → Privacy & Security
   (your call; never needed for the dev host).
-- Expect: no Simple Capture icon left in the menu bar; the dev host's grants are unchanged (the
+- Expect: no simple-capture icon left in the menu bar; the dev host's grants are unchanged (the
   next `just run` shows no prompt).
-- Look: menu bar, `pgrep -lf "Simple Capture.app"` prints nothing, §12.
+- Look: menu bar, `pgrep -lf "simple-capture.app"` prints nothing, §12.
 
 **B7. First launch and opening it again**
 - Do: with the bundle quit, start it as on a new Mac, with an empty data folder:
   ```bash
   d=$(mktemp -d); open -n --env SC_DATA_DIR="$d" "$APP"
   ```
-  Close the recorder panel, then open Simple Capture again while it runs (double-click it in
+  Close the recorder panel, then open simple-capture again while it runs (double-click it in
   Finder, or `open "$APP"`). Change one recorder setting (for example 30 → 60 fps), quit from
   the tray, and start it once more with `open -n --env SC_DATA_DIR="$d" "$APP"`.
 - Expect: the first launch opens the recorder panel by itself, without a prompt. Opening the
@@ -838,13 +838,13 @@ In the editor with any recording, press ⌘E:
 | R35 | Connect AirPods (or another Bluetooth headset) as the microphone; record 10 s while talking | The editor shows the mic waveform and the export has your voice (headset mics run at 16–24 kHz) |
 | R36 | While recording a display, click the menu bar icon, then click it again; reopen it and choose Pause, then Stop | A menu opens under the icon and closes on the second click; Pause and Stop work; the menu never appears in the recording; when not recording the icon shows the normal menu |
 | R37 | Source → System Picker…, cancel it; then pick a window with it, record 5 s, stop; quit the app | After the cancel, and again after the recording ends, the app is no longer listed in the menu bar's Sharing (screen sharing) menu; nothing is listed after quitting |
-| R38 | With Screen Recording off for Simple Capture (never granted, or denied once), launch it, open the panel with a display source and leave it 30 s; then choose Deny or Open System Settings on the one prompt Allow raises | macOS asks only when you press Allow in Permissions; no prompt comes back on its own, however long the panel stays open |
+| R38 | With Screen Recording off for simple-capture (never granted, or denied once), launch it, open the panel with a display source and leave it 30 s; then choose Deny or Open System Settings on the one prompt Allow raises | macOS asks only when you press Allow in Permissions; no prompt comes back on its own, however long the panel stays open |
 | R39 | Choose an iPhone plugged in by cable as the source, with Show preview on; switch the shape through Original, 16:9 and 9:16 | The Frame thumbnail shows the phone screen within a second or two and takes each shape; the Preview window reshapes to each shape (tall for Original and 9:16), keeping its bottom-right corner |
 | R40 | Choose a Bluetooth headset as the microphone, quit, turn the headset off, reopen and record 5 s | The Microphone menu shows Not connected with a note naming the mic recordings will use; the recording starts and has that mic's sound. If a start ever fails after the countdown, the panel comes back with the error |
 | R41 | Record a display with the camera bubble and Show preview on; switch to a window; then drag the bubble in the Preview window | The Preview keeps showing the window, as the recording does; it never goes back to the display |
 | R42 | Open iPhone Mirroring, then open the recorder | The iPhone's camera and microphone are listed as In use by iPhone Mirroring and can't be chosen; one already chosen shows a note, and recording uses the Mac's default camera or mic instead. Nothing freezes |
-| R43 | With an iPhone's Continuity Camera stuck or busy, launch Simple Capture | The menu bar icon appears within a few seconds; a camera that won't start shows an error after about 8 s instead of freezing the app |
-| R44 | While macOS's camera system is stuck (`system_profiler SPCameraDataType` never finishes), launch Simple Capture and click its menu bar icon | The menu opens; the recorder opens and records the screen; the Audio section says the camera system isn't responding and that restarting the Mac fixes it |
+| R43 | With an iPhone's Continuity Camera stuck or busy, launch simple-capture | The menu bar icon appears within a few seconds; a camera that won't start shows an error after about 8 s instead of freezing the app |
+| R44 | While macOS's camera system is stuck (`system_profiler SPCameraDataType` never finishes), launch simple-capture and click its menu bar icon | The menu opens; the recorder opens and records the screen; the Audio section says the camera system isn't responding and that restarting the Mac fixes it |
 | E44 | Open a recording with a camera in the editor; scrub, trim and split the camera track | The camera lane shows frames from the camera, like the screen lane does, and they stay after scrubbing and edits |
 | Y13 | A recording that crashed (end the app from Activity Monitor while recording, start it again) → Library → What Was Recovered… | The sheet says what was kept and left out; Edit opens what was saved |
 | E36 | Record a 16:9 frame from one window, switch to a much wider window; in the editor put the playhead in the second part → Frame → This section → Fill, drag Keep to Left | Only that part changes: it fills the frame and keeps its left side; the first part is unchanged; the export matches |
@@ -865,7 +865,7 @@ In the editor with any recording, press ⌘E:
 | Y3 | Double-click a recording | The editor opens it |
 | Y4 | Select one → Export… | The editor opens with the export sheet showing |
 | Y5 | Select one → Move to Trash → confirm | It leaves the list and is in the Trash (restorable) |
-| Y6 | Tray → About Simple Capture | Version and licenses; each license opens as text; "Open notices" opens the Rust notices (release builds) |
+| Y6 | Tray → About simple-capture | Version and licenses; each license opens as text; "Open notices" opens the Rust notices (release builds) |
 | Y7 | About → Diagnostics… → Run Self-Test | Lines stream in; "7 passed, 0 failed" on a Mac with the screen grant; Show in Finder finds the report |
 | Y8 | Terminal: `simple-capture --self-test` | The same report, printed and saved |
 | Y9 | Library: select a recording, click its name, type a new one, Return | The name changes; in Finder the folder is now "<date> <new name>.sc" |
@@ -881,8 +881,8 @@ before the first submission: `gh workflow run app-store.yml -f tag=v<version> -f
 uploads it without submitting (docs/RELEASING.md, Mac App Store), and the TestFlight app
 installs it. Either keeps its settings in `~/Library/Containers/com.simplecapture.desktop`, and
 the two have separate permission grants (Developer ID and Apple Distribution signatures). Quit
-every other Simple Capture first, and keep only one copy in /Applications (both are
-`Simple Capture.app` with the same ID). Write each prompt in §12 with "DMG" or "TestFlight" as
+every other simple-capture first, and keep only one copy in /Applications (both are
+`simple-capture.app` with the same ID). Write each prompt in §12 with "DMG" or "TestFlight" as
 the app. A failure here holds the release or the submission: report it.
 
 AS0 can run on this Mac with the dev app, which runs the same code without the sandbox under
@@ -896,20 +896,20 @@ just run
 |---|---|---|
 | AS0 | Dev host (`just run`): record a display with TextEdit frontmost; click the floating bar's pause and resume, then type in TextEdit | TextEdit stays frontmost and takes the typing after each click |
 | AS1 | Install (drag from the DMG, or from TestFlight) and open it from Launchpad (first launch) | The recorder panel opens by itself; the menu-bar icon appears; no prompt yet |
-| AS2 | Close the panel; open Simple Capture again from Finder (Applications) or Launchpad | The recorder panel comes back |
-| AS3 | "Permissions needed" → Allow… for Screen Recording; follow macOS (System Settings, Quit & Reopen); then Allow… for Camera and for Microphone | Each prompt names Simple Capture (Camera and Microphone with our usage strings); afterwards the Permissions window says Granted for all three and the banner is gone |
-| AS4 | Record a display 20 s with a camera, the mic and system audio (music playing) | The editor opens; screen, camera, voice and music play in step; the recording is in ~/Movies/Simple Capture |
+| AS2 | Close the panel; open simple-capture again from Finder (Applications) or Launchpad | The recorder panel comes back |
+| AS3 | "Permissions needed" → Allow… for Screen Recording; follow macOS (System Settings, Quit & Reopen); then Allow… for Camera and for Microphone | Each prompt names simple-capture (Camera and Microphone with our usage strings); afterwards the Permissions window says Granted for all three and the banner is gone |
+| AS4 | Record a display 20 s with a camera, the mic and system audio (music playing) | The editor opens; screen, camera, voice and music play in step; the recording is in ~/Movies/simple-capture |
 | AS5 | Record a window 15 s, resizing it once | Only that window is recorded, letterboxed after the resize; none of our windows in it |
 | AS6 | Plug in an iPhone or iPad (unlocked, trusted) → the recorder's iPhone tab → record 15 s with sound playing on it | It is listed and its screen and sound are recorded. If it is missing or black, report it: the build may need the `device.usb` entitlement |
-| AS7 | Record a display with TextEdit frontmost; click the floating bar (pause, resume) and drag the camera Preview window, typing in TextEdit after each | TextEdit stays frontmost and keeps the typing. No Mac build uses `_setPreventsActivation:` any more; if Simple Capture takes focus, report it |
-| AS8 | Export MP4 to the default folder | The file is in ~/Movies/Simple Capture and plays in QuickTime; Show in Finder finds it |
+| AS7 | Record a display with TextEdit frontmost; click the floating bar (pause, resume) and drag the camera Preview window, typing in TextEdit after each | TextEdit stays frontmost and keeps the typing. No Mac build uses `_setPreventsActivation:` any more; if simple-capture takes focus, report it |
+| AS8 | Export MP4 to the default folder | The file is in ~/Movies/simple-capture and plays in QuickTime; Show in Finder finds it |
 | AS9 | Export → Choose… another folder (Desktop or Documents) → Export | The file is in that folder and plays |
 | AS10 | Tray → Quit; open the app again; export another recording without choosing the folder again | It saves to the folder from AS9, with no "Choose the folder again" message |
 | AS11 | Export: pick MP4 with H.264, then HEVC, then GIF, and look at the Encoder row each time | Without touching it, Fast is selected for H.264 and HEVC and Palette for GIF; Best Quality and Best Quality (gifski) are greyed out |
 | AS12 | Export MP4, H.264 (Fast) | It plays; `strings <file> \| grep -c x264` prints 0 (VideoToolbox; x264 would write its settings into the file); nothing in the sheet mentions x264 or x265 |
 | AS13 | Export GIF (Palette) | The GIF (FFmpeg's palette) plays in a browser |
 | AS14 | Optional: export to a folder on another disk | It finishes after a short copy at 100%; it needs free space on the Movies disk, where it is encoded first |
-| AS15 | About Simple Capture → Privacy Policy | The browser opens docs/PRIVACY.md on GitHub |
+| AS15 | About simple-capture → Privacy Policy | The browser opens docs/PRIVACY.md on GitHub |
 | AS16 | About → Licenses → FFmpeg export helper → Source code | LGPL-2.1-or-later; the note says the source is attached to this version's GitHub release, and the Source code button opens `https://github.com/thtmnisamnstr/simple-capture/releases/tag/v<version>` in the browser, which (once the release is published) has `simple-capture-helper-sources.tar.gz`; no x264, x265 or gifski entries |
 
 ## 11. Results log
@@ -946,7 +946,7 @@ on a real Windows or Linux desktop yet (ADR-048).
 ### Windows (10 2004 or later; 11 removes the yellow capture border)
 | # | Step | Expected |
 |---|---|---|
-| WN1 | Install the NSIS setup (per user) and start Simple Capture | A tray icon; the recorder panel opens from it |
+| WN1 | Install the NSIS setup (per user) and start simple-capture | A tray icon; the recorder panel opens from it |
 | WN2 | Run the self-test from About → Diagnostics | Encoders list `h264_mf` or a GPU encoder; the 2 s real capture passes |
 | WN3 | Record the main display 20 s with mic and system audio playing | The editor opens; picture and sound play in step |
 | WN4 | Record a window, resize it while recording | The recording letterboxes the window instead of stretching |

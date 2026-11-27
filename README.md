@@ -1,4 +1,4 @@
-# Simple Capture
+# simple-capture
 
 A desktop screen recorder for macOS, Windows and Linux: record the screen, your camera and
 sound, edit, add text, and export. No account, and it makes no network connections: what you
@@ -44,7 +44,7 @@ pass their tests in CI, but have not yet been tried on a real desktop; see `docs
 macOS 14 or later on Apple silicon, three ways to the same app:
 
 - **Download** the `.dmg` from [Releases](https://github.com/thtmnisamnstr/simple-capture/releases)
-  and drag Simple Capture to Applications. It is signed with a Developer ID and notarized by
+  and drag simple-capture to Applications. It is signed with a Developer ID and notarized by
   Apple, so it opens normally and keeps its Screen Recording, Camera and Microphone permissions
   across updates. Check a download against `SHA256SUMS.txt`, or with
   `gh attestation verify <file> --repo thtmnisamnstr/simple-capture`.
@@ -55,7 +55,7 @@ macOS 14 or later on Apple silicon, three ways to the same app:
 All three are the same sandboxed app; only the signature differs. On macOS, H.264 and HEVC
 exports use Apple's VideoToolbox encoders (there is no x264 or x265 "Best Quality" setting), GIFs
 use FFmpeg's palette, and media keys can't be shortcuts. The store and DMG copies are both
-`Simple Capture.app` with the same bundle ID, so one replaces the other, and switching between
+`simple-capture.app` with the same bundle ID, so one replaces the other, and switching between
 them asks for the permissions again.
 
 Releases also have an NSIS setup `.exe` for Windows (a per-user install, not code-signed yet, so
@@ -80,7 +80,7 @@ cross-built with mingw-w64), then `scripts/stage-helpers.sh`.
 
 ## Privacy
 
-Simple Capture makes no network connections: there is no networking code in the app, and the
+simple-capture makes no network connections: there is no networking code in the app, and the
 bundled FFmpeg is built with networking disabled. The Mac app holds the sandbox's
 outgoing-network entitlement only because macOS's web view, which draws the app's windows, needs
 it. Recordings, settings and self-test reports stay in your Movies/Videos folder and the app's
@@ -89,7 +89,7 @@ data folder (on macOS, its sandbox container). The full privacy policy is in
 
 ## Licenses
 
-Simple Capture is MIT licensed (`LICENSE`). Exports are encoded by separate helper programs
+simple-capture is MIT licensed (`LICENSE`). Exports are encoded by separate helper programs
 that ship beside the app. On macOS (DMG and Mac App Store alike) that is FFmpeg alone,
 LGPL-2.1-or-later with SVT-AV1, libvpx, Opus, Vorbis and libwebp. On Windows and Linux it is
 FFmpeg under GPL-2.0-or-later (adding x264 and x265) and gifski (AGPL-3.0-or-later). Their

@@ -81,7 +81,7 @@ fn entries(bundled: Option<PathBuf>) -> Vec<Entry> {
     };
     let fonts = sc_text::fonts::default_fonts_dir();
     let mut out = vec![Entry {
-        title: "Simple Capture",
+        title: "simple-capture",
         license: "MIT",
         note: "This app. It has no networking code: nothing you record leaves this computer.",
         files: [app_license].into_iter().filter(|p| p.is_file()).collect(),

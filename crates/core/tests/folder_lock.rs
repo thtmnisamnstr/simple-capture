@@ -70,7 +70,7 @@ fn long_titles_are_capped_at_a_char_boundary() {
 #[test]
 fn create_dir_avoids_collisions_and_is_recognised() {
     let root = TempDir::new("folders");
-    let movies = root.path().join("Movies/Simple Capture");
+    let movies = root.path().join("Movies/simple-capture");
     let a = create_project_dir(&movies, &T, "Demo").expect("first");
     let b = create_project_dir(&movies, &T, "Demo").expect("second");
     let c = create_project_dir(&movies, &T, "Demo").expect("third");
@@ -198,7 +198,7 @@ fn fresh_unreadable_lock_counts_as_held() {
 #[test]
 fn renaming_keeps_the_date_and_steps_around_other_projects() {
     let root = TempDir::new("rename");
-    let movies = root.path().join("Simple Capture");
+    let movies = root.path().join("simple-capture");
     let a = create_project_dir(&movies, &T, "Recording").expect("a");
     let b = create_project_dir(&movies, &T, "Demo").expect("b");
     std::fs::write(a.join("project.json"), "{}").expect("project");
@@ -229,7 +229,7 @@ fn renaming_keeps_the_date_and_steps_around_other_projects() {
 #[test]
 fn a_case_only_rename_changes_the_case_in_place() {
     let root = TempDir::new("case");
-    let movies = root.path().join("Simple Capture");
+    let movies = root.path().join("simple-capture");
     let a = create_project_dir(&movies, &T, "demo").expect("a");
     let b = rename_project_dir(&a, "Demo").expect("rename");
     assert_eq!(

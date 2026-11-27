@@ -438,7 +438,7 @@
         <span class="banner-icon"><Icon name="lock" size={15} /></span>
         <span class="banner-text">
           <strong>Permissions needed</strong>
-          <span class="caption">Simple Capture can’t use {missingPerms.length === 1 ? 'one device' : `${missingPerms.length} devices`} yet.</span>
+          <span class="caption">simple-capture can’t use {missingPerms.length === 1 ? 'one device' : `${missingPerms.length} devices`} yet.</span>
         </span>
         <Icon name="chevron" size={13} />
       </button>

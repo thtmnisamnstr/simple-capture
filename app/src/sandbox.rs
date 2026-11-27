@@ -101,7 +101,7 @@ pub fn export_stage(
     reach_export_folder(data, out).map_err(|e| {
         tracing::warn!(folder = %out.display(), "export folder: {e}");
         format!(
-            "Simple Capture can no longer save to “{}”. Choose the folder again.",
+            "simple-capture can no longer save to “{}”. Choose the folder again.",
             out.display()
         )
     })?;
@@ -151,7 +151,7 @@ mod tests {
     #[test]
     fn movies_is_the_real_one() {
         let home = workspace::real_home().expect("home");
-        assert!(in_movies(&home.join("Movies/Simple Capture")));
+        assert!(in_movies(&home.join("Movies/simple-capture")));
         assert!(!in_movies(&home.join("Desktop")));
         assert!(!in_movies(&home.join("Movies/../Desktop")));
     }

@@ -22,7 +22,7 @@ pub const ITEMS: [(&str, &str); 9] = [
     ("edit", "Edit Last Recording"),
     ("library", "Library…"),
     ("diagnostics", "Diagnostics…"),
-    ("about", "About Simple Capture"),
+    ("about", "About simple-capture"),
     ("quit", "Quit"),
 ];
 
@@ -81,7 +81,7 @@ impl Tray {
         let icon = TrayIconBuilder::with_id("main")
             .icon(image)
             .icon_as_template(true)
-            .tooltip("Simple Capture")
+            .tooltip("simple-capture")
             .menu(&menu)
             .show_menu_on_left_click(true)
             .on_tray_icon_event({
