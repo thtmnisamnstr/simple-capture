@@ -1,9 +1,9 @@
-simple-capture is a screen recorder with a small video editor built in. Record a display, a window, an app or a region you draw, with your camera in a corner and your mic and system audio on their own tracks. An iPhone or iPad plugged in by cable works too.
+simple-capture is a screen recorder with a small video editor built in. Record a display, a window, an app or a region you draw, with your camera in a corner and your mic and system audio on their own tracks. An iPhone or iPad screen and camera work as input sources too, both wired and wireless. Before you record, pick a frame shape to match where the video is going, from 16:9 down to vertical 9:16 for short-form video.
 
 When you stop, the editor opens. Trim and split clips, speed them up, blur anything private, and add text with outlines, shadows and simple animations. Your original recording is never changed.
 
 Export to MP4, MOV, WebM, GIF or animated WebP. There are presets for email, team chat, video sites and vertical video, and you get a size estimate before the export starts.
 
-You don't need an account, and the app never connects to the internet. Recordings stay in Movies/simple-capture on your Mac. If the app crashes in the middle of a take, you lose about a second, and the recording is there the next time you open it.
+You don't need an account, and the app never connects to the internet. Recordings stay in Movies/simple-capture on your Mac.
 
 Open source under the MIT license. Requires macOS 14 or later on a Mac with Apple silicon.

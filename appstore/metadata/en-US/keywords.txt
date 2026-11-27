@@ -1,1 +1,1 @@
-record,recording,screencast,webcam,facecam,microphone,voiceover,system audio,gif,mp4,mov,webm,hevc
+record,recording,screencast,webcam,microphone,voiceover,system audio,gif,mp4,mov,webm,hevc
