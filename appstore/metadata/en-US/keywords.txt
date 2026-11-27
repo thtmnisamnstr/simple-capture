@@ -1,1 +1,1 @@
-screencast,webcam,camera,mic,audio,voiceover,gif,mp4,mov,webm,tutorial,demo,walkthrough,trim,text
+record,recording,screencast,webcam,facecam,microphone,voiceover,system audio,gif,mp4,mov,webm,hevc
