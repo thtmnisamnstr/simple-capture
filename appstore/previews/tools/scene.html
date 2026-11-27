@@ -124,6 +124,10 @@ function demoText(id, text, style) {
   const f = doc(id).getElementById('demo');
   f.contentWindow.postMessage({ text, style }, '*');
 }
+function clock(id) {
+  const m = doc(id).body.innerText.match(/(\d+):(\d\d\.\d) \/ \d+:\d\d\.\d/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+}
 function playDemo(id, on) {
   const f = doc(id).getElementById('demo');
   if (f) f.contentWindow.postMessage({ playing: on }, '*');
@@ -185,6 +189,7 @@ const scenes = {
     await click('e', 'Play'); playDemo('e', true);
     await sleep(3000);
     await click('e', 'Pause'); playDemo('e', false);
+    const textStart = clock('e');
     await click('e', 'Add text at the playhead', 600);
     const ta = await until(() => doc('e').querySelector('textarea'));
     await point('e', ta);
@@ -197,7 +202,12 @@ const scenes = {
     await click('e', 'Box'); demoText('e', 'Ships in December', 'box');
     await sleep(900);
     await click('e', 'Play'); playDemo('e', true);
-    await sleep(4200);
+    const t0 = performance.now();
+    let shown = true;
+    while (performance.now() - t0 < 4500) {
+      if (shown && clock('e') >= textStart + 3) { demoText('e', '', 'box'); shown = false; }
+      await sleep(50);
+    }
   },
   async '3'() {
     caption('Export MP4, MOV, WebM, GIF or WebP', 'Presets for email, chat and social video, with a size estimate before you start.');
