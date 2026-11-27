@@ -12,3 +12,6 @@ app/binaries/
 app/gen/
 __pycache__/
 *.pyc
+
+# App Store previews are rendered by appstore/previews/tools/make.sh and uploaded by hand.
+appstore/previews/en-US/

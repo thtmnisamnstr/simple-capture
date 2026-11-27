@@ -1,7 +1,8 @@
 // Mock backend for the UI outside Tauri (Vite dev server, Browser pane, node tests).
-// Browser scenarios via the query string, e.g. `?screen=denied`, `?state=recording`,
-// `?notice=source_lost`, `?saved=1`, `?camera=1` (a camera chosen). Exports offer what the macOS
-// helpers encode; `?helpers=full` offers the Windows and Linux set (x264, x265, gifski).
+// Browser scenarios via the query string, e.g. `?screen=denied`, `?state=recording` (with
+// `&elapsed=0` to start the clock at zero), `?notice=source_lost`, `?saved=1`, `?camera=1` (a
+// camera chosen). Exports offer what the macOS helpers encode; `?helpers=full` offers the Windows
+// and Linux set (x264, x265, gifski).
 
 import type {
   Background,
@@ -181,7 +182,7 @@ function stopRecording() {
 const exports = new Map<string, ReturnType<typeof setInterval>>();
 let exportSeq = 0;
 
-function quickExport(size: ExportSizeDto): string {
+function quickExport(size: ExportSizeDto, path = `${PROJECT_DIR.replace(/\.sc$/, '')} ${size}.mp4`): string {
   const id = `export-${++exportSeq}`;
   const total = 30 * Math.max(1, Math.round(elapsedNs / NS) || 12);
   let done = 0;
@@ -194,7 +195,7 @@ function quickExport(size: ExportSizeDto): string {
       clearInterval(t);
       exports.delete(id);
       busEmit('export-state', { id, state: 'finalizing' });
-      later(300, () => busEmit('export-state', { id, state: 'done', path: `${PROJECT_DIR.replace(/\.sc$/, '')} ${size}.mp4` }));
+      later(300, () => busEmit('export-state', { id, state: 'done', path }));
     }
   }, 250);
   exports.set(id, t);
@@ -243,7 +244,7 @@ function bootScenario() {
   const state = q.get('state');
   const notice = q.get('notice');
   if (state === 'recording' || notice) {
-    elapsedNs = 83 * NS;
+    elapsedNs = Number(q.get('elapsed') ?? 83) * NS;
     later(50, () => {
       setState({ state: 'recording', elapsed_ns: elapsedNs });
       startTicker();
@@ -465,6 +466,22 @@ const mockDoc = {
 };
 
 let editorTitle = 'Recording';
+let playheadNs = 12 * S;
+let playTimer: ReturnType<typeof setInterval> | undefined;
+
+function setPlaying(on: boolean) {
+  clearInterval(playTimer);
+  playTimer = undefined;
+  if (!on) return;
+  const t0 = performance.now();
+  const p0 = playheadNs >= 57 * S ? 0 : playheadNs;
+  playTimer = setInterval(() => {
+    playheadNs = Math.min(57 * S, p0 + (performance.now() - t0) * 1e6);
+    const playing = playheadNs < 57 * S;
+    busEmit('editor-playhead', { tl_ns: playheadNs, playing });
+    if (!playing) setPlaying(false);
+  }, 33);
+}
 let mockRevision = 3;
 
 function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
@@ -544,12 +561,21 @@ function mockEditor(action: string, a: Record<string, unknown> = {}): unknown {
       revision: 3,
       can_undo: true,
       can_redo: false,
-      playhead_tl_ns: 12 * S,
-      playing: false,
+      playhead_tl_ns: playheadNs,
+      playing: playTimer !== undefined,
       clipboard_ns: 0,
     };
   }
-  if (action === 'play' || action === 'pause') return { playhead_tl_ns: 12 * S, playing: action === 'play' };
+  if (action === 'play' || action === 'pause') {
+    setPlaying(action === 'play');
+    return { playhead_tl_ns: playheadNs, playing: action === 'play' };
+  }
+  if (action === 'seek') {
+    playheadNs = Math.max(0, Math.min(57 * S, Number(a.tl_ns) || 0));
+    if (playTimer !== undefined) setPlaying(true);
+    return null;
+  }
+  if (action === 'export_start') return quickExport('reference', `/Users/me/Movies/simple-capture/${editorTitle}.mp4`);
   if (action === 'rect' && a.rect && typeof a.rect === 'object') {
     const r = a.rect as { x: number; y: number; w: number; h: number };
     const f0 = containFit(r, { w: 16, h: 9 });
