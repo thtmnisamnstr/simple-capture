@@ -64,6 +64,7 @@ if (n === '1') {
   win('Library', 220, 200, 1000, 520, '/' + Q + '#/library', 'l');
   setTimeout(() => {
     const dd = doc('l'); if (!dd) return;
+    [...dd.querySelectorAll('span, div, em, b')].filter((x) => x.children.length === 0 && x.textContent.trim() === 'Recovered').forEach((x) => x.remove());
     const boxes = [...dd.querySelectorAll('.poster, .thumb, figure, [class*="poster"]')];
     const hues = [0, 140, 260, 40];
     boxes.slice(0, 8).forEach((bx, i) => {

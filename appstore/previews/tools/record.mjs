@@ -67,7 +67,7 @@ console.log(`${frames.length} frames over ${secs.toFixed(1)} s`);
 const r = spawnSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-y',
   '-f', 'concat', '-safe', '0', '-i', join(work, 'list.ffconcat'),
   '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
-  '-r', '30', '-vf', 'scale=1920:1080:flags=lanczos,format=yuv420p',
+  '-r', '30', '-vf', 'scale=1920:1080:flags=lanczos,setsar=1,format=yuv420p',
   '-c:v', 'libx264', '-preset', 'slow', '-crf', '14', '-profile:v', 'high', '-level:v', '4.1',
   '-c:a', 'aac', '-b:a', '256k', '-ar', '48000', '-ac', '2',
   '-t', '29.8', '-shortest', '-movflags', '+faststart', out], { stdio: 'inherit' });
