@@ -60,10 +60,17 @@ Capture_0.1.0_aarch64.dmg` (37 MB), `…_x64-setup.exe` (32 MB), `…_x64_en-US.
 **Editor open time on a 10-minute recording:** first frame 900 ms (definition of done: under
 2 s), driver flow 24 on a generated 3024×1964 HEVC recording (no capture involved).
 
-**Not verified:** any real Windows or Linux desktop; the Linux portal dialog end to end (the
-headless test compositor could not hand frames to the portal backend); the mic level meter and
-the countdown by eye (driver mode turns both off); installing and running the built installers;
-NVENC and VA-API on real GPUs.
+**Linux on a real machine (2026-11-27, branch `linux-testing`):** Ubuntu 26.04, GNOME 50 on
+Wayland, Asahi on an M1 MacBook Air (aarch64, 16 KB pages). The whole workspace suite passes
+(465 tests, GPU tests on Vulkan), the app starts with its tray, and in a headless sway session
+(`tools/linux-dev/e2e.sh`) it records through the portal, opens the editor, and exports MP4, GIF
+and WebM. Five Linux bugs were fixed on the way, among them a crash on every portal recording;
+the findings and what is still open are in docs/TESTING_ON_WINDOWS_LINUX.md §7.
+
+**Not verified:** any real Windows desktop; on Linux, the GNOME portal dialog with Mutter's
+buffers, a real microphone, system audio and the camera; the mic level meter and the countdown by
+eye (driver mode turns both off); installing and running the built installers; NVENC and VA-API
+on real GPUs.
 
 **30-minute soak (2026-11-21, release build, driver flow 16):** the main display (3024×1964),
 camera, mic and system audio for 1800.1 s: 0 dropped frames or samples on every track, no writer
