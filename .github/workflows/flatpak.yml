@@ -1,8 +1,7 @@
 name: flatpak
 
 # The Flatpak (packaging/flatpak), built offline the way Flathub builds it, for x86_64 and
-# aarch64, then checked with Flathub's linter. The bundle is an artifact; v* tags attach it to the
-# draft release.
+# aarch64, then checked with Flathub's linter. The bundle is an artifact.
 
 on:
   workflow_dispatch:
@@ -36,10 +35,10 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
-      options: --privileged
     timeout-minutes: 300
+    env:
+      ID: io.github.thtmnisamnstr.SimpleCapture
+      MANIFEST: packaging/flatpak/io.github.thtmnisamnstr.SimpleCapture.yml
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,15 +59,45 @@ jobs:
               raise SystemExit(f"run packaging/flatpak/generate-sources.py: crates missing {missing[:10]}, stale pins {stale}")
           print(f"{len(vendored)} vendored crates, {len(pins)} helper sources match")
           PY
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
-        with:
-          manifest-path: packaging/flatpak/io.github.thtmnisamnstr.SimpleCapture.yml
-          bundle: simple-capture-${{ matrix.arch }}.flatpak
-          arch: ${{ matrix.arch }}
-          cache-key: flatpak-builder-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/*.json', 'packaging/flatpak/*.yml', 'packaging/flatpak/shared/**') }}
-          upload-artifact: true
-      - name: Flathub linter
+      # The flathub-infra container cannot update its preinstalled runtimes on the runners'
+      # overlayfs (EXDEV, flatpak/flatpak-github-actions#267), so flatpak-builder runs on the host.
+      - name: Room for Skia, FFmpeg and the app
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+      - name: flatpak and org.flatpak.Builder
         run: |
-          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest \
-            packaging/flatpak/io.github.thtmnisamnstr.SimpleCapture.yml || true
-          flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends flatpak
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.flatpak.Builder
+      # Saved after failures too, so the next run resumes at the module that failed.
+      - name: Restore the builder state
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/fp-state
+          key: flatpak-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: flatpak-${{ matrix.arch }}-
+      - name: Build
+        run: |
+          flatpak run org.flatpak.Builder --user --install-deps-from=flathub --disable-rofiles-fuse \
+            --force-clean --default-branch=stable --state-dir="$RUNNER_TEMP/fp-state" \
+            --repo="$RUNNER_TEMP/fp-repo" "$RUNNER_TEMP/fp-build" "$MANIFEST"
+          flatpak build-bundle --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
+            "$RUNNER_TEMP/fp-repo" "simple-capture-${{ matrix.arch }}.flatpak" "$ID" stable
+      - name: Save the builder state
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/fp-state
+          key: flatpak-${{ matrix.arch }}-${{ github.run_id }}
+      - name: Flathub linter
+        # Reports without failing until the metainfo has its screenshots (packaging/flatpak/README.md).
+        continue-on-error: true
+        run: |
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest "$MANIFEST" || true
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo "$RUNNER_TEMP/fp-repo"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simple-capture-flatpak-${{ matrix.arch }}
+          path: simple-capture-${{ matrix.arch }}.flatpak
+          if-no-files-found: error
