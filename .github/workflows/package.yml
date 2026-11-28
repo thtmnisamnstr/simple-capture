@@ -7,7 +7,7 @@ name: package
 #           the Mac App Store edition (app-store.yml); Developer ID signed and notarized on v* tags
 #           and manual runs when the secrets are set, else ad hoc
 #   Windows NSIS setup .exe (per-user install)
-#   Linux   .deb, .rpm and .AppImage for x86_64 and arm64
+#   Linux   .deb, .rpm and .AppImage for x86_64 and arm64, and the .deb repackaged as a Snap
 # A v* tag also drafts a GitHub Release with SHA256SUMS.txt and build provenance attestations.
 
 on:
@@ -292,6 +292,65 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}/release/bundle/rpm/*.rpm
             ${{ env.CARGO_TARGET_DIR }}/release/bundle/appimage/*.AppImage
           if-no-files-found: error
+
+  snap:
+    # The .deb repackaged as a strict Snap (packaging/snap). Publishing to the Snap Store's edge
+    # channel happens on v* tags once the SNAPCRAFT_STORE_CREDENTIALS secret exists
+    # (docs/LINUX_DISTRIBUTION.md).
+    name: snap (${{ matrix.plat }})
+    needs: bundle
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - plat: linux-x86_64
+            runner: ubuntu-24.04
+          - plat: linux-arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      PUBLISH: >-
+        ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != ''
+        && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: simple-capture-${{ matrix.plat }}
+          path: dist
+      - name: Stage the .deb
+        run: cp "$(find dist -name '*.deb' | head -n 1)" packaging/snap/simple-capture.deb
+      - id: build
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1.3.0
+        with:
+          path: packaging/snap
+      - name: The Snap holds the app, its helpers and its desktop entry
+        env:
+          SNAP_FILE: ${{ steps.build.outputs.snap }}
+        run: |
+          command -v unsquashfs >/dev/null || sudo apt-get install -y --no-install-recommends squashfs-tools
+          unsquashfs -l "$SNAP_FILE" > contents.txt
+          for want in usr/bin/simple-capture-app usr/bin/sc-ffmpeg usr/lib/simple-capture/fonts \
+                      meta/gui/io.github.thtmnisamnstr.SimpleCapture.desktop meta/snap.yaml; do
+            grep -q "squashfs-root/$want" contents.txt || { echo "::error::the snap lacks $want"; exit 1; }
+          done
+          unsquashfs -cat "$SNAP_FILE" meta/snap.yaml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simple-capture-snap-${{ matrix.plat }}
+          path: ${{ steps.build.outputs.snap }}
+          if-no-files-found: error
+      - name: Publish to the edge channel
+        if: env.PUBLISH == 'true'
+        uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1.2.0
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.build.outputs.snap }}
+          release: edge
 
   release:
     # A version tag (v1.2.3) gathers this run's installers and the helpers' GPL/AGPL source
