@@ -4,6 +4,7 @@
 Waits for xdg-desktop-portal-gnome's dialog, then acts through the accessibility bus (AT-SPI):
   approve-portal.py share [--window]   pick the first screen (or window) and press Share
   approve-portal.py shortcuts          accept the global-shortcuts dialog
+  approve-portal.py all                answer every such dialog until the timeout (for e2e runs)
   approve-portal.py dump               print the portal's accessibility tree
 Options: --timeout S (default 60).
 """
@@ -16,7 +17,12 @@ import gi
 gi.require_version("Atspi", "2.0")
 from gi.repository import Atspi  # noqa: E402
 
-PORTAL_APPS = ("xdg-desktop-portal-gnome", "gnome-control-center-global-shortcuts-provider", "gnome-shell")
+PORTAL_APPS = (
+    "xdg-desktop-portal-gnome",
+    "gnome-control-center-global-shortcuts-provider",
+    "gnome-shell",
+    "xdg-desktop-portal-kde",
+)
 
 
 def apps():
@@ -97,9 +103,39 @@ def buttons(dialog, label):
 def dump():
     for app in apps():
         for node, depth in walk(app):
-            if depth > 14:
+            if depth > 30:
                 continue
-            print("  " * depth + f"[{role(node)}] {name(node)!r}{'' if showing(node) else ' (hidden)'}")
+            print("  " * depth + f"[{role(node)}] {name(node)!r}{'' if showing(node) else ' (hidden)'}", flush=True)
+
+
+def checked(node):
+    s = states(node)
+    return s is not None and s.contains(Atspi.StateType.CHECKED)
+
+
+KDE_NOT_OUTPUTS = ("Share virtual screen", "Share region", "Remove", "Clear search", "Cancel")
+
+
+def share_kde(d, window):
+    """KDE Plasma 6: a "Share screen with <app>" frame with one button per output (or window),
+    "Allow restoring on future sessions" (kept checked, for the restore token), and Share/OK."""
+    for c, _ in walk(d):
+        if role(c) == "check box" and name(c) == "Allow restoring on future sessions" and not checked(c):
+            press(c)
+    choice = next(
+        (n for n, _ in walk(d) if role(n) == "button" and showing(n) and name(n) and name(n) not in KDE_NOT_OUTPUTS),
+        None,
+    )
+    if choice is None:
+        return False
+    press(choice)
+    time.sleep(0.5)
+    for label in ("Share", "OK", "Allow"):
+        for b in buttons(d, label):
+            if enabled(b):
+                press(b)
+    print(f"approve-portal: shared {name(choice)!r} (KDE)")
+    return True
 
 
 def share(window, timeout):
@@ -111,6 +147,10 @@ def share(window, timeout):
     while time.time() < deadline:
         for app in apps():
             for d, _ in walk(app):
+                if role(d) == "frame" and name(d).startswith("Share screen with") and showing(d):
+                    if share_kde(d, window):
+                        return 0
+                    continue
                 if role(d) != "frame" or name(d) != "Share Screen" or not showing(d):
                     continue
                 for t, _ in walk(d):
@@ -129,22 +169,48 @@ def share(window, timeout):
                         print(f"approve-portal: shared {name(choice)!r}")
                         return 0
         time.sleep(0.3)
-    print("approve-portal: no share dialog found", file=sys.stderr)
+    if timeout >= 1:
+        print("approve-portal: no share dialog found", file=sys.stderr)
     return 1
+
+
+SHORTCUT_DIALOGS = {
+    "Add Keyboard Shortcuts": "Add",  # GNOME
+    "Global Shortcuts Requested": "OK",  # KDE
+}
+
+
+def approve_shortcuts_once():
+    for app in apps():
+        for d, _ in walk(app):
+            if role(d) == "frame" and name(d) in SHORTCUT_DIALOGS and showing(d):
+                label = SHORTCUT_DIALOGS[name(d)]
+                for b in buttons(d, label):
+                    if enabled(b) and press(b):
+                        print(f"approve-portal: pressed {label} ({name(d)})")
+                        return True
+    return False
 
 
 def shortcuts(timeout):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        for d in dialogs():
-            for label in ("Add", "Allow", "Confirm", "Done", "Save"):
-                for b in buttons(d, label):
-                    if enabled(b) and press(b):
-                        print(f"approve-portal: pressed {label}")
-                        return 0
+        if approve_shortcuts_once():
+            return 0
         time.sleep(0.3)
     print("approve-portal: no shortcuts dialog found", file=sys.stderr)
     return 1
+
+
+def approve_all(timeout):
+    """Answers every dialog of the app (share and shortcuts, GNOME and KDE) until the timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        approve_shortcuts_once()
+        if share(False, 0.4) == 0:
+            continue
+        time.sleep(0.3)
+    return 0
 
 
 def main(argv):
@@ -159,6 +225,8 @@ def main(argv):
         return share("--window" in argv, timeout)
     if cmd == "shortcuts":
         return shortcuts(timeout)
+    if cmd == "all":
+        return approve_all(timeout)
     print(__doc__, file=sys.stderr)
     return 2
 

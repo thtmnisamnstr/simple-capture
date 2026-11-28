@@ -14,10 +14,16 @@ XDPW=${XDPW:-/usr/libexec/xdg-desktop-portal-wlr}
 XDP=${XDP:-/usr/libexec/xdg-desktop-portal}
 BASE="/run/user/$(id -u)/sc-headless"
 fusermount3 -u "$BASE/rt/doc" 2>/dev/null || true
-rm -rf "$BASE"
-mkdir -p "$BASE"/{rt,cfg,state}
+# SC_HL_KEEP=1 keeps the private data, config and state (portal restore data, shortcut
+# grants) from the previous run, to test what a relaunch remembers.
+if [ "${SC_HL_KEEP:-0}" = 1 ]; then rm -rf "$BASE/rt"; else rm -rf "$BASE"; fi
+mkdir -p "$BASE"/{rt,cfg,state,data/applications}
 chmod 700 "$BASE/rt"
-export XDG_RUNTIME_DIR="$BASE/rt" XDG_CONFIG_HOME="$BASE/cfg" XDG_STATE_HOME="$BASE/state"
+export XDG_RUNTIME_DIR="$BASE/rt" XDG_CONFIG_HOME="$BASE/cfg" XDG_STATE_HOME="$BASE/state" XDG_DATA_HOME="$BASE/data"
+# The portals accept the app ID only with a desktop file whose Exec program exists.
+sed "s#^Exec=.*#Exec=${SC_APP:-$(cd "$(dirname "$0")/../.." && pwd)/target/debug/simple-capture-app}#" \
+  "$(dirname "$0")/../../app/linux/io.github.thtmnisamnstr.SimpleCapture.desktop" \
+  > "$XDG_DATA_HOME/applications/io.github.thtmnisamnstr.SimpleCapture.desktop"
 export XDG_CURRENT_DESKTOP=sway XDG_SESSION_TYPE=wayland
 export XDG_DESKTOP_PORTAL_DIR="${SC_HL_PORTALS:-/usr/share/xdg-desktop-portal/portals}"
 unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS PIPEWIRE_REMOTE

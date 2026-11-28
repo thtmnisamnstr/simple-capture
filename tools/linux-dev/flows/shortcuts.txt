@@ -1,0 +1,8 @@
+# Global shortcuts end to end: the test presses the record shortcut from outside (press-keys.py on
+# GNOME, kglobalaccel's invokeShortcut on KDE) once the app has bound it; the first press reopens
+# the last pick and records, the second stops.
+wait-launch 120000
+wait-phase recording 120000
+wait-phase saved 60000
+wait 500
+quit
