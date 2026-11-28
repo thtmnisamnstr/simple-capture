@@ -44,6 +44,10 @@ modules:
 
   - name: rust
     buildsystem: simple
+    # Build-only; stripping it breaks rustc's own libLLVM.
+    build-options:
+      strip: false
+      no-debuginfo: true
     build-commands:
       - ./install.sh --prefix=/app/lib/sdk-build/rust --components=rustc,cargo,rust-std-$(uname -m)-unknown-linux-gnu
         --disable-ldconfig
@@ -97,8 +101,8 @@ modules:
       # cargo-about's own crate sits inside this workspace's folder without being a member.
       - printf '\n[workspace]\n' >> flatpak-tools/cargo-about/Cargo.toml
       - cargo build --release --locked --manifest-path flatpak-tools/cargo-about/Cargo.toml --features cli
-      - cd ui && node ../flatpak-tools/pnpm/bin/pnpm.cjs install --offline --frozen-lockfile --trust-lockfile
-      - cd ui && node ../flatpak-tools/pnpm/bin/pnpm.cjs run build
+      - cd ui && node ../flatpak-tools/pnpm/bin/pnpm.mjs install --offline --frozen-lockfile --trust-lockfile
+      - cd ui && node ../flatpak-tools/pnpm/bin/pnpm.mjs run build
       - SKIA_SOURCE_DIR=$PWD/skia SKIA_GN_COMMAND=$PWD/flatpak-tools/gn/out/gn SKIA_NINJA_COMMAND=ninja
         cargo build --release --locked -p simple-capture-app
       - PATH="$PWD/flatpak-tools/cargo-about/target/release:$PATH" scripts/ci/notices.sh

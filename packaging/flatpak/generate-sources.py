@@ -106,6 +106,13 @@ def node_sources(tmp):
     tgz = tmp / "pnpm.tgz"
     download(url, tgz)
     out.append({"type": "archive", "url": url, "sha256": sha256(tgz), "dest": "flatpak-tools/pnpm"})
+    # pnpm 12 is a native binary in a per-platform package; without it pnpm downloads one.
+    for arch, target in (("x86_64", "linux-x64"), ("aarch64", "linux-arm64")):
+        url = f"https://registry.npmjs.org/@pnpm/exe.{target}/-/exe.{target}-{version}.tgz"
+        exe = tmp / f"pnpm-{target}.tgz"
+        download(url, exe)
+        out.append({"type": "archive", "url": url, "sha256": sha256(exe), "only-arches": [arch],
+                    "dest": f"flatpak-tools/pnpm/node_modules/@pnpm/exe.{target}"})
     write("node-sources.json", out)
 
 
