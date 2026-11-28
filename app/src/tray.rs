@@ -160,6 +160,11 @@ impl Tray {
             // A system menu only becomes excludable from the recording once it is already on
             // screen, so its first frame can be captured; while recording, a click opens the
             // `traymenu` window instead, which was excluded before the recording began.
+            // AppIndicator trays (Linux) send no click events, so there the system menu stays:
+            // without it a recording could not be stopped from the tray.
+            #[cfg(target_os = "linux")]
+            let menu = Some(self.menu.clone());
+            #[cfg(not(target_os = "linux"))]
             let menu = (!recording).then(|| self.menu.clone());
             if let Err(e) = self.icon.set_menu(menu) {
                 tracing::warn!("tray menu: {e}");
