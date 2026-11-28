@@ -3,6 +3,7 @@ mod desktop;
 mod gst;
 mod mjpeg;
 mod nodes;
+mod parent;
 pub(crate) mod portal;
 mod pw;
 pub(crate) mod shortcuts;

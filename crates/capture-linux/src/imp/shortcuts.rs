@@ -143,8 +143,12 @@ pub fn bind(wanted: Vec<Wanted>, activated: Arc<dyn Fn(&str) + Send + Sync>) -> 
                     .preferred_trigger(trigger.as_deref())
             })
             .collect();
+        let parent = tokio::task::spawn_blocking(super::parent::focused)
+            .await
+            .ok()
+            .flatten();
         let request = portal
-            .bind_shortcuts(&session, &list, None, Default::default())
+            .bind_shortcuts(&session, &list, parent.as_ref(), Default::default())
             .await?;
         tracing::info!(
             "shortcuts portal: waiting for the system to bind {} shortcuts",

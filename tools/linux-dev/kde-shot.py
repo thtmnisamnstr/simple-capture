@@ -3,6 +3,7 @@
 tools/linux-dev/kde-headless.sh started (KWin's ScreenShot2 interface; the session lifts KWin's
 permission checks).
   kde-shot.py list                         the windows, as JSON lines
+  kde-shot.py activate CAPTION             gives the window titled CAPTION the focus
   kde-shot.py CAPTION OUT.png              the window titled CAPTION, else the first whose title
                                            contains it
 Reads KWin's script output from $SC_KWIN_LOG (default /run/user/UID/sc-kde/kwin.log).
@@ -92,7 +93,23 @@ def shot(window_id, out):
     return width, height
 
 
+def run_script(js):
+    marker = f"SCJS{os.getpid()}{int(time.time() * 1000)}"
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as f:
+        f.write(js)
+    (sid,) = call("/Scripting", "org.kde.kwin.Scripting", "loadScript", "(ss)", (f.name, marker), "(i)")
+    call(f"/Scripting/Script{sid}", "org.kde.kwin.Script", "run", None, None)
+    time.sleep(0.3)
+    call("/Scripting", "org.kde.kwin.Scripting", "unloadScript", "(s)", (marker,), "(b)")
+    os.unlink(f.name)
+
+
 def main():
+    if sys.argv[1:2] == ["activate"]:
+        caption = json.dumps(sys.argv[2])
+        run_script("for (const w of workspace.windowList()) { if (w.caption === " + caption +
+                   ") { workspace.activeWindow = w; break; } }")
+        return
     if sys.argv[1:] == ["list"]:
         for w in windows():
             print(json.dumps(w))

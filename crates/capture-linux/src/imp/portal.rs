@@ -299,8 +299,13 @@ async fn pick(restore: Option<String>) -> std::result::Result<Option<Cast>, ashp
                 .set_restore_token(restore.as_deref()),
         )
         .await?;
+    let parent = tokio::task::spawn_blocking(super::parent::focused)
+        .await
+        .ok()
+        .flatten();
+    tracing::info!(parent = parent.is_some(), "screen cast: asking the portal");
     let response = match proxy
-        .start(&session, None, Default::default())
+        .start(&session, parent.as_ref(), Default::default())
         .await?
         .response()
     {

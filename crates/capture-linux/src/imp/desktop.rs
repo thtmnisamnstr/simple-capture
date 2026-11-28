@@ -50,7 +50,12 @@ fn file_path(uri: &str) -> Option<PathBuf> {
 
 fn choose(folders: bool, done: Box<dyn FnOnce(Option<PathBuf>) + Send>) {
     runtime().spawn(async move {
+        let parent = tokio::task::spawn_blocking(super::parent::focused)
+            .await
+            .ok()
+            .flatten();
         let mut req = SelectedFiles::open_file()
+            .identifier(parent)
             .title(if folders {
                 "Choose a Folder"
             } else {
