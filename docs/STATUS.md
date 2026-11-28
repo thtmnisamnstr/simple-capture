@@ -65,10 +65,13 @@ Wayland, Asahi on an M1 MacBook Air (aarch64, 16 KB pages). The whole workspace 
 (465 tests, GPU tests on Vulkan), the app starts with its tray, and in a headless sway session
 (`tools/linux-dev/e2e.sh`) it records through the portal, opens the editor, and exports MP4, GIF
 and WebM. Five Linux bugs were fixed on the way, among them a crash on every portal recording;
-the findings and what is still open are in docs/TESTING_ON_WINDOWS_LINUX.md §7.
+the findings and what is still open are in docs/TESTING_ON_WINDOWS_LINUX.md §7. Then on the real
+GNOME desktop: the share dialog, restore without a dialog (Record to recording in about 200 ms),
+native 2560×1600, camera, system audio and Wayland global shortcuts through the portal. Plans:
+docs/KDE_TESTING.md and docs/LINUX_DISTRIBUTION.md.
 
-**Not verified:** any real Windows desktop; on Linux, the GNOME portal dialog with Mutter's
-buffers, a real microphone, system audio and the camera; the mic level meter and the countdown by
+**Not verified:** any real Windows desktop; on Linux, KDE, and a real microphone's sound (the
+test machine's is muted in its settings); the mic level meter and the countdown by
 eye (driver mode turns both off); installing and running the built installers; NVENC and VA-API
 on real GPUs.
 

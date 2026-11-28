@@ -159,14 +159,39 @@ MP4/GIF/WebM export). Fixed:
 - After every relaunch the panel offered the last portal pick, which no longer exists, and Record
   failed with "picked source … is no longer available".
 
+Then, on the owner's real GNOME 50 desktop (driven by `tools/linux-dev/approve-portal.py`, which
+approves the app's dialogs over AT-SPI, and `tools/linux-dev/press-keys.py`):
+
+- The real share dialog, and a relaunch that reopens the last screen from the portal's restore
+  token with no dialog: Record to recording in 202–210 ms over three relaunches.
+- The screen at its native 2560×1600 (it used to be recorded at the logical 1536×960), the
+  FaceTime HD camera at 1280×720, system audio (a 440 Hz tone played during the take came
+  through) and the mic track, with 0 dropped frames on every track.
+- Global shortcuts through the GlobalShortcuts portal: Alt+Shift+R started a recording of the
+  last shared screen and stopped it.
+
+Fixed in that round:
+
+- Slow starts: each OpenPipeWireRemote can freeze xdg-desktop-portal for 25 s (its new PipeWire
+  context asks the portal's own Realtime interface). A pick now opens one PipeWire connection
+  right after the pick and keeps it for all its streams.
+- Picks are remembered (restore tokens); "Choose Again…" still shows the dialog.
+- Wayland shortcuts go through the portal; the X11 plugin is used only on X11.
+- Stop is not offered while a recording is still starting (tray, shortcut; the bar already).
+- The app registers the portal app ID `io.github.thtmnisamnstr.SimpleCapture`; it needs an
+  installed desktop file of that name (dev: `~/.local/share/applications/`, `NoDisplay=true`).
+
 Still open:
 
-- Global shortcuts do not fire on Wayland: `tauri-plugin-global-shortcut` grabs keys through
-  X11 only. GNOME 48+ has the GlobalShortcuts portal (version 1 here).
-- The portal is asked to forget the pick (`PersistMode::DoNot`); SPEC asks for a saved restore
-  token.
-- A Stop pressed while a recording is still starting is refused ("not recording") and lost; the
-  start can take 25 s when xdg-desktop-portal is slow to open the PipeWire remote.
+- The packages must install `io.github.thtmnisamnstr.SimpleCapture.desktop` (Tauri installs
+  `simple-capture.desktop`); without it the portals keep tokens and shortcuts under no ID.
+- The mic's sound itself is unverified here: the owner's default microphone is muted in GNOME's
+  settings, so every app (`pw-record` too) gets digital silence. The app does not yet warn that
+  the chosen microphone is muted.
+- The camera delivers 16 fps in dim light (the driver's own rate; `v4l2-ctl` measures the same).
+- Encoding is in software on Asahi (no VA-API): openh264 manages 52 fps at 2560×1600, enough
+  for 30 fps, tight for 60.
+- GNOME's AppIndicator extension logs "Failed to recognize image format" when the tray icon
+  changes (the tray-icon crate replaces its temporary PNG while the shell reads it); cosmetic.
 - The portal dialog has no parent window ("Failed to associate portal window with parent window").
-- Not yet tried on the real GNOME desktop: the portal dialog with Mutter's buffers, a real
-  microphone's sound in a recording, system audio from a real sink, and the camera.
+- KDE: see docs/KDE_TESTING.md. Packaging: see docs/LINUX_DISTRIBUTION.md.
