@@ -1,0 +1,34 @@
+# The AppStream screenshots (tools/linux-dev/screenshots.sh): the recorder after a pick, the
+# editor with a short recording and a text item, its Export sheet, and the Library. A step whose
+# line holds "SHOT name|window title" tells the screenshot script to take that window.
+wait-launch 120000
+show panel
+wait 1500
+cmd open_system_picker {"purpose":"start"}
+wait 9000
+eval panel /* SHOT 01-record|simple-capture */ 0
+wait 3000
+eval panel (() => { const t = setInterval(() => { const b = document.querySelector('button.record'); if (b && !b.disabled) { clearInterval(t); b.click(); } }, 500); })()
+wait-phase recording 60000
+wait 9000
+cmd stop_recording
+wait-phase saved 60000
+wait 4000
+cmd editor {"action":"rename","title":"Q4 roadmap walkthrough"}
+wait 1000
+cmd editor {"action":"edit","op":{"op":"upsert_text","item":{"id":"shot-text","start_tl_ns":0,"end_tl_ns":7000000000,"layer":0,"content":"Welcome to the demo","style":{"font_family":"Inter","size_1080":72.0,"weight":800,"italic":false,"uppercase":false,"align":"center","line_height":1.1,"letter_spacing":0.0,"opacity":1.0,"fill":{"solid":[0.18,0.55,0.38,1.0]},"outline":{"width_1080":0.0,"color":[0.0,0.0,0.0,1.0]}},"transform":{"center_norm":{"x":0.74,"y":0.3},"scale":1.0,"rotation_deg":0.0},"anim":{"in":{"kind":"pop","duration_s":0.3,"easing":"ease_out"}}}}}
+wait 2000
+cmd editor {"action":"seek","tl_ns":3000000000}
+wait 3000
+eval editor /* SHOT 02-edit|simple-capture Editor */ 0
+wait 3000
+eval editor [...document.querySelectorAll('button.primary')].find(b => b.textContent.includes('Export')).click()
+wait 2500
+eval editor /* SHOT 03-export|simple-capture Editor */ 0
+wait 3000
+eval editor document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))
+show library
+wait 3000
+eval library /* SHOT 04-library|simple-capture Library */ 0
+wait 3000
+quit

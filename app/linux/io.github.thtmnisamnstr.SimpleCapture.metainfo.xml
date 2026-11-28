@@ -33,6 +33,24 @@
   <url type="homepage">https://github.com/thtmnisamnstr/simple-capture</url>
   <url type="bugtracker">https://github.com/thtmnisamnstr/simple-capture/issues</url>
   <url type="vcs-browser">https://github.com/thtmnisamnstr/simple-capture</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>The recorder: pick a screen or window, frame it, choose the sound</caption>
+      <image>https://raw.githubusercontent.com/thtmnisamnstr/simple-capture/main/app/linux/screenshots/01-record.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The editor: trim, split, speed up and add text on a timeline</caption>
+      <image>https://raw.githubusercontent.com/thtmnisamnstr/simple-capture/main/app/linux/screenshots/02-edit.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Export to MP4, MOV, WebM, GIF or WebP, with presets for where it goes</caption>
+      <image>https://raw.githubusercontent.com/thtmnisamnstr/simple-capture/main/app/linux/screenshots/03-export.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The Library of recordings</caption>
+      <image>https://raw.githubusercontent.com/thtmnisamnstr/simple-capture/main/app/linux/screenshots/04-library.png</image>
+    </screenshot>
+  </screenshots>
   <content_rating type="oars-1.1"/>
   <supports>
     <control>pointing</control>
