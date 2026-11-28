@@ -6,6 +6,7 @@ version, and commit what it writes:
   cargo-sources.json    every crate of the app, gifski and cargo-about (vendored, offline)
   node-sources.json     the UI's pnpm store, under ui/, and pnpm itself
   helper-sources.json   the export helpers' pinned tarballs, into third_party/build/downloads
+  rust-sources.json     the Rust toolchain rust-toolchain.toml pins, for each arch
   skia-sources.json     Skia at the milestone skia-bindings pins, the DEPS externals it builds,
                         and gn at the revision Skia's bin/fetch-gn names
 
@@ -166,6 +167,19 @@ def skia_sources(tmp):
     write("skia-sources.json", out)
 
 
+def rust_sources():
+    toml = (ROOT / "rust-toolchain.toml").read_text()
+    version = re.search(r'^channel = "([^"]+)"', toml, re.M).group(1)
+    out = []
+    for arch in ("x86_64", "aarch64"):
+        url = f"https://static.rust-lang.org/dist/rust-{version}-{arch}-unknown-linux-gnu.tar.xz"
+        with urllib.request.urlopen(url + ".sha256") as r:
+            sha = r.read().decode().split()[0]
+        out.append({"type": "archive", "only-arches": [arch], "url": url, "sha256": sha,
+                    "dest": "flatpak-tools/rust-dist"})
+    write("rust-sources.json", out)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--tools", default=os.environ.get(
@@ -177,6 +191,7 @@ def main():
         cargo_sources(fbt, tmp)
         node_sources(tmp)
         helper_sources()
+        rust_sources()
         skia_sources(tmp)
 
 

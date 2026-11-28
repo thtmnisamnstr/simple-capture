@@ -6,9 +6,8 @@ pinned sources only, on the GNOME 50 runtime.
 | Module | What it builds |
 | --- | --- |
 | `shared/libayatana-appindicator` | the tray library (copied from [flathub/shared-modules](https://github.com/flathub/shared-modules) at the commit in `shared/SHARED_MODULES_COMMIT`) |
-| `rust` | Rust 1.100.0, the version `rust-toolchain.toml` pins (Flathub's rust-stable extension trails it); build-only |
 | `nasm` | the assembler the x264 and SVT-AV1 builds need; build-only |
-| `helpers` | `sc-ffmpeg`, `sc-ffprobe` and `sc-gifski` with `third_party/ffmpeg/build-linux.sh` and `third_party/gifski/build.sh`, from the tarballs in `third_party/versions.toml` |
+| `helpers` | Rust 1.100.0 (`rust-toolchain.toml`'s pin, which Flathub's rust-stable extension trails), unpacked in the build folder; then `sc-ffmpeg`, `sc-ffprobe` and `sc-gifski` with `third_party/ffmpeg/build-linux.sh` and `third_party/gifski/build.sh`, from the tarballs in `third_party/versions.toml` |
 | `simple-capture` | gn, then the UI (pnpm, offline), Skia from source (`SKIA_SOURCE_DIR`), the app, and the Rust notices (cargo-about) |
 
 The install layout matches the .deb: the app and helpers in `/app/bin`, fonts and licenses in
@@ -16,8 +15,8 @@ The install layout matches the .deb: the app and helpers in `/app/bin`, fonts an
 
 ## Regenerating the source lists
 
-`cargo-sources.json`, `node-sources.json`, `helper-sources.json` and `skia-sources.json` are
-generated. After changing `Cargo.lock`, `ui/pnpm-lock.yaml`, `third_party/versions.toml`, the
+`cargo-sources.json`, `node-sources.json`, `helper-sources.json`, `rust-sources.json` and
+`skia-sources.json` are generated. After changing `Cargo.lock`, `ui/pnpm-lock.yaml`, `third_party/versions.toml`, the
 gifski lock or skia-safe:
 
 ```sh
@@ -55,6 +54,6 @@ one change: the two `type: dir` sources become the release tag.
 
 (the `helpers` module keeps `dest: third_party` and its `skip` list does not apply to git
 sources). Then follow https://docs.flathub.org/docs/for-app-authors/submission: fork
-`flathub/flathub`, branch from `new-pr`, add the manifest, the four JSON lists and `shared/`, and
+`flathub/flathub`, branch from `new-pr`, add the manifest, the five JSON lists and `shared/`, and
 open the pull request. The metainfo needs screenshots before review (Flathub requires at least
 one); they are referenced by URL from the tagged repository.

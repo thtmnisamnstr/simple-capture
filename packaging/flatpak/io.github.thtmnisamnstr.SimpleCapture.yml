@@ -33,7 +33,7 @@ cleanup:
   - '*.la'
   - '*.a'
 build-options:
-  append-path: /usr/lib/sdk/node26/bin:/usr/lib/sdk/llvm21/bin:/app/lib/sdk-build/rust/bin:/app/lib/sdk-build/bin
+  append-path: /usr/lib/sdk/node26/bin:/usr/lib/sdk/llvm21/bin:/app/lib/sdk-build/bin
   prepend-ld-library-path: /usr/lib/sdk/llvm21/lib
   env:
     LIBCLANG_PATH: /usr/lib/sdk/llvm21/lib
@@ -41,25 +41,6 @@ build-options:
     CARGO_TERM_COLOR: never
 modules:
   - shared/libayatana-appindicator/libayatana-appindicator-gtk3.json
-
-  - name: rust
-    buildsystem: simple
-    # Build-only; stripping it breaks rustc's own libLLVM.
-    build-options:
-      strip: false
-      no-debuginfo: true
-    build-commands:
-      - ./install.sh --prefix=/app/lib/sdk-build/rust --components=rustc,cargo,rust-std-$(uname -m)-unknown-linux-gnu
-        --disable-ldconfig
-    sources:
-      - type: archive
-        only-arches: [x86_64]
-        url: https://static.rust-lang.org/dist/rust-1.100.0-x86_64-unknown-linux-gnu.tar.xz
-        sha256: 98ee6bec240e1cfe944f17e7092412dc5ef6e008484bb668c6936d35a7d15acd
-      - type: archive
-        only-arches: [aarch64]
-        url: https://static.rust-lang.org/dist/rust-1.100.0-aarch64-unknown-linux-gnu.tar.xz
-        sha256: a21f6a21818df07c1e2e7addb570af5444b3fa9dd61e3a207f4fb1c5a5e665c9
 
   - name: nasm
     config-opts: [--prefix=/app/lib/sdk-build]
@@ -71,9 +52,14 @@ modules:
   - name: helpers
     buildsystem: simple
     build-options:
+      append-path: /run/build/helpers/flatpak-tools/rust/bin
       env:
         CARGO_HOME: /run/build/helpers/cargo
     build-commands:
+      # Rust 1.100 (rust-toolchain.toml; Flathub's rust-stable trails it), unpacked here rather than
+      # in /app, where flatpak-builder's stripping breaks rustc's libLLVM.
+      - flatpak-tools/rust-dist/install.sh --prefix=$PWD/flatpak-tools/rust --disable-ldconfig
+        --components=rustc,cargo,rust-std-$(uname -m)-unknown-linux-gnu
       - third_party/ffmpeg/build-linux.sh linux
       - third_party/gifski/build.sh linux
       - |
@@ -88,15 +74,21 @@ modules:
         dest: third_party
         skip: [build, out]
       - helper-sources.json
+      - rust-sources.json
       - cargo-sources.json
 
   - name: simple-capture
     buildsystem: simple
     build-options:
+      append-path: /run/build/simple-capture/flatpak-tools/rust/bin
       env:
         CARGO_HOME: /run/build/simple-capture/cargo
         SKIA_GN_ARGS: skia_use_freetype=true skia_use_system_freetype2=false skia_enable_fontmgr_custom_empty=true
     build-commands:
+      # Rust 1.100 (rust-toolchain.toml; Flathub's rust-stable trails it), unpacked here rather than
+      # in /app, where flatpak-builder's stripping breaks rustc's libLLVM.
+      - flatpak-tools/rust-dist/install.sh --prefix=$PWD/flatpak-tools/rust --disable-ldconfig
+        --components=rustc,cargo,rust-std-$(uname -m)-unknown-linux-gnu
       - cd flatpak-tools/gn && python3 build/gen.py && ninja -C out gn
       # cargo-about's own crate sits inside this workspace's folder without being a member.
       - printf '\n[workspace]\n' >> flatpak-tools/cargo-about/Cargo.toml
@@ -125,6 +117,7 @@ modules:
         path: ../..
         skip: [target, third_party/build, third_party/out, ui/node_modules, ui/dist, app/binaries,
                app/gen, packaging/flatpak/.flatpak-builder, .flatpak-builder, .git, flatpak-tools]
+      - rust-sources.json
       - cargo-sources.json
       - node-sources.json
       - skia-sources.json

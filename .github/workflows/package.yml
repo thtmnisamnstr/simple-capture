@@ -231,10 +231,12 @@ jobs:
           appstreamcli validate --no-net app/linux/$id.metainfo.xml
           deb=$(ls "$CARGO_TARGET_DIR"/release/bundle/deb/*.deb)
           rpm=$(ls "$CARGO_TARGET_DIR"/release/bundle/rpm/*.rpm)
+          dpkg-deb -c "$deb" | awk '{print $NF}' | sed -E 's#^\./##' > deb.txt
+          rpm2cpio "$rpm" | cpio -t --quiet | sed -E 's#^\.?/##' > rpm.txt
           for want in "usr/share/applications/$id.desktop" "usr/share/metainfo/$id.metainfo.xml" \
                       usr/bin/simple-capture-app usr/bin/sc-ffmpeg; do
-            dpkg-deb -c "$deb" | grep -qE " (\./)?$want$" || { echo "::error::the .deb lacks $want"; exit 1; }
-            rpm2cpio "$rpm" | cpio -t 2>/dev/null | grep -qE "^(\./|/)?$want$" || { echo "::error::the .rpm lacks $want"; exit 1; }
+            grep -qx "$want" deb.txt || { echo "::error::the .deb lacks $want"; exit 1; }
+            grep -qx "$want" rpm.txt || { echo "::error::the .rpm lacks $want"; exit 1; }
           done
           dpkg-deb -f "$deb" Depends
       - name: The .deb keeps its helpers off the system's names
