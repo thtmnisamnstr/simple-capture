@@ -27,6 +27,9 @@ apps:
       - camera
       - audio-record
       - audio-playback
+      # Microphones and the system-audio monitor go through PipeWire directly (cpal's PipeWire
+      # host). The interface doesn't auto-connect: snap connect simple-capture:pipewire.
+      - pipewire
       - opengl
       - unity7
 
