@@ -1,0 +1,12 @@
+# A relaunch after record.txt (same SC_E2E_DATA): the saved source is the last portal pick, and
+# Record reopens it from its restore token, with no share dialog and no system picker step.
+wait-launch 120000
+show panel
+wait 1500
+eval panel (() => { const t = setInterval(() => { const b = document.querySelector('button.record'); if (b && !b.disabled) { clearInterval(t); __scLog('record clicked'); b.click(); } }, 500); })()
+wait-phase recording 30000
+wait 8000
+cmd stop_recording
+wait-phase saved 60000
+ui-log
+quit

@@ -183,6 +183,10 @@ impl RecorderSettings {
     }
 }
 
+/// The pick id of the last portal pick on Linux, which survives relaunches.
+#[cfg(target_os = "linux")]
+pub const LAST_PICK: &str = "last";
+
 pub struct SettingsStore {
     path: PathBuf,
 }
@@ -220,12 +224,16 @@ impl SettingsStore {
         }
     }
 
-    /// A system-picker pick lives only as long as the process, so a saved one is stale at launch.
-    /// On Linux every source is such a pick; the panel would offer it and recording would fail.
+    /// A system-picker pick lives only as long as the process. On Linux the portal can reopen
+    /// the last one (`LAST_PICK`) from its restore token; any other saved pick is stale at launch.
     #[cfg(target_os = "linux")]
-    pub fn forget_picked_source(&self) {
+    pub fn keep_only_restorable_pick(&self, restorable: bool) {
         let mut s = self.load();
-        if matches!(s.source, Some(SourceSpecDto::Picked { .. })) {
+        let stale = match &s.source {
+            Some(SourceSpecDto::Picked { pick_id, .. }) => !(restorable && pick_id == LAST_PICK),
+            _ => false,
+        };
+        if stale {
             s.source = None;
             if let Err(e) = self.save(&s) {
                 tracing::warn!("forget the last picked source: {e}");
@@ -259,18 +267,23 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn a_saved_pick_is_forgotten_at_launch_and_other_sources_are_kept() {
+    fn at_launch_only_a_restorable_pick_is_kept() {
         let dir = temp_dir("pick");
         let store = SettingsStore::new(&dir);
-        let picked = RecorderSettings {
+        let with = |pick_id: &str| RecorderSettings {
             source: Some(SourceSpecDto::Picked {
-                pick_id: "gone".into(),
+                pick_id: pick_id.into(),
                 region_pt: None,
             }),
             ..RecorderSettings::default()
         };
-        store.save(&picked).expect("save");
-        store.forget_picked_source();
+        store.save(&with(LAST_PICK)).expect("save");
+        store.keep_only_restorable_pick(true);
+        assert_eq!(store.load().source, with(LAST_PICK).source);
+        store.keep_only_restorable_pick(false);
+        assert_eq!(store.load().source, None);
+        store.save(&with("an-old-uuid")).expect("save");
+        store.keep_only_restorable_pick(true);
         assert_eq!(store.load().source, None);
         let region = RecorderSettings {
             source: Some(SourceSpecDto::Region {
@@ -285,7 +298,7 @@ mod tests {
             ..RecorderSettings::default()
         };
         store.save(&region).expect("save");
-        store.forget_picked_source();
+        store.keep_only_restorable_pick(false);
         assert_eq!(store.load().source, region.source);
         let _ = std::fs::remove_dir_all(&dir);
     }

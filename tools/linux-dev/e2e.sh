@@ -4,12 +4,14 @@
 # app's settings, projects and log live in target/linux-e2e/<stamp>. Prints the failed steps.
 #   cargo build -p simple-capture-app && tools/linux-dev/e2e.sh tools/linux-dev/flows/editor.txt
 # The test pattern needs gstreamer1.0-plugins-bad (waylandsink); without it the screen is static.
+# SC_E2E_DATA=dir keeps the app's data folder (settings, restore token) across runs.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 FLOW=$(realpath "${1:?usage: tools/linux-dev/e2e.sh FLOW}")
 APP=${SC_E2E_APP:-$PWD/target/debug/simple-capture-app}
 OUT=$PWD/target/linux-e2e/$(date +%Y%m%d-%H%M%S)
-mkdir -p "$OUT/data" "$OUT/projects"
+DATA=${SC_E2E_DATA:-$OUT/data}
+mkdir -p "$DATA" "$OUT/projects"
 cat > "$OUT/inside.sh" <<EOF
 #!/usr/bin/env bash
 gst-launch-1.0 -q videotestsrc pattern=ball is-live=true ! video/x-raw,width=1280,height=720,framerate=30/1 \\
@@ -17,7 +19,7 @@ gst-launch-1.0 -q videotestsrc pattern=ball is-live=true ! video/x-raw,width=128
 pattern=\$!
 trap 'kill \$pattern 2>/dev/null' EXIT
 sleep 2
-SC_DATA_DIR="$OUT/data" SC_PROJECTS_DIR="$OUT/projects" SC_APP_SCRIPT="$FLOW" RUST_LOG=\${RUST_LOG:-info} \\
+SC_DATA_DIR="$DATA" SC_PROJECTS_DIR="$OUT/projects" SC_APP_SCRIPT="$FLOW" RUST_LOG=\${RUST_LOG:-info} \\
   timeout \${SC_E2E_TIMEOUT:-900} "$APP" > "$OUT/app.out" 2> "$OUT/app.log"
 echo "e2e: app exit \$?" >&2
 EOF

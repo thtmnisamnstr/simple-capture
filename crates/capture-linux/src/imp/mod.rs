@@ -3,7 +3,7 @@ mod desktop;
 mod gst;
 mod mjpeg;
 mod nodes;
-mod portal;
+pub(crate) mod portal;
 mod pw;
 mod sys;
 

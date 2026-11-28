@@ -21,8 +21,8 @@ simple-capture-tracks.workspace = true
 simple-capture-helpers.workspace = true
 tracing.workspace = true
 libc.workspace = true
-ashpd = { version = "0.14.1", default-features = false, features = ["tokio", "screencast", "file_chooser", "open_uri"] }
-tokio = { version = "1.54.1", default-features = false, features = ["rt", "rt-multi-thread"] }
+ashpd = { version = "0.14.1", default-features = false, features = ["tokio", "screencast", "file_chooser", "open_uri", "global_shortcuts"] }
+tokio = { version = "1.54.1", default-features = false, features = ["rt", "rt-multi-thread", "time", "sync"] }
 pipewire = { version = "0.10.1", features = ["v0_3_53"] }
 v4l = "0.14.0"
 gstreamer = "0.25.4"

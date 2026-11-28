@@ -122,7 +122,15 @@ impl Tray {
     }
 
     /// `counting`: a recording start, its countdown included, is under way.
-    pub fn refresh(&self, phase: &Phase, elapsed_ns: i64, paused: bool, counting: bool) {
+    /// `live`: the recording has really started; until then Stop is not offered.
+    pub fn refresh(
+        &self,
+        phase: &Phase,
+        elapsed_ns: i64,
+        paused: bool,
+        counting: bool,
+        live: bool,
+    ) {
         let recording = phase.is_recording();
         let title = recording.then(|| {
             if paused {
@@ -131,7 +139,7 @@ impl Tray {
                 format_elapsed(elapsed_ns)
             }
         });
-        let _ = self.pause.set_enabled(recording);
+        let _ = self.pause.set_enabled(recording && live);
         let _ = self.pause.set_text(if paused {
             "Resume Recording"
         } else {
@@ -170,7 +178,9 @@ impl Tray {
                 tracing::warn!("tray menu: {e}");
             }
         }
-        let text = if recording {
+        let text = if recording && !live {
+            "Starting…"
+        } else if recording {
             "Stop Recording"
         } else if counting {
             "Cancel Countdown"
@@ -180,6 +190,7 @@ impl Tray {
         if let Err(e) = self.start_stop.set_text(text) {
             tracing::debug!("tray item: {e}");
         }
+        let _ = self.start_stop.set_enabled(!recording || live);
     }
 
     #[cfg(debug_assertions)]

@@ -126,7 +126,7 @@ impl Core {
         let screens = platform.screens();
         let settings = SettingsStore::new(&data_dir);
         #[cfg(target_os = "linux")]
-        settings.forget_picked_source();
+        settings.keep_only_restorable_pick(sc_capture_linux::last_pick().is_some());
         Core {
             settings,
             settings_write: Mutex::new(()),
@@ -917,6 +917,26 @@ impl Core {
         lock(&self.picks).get(id).cloned()
     }
 
+    /// For recording: on Linux the last portal pick is reopened from its restore token when this
+    /// run has not opened it yet (after a relaunch), without the share dialog.
+    fn picked_for_recording(&self, id: &str) -> Option<PickedSource> {
+        if let Some(p) = self.picked(id) {
+            return Some(p);
+        }
+        #[cfg(target_os = "linux")]
+        if id == crate::settings::LAST_PICK {
+            match sc_capture_linux::restore_last() {
+                Ok(Some(p)) => {
+                    lock(&self.picks).insert(id.to_string(), p.clone());
+                    return Some(p);
+                }
+                Ok(None) => {}
+                Err(e) => tracing::warn!("reopen the last shared screen or window: {e}"),
+            }
+        }
+        None
+    }
+
     fn set_purpose(&self, purpose: &str) -> Result<(), String> {
         if purpose != "start" && purpose != "switch" {
             return Err(format!("purpose must be start or switch, got {purpose:?}"));
@@ -982,6 +1002,13 @@ impl Core {
     fn on_system_pick(&self, purpose: &str, r: sc_platform::Result<Option<PickedSource>>) {
         match r {
             Ok(Some(p)) => {
+                // On Linux the pick is the one the portal can reopen later: one fixed id.
+                #[cfg(target_os = "linux")]
+                let id = {
+                    lock(&self.picks).insert(crate::settings::LAST_PICK.to_string(), p);
+                    crate::settings::LAST_PICK.to_string()
+                };
+                #[cfg(not(target_os = "linux"))]
                 let id = self.store_pick(p);
                 let source = SourceSpecDto::Picked {
                     pick_id: id,
@@ -1149,7 +1176,7 @@ impl Core {
         *lock(&self.last_request) = Some(req.clone());
         *lock(&self.paused_total) = std::time::Duration::ZERO;
         *lock(&self.paused_since) = None;
-        let spec = req.source.to_spec(|id| self.picked(id))?;
+        let spec = req.source.to_spec(|id| self.picked_for_recording(id))?;
         std::fs::create_dir_all(&self.projects_dir)
             .map_err(|e| format!("create {}: {e}", self.projects_dir.display()))?;
         let default_canvas = ProjectV1::new_recording(
@@ -1208,9 +1235,19 @@ impl Core {
         self.stop_with(StopReason::User)
     }
 
+    /// The recording has really started (its session exists); while it is still starting there
+    /// is nothing to stop yet.
+    pub fn live(&self) -> bool {
+        lock(&self.session).is_some()
+    }
+
     fn stop_with(&self, reason: StopReason) -> Reply {
         let Some(session) = lock(&self.session).take() else {
-            return Err("not recording".into());
+            return Err(if self.phase().is_recording() {
+                "the recording is still starting".into()
+            } else {
+                "not recording".into()
+            });
         };
         let _ = self.advance(Input::StopBegin);
         self.emit(
@@ -1256,7 +1293,7 @@ impl Core {
         } else {
             Via::OwnChooser
         };
-        let spec = source.to_spec(|id| self.picked(id))?;
+        let spec = source.to_spec(|id| self.picked_for_recording(id))?;
         let to_camera = matches!(spec, sc_platform::SourceSpec::Camera { .. });
         let guard = lock(&self.session);
         let s = guard.as_ref().ok_or("not recording")?;
@@ -1416,6 +1453,7 @@ impl Core {
                 self.elapsed_ns(),
                 self.is_paused(),
                 self.starting(),
+                self.live(),
             );
         }
     }
@@ -1423,7 +1461,10 @@ impl Core {
     /// The record hotkey and the tray's Start/Stop item: stops a recording, cancels a countdown
     /// (a second press must not start a second one), or starts.
     pub fn start_stop(self: &Arc<Self>) -> Reply {
-        if self.phase().is_recording() {
+        if self.phase().is_recording() && !self.live() {
+            tracing::info!("stop ignored: the recording is still starting");
+            Ok(Value::Null)
+        } else if self.phase().is_recording() {
             self.stop_recording()
         } else if self.starting() {
             self.cancel_countdown()

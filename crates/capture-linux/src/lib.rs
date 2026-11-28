@@ -14,6 +14,9 @@ mod imp;
 #[doc(hidden)]
 pub use imp::node_stream;
 
+#[cfg(target_os = "linux")]
+pub use imp::portal::{LastPick, last_pick, restore_last, set_state_dir};
+
 pub fn platform() -> Arc<dyn Platform> {
     #[cfg(target_os = "linux")]
     return imp::platform();
