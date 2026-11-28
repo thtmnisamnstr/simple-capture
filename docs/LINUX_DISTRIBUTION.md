@@ -1,10 +1,33 @@
-# Linux distribution plan
+# Linux distribution
 
-Plan, 2026-11-27 (researched by an agent, checked against the branch). Goal: put simple-capture into apt (Debian/Ubuntu), dnf/yum (Fedora/RHEL),
-the Snap Store and Flathub, and keep the AppImage. Today `.github/workflows/package.yml` builds
-one `.deb` and one `.AppImage` for linux-x86_64 on ubuntu-24.04 and attaches them to a draft
-GitHub release, along with `simple-capture-helper-sources.tar.gz`. Sources are listed at the end
-and cited as [n].
+## Status (2026-11-28, branch linux-distribution)
+
+What exists, and what each channel still needs from the owner. The plan below (§1 onward,
+researched 2026-11-27) is the background; where the two differ, this section wins.
+
+| Channel | Built by | State | Owner's step to publish |
+|---|---|---|---|
+| `.deb`, `.rpm`, AppImage (x86_64, arm64) | `package.yml` bundle job | Real distro dependencies (`app/tauri.linux.conf.json`), the app-ID desktop file and metainfo inside, checked in CI | Push a `v*` tag; publish the draft release |
+| apt and dnf repositories | `package.yml` (check) and `linux-repos.yml` (publish) | `scripts/linux-repos/build.sh` makes signed repos; CI installs from them in clean Ubuntu 24.04, Debian 13 and Fedora containers on every build | Once: `scripts/linux-repos/new-key.sh` (sets `LINUX_REPO_GPG_KEY`), and Settings → Pages → Source: GitHub Actions. Then each published release deploys to https://thtmnisamnstr.github.io/simple-capture |
+| Snap (strict, core24) | `package.yml` snap job | The `.deb` repackaged on the GNOME content snap; CI checks the snap's contents | Register the name `simple-capture` (`snapcraft register`), export credentials (`snapcraft export-login`) into the `SNAPCRAFT_STORE_CREDENTIALS` secret; tags then publish to edge. Promote to stable by hand after a test on a real desktop |
+| Flathub | `flatpak.yml` | Offline manifest in `packaging/flatpak` (GNOME 50, Skia from source, helpers from the same pins), built for x86_64 and aarch64 and linted in CI; metainfo has screenshots | After a tagged release: the submission steps in `packaging/flatpak/README.md` (a PR to `flathub/flathub`) |
+
+Decisions taken (they were §7's questions):
+- **App ID:** `io.github.thtmnisamnstr.SimpleCapture` on every Linux package (Flathub verifies
+  it through GitHub). GTK's program name is the app ID, so windows match the desktop file. The
+  Tauri identifier stays `com.simplecapture.desktop`, so the data folder doesn't move and macOS
+  is untouched.
+- **Oldest distro:** Ubuntu 24.04 / Debian 13 / current Fedora (packages are built on
+  ubuntu-24.04). Older systems use the Flatpak.
+- **Repo hosting:** GitHub Pages, deployed from an Actions artifact (no binaries in git history),
+  holding only the newest release (about 150 MB per release, well under the 1 GB limit).
+- **Not pursued:** Copr and openSUSE OBS (they refuse x264/x265), official Debian/Fedora packages
+  (they would require unbundling every crate and the FFmpeg build), and a Launchpad PPA (only if
+  someone asks for it).
+
+Not verified yet: the Snap and Flatpak on a real desktop. The PipeWire mic and system-audio
+path, the tray and the camera inside the sandboxes have only been built, not run. Run each once
+on GNOME and KDE before promoting.
 
 ## 1. Things that affect every channel
 

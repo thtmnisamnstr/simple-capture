@@ -59,8 +59,23 @@ use FFmpeg's palette, and media keys can't be shortcuts. The store and DMG copie
 them asks for the permissions again.
 
 Releases also have an NSIS setup `.exe` for Windows (a per-user install, not code-signed yet, so
-SmartScreen asks to confirm) and `.deb` and `.AppImage` for Linux. Builds of any commit are under
-GitHub Actions → package → a run → Artifacts.
+SmartScreen asks to confirm). Builds of any commit are under GitHub Actions → package → a run →
+Artifacts.
+
+### Linux
+
+x86_64 and arm64, on Wayland or X11, GNOME and KDE tested. The app uses the desktop's own screen
+picker (the xdg-desktop-portal), remembers the last screen or window you shared, and takes its
+global shortcuts through the portal on Wayland.
+
+- **Debian 13, Ubuntu 24.04 and newer:** the signed apt repository at
+  https://thtmnisamnstr.github.io/simple-capture (instructions there), or the `.deb` from Releases.
+- **Fedora:** the signed dnf repository at the same address, or the `.rpm` from Releases.
+- **Any distro:** the Flatpak (Flathub, coming) or the `.AppImage` from Releases; the Snap is
+  coming to the Snap Store.
+
+Linux builds the screen track with GStreamer (VA-API, NVENC or OpenH264), so install your
+distro's GStreamer "bad" plugins for hardware encoding; the packages recommend them.
 
 ## Build from source
 
