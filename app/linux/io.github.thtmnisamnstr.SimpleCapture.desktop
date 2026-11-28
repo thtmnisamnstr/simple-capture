@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=simple-capture
+GenericName=Screen Recorder
+Comment=Record your screen, camera and voice, edit, and export
+Exec=simple-capture
+Icon=io.github.thtmnisamnstr.SimpleCapture
+Terminal=false
+Categories=AudioVideo;Video;Recorder;
+Keywords=screen;recorder;screencast;capture;video;camera;
+StartupNotify=false
+StartupWMClass=simple-capture

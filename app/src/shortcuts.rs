@@ -3,6 +3,8 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+#[cfg(target_os = "linux")]
+use std::sync::Mutex;
 
 use serde_json::{Value, json};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
@@ -66,10 +68,23 @@ pub fn check(keys: &str) -> Result<Shortcut, String> {
     Ok(s)
 }
 
+/// The keys the compositor bound through the portal, as it describes them (Wayland).
+#[cfg(target_os = "linux")]
+fn portal_triggers() -> std::sync::MutexGuard<'static, BTreeMap<String, String>> {
+    static SYSTEM: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
+    SYSTEM
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 impl Core {
     /// Registers the settings' shortcuts in place of the current ones (none while paused) and
     /// remembers why any failed.
     pub fn apply_shortcuts(self: &Arc<Self>) -> BTreeMap<String, String> {
+        #[cfg(target_os = "linux")]
+        if sc_capture_linux::shortcuts::wayland() {
+            return self.apply_portal_shortcuts();
+        }
         let mut current = self.shortcut_errors();
         let gs = self.app.global_shortcut();
         if let Err(e) = gs.unregister_all() {
@@ -123,10 +138,105 @@ impl Core {
         errors
     }
 
+    /// Wayland: the GlobalShortcuts portal binds the keys (X11 grabs see no keys while a Wayland
+    /// window has focus). Binding waits for the compositor, which may ask the user first, so it
+    /// runs on its own thread and reports problems as a notice. While a new shortcut is being
+    /// typed, presses are ignored instead of rebinding, which would ask again.
+    #[cfg(target_os = "linux")]
+    fn apply_portal_shortcuts(self: &Arc<Self>) -> BTreeMap<String, String> {
+        use sc_capture_linux::shortcuts::{Wanted, bind};
+        static BOUND_FOR: Mutex<Option<Vec<Wanted>>> = Mutex::new(None);
+        let keys = merged(&self.current_settings().shortcuts);
+        let mut errors = BTreeMap::new();
+        let mut wanted = Vec::new();
+        for (id, label, _) in ACTIONS {
+            let k = &keys[id];
+            if k.is_empty() {
+                continue;
+            }
+            match check(k) {
+                Ok(_) => wanted.push(Wanted {
+                    id: id.to_string(),
+                    description: label.to_string(),
+                    keys: k.clone(),
+                }),
+                Err(e) => {
+                    errors.insert(id.to_string(), e);
+                }
+            }
+        }
+        {
+            let mut last = BOUND_FOR
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if last.as_ref() == Some(&wanted) {
+                let current = self.shortcut_errors().clone();
+                return current;
+            }
+            *last = Some(wanted.clone());
+        }
+        *self.shortcut_errors() = errors.clone();
+        let core = Arc::downgrade(self);
+        let on_press: Arc<dyn Fn(&str) + Send + Sync> = Arc::new(move |pressed| {
+            let Some(c) = core.upgrade() else { return };
+            if c.shortcuts_paused() {
+                return;
+            }
+            let Some((id, _, _)) = ACTIONS.iter().find(|(a, _, _)| *a == pressed) else {
+                return;
+            };
+            std::thread::spawn(move || {
+                if let Err(e) = run(&c, id) {
+                    tracing::warn!("shortcut {id}: {e}");
+                }
+            });
+        });
+        let core = Arc::downgrade(self);
+        let spawned = std::thread::Builder::new()
+            .name("portal-shortcuts".into())
+            .spawn(move || {
+                let result = bind(wanted.clone(), on_press);
+                let Some(c) = core.upgrade() else { return };
+                match result {
+                    Ok(bound) => {
+                        let mut system = portal_triggers();
+                        system.clear();
+                        for b in bound {
+                            tracing::info!("shortcut {} = {} (portal)", b.id, b.trigger);
+                            system.insert(b.id, b.trigger);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("shortcuts: {e}");
+                        let text = format!("the system did not bind them ({e})");
+                        {
+                            let mut errs = c.shortcut_errors();
+                            for w in &wanted {
+                                errs.insert(w.id.clone(), text.clone());
+                            }
+                        }
+                        *BOUND_FOR
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+                        c.emit("notice", crate::dto::hotkey_unavailable(&text));
+                    }
+                }
+                c.emit("shortcuts-changed", c.shortcuts_state());
+            });
+        if let Err(e) = spawned {
+            tracing::warn!("shortcuts thread: {e}");
+        }
+        errors
+    }
+
     /// The actions with their keys, labels and any registration problem.
     pub fn shortcuts_state(&self) -> Value {
         let keys = merged(&self.current_settings().shortcuts);
         let errors = self.shortcut_errors().clone();
+        #[cfg(target_os = "linux")]
+        let system = portal_triggers().clone();
+        #[cfg(not(target_os = "linux"))]
+        let system: BTreeMap<String, String> = BTreeMap::new();
         json!(
             ACTIONS
                 .iter()
@@ -136,6 +246,7 @@ impl Core {
                     "keys": keys[*id],
                     "default": default,
                     "error": errors.get(*id),
+                    "system": system.get(*id),
                 }))
                 .collect::<Vec<_>>()
         )

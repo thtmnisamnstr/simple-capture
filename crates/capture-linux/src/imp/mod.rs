@@ -2,8 +2,10 @@ mod camera;
 mod desktop;
 mod gst;
 mod mjpeg;
-mod portal;
+mod nodes;
+pub(crate) mod portal;
 mod pw;
+pub(crate) mod shortcuts;
 mod sys;
 
 use std::ffi::c_void;
@@ -12,7 +14,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use sc_capture_common::audio::{CpalMic, CpalSystemAudio, mic_devices};
+use sc_capture_common::audio::{CpalMic, CpalSystemAudio};
 use sc_capture_common::watch::Watcher;
 use sc_core::image::RgbaImage;
 use sc_core::project::SourceDescriptor;
@@ -28,6 +30,22 @@ use sc_tracks::{HelperDecoder, HelperWriters};
 
 struct Screen;
 
+struct Mic(CpalMic);
+
+impl AudioSource for Mic {
+    fn devices(&self) -> Result<Vec<CaptureDevice>> {
+        nodes::mics()
+    }
+
+    fn start(&self, device_id: &str, sink: Arc<dyn FrameSink>) -> Result<Box<dyn DeviceStream>> {
+        self.0.start(device_id, sink)
+    }
+
+    fn show_mic_modes(&self) -> Result<()> {
+        self.0.show_mic_modes()
+    }
+}
+
 impl ScreenSource for Screen {
     fn displays(&self) -> Result<Vec<DisplayInfo>> {
         Ok(Vec::new())
@@ -40,10 +58,10 @@ impl ScreenSource for Screen {
     fn describe(
         &self,
         spec: &SourceSpec,
-        _cfg: &ScreenStreamConfig,
+        cfg: &ScreenStreamConfig,
     ) -> Result<(SourceDescriptor, SizePx)> {
         let c = portal::cast_of(spec)?;
-        Ok((portal::descriptor(&c), c.size))
+        Ok((portal::descriptor(&c), c.size_for(cfg.resolution)))
     }
 
     fn start(
@@ -54,15 +72,16 @@ impl ScreenSource for Screen {
         sink: Arc<dyn FrameSink>,
     ) -> Result<Box<dyn ScreenStream>> {
         let c = portal::cast_of(spec)?;
-        let fd = c.remote()?;
-        Ok(Box::new(pw::start(
-            Some(fd),
-            c.node,
-            tag,
-            c.size,
-            cfg.fps,
-            sink,
-        )?))
+        let t = std::time::Instant::now();
+        let size = c.size_for(cfg.resolution);
+        let stream = c.connection()?.start(c.node, tag, size, cfg.fps, sink)?;
+        tracing::info!(
+            ms = t.elapsed().as_millis(),
+            w = size.w,
+            h = size.h,
+            "screen stream started"
+        );
+        Ok(Box::new(stream))
     }
 
     fn snapshot(&self, _spec: &SourceSpec, _max: SizePx) -> Result<RgbaImage> {
@@ -129,7 +148,7 @@ impl OverlayWindows for Overlays {
 
 pub struct LinuxPlatform {
     screen: Screen,
-    mic: CpalMic,
+    mic: Mic,
     system_audio: CpalSystemAudio,
     camera: Camera,
     picker: portal::PortalPicker,
@@ -156,9 +175,9 @@ pub fn platform() -> Arc<dyn Platform> {
         .unwrap_or_else(|_| sc_helpers::bundled_path(sc_helpers::HelperKind::Ffmpeg));
     Arc::new(LinuxPlatform {
         screen: Screen,
-        mic: CpalMic {
+        mic: Mic(CpalMic {
             clock: sys::host_now,
-        },
+        }),
         system_audio: CpalSystemAudio {
             clock: sys::host_now,
         },
@@ -265,7 +284,7 @@ impl Platform for LinuxPlatform {
         };
         Ok(Box::new(Watcher::start(
             sink,
-            Box::new(move || ids(mic_devices())),
+            Box::new(move || ids(nodes::mics())),
             Box::new(move || ids(camera::devices())),
         )?))
     }

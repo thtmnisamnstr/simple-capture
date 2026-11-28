@@ -264,6 +264,9 @@
           settings = next as unknown as RecorderSettings;
         }
       }),
+      onEvent('shortcuts-changed', (v: unknown): v is ShortcutRow[] => Array.isArray(v), (rows) => {
+        shortcuts = rows;
+      }),
       onEvent('mic-level', isObject, (m) => {
         if (typeof m.peak_db !== 'number') return;
         micDb = micDb === null ? m.peak_db : Math.max(m.peak_db, micDb - 3);
@@ -911,6 +914,7 @@
                 </div>
               </div>
               {#if sc.error}<p class="caption note bad-note">{sc.label}: {sc.error}</p>{/if}
+              {#if sc.system && !sc.error}<p class="caption note">{sc.label}: {sc.system} in the system’s keyboard settings</p>{/if}
             {/each}
           </div>
           <p class="caption note">Click a shortcut, then press the new keys. Delete clears it.</p>

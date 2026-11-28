@@ -139,6 +139,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+    #[cfg(target_os = "linux")]
+    sc_capture_linux::set_state_dir(data_dir());
     let platform = platform();
     let data = data_dir();
     let projects = projects_dir(&*platform);

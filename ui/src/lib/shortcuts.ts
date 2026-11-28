@@ -8,6 +8,8 @@ export interface ShortcutRow {
   keys: string;
   default: string;
   error: string | null;
+  /** The keys the system bound (Linux on Wayland, where the compositor owns them). */
+  system?: string | null;
 }
 
 export const shortcutsApi = {

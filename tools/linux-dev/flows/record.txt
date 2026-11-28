@@ -1,0 +1,18 @@
+# The Linux system picker end to end: pick through the portal, press Record in the panel, record
+# 10 s, stop, finalize; the editor opens afterwards. The second stop covers a start that is still
+# waiting on the portal (xdg-desktop-portal can take 25 s to open the PipeWire remote here).
+wait-launch 120000
+show panel
+wait 1500
+cmd open_system_picker {"purpose":"start"}
+eval panel (() => { const t = setInterval(() => { const b = document.querySelector('button.record'); if (b && !b.disabled) { clearInterval(t); __scLog('record clicked'); b.click(); } }, 500); })()
+wait-phase recording 60000
+wait 10000
+cmd stop_recording
+wait 80000
+cmd stop_recording
+wait-phase saved 60000
+cmd list_devices
+wait 4000
+ui-log
+quit

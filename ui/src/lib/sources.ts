@@ -55,7 +55,9 @@ export function sourceLabel(s: SourceSpecDto, list: Partial<SourceList>, cameras
     }
     case 'region':
       return `Region ${Math.round(s.region_pt.w)}×${Math.round(s.region_pt.h)} on ${displayName(displays, s.display_id)}`;
-    case 'picked': return s.region_pt ? 'Picked region' : 'Picked with the system picker';
+    case 'picked':
+      if (s.pick_id === 'last') return 'Last shared screen or window';
+      return s.region_pt ? 'Picked region' : 'Picked with the system picker';
     case 'camera': return cameras.find((c) => c.id === s.device_id)?.name ?? 'Camera';
     case 'device': return cameras.find((c) => c.id === s.device_id)?.name ?? 'iPhone';
   }

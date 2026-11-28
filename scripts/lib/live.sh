@@ -162,7 +162,11 @@ live_main() {
   live_lock || return $?
   trap 'live_unlock' EXIT
   live_envcheck || { local rc=$?; live_unlock; return "$rc"; }
-  caffeinate -dimsu -w $$ &
+  if command -v caffeinate >/dev/null; then
+    caffeinate -dimsu -w $$ &
+  else
+    systemd-inhibit --what=idle:sleep --who=simple-capture --why="live run" tail --pid=$$ -f /dev/null &
+  fi
   disown
   local caf=$!
   live_banner START "$*"

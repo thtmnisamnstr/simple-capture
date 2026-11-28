@@ -183,6 +183,10 @@ impl RecorderSettings {
     }
 }
 
+/// The pick id of the last portal pick on Linux, which survives relaunches.
+#[cfg(target_os = "linux")]
+pub const LAST_PICK: &str = "last";
+
 pub struct SettingsStore {
     path: PathBuf,
 }
@@ -220,6 +224,23 @@ impl SettingsStore {
         }
     }
 
+    /// A system-picker pick lives only as long as the process. On Linux the portal can reopen
+    /// the last one (`LAST_PICK`) from its restore token; any other saved pick is stale at launch.
+    #[cfg(target_os = "linux")]
+    pub fn keep_only_restorable_pick(&self, restorable: bool) {
+        let mut s = self.load();
+        let stale = match &s.source {
+            Some(SourceSpecDto::Picked { pick_id, .. }) => !(restorable && pick_id == LAST_PICK),
+            _ => false,
+        };
+        if stale {
+            s.source = None;
+            if let Err(e) = self.save(&s) {
+                tracing::warn!("forget the last picked source: {e}");
+            }
+        }
+    }
+
     pub fn save(&self, s: &RecorderSettings) -> Result<(), String> {
         s.validate()?;
         let bytes = serde_json::to_vec_pretty(s).map_err(|e| format!("encode settings: {e}"))?;
@@ -242,6 +263,44 @@ mod tests {
             std::env::temp_dir().join(format!("sc-app-settings-{name}-{}", sc_core::ids::new_id()));
         std::fs::create_dir_all(&d).expect("temp dir");
         d
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn at_launch_only_a_restorable_pick_is_kept() {
+        let dir = temp_dir("pick");
+        let store = SettingsStore::new(&dir);
+        let with = |pick_id: &str| RecorderSettings {
+            source: Some(SourceSpecDto::Picked {
+                pick_id: pick_id.into(),
+                region_pt: None,
+            }),
+            ..RecorderSettings::default()
+        };
+        store.save(&with(LAST_PICK)).expect("save");
+        store.keep_only_restorable_pick(true);
+        assert_eq!(store.load().source, with(LAST_PICK).source);
+        store.keep_only_restorable_pick(false);
+        assert_eq!(store.load().source, None);
+        store.save(&with("an-old-uuid")).expect("save");
+        store.keep_only_restorable_pick(true);
+        assert_eq!(store.load().source, None);
+        let region = RecorderSettings {
+            source: Some(SourceSpecDto::Region {
+                display_id: "1".into(),
+                region_pt: RectPt {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 10.0,
+                    h: 10.0,
+                },
+            }),
+            ..RecorderSettings::default()
+        };
+        store.save(&region).expect("save");
+        store.keep_only_restorable_pick(false);
+        assert_eq!(store.load().source, region.source);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -66,7 +66,7 @@ fn describe(encoder: &str, size: SizePx, fps: u32, kbps: u32, gop: u32) -> Strin
     format!(
         "appsrc name=src format=time block=false max-bytes={} \
          caps=video/x-raw,format=NV12,width={},height={},framerate={fps}/1 \
-         ! queue ! {encoder} {} ! h264parse ! video/x-h264,profile=(string){{high,main,constrained-baseline}} \
+         ! queue ! videoconvert ! {encoder} {} ! h264parse ! video/x-h264,profile=(string){{high,main,constrained-baseline}} \
          ! matroskamux ! filesink name=sink",
         frame_bytes(size) * QUEUED_FRAMES,
         size.w,
@@ -481,13 +481,30 @@ mod tests {
         }
     }
 
-    /// CI installs x264enc only for this test; the app never picks it on its own.
+    /// Every encoder the app may pick that this machine has, plus x264enc (CI installs it only
+    /// for this test; the app never picks it on its own). openh264enc takes only I420, so this
+    /// also covers the conversion from our NV12 frames.
     #[test]
     fn a_gstreamer_track_reads_back_through_the_helper() {
-        if gst::init().is_err() || gst::ElementFactory::find("x264enc").is_none() {
-            println!("SKIPPED: no GStreamer with x264enc here");
+        if gst::init().is_err() {
+            println!("SKIPPED: no GStreamer here");
             return;
         }
+        let present: Vec<&str> = std::iter::once("x264enc")
+            .chain(ENCODERS)
+            .filter(|e| gst::ElementFactory::find(e).is_some())
+            .collect();
+        if present.is_empty() {
+            println!("SKIPPED: no H.264 encoder in GStreamer here");
+            return;
+        }
+        for encoder in present {
+            println!("encoder {encoder}");
+            round_trip(encoder);
+        }
+    }
+
+    fn round_trip(encoder: &str) {
         let dir = std::env::temp_dir().join(format!("sc-gst-{}", sc_core::ids::new_id()));
         std::fs::create_dir_all(&dir).expect("dir");
         let path = dir.join("screen.mkv");
@@ -500,7 +517,7 @@ mod tests {
             fragment_interval_s: 1.0,
             bits_per_pixel: 0.1,
         };
-        let mut w = GstVideoWriter::start("x264enc", &path, &spec).expect("writer");
+        let mut w = GstVideoWriter::start(encoder, &path, &spec).expect("writer");
         for i in 0..60i64 {
             if i == 40 || i == 41 {
                 continue;
