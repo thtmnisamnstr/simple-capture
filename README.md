@@ -68,7 +68,7 @@ x86_64 and arm64, on Wayland or X11, GNOME and KDE tested. The app uses the desk
 picker (the xdg-desktop-portal), remembers the last screen or window you shared, and takes its
 global shortcuts through the portal on Wayland.
 
-- **Debian 13, Ubuntu 24.04 and newer:** the signed apt repository at
+- **Debian 13, Ubuntu 24.04 and newer:** from the first Linux release, the signed apt repository at
   https://thtmnisamnstr.github.io/simple-capture (instructions there), or the `.deb` from Releases.
 - **Fedora:** the signed dnf repository at the same address, or the `.rpm` from Releases.
 - **Any distro:** the Flatpak (Flathub, coming) or the `.AppImage` from Releases; the Snap is
