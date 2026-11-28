@@ -4517,6 +4517,7 @@ name = "simple-capture-capture-linux"
 version = "0.1.0"
 dependencies = [
  "ashpd",
+ "futures-util",
  "gstreamer",
  "gstreamer-app",
  "libc",

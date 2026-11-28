@@ -1476,14 +1476,21 @@ impl Core {
     /// Tray "Start Recording": the saved settings' source, or the panel when there is none.
     pub fn tray_start(self: &Arc<Self>) -> Reply {
         let settings = self.settings.load();
+        // On Linux the last portal pick reopens without a dialog, so it can start from here too.
+        #[cfg(target_os = "linux")]
+        let startable = |s: &SourceSpecDto| match s {
+            SourceSpecDto::Picked { pick_id, .. } => pick_id == crate::settings::LAST_PICK,
+            _ => true,
+        };
+        #[cfg(not(target_os = "linux"))]
+        let startable = |s: &SourceSpecDto| !matches!(s, SourceSpecDto::Picked { .. });
         match settings.source.clone() {
-            Some(source) if !matches!(source, SourceSpecDto::Picked { .. }) => self
-                .start_recording(RecordRequestDto {
-                    source,
-                    via: Via::OwnChooser,
-                    title: None,
-                    settings,
-                }),
+            Some(source) if startable(&source) => self.start_recording(RecordRequestDto {
+                source,
+                via: Via::OwnChooser,
+                title: None,
+                settings,
+            }),
             _ => {
                 self.show_window("panel", true)?;
                 Ok(Value::Null)

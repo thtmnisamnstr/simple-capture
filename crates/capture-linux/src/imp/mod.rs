@@ -5,6 +5,7 @@ mod mjpeg;
 mod nodes;
 pub(crate) mod portal;
 mod pw;
+pub(crate) mod shortcuts;
 mod sys;
 
 use std::ffi::c_void;
