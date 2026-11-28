@@ -1,0 +1,87 @@
+[
+  {
+    "type": "archive",
+    "url": "https://github.com/rust-skia/skia/archive/refs/tags/m157.2.tar.gz",
+    "sha256": "94cf39b0fcc606b42c3e25608b221b045ae0370c568df0c7fbc5dd773c4630a1",
+    "dest": "skia"
+  },
+  {
+    "type": "git",
+    "url": "https://skia.googlesource.com/external/github.com/google/brotli.git",
+    "commit": "cfa184a997ac19454d5a3ae97f6d600aac2445a6",
+    "dest": "skia/third_party/externals/brotli"
+  },
+  {
+    "type": "git",
+    "url": "https://chromium.googlesource.com/external/github.com/libexpat/libexpat.git",
+    "commit": "a70841d9ffa64ddde29ab824ed6305035ebe4c47",
+    "dest": "skia/third_party/externals/expat"
+  },
+  {
+    "type": "git",
+    "url": "https://chromium.googlesource.com/chromium/src/third_party/freetype2.git",
+    "commit": "37515cf56ba3349656049edbed89ffc6f6466f2d",
+    "dest": "skia/third_party/externals/freetype"
+  },
+  {
+    "type": "git",
+    "url": "https://chromium.googlesource.com/external/github.com/harfbuzz/harfbuzz.git",
+    "commit": "12ee77ee00514c442bcd28f9aa9d56b708c37382",
+    "dest": "skia/third_party/externals/harfbuzz"
+  },
+  {
+    "type": "git",
+    "url": "https://chromium.googlesource.com/chromium/deps/icu.git",
+    "commit": "2a51536dfb3b448bdf3dae70c782ea2879c90904",
+    "dest": "skia/third_party/externals/icu"
+  },
+  {
+    "type": "git",
+    "url": "https://chromium.googlesource.com/chromium/deps/libjpeg_turbo.git",
+    "commit": "640f254ad0fa03f6b1f29f89b7dd9366f2f6e533",
+    "dest": "skia/third_party/externals/libjpeg-turbo"
+  },
+  {
+    "type": "git",
+    "url": "https://skia.googlesource.com/third_party/libpng.git",
+    "commit": "3061454d980de7d53608f594194cfac722721d2a",
+    "dest": "skia/third_party/externals/libpng"
+  },
+  {
+    "type": "git",
+    "url": "https://chromium.googlesource.com/webm/libwebp.git",
+    "commit": "68dd1c3040d500f56fe7ffb754b1813fb64b5887",
+    "dest": "skia/third_party/externals/libwebp"
+  },
+  {
+    "type": "git",
+    "url": "https://chromium.googlesource.com/external/github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator",
+    "commit": "eb744ea7a2b17040121b4bbb4d6f9e8a77e3cae7",
+    "dest": "skia/third_party/externals/vulkanmemoryallocator"
+  },
+  {
+    "type": "git",
+    "url": "https://chromium.googlesource.com/external/github.com/KhronosGroup/SPIRV-Cross",
+    "commit": "b8fcf307f1f347089e3c46eb4451d27f32ebc8d3",
+    "dest": "skia/third_party/externals/spirv-cross"
+  },
+  {
+    "type": "git",
+    "url": "https://skia.googlesource.com/external/github.com/google/wuffs-mirror-release-c.git",
+    "commit": "7411f488fe2e2c205c3d3b3d28638b7356522930",
+    "dest": "skia/third_party/externals/wuffs"
+  },
+  {
+    "type": "git",
+    "url": "https://chromium.googlesource.com/chromium/src/third_party/zlib",
+    "commit": "456ae730017b9b4bd3371927abc82627fd51feef",
+    "dest": "skia/third_party/externals/zlib"
+  },
+  {
+    "type": "git",
+    "url": "https://gn.googlesource.com/gn",
+    "commit": "b2afae122eeb6ce09c52d63f67dc53fc517dbdc8",
+    "dest": "flatpak-tools/gn",
+    "disable-shallow-clone": true
+  }
+]

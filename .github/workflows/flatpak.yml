@@ -1,0 +1,74 @@
+name: flatpak
+
+# The Flatpak (packaging/flatpak), built offline the way Flathub builds it, for x86_64 and
+# aarch64, then checked with Flathub's linter. The bundle is an artifact; v* tags attach it to the
+# draft release.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - packaging/flatpak/**
+      - .github/workflows/flatpak.yml
+      - Cargo.lock
+      - ui/pnpm-lock.yaml
+      - third_party/**
+      - app/linux/**
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flatpak-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flatpak:
+    name: flatpak (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The generated source lists match the lockfiles and pins
+        run: |
+          python3 - <<'PY'
+          import json, re, pathlib
+          root = pathlib.Path(".")
+          vendored = {s["dest"] for s in json.load(open("packaging/flatpak/cargo-sources.json")) if "dest" in s}
+          lock = (root / "Cargo.lock").read_text()
+          missing = [f"{n}-{v}" for n, v, src in re.findall(r'name = "([^"]+)"\nversion = "([^"]+)"\nsource = "([^"]+)"', lock)
+                     if src.startswith("registry+") and f"cargo/vendor/{n}-{v}" not in vendored]
+          pins = {s["dest-filename"]: s["sha256"] for s in json.load(open("packaging/flatpak/helper-sources.json"))}
+          toml = (root / "third_party/versions.toml").read_text()
+          stale = [f for f, sha in pins.items() if sha not in toml]
+          if missing or stale:
+              raise SystemExit(f"run packaging/flatpak/generate-sources.py: crates missing {missing[:10]}, stale pins {stale}")
+          print(f"{len(vendored)} vendored crates, {len(pins)} helper sources match")
+          PY
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
+        with:
+          manifest-path: packaging/flatpak/io.github.thtmnisamnstr.SimpleCapture.yml
+          bundle: simple-capture-${{ matrix.arch }}.flatpak
+          arch: ${{ matrix.arch }}
+          cache-key: flatpak-builder-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/*.json', 'packaging/flatpak/*.yml', 'packaging/flatpak/shared/**') }}
+          upload-artifact: true
+      - name: Flathub linter
+        run: |
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest \
+            packaging/flatpak/io.github.thtmnisamnstr.SimpleCapture.yml || true
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo

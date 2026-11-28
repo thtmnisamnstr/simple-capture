@@ -1,0 +1,678 @@
+[
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@emnapi/core/-/core-2.0.0-beta.2.tgz",
+    "sha512": "333095a16b5c8383e6d81de37b998cbd832f8f732604ac3e7d4eef6ec25cf7f893f22a7afde6081e8fc3b26fe6afec2c1c1e92132243bb1074f58cbaafff3ee0",
+    "dest-filename": "@emnapi__core-2.0.0-beta.2.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@emnapi/runtime/-/runtime-2.0.0-beta.2.tgz",
+    "sha512": "25cad23f33ef66e359bc9a8f4c5f45c36e4b6ce27c6afcc556569fda0ae61f80a4bb4a063f8eed460a8f65a75c7e3dd8a1930790556709815b40cf08fa2e5013",
+    "dest-filename": "@emnapi__runtime-2.0.0-beta.2.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@emnapi/wasi-threads/-/wasi-threads-2.2.0.tgz",
+    "sha512": "24fece607dfc43bfa9c9301ed78ada6472d020aec10ca6ddc238be5e2de971dffa424258407dd25f8c2ee84a651ab1895917a9a0dcde75f9b41b707d6787bd47",
+    "dest-filename": "@emnapi__wasi-threads-2.2.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@jridgewell/gen-mapping/-/gen-mapping-0.3.13.tgz",
+    "sha512": "da492dffb9e227a32010fc45d1b61d43a7ad65a03e7d0bc370b29c921cb5c8840ecdaa0a8c10634a3eb7fda2d58d8137aa146de5dbccfae5327c283a50a0816c",
+    "dest-filename": "@jridgewell__gen-mapping-0.3.13.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@jridgewell/remapping/-/remapping-2.3.5.tgz",
+    "sha512": "2c8f6effe95a606e03b354c3292256d983eb22571560ec22d9f502eb1078de5b9e0a383157895f7ce0990ad605887e9334e5feb50297c7ded3e082876e1c8711",
+    "dest-filename": "@jridgewell__remapping-2.3.5.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@jridgewell/resolve-uri/-/resolve-uri-3.1.3.tgz",
+    "sha512": "9614ed8eda0402b5818e2b26b5f4bbeb54bd1e5ca7fa7219a8e6556286755e7f363cc34c56793e8e3fcd842e1f017193b3bc9d38d709891e6fc90053303bb6ee",
+    "dest-filename": "@jridgewell__resolve-uri-3.1.3.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@jridgewell/sourcemap-codec/-/sourcemap-codec-1.6.0.tgz",
+    "sha512": "4fb8dffb9ce0b191f0349e25bd0eff69ecdbca4d27357fb32555a998703b558b04c7b6bbaabe5183921bb4916a920cdee58dacaeeab545463c43cdfb39dee217",
+    "dest-filename": "@jridgewell__sourcemap-codec-1.6.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@jridgewell/trace-mapping/-/trace-mapping-0.3.31.tgz",
+    "sha512": "cf3351f9275048327373c8e869e3fc410a0242bf0db98c76748232b65d507811191c9f6e5ba85e6ecad881bcfc849c1441aa374d608cb667d5f0dbb5b7038b03",
+    "dest-filename": "@jridgewell__trace-mapping-0.3.31.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@napi-rs/wasm-runtime/-/wasm-runtime-1.2.6.tgz",
+    "sha512": "991c83984c3dfdf0835c219f2f5b1b808c3f1942b43d5c515b863080f37ad45dcb43e7d2ca80456ab255ce01b2845ea447311067415e8c3aa6e162d749ea909b",
+    "dest-filename": "@napi-rs__wasm-runtime-1.2.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@oxc-project/types/-/types-0.156.0.tgz",
+    "sha512": "d43bb2838f1374935dca1101f179f52f7e9b4fd3efe8652d94a8c7c4ecacf3191a17fad0ab75c913e6c0bab48afc0808cf998616c6fbedc9fd3dbdb4f9609273",
+    "dest-filename": "@oxc-project__types-0.156.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-android-arm-eabi/-/binding-android-arm-eabi-1.2.19.tgz",
+    "sha512": "7be11b7b4593fbdb5b5e634a3c8882f18ad6007630ba0de6ea2e29deb6461ae95f66b8b58ed2381ec953f8e66715ffce207a30585ef50d3947c1704fd92880ec",
+    "dest-filename": "@rolldown__binding-android-arm-eabi-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-android-arm64/-/binding-android-arm64-1.2.19.tgz",
+    "sha512": "84ea266eb4c9faccedd9c884cd2ee8080efc94c3c1805e54310582248c8d7e7ac8ec62e5f0762816a0a7a4bda070f39a5ccaabc86094e44c5d40ac830dc0bec8",
+    "dest-filename": "@rolldown__binding-android-arm64-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-darwin-arm64/-/binding-darwin-arm64-1.2.19.tgz",
+    "sha512": "5e8300da9c022864d0cd48cf82d47091e747e1699785d20f293ea5ea83b17753d46cda1d188e837017a480dec40bfffec77a5f0585ffa8bd60366640aa2bf0e6",
+    "dest-filename": "@rolldown__binding-darwin-arm64-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-darwin-x64/-/binding-darwin-x64-1.2.19.tgz",
+    "sha512": "ce8f04b124b0319098fdef9f46719a5f4d981a0bc90f4caf84d8bff61a463c0d8c27d645f1d3c2c3be5419fa48e8ea50fe6c91fdd2189a8811bea8990f44eb5e",
+    "dest-filename": "@rolldown__binding-darwin-x64-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-freebsd-x64/-/binding-freebsd-x64-1.2.19.tgz",
+    "sha512": "3bc21200e7c8d678fb02e04f777d05485e3bcfb7fb973964e69a105468228a4bd0b86101158bd6f248be5049d3f9824f9cd1a34339f7d38925b783bd15413b98",
+    "dest-filename": "@rolldown__binding-freebsd-x64-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-linux-arm-gnueabihf/-/binding-linux-arm-gnueabihf-1.2.19.tgz",
+    "sha512": "fe56026dae4d3b4caae12d2318c1fc41306d92f431a178e8416cc5e41716a7d32307d8f15510f51900cda1f9158dc3a3df40d6ca12c837fe0e7bad092b368e37",
+    "dest-filename": "@rolldown__binding-linux-arm-gnueabihf-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-linux-arm64-gnu/-/binding-linux-arm64-gnu-1.2.19.tgz",
+    "sha512": "a66fdaa453019d26c56f73ba9c6e691ced62a87859ae31831448d29bea2df49d7b5d73ef1fd2fdd32e61fa381f1c213e41d96cbf2f2a284714e152b18230febc",
+    "dest-filename": "@rolldown__binding-linux-arm64-gnu-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-linux-arm64-musl/-/binding-linux-arm64-musl-1.2.19.tgz",
+    "sha512": "2b54a6429dc51627219fca2aacd230bc5a19e7072f8c2ee0a01ce968c36f2dff4565cf9007f42f2e69e92598000061e20fdf34b4ff056599d79362bde2bbe5c6",
+    "dest-filename": "@rolldown__binding-linux-arm64-musl-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-linux-ppc64-gnu/-/binding-linux-ppc64-gnu-1.2.19.tgz",
+    "sha512": "234c700f9ee33ffdc0efee543d98a7db0f18ed71c4984339ceaa5864e710e39325356ead5095338b2995df246beeb2f8bf0c9f11c46c464b02e1aeca734f29e5",
+    "dest-filename": "@rolldown__binding-linux-ppc64-gnu-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-linux-s390x-gnu/-/binding-linux-s390x-gnu-1.2.19.tgz",
+    "sha512": "06bb441d3db848d5e3f47897ab2facfe45e24a2406b7a10a08f525462ac0a088a85712869db5c150491b6404807a2ee2649074fd89e6fb424fd34229c7b0274b",
+    "dest-filename": "@rolldown__binding-linux-s390x-gnu-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-linux-x64-gnu/-/binding-linux-x64-gnu-1.2.19.tgz",
+    "sha512": "ae6ef9ffd0e41ca794d969c0f30e17f785866202e50c21427e4402fb86e0b952660bf8ef0d1bf607edb02ce621c84d1f56ebfbfff0a4937f4ea0eb9fc82bbbe9",
+    "dest-filename": "@rolldown__binding-linux-x64-gnu-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-linux-x64-musl/-/binding-linux-x64-musl-1.2.19.tgz",
+    "sha512": "8ab87fe3e89814ce06033a65b8312b823cfcf5b8fa343b6aa8c006ffa3b52c6dfc11ddcda7279bcc2a5c54d9055bcba1cbeff7fc1a1c52f9d70d1df709759ef4",
+    "dest-filename": "@rolldown__binding-linux-x64-musl-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-openharmony-arm64/-/binding-openharmony-arm64-1.2.19.tgz",
+    "sha512": "f8a59358da0fb7e09f4aaf780a271e5aedf23c4f90ce4686fa984fcb3f46eb4b6664bc1f424700e007a4b1a7f3bc9030e29be0d6671de5ad53914a95bf4b3824",
+    "dest-filename": "@rolldown__binding-openharmony-arm64-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-wasm32-wasi/-/binding-wasm32-wasi-1.2.19.tgz",
+    "sha512": "ec41feb243ac979aa95a72b4bf36a68091613afd5cc31429b319bcb48f3cdcaf5fbabe5cdbba7cabcedfcc43ba05b04f69b036ffeb3fcd1eb7fe92dcd77ee23a",
+    "dest-filename": "@rolldown__binding-wasm32-wasi-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-1.2.19.tgz",
+    "sha512": "dd0d5883543bb44bc15a865fe6b16f1bf18a6503e0c1faeefa9e3005a8c37c9141b344870a92fef9d7d38d6f60c8029dd53ed9a4862f75a51ac7b3dafc884555",
+    "dest-filename": "@rolldown__binding-win32-arm64-msvc-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.2.19.tgz",
+    "sha512": "cbfb2a45173a77b8440b33857399f72d27aa72d988a7d98c8d8d4aab8b35e2e2cf77f2d9e33ee2d73ad6e9f32da7698f7ae4080b87ba50b31cc10ccca26a906a",
+    "dest-filename": "@rolldown__binding-win32-x64-msvc-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.1.1.tgz",
+    "sha512": "825148243bcb343b49853f6aacc1562cf6ef4beb24c60b782f42bc122d98b6784fcac0099ec23b9f2c522712a3e000de297d0e2e30b89ed464c292cea12debc0",
+    "dest-filename": "@rolldown__pluginutils-1.1.1.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@sveltejs/acorn-typescript/-/acorn-typescript-1.0.13.tgz",
+    "sha512": "c202a082785954bf417f1d4e68a293ad863d045464e82f1402440d51c22fd7e965cd8ac8ab2f91666e473cace7d0da4406f4d5853a81e24432965672c2c44145",
+    "dest-filename": "@sveltejs__acorn-typescript-1.0.13.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@sveltejs/load-config/-/load-config-0.2.3.tgz",
+    "sha512": "553dea9946fca5157642b66377c8809ad83c95fe16d1322365bbd7b73e4c29e8bfabdead796660189cb289d2733a3cd9cef76aeb5e9e49155e3182100a151301",
+    "dest-filename": "@sveltejs__load-config-0.2.3.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@sveltejs/vite-plugin-svelte/-/vite-plugin-svelte-7.3.2.tgz",
+    "sha512": "f3a2789c12de4ea618231fe9681211a9824c1589694d2dac7a951d43ab54c94d63c6a455ef67a33ab215db0b2a94eb0a96433e8741b54a0c281c8df437e9fd08",
+    "dest-filename": "@sveltejs__vite-plugin-svelte-7.3.2.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/api/-/api-2.12.5.tgz",
+    "sha512": "1bd40832de5fcc40fe692e108552b7c351d62caa4b2301ff327a42afdcf5ba01841e74b63919aaacb91cd2e00b3a344ae2a5c9cbee188b0f0b0e5fca89c0b51e",
+    "dest-filename": "@tauri-apps__api-2.12.5.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli-darwin-arm64/-/cli-darwin-arm64-2.12.6.tgz",
+    "sha512": "5289309358457c9a06e78fa40fc894d12b77de300890dbe88e78c47c167a51b2f9ae7335d00885c144bfd831d327d478fca6dae14e38bfb7637ccb961534207a",
+    "dest-filename": "@tauri-apps__cli-darwin-arm64-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli-darwin-x64/-/cli-darwin-x64-2.12.6.tgz",
+    "sha512": "5a16a1ab37321c2a42ce1e1369fd196c19ba9c692fb8e4a1e5f7eb80e3bb11d61a61ef910502bc2ce945bbe6db8ee979bfd71d2c38b791ca3ed3eec8959b5354",
+    "dest-filename": "@tauri-apps__cli-darwin-x64-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli-linux-arm-gnueabihf/-/cli-linux-arm-gnueabihf-2.12.6.tgz",
+    "sha512": "181eb078dfa2147c62159f5238a5ba7c8362b3b827c688683a5751eecaf205eeee69abe414668c09ad3242ce678de5cf5afce513d593435df3f280e39aa2be5b",
+    "dest-filename": "@tauri-apps__cli-linux-arm-gnueabihf-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli-linux-arm64-gnu/-/cli-linux-arm64-gnu-2.12.6.tgz",
+    "sha512": "99d1e850560a7f3b54b4f284d02da1846904a3b8fab305e383ee724512920fb03680b9113d01485d60ff0c062188975e024c80f0c08fea7bef2af83fe18af259",
+    "dest-filename": "@tauri-apps__cli-linux-arm64-gnu-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli-linux-arm64-musl/-/cli-linux-arm64-musl-2.12.6.tgz",
+    "sha512": "d81c41fbd6b7251374789d2dd2a19ef082897e004b3990c4f1ae3df4e5c7fb283827d6cca522b5a075c1c671ee48715685bcb842743fb7eb017fbb510b451978",
+    "dest-filename": "@tauri-apps__cli-linux-arm64-musl-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli-linux-riscv64-gnu/-/cli-linux-riscv64-gnu-2.12.6.tgz",
+    "sha512": "b1be7c46c3477b1f5056a1dd37571ff4c3256a651602d935373bb14d96a55270541df6e521b7bbd617e6748eb084367ce0cb9f80e75e83f6f3be1adb652d6bd3",
+    "dest-filename": "@tauri-apps__cli-linux-riscv64-gnu-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli-linux-x64-gnu/-/cli-linux-x64-gnu-2.12.6.tgz",
+    "sha512": "6406f8fc21d199adc4ae32f64467c78c84d350122ce33c927f4848962f4175d3ad11d4b1d337b484483197e1df0557393845bf4266e2676136f829241dcf0f72",
+    "dest-filename": "@tauri-apps__cli-linux-x64-gnu-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli-linux-x64-musl/-/cli-linux-x64-musl-2.12.6.tgz",
+    "sha512": "b9e4b33360eeeabe22d5dfe56f2f6412fae13e75f0e7333f558bdc5b595d1164a9914c95a21b015e4983f94eef32c9045b9b5778251e9e48bb9d8571c86046a5",
+    "dest-filename": "@tauri-apps__cli-linux-x64-musl-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli-win32-arm64-msvc/-/cli-win32-arm64-msvc-2.12.6.tgz",
+    "sha512": "e9b98eb7605049ed016dafb908971329230bed53980f1ca200ac81ae3a3ce95c4c742d6eb08426925bb75dcf37b374282b5ace330c1b00d94f17a8b94769af22",
+    "dest-filename": "@tauri-apps__cli-win32-arm64-msvc-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli-win32-ia32-msvc/-/cli-win32-ia32-msvc-2.12.6.tgz",
+    "sha512": "f6af5914db85ade05ccf0c89ba1865ac4381cc60a5c165188ab43618197ae98e8468d975ec874b1fc4d1aa863dc180752e772d3418be15afd6306b4503806d15",
+    "dest-filename": "@tauri-apps__cli-win32-ia32-msvc-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli-win32-x64-msvc/-/cli-win32-x64-msvc-2.12.6.tgz",
+    "sha512": "8a89fb0a16e3db544ec4c4698d0ec6f2bcf9b0839a23b228050ba6d68ab9b25d55e73196c9cfe86270ab42156a3b64f12bf9410d6c6deb8f01ccb8b4d926375e",
+    "dest-filename": "@tauri-apps__cli-win32-x64-msvc-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tauri-apps/cli/-/cli-2.12.6.tgz",
+    "sha512": "fdc39e420aaaf0f0433ce0ce8e34f4607b38ab12821dc40c58c8819b8acb33724dafd99913e3c734a38ae3302484852d60c34bff47f0796e3c54dbf30f501ba8",
+    "dest-filename": "@tauri-apps__cli-2.12.6.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tsconfig/svelte/-/svelte-5.0.9.tgz",
+    "sha512": "81bb5baac105abd805cc69a024c201dfe95e5d59a452db68163cde1ec6ea37aa852acb78d1fbf19cdf7edc08dd97c565206c0f7afb3d2cd27c61485081c86a6b",
+    "dest-filename": "@tsconfig__svelte-5.0.9.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@tybys/wasm-util/-/wasm-util-0.10.5.tgz",
+    "sha512": "74e18e3f195a355f86d38ea667337ef42d1d01c41979229c5e255a3344d8cbf2cce2db539a04810f161fa2f71823c126dfe7806e2018a6f58b3aff3e65544928",
+    "dest-filename": "@tybys__wasm-util-0.10.5.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/@types/estree/-/estree-1.0.10.tgz",
+    "sha512": "953c8e32739c991073742bfaff8cd4642ac4855d31aea422519059b5571b98b1c15ca2e737cabcf6fff029117f4341dbc15b2a6c81b7a391c3a0597db1db8cfa",
+    "dest-filename": "@types__estree-1.0.10.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/acorn/-/acorn-8.19.0.tgz",
+    "sha512": "a09940dd78919bb0b293aa850f6267f1a93d07b8d2cb4ab2d340033b7fbc7694f42d28c58a1418bf80b4d8b142498255dd0dfbc58c30472e66f88a48894cea5b",
+    "dest-filename": "acorn-8.19.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/aria-query/-/aria-query-5.3.1.tgz",
+    "sha512": "67f65e3a0565edb712619feefeb8747cea6f129abffcb66675b917c9ceecc95ce33c085f39af5e6ec7534a31010d4e2fb399c2f7c29f76e8f5b85a34ab2113de",
+    "dest-filename": "aria-query-5.3.1.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/axobject-query/-/axobject-query-4.1.0.tgz",
+    "sha512": "a888f41bdc196cc18d2e32e68353d3eafda613d007db3967003243ff6b42e84d348609a150e7c407a82b7873c07cb452b9f1ea44e2144e4c3a13e337947d0f4d",
+    "dest-filename": "axobject-query-4.1.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/chokidar/-/chokidar-4.0.3.tgz",
+    "sha512": "420ceef247c1be8f9c038f7ada39cfd4a912e83a29e4d4ba83b4792c5609af86fc51bf783cf417524b02c3d3ef5e87973d145d751342e42d4941447648c1ad9c",
+    "dest-filename": "chokidar-4.0.3.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/clsx/-/clsx-2.1.1.tgz",
+    "sha512": "7989b441606d52b0566561b4777f3a386030d7a67df793e2395a3607b6e35926c779d1a5e5ed1959aabae6438681448d7ac1080e407d2126d383f24af5d84264",
+    "dest-filename": "clsx-2.1.1.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/deepmerge/-/deepmerge-4.3.1.tgz",
+    "sha512": "dec52a6cc11cefb5eaa5d34eec547246883e796de987e19809b8feacafae63244cbb0b15cb4acc895b4f9fe40994a16f58fff53d8a5aa6a627d0c7b6927167f8",
+    "dest-filename": "deepmerge-4.3.1.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz",
+    "sha512": "06d8f604e38ef37a375b21f9f5ef0c817b3111055c6ab9143a9118aee6c1d2eaf09cdd74c90dfae2bb22072535d67665a966199b4e62fe87fb8a8e26ce2841b5",
+    "dest-filename": "detect-libc-2.1.2.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/devalue/-/devalue-5.9.4.tgz",
+    "sha512": "b0f013e29ced6eeeb9f3afe1ae13a730a4b5ec826bbe0d769978923d24b75b9a8378dd911a0bd9d1d8990a6df57416e77af7d59ae8cd3b720cdb0ad2e18d9186",
+    "dest-filename": "devalue-5.9.4.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/esm-env/-/esm-env-1.2.2.tgz",
+    "sha512": "129c6bbfe36bfc268be1970518f24860b585a26f98795d43a8c2c726811df52611c4d6da16bb81c1f117fe49075097f9e63dbe4d46e60dc9ae8a56cfd539971c",
+    "dest-filename": "esm-env-1.2.2.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/esrap/-/esrap-2.4.2.tgz",
+    "sha512": "5a9559b169d285e1c1cbe7c6aceff476ec276dee8e0d91f543205b8eea6b7920891a88da05646772babe1d578827c78742313048983d842e323c9c8d54eae9aa",
+    "dest-filename": "esrap-2.4.2.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz",
+    "sha512": "b486d8b596ee70eb340511aa3c992c84951874bf920c7edd54cf208f2f84469dd60148cb105244fb4da46a7c87b708d63a7c2b298062c0098cd29e242c90275e",
+    "dest-filename": "fdir-6.5.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
+    "sha512": "e71a037d7f9f2fb7da0139da82658fa5b16dc21fd1efb5a630caaa1c64bae42defbc1d181eb805f81d58999df8e35b4c8f99fade4d36d765cda09c339617df43",
+    "dest-filename": "fsevents-2.3.3.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/is-reference/-/is-reference-3.0.3.tgz",
+    "sha512": "8b1909a2a42f00ff3c13ac0bc9d2c61aa089b2b1549eaa07e879da73307c5e60c7d6869653ec71769b6f8a44e068486d679dcacba617881b942365972cc0b08f",
+    "dest-filename": "is-reference-3.0.3.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss-android-arm64/-/lightningcss-android-arm64-1.33.0.tgz",
+    "sha512": "804a514da94a768b29e016fca96b5cda23a013949e2079694b5ba9f5b16adb003262197551d4ce6d88877bdf3310cf5242f4a8a906752100f424da60dcc979a6",
+    "dest-filename": "lightningcss-android-arm64-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss-darwin-arm64/-/lightningcss-darwin-arm64-1.33.0.tgz",
+    "sha512": "49c89acfc79e9cd4ca9fd6f7b7bfb1af48a94e9f58c4a418e27a704379ab46e2f404054704bc99c687e168a04056dce6b5167fcd3ca8d3fb68e01d6e586fc38e",
+    "dest-filename": "lightningcss-darwin-arm64-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss-darwin-x64/-/lightningcss-darwin-x64-1.33.0.tgz",
+    "sha512": "67950f031ceb8e558d3721b2ea2eb9709cf3be02790f74fac0cbecfa05a963d77ba9184036bc6a029e8b871220661584c35f117c94c6711c63b8b201afe9bc5d",
+    "dest-filename": "lightningcss-darwin-x64-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss-freebsd-x64/-/lightningcss-freebsd-x64-1.33.0.tgz",
+    "sha512": "41033f4e2fe141a8c9c0263e4625ae099f6c76d23f5d093b9c32b9bc2f2491dc22c5ecce94382f0f1efe453f908cae857054f8329b2ea019c7228fcedd2b5146",
+    "dest-filename": "lightningcss-freebsd-x64-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss-linux-arm-gnueabihf/-/lightningcss-linux-arm-gnueabihf-1.33.0.tgz",
+    "sha512": "37b15505eea24b6e0c94ce91ff84414f11a14217991aceed890f54df652d17be4dccfe50ef158f46a2c108ac65450464deb6358c220f2f3c7b5b33a1b942112d",
+    "dest-filename": "lightningcss-linux-arm-gnueabihf-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss-linux-arm64-gnu/-/lightningcss-linux-arm64-gnu-1.33.0.tgz",
+    "sha512": "8f6bff8ad9b2e0794dc6573abe829762006a362d0d8362d2860e33ec6b9fa4482cd393fedacb815728bd23a607ab9ba8545c7d1138a7dde08484b5725c64272a",
+    "dest-filename": "lightningcss-linux-arm64-gnu-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss-linux-arm64-musl/-/lightningcss-linux-arm64-musl-1.33.0.tgz",
+    "sha512": "ca23b944e32e6108176c2eb4ca3654e4261215918a5cbd071404d7b7d987267d7ecd6e79a02b4c23d35f7158582cc1432fb815ee804fa27fc498c3068363afb5",
+    "dest-filename": "lightningcss-linux-arm64-musl-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss-linux-x64-gnu/-/lightningcss-linux-x64-gnu-1.33.0.tgz",
+    "sha512": "6abf89bbb2e670dd09a381692f88691726f0346f7fdc0fc1af9296da7da3c8e0e0dcc1195da0d800375e9a8352f810cd7cc80abf29492e3e12e6dc9101cb6e02",
+    "dest-filename": "lightningcss-linux-x64-gnu-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss-linux-x64-musl/-/lightningcss-linux-x64-musl-1.33.0.tgz",
+    "sha512": "4588986e4a24c34b6b7caaaacdf179e658229f010fac3dce2437d3b89cc5b3530aea21670de9dacf57ea2cbb57e084c6dce92d2505ce7936b0d5ac2b0409593f",
+    "dest-filename": "lightningcss-linux-x64-musl-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz",
+    "sha512": "d4af8c3df2d2155a69873a5d6df92195693ac01ad339b0734b64fa75bd743cd399811f46a15b005b3c0dcae8546186d3a76de3fb846b9dc7ee8d9e2e0335efc0",
+    "dest-filename": "lightningcss-win32-arm64-msvc-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz",
+    "sha512": "3a5108083c7f5e5d05a92a786ebcbccc59c2bc6a628371a5e200aabaf6301eea892840b5fa7f4d8039e216fa871a632fd5992a0c9ac3a8a292ca44c35fe7a1b8",
+    "dest-filename": "lightningcss-win32-x64-msvc-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/lightningcss/-/lightningcss-1.33.0.tgz",
+    "sha512": "5a4503ae88ee26cd3192019fdae756c5adf21814713edc54901efd8ba68264b46073b3ccf1f65ef53a2c7cf0dcbc4a5065bb850129c762644b04b51b98b38820",
+    "dest-filename": "lightningcss-1.33.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/locate-character/-/locate-character-3.0.0.tgz",
+    "sha512": "496d77c2cec18da789ea9ed0e823b69dc85b6047375f727a5ab9934c3b68ef230fa954994d4c98e538db89df806fc80b9c04edca062d8832091904519f664e88",
+    "dest-filename": "locate-character-3.0.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/magic-string/-/magic-string-0.30.21.tgz",
+    "sha512": "bddd85e1853211728670b1e8abe4c4c828f1b9e49e1e7171cb28cda7cd328345d5e2f5219c37abfe5bef96a33f6ab0796d740de4adbfde88a7c82472c7c4f609",
+    "dest-filename": "magic-string-0.30.21.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/mri/-/mri-1.2.0.tgz",
+    "sha512": "b73cec91bddb1bc2ef606145fe60d3a6ade3a48e90f707372c49816a086ef83742b2c77515a90dec17348553661321aad5bab74607e409bddc9902e934f3aba0",
+    "dest-filename": "mri-1.2.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.20.tgz",
+    "sha512": "b8a760d86dc63422909fd6f260ea716c6aab4f67c63b9291b7927ff1bde9a24f2b4faab119617a871332262118b407fe155c98b83f6145a0ea5f9b8f15827865",
+    "dest-filename": "nanoid-3.3.20.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/obug/-/obug-3.0.0.tgz",
+    "sha512": "e6fbc1e7e5bb78fbfea77baac62f91716d570332d6d3f871b77ff85f82dce2a1ee7733a1981881c0e63a0d1a1be169da9c0106bcd70b8c5f8a34eb9fad4a0443",
+    "dest-filename": "obug-3.0.0.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/picocolors/-/picocolors-1.1.1.tgz",
+    "sha512": "c5c787dac9e1b5be4cf658aa0ec984c39ea57b7efa993664117fe311bfd1c4d1727a036e97b78db250973fd1438ff2dcbb45fc284c8c71e3f69eda5a1eb0c454",
+    "dest-filename": "picocolors-1.1.1.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/picomatch/-/picomatch-4.0.7.tgz",
+    "sha512": "a9c26ef3c436216a89b030f9dbd24a31dc069bf76f2275b81ef427470887f49b62849bf318eb1c0ed1c4df1d6904a794393cac43c91598b9c9da426eef285c18",
+    "dest-filename": "picomatch-4.0.7.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/postcss/-/postcss-8.5.33.tgz",
+    "sha512": "4551c453dfcfa751678ebfcca4026c668003ba408a85f222d793ae9c46221a4b489182e43d5bc2d6c8a85a89460d2ed7072313c7d9bf2066eba3426cd77ce19d",
+    "dest-filename": "postcss-8.5.33.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/readdirp/-/readdirp-4.1.2.tgz",
+    "sha512": "18387090b7f2c162f6b3abc48f286b8be79799f1fa8f52fb244dbb5a1a8b798ce887f0370c16981848f61ff1c56429ff90c7e29bbdc55f11094f0d3a5adc50c2",
+    "dest-filename": "readdirp-4.1.2.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/rolldown/-/rolldown-1.2.19.tgz",
+    "sha512": "408895d49f5dd29ccde2379e4c7e2c8cfcb4019e9c032d9c1b41317a8135f94f11be3fa1477818928931d186de50d1a566a890249daeb5c1137b4a0a5f0cecb8",
+    "dest-filename": "rolldown-1.2.19.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/sade/-/sade-1.8.1.tgz",
+    "sha512": "c5a9770995f55e5a3f938029c0216b1d50028bd7c1a89ed5fa6c2106cb9fff520e29b072d3df057b1f966bfe5032e6f0d3da5267fbbc118f0f5a07af26c5e9d4",
+    "dest-filename": "sade-1.8.1.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.3.tgz",
+    "sha512": "c63f96ac0932bf9429fadeebf4de47bc206eee0d6a39ee82291369ab6d97d4619c3c44000c5539e2fe6ab0f56cdffbeb50543b5e2bc5adc015280dacb48d2458",
+    "dest-filename": "source-map-js-1.2.3.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/svelte-check/-/svelte-check-4.7.8.tgz",
+    "sha512": "95a678f461476776f4cf63d68a72562f4b327a173f3d347c68769469388191627ee18dfc9e1c63997b12cfb09b19add574aa2956255bac11f76c636a2002346d",
+    "dest-filename": "svelte-check-4.7.8.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/svelte/-/svelte-5.59.1.tgz",
+    "sha512": "0031b6d16fe361242eb7fefd01abd145f6d741879b14a315593ff101b8d55597d90385f322815f7296a711f613c8dfae59051a3cffa7b2d171e2a54ac0456741",
+    "dest-filename": "svelte-5.59.1.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/tinyglobby/-/tinyglobby-0.2.17.tgz",
+    "sha512": "c1747f758a5ca8a99f5a911d66388a24ec023459dd0f40cc9eb5bf7188d51adb449017d581c2c51e836b963e3b9a339589cf72c8dbbae5a96c805e0d4324dada",
+    "dest-filename": "tinyglobby-0.2.17.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/tslib/-/tslib-2.9.1.tgz",
+    "sha512": "6b8531f552ae20c1ec392ec435b12aea12b66466084f6ed1b65d04e1e0fd2aac3184a89078c644ffdc5bdc8758c166923b220140b1318508170d3628882c6758",
+    "dest-filename": "tslib-2.9.1.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/typescript/-/typescript-6.0.3.tgz",
+    "sha512": "cb64efbb14993c3c906a490544f6472859be28a56a222b1d83dfc26709bd7edbca5cb3fc3515a3dfcfce0e335baf8dd2b285ea36e022b047f519d0b1a9671d07",
+    "dest-filename": "typescript-6.0.3.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/vite/-/vite-8.3.8.tgz",
+    "sha512": "2f33a7de1f6b1bfd2f84b757ad5e3227840503d784a2a0a5f98c7e90625deda07dc3a9df3605472926302cf6541ebcf86466beb7e9178d5f62b6f7070cb428b8",
+    "dest-filename": "vite-8.3.8.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/vitefu/-/vitefu-1.1.4.tgz",
+    "sha512": "a9b1080ecc1f5c7df1dc8611312725fdb7f50155b4767ed9f2a92bee0ee7a2192eb1fb82eed7056bbb791284cecfad00ba7a2c2ccf6c0eb0e31f1b17f94a7e09",
+    "dest-filename": "vitefu-1.1.4.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "file",
+    "url": "https://registry.npmjs.org/zimmerframe/-/zimmerframe-1.1.5.tgz",
+    "sha512": "9ac27122f60361ca0d2fe3c9b2efbbaa6a435ac6260314d8fb64cd6175c5d21cc1cc193404c79c3aa0ce1bf11c914a0a0ae2b039b7dbba0225f10a6a1c35de14",
+    "dest-filename": "zimmerframe-1.1.5.tgz",
+    "dest": "ui/flatpak-node/pnpm-tarballs"
+  },
+  {
+    "type": "inline",
+    "contents": "from __future__ import annotations\n\nimport base64\nimport contextlib\nimport hashlib\nimport json\nimport os\nimport re\nimport sqlite3\nimport struct\nimport sys\nimport tarfile\nimport time\nfrom collections.abc import Mapping\n\n_SANITIZE_RE = re.compile(r'[\\\\/:*?\"<>|]')\n_MAX_LENGTH_WITHOUT_HASH = 120\n# These are package.json fields pnpm keeps in its store index (normalizeBundledManifest.ts)\n_MANIFEST_FIELDS = (\n    'bin',\n    'bundledDependencies',\n    'bundleDependencies',\n    'cpu',\n    'dependencies',\n    'devDependencies',\n    'directories',\n    'engines',\n    'gypfile',\n    'libc',\n    'optionalDependencies',\n    'os',\n    'peerDependencies',\n    'peerDependenciesMeta',\n)\n_MANIFEST_LIFECYCLE_SCRIPTS = ('preinstall', 'install', 'postinstall')\n\n\ndef _msgpack_pack(obj: object) -> bytes:\n    \"\"\"Minimal msgpack packer matching msgpackr with useRecords: true.\n\n    msgpackr reserves the byte range 0x40-0x7F for record IDs when useRecords\n    is enabled (pnpm's config).  Standard msgpack uses 0x00-0x7F for positive\n    fixints, but this packer caps them at 0x3F and emits a uint 8 prefix (0xcc)\n    for 64-255 to avoid aliasing with record ID bytes.\n    \"\"\"\n\n    def _pack_int(val: int) -> bytes:\n        # Positive fixint capped at 0x3F \u2014 0x40-0x7F are msgpackr record IDs\n        if 0 <= val <= 0x3F:\n            return val.to_bytes(1, 'big')\n        if -32 <= val < 0:\n            return val.to_bytes(1, 'big', signed=True)\n        if val >= 0:\n            if val <= 0xFF:\n                return b'\\xcc' + val.to_bytes(1, 'big')\n            if val <= 0xFFFF:\n                return b'\\xcd' + val.to_bytes(2, 'big')\n            if val <= 0xFFFFFFFF:\n                return b'\\xce' + val.to_bytes(4, 'big')\n            return b'\\xcf' + val.to_bytes(8, 'big')\n        if val >= -0x80:\n            return b'\\xd0' + val.to_bytes(1, 'big', signed=True)\n        if val >= -0x8000:\n            return b'\\xd1' + val.to_bytes(2, 'big', signed=True)\n        if val >= -0x80000000:\n            return b'\\xd2' + val.to_bytes(4, 'big', signed=True)\n        return b'\\xd3' + val.to_bytes(8, 'big', signed=True)\n\n    def _pack_str(val: str) -> bytes:\n        data = val.encode('utf-8')\n        length = len(data)\n        if length <= 0x1F:\n            return (0xA0 | length).to_bytes(1, 'big') + data\n        if length <= 0xFF:\n            return b'\\xd9' + length.to_bytes(1, 'big') + data\n        if length <= 0xFFFF:\n            return b'\\xda' + length.to_bytes(2, 'big') + data\n        return b'\\xdb' + length.to_bytes(4, 'big') + data\n\n    if obj is None:\n        return b'\\xc0'\n    if isinstance(obj, bool):\n        return b'\\xc3' if obj else b'\\xc2'\n    if isinstance(obj, int):\n        return _pack_int(obj)\n    if isinstance(obj, float):\n        return b'\\xcb' + struct.pack('>d', obj)\n    if isinstance(obj, str):\n        return _pack_str(obj)\n    if isinstance(obj, dict):\n        length = len(obj)\n        if length <= 0x0F:\n            result = (0x80 | length).to_bytes(1, 'big')\n        elif length <= 0xFFFF:\n            result = b'\\xde' + length.to_bytes(2, 'big')\n        else:\n            result = b'\\xdf' + length.to_bytes(4, 'big')\n        for key, val in obj.items():\n            result += _msgpack_pack(key) + _msgpack_pack(val)\n        return result\n    if isinstance(obj, (list, tuple)):\n        length = len(obj)\n        if length <= 0x0F:\n            result = (0x90 | length).to_bytes(1, 'big')\n        elif length <= 0xFFFF:\n            result = b'\\xdc' + length.to_bytes(2, 'big')\n        else:\n            result = b'\\xdd' + length.to_bytes(4, 'big')\n        for item in obj:\n            result += _msgpack_pack(item)\n        return result\n    raise TypeError(f'Unsupported type for msgpack: {type(obj)}')\n\n\nRECORD_HEADER = b'\\xd4\\x72'\n\n# pnpm's PREPUBLISH_SCRIPTS, see packageShouldBeBuilt().\n_PREPUBLISH_SCRIPTS = ('prepublish', 'prepack', 'publish')\n\n\ndef _requires_prepare(\n    scripts: Mapping[str, object] | None,\n    main_file_present: bool,\n) -> bool:\n    \"\"\"Mirror of pnpm's packageShouldBeBuilt().\n\n    True means pnpm must run an install/prepare step, which the offline\n    store cannot satisfy.\n    \"\"\"\n    if not isinstance(scripts, dict) or not scripts:\n        return False\n    if scripts.get('prepare'):\n        return True\n    if not any(scripts.get(name) for name in _PREPUBLISH_SCRIPTS):\n        return False\n    return not main_file_present\n\n\ndef _pack_v11_store_entry(\n    files: dict[str, dict[str, object]],\n    manifest: Mapping[str, object] | None = None,\n    requires_prepare: bool | None = None,\n) -> bytes:\n    \"\"\"Encode a store v11 entry using msgpackr-compatible record extensions.\n\n    msgpackr with ``useRecords: true, moreTypes: true`` decodes:\n\n    - standard msgpack maps (0x80/0xde/0xdf) as JavaScript ``Map`` objects\n      (iterable, supports ``for..of``)\n    - record extensions (0x72) as plain objects (dot-notation access)\n\n    The ``files`` field must be a Map so pnpm can iterate it with ``for..of``.\n    Everything else must use record extensions so dot-notation works\n    (e.g. ``pkgIndex.algo``, ``info.digest``, ``manifest.name``).\n    \"\"\"\n\n    def _record(obj: Mapping[str, object], struct_id: int) -> bytes:\n        keys = list(obj.keys())\n        result = RECORD_HEADER + struct_id.to_bytes(1, 'big')\n        result += _msgpack_pack(keys)\n        for k in keys:\n            result += _msgpack_pack(obj[k])\n        return result\n\n    def _fixmap(length: int) -> bytes:\n        if length <= 0x0F:\n            return (0x80 | length).to_bytes(1, 'big')\n        if length <= 0xFFFF:\n            return b'\\xde' + length.to_bytes(2, 'big')\n        return b'\\xdf' + length.to_bytes(4, 'big')\n\n    # Pack file entries as records, build files map as standard msgpack map\n    files_map_bytes = _fixmap(len(files))\n    for fname, finfo in files.items():\n        files_map_bytes += _msgpack_pack(fname) + _record(finfo, 0x41)\n\n    # Outer store_entry as record (struct_id 0x40)\n    store_entry_keys = ['algo', 'requiresBuild', 'files']\n    if requires_prepare is not None:\n        store_entry_keys.append('requiresPrepare')\n    if manifest is not None:\n        store_entry_keys.append('manifest')\n\n    # Record with fixed entries\n    result = RECORD_HEADER + b'\\x40' + _msgpack_pack(store_entry_keys)\n    # This is hardcoded to use sha512 per pnpm's behavior, see @pnpm/store.cafs/index and\n    # file digest logic below\n    result += _msgpack_pack('sha512')  # algo\n    result += _msgpack_pack(False)  # requiresBuild\n    result += files_map_bytes  # files (standard map \u2192 iterable Map in JS)\n    if requires_prepare is not None:\n        result += _msgpack_pack(requires_prepare)  # requiresPrepare\n\n    if manifest is not None:\n        result += _record(manifest, 0x42)\n    return result\n\n\ndef populate_store(manifest_path: str, tarball_dir: str, store_dir: str) -> None:\n    with open(manifest_path, encoding='utf-8') as f:\n        manifest = json.load(f)\n\n    store_version = manifest['store_version']\n    packages = manifest['packages']\n\n    index_db: sqlite3.Connection | None = None\n\n    store = os.path.join(store_dir, store_version)\n    os.makedirs(os.path.join(store, 'files'), exist_ok=True)\n    if store_version == 'v11':\n        index_db = sqlite3.connect(os.path.join(store, 'index.db'))\n        index_db.execute('PRAGMA busy_timeout=5000')\n        index_db.execute('PRAGMA journal_mode=WAL')\n        index_db.execute('PRAGMA synchronous=NORMAL')\n        index_db.execute('PRAGMA temp_store=MEMORY')\n        index_db.execute(\n            'CREATE TABLE IF NOT EXISTS package_index ('\n            '  key TEXT PRIMARY KEY,'\n            '  data BLOB NOT NULL'\n            ') WITHOUT ROWID'\n        )\n    else:\n        os.makedirs(os.path.join(store, 'index'), exist_ok=True)\n\n    now = int(time.time() * 1000)\n\n    for tarball_name, info in packages.items():\n        tarball_path = os.path.join(tarball_dir, tarball_name)\n        if not os.path.isfile(tarball_path):\n            raise FileNotFoundError(tarball_path)\n\n        _process_tarball(\n            tarball_path=tarball_path,\n            pkg_name=info['name'],\n            pkg_version=info['version'],\n            integrity=info['integrity'],\n            integrity_digest=info['integrity_digest'],\n            integrity_algo=info['integrity_algo'],\n            store=store,\n            now=now,\n            tarball_url=info.get('tarball_url'),\n            store_version=store_version,\n            index_db=index_db,\n        )\n\n    if index_db is not None:\n        index_db.commit()\n        index_db.close()\n\n\ndef _process_tarball(\n    *,\n    tarball_path: str,\n    pkg_name: str,\n    pkg_version: str,\n    integrity: str,\n    integrity_digest: str,\n    integrity_algo: str,\n    store: str,\n    now: int,\n    tarball_url: str | None = None,\n    store_version: str = 'v3',\n    index_db: sqlite3.Connection | None = None,\n) -> None:\n    index_files: dict[str, dict[str, object]] = {}\n    file_digests: dict[str, str] = {}\n    real_pkg_name = pkg_name\n    real_pkg_version = pkg_version\n    pkg_scripts: Mapping[str, object] | None = None\n    pkg_main: str | None = None\n    pkg_manifest: dict[str, object] = {}\n    rel_names: set[str] = set()\n\n    with tarfile.open(tarball_path, 'r:gz') as tf:\n        for member in tf.getmembers():\n            if not member.isfile():\n                continue\n            fobj = tf.extractfile(member)\n            if fobj is None:\n                continue\n            data = fobj.read()\n\n            if member.name.endswith('package.json') and member.name.count('/') <= 1:\n                with contextlib.suppress(ValueError, TypeError, UnicodeDecodeError):\n                    pkg_data = json.loads(data.decode('utf-8'))\n                    if isinstance(pkg_data, dict):\n                        if 'name' in pkg_data and isinstance(pkg_data['name'], str):\n                            real_pkg_name = pkg_data['name']\n                        if 'version' in pkg_data and isinstance(\n                            pkg_data['version'], str\n                        ):\n                            real_pkg_version = pkg_data['version']\n                        if isinstance(pkg_data.get('scripts'), dict):\n                            pkg_scripts = pkg_data['scripts']\n                        if isinstance(pkg_data.get('main'), str):\n                            pkg_main = pkg_data['main']\n                        pkg_manifest = {\n                            k: pkg_data[k]\n                            for k in _MANIFEST_FIELDS\n                            if pkg_data.get(k) is not None\n                        }\n                        if pkg_scripts is not None:\n                            lifecycle_scripts = {\n                                k: pkg_scripts[k]\n                                for k in _MANIFEST_LIFECYCLE_SCRIPTS\n                                if pkg_scripts.get(k)\n                            }\n                            if lifecycle_scripts:\n                                pkg_manifest['scripts'] = lifecycle_scripts\n\n            digest = hashlib.sha512(data).digest()\n            file_hex = digest.hex()\n            is_exec = bool(member.mode & 0o111)\n\n            cas_dir = os.path.join(store, 'files', file_hex[:2])\n            cas_name = file_hex[2:] + ('-exec' if is_exec else '')\n            cas_path = os.path.join(cas_dir, cas_name)\n            if not os.path.exists(cas_path):\n                os.makedirs(cas_dir, exist_ok=True)\n                with open(cas_path, 'wb') as out:\n                    out.write(data)\n                if is_exec:\n                    os.chmod(cas_path, 0o755)\n\n            rel_name = member.name\n            if '/' in rel_name:\n                rel_name = rel_name.split('/', 1)[1]\n            rel_names.add(rel_name)\n\n            b64 = base64.b64encode(digest).decode()\n            index_files[rel_name] = {\n                'checkedAt': now,\n                'integrity': f'sha512-{b64}',\n                'mode': member.mode,\n                'size': len(data),\n            }\n            file_digests[rel_name] = file_hex\n\n    if store_version == 'v11':\n        assert index_db is not None\n        # pnpm v11 store index keys use the raw package name (e.g. @scope/pkg),\n        # not the filesystem-sanitized form (@scope+pkg), since keys are stored\n        # in SQLite, not as filenames.\n        raw_pkg_id = f'{pkg_name}@{pkg_version}'\n        key = f'{integrity_algo}-{integrity}\\t{raw_pkg_id}'\n\n        v11_files: dict[str, dict[str, object]] = {}\n        for rel_name, finfo in index_files.items():\n            checked_at = finfo['checkedAt']\n            assert isinstance(checked_at, int)\n            v11_files[rel_name] = {\n                'checkedAt': float(checked_at),  # float64 avoids msgpackr BigInt\n                'digest': file_digests[rel_name],\n                'mode': finfo['mode'],\n                'size': finfo['size'],\n            }\n\n        manifest = None\n        if real_pkg_name or real_pkg_version:\n            manifest = {\n                **pkg_manifest,\n                'name': real_pkg_name,\n                'version': real_pkg_version,\n            }\n\n        requires_prepare = None\n        if tarball_url:\n            main_file = os.path.normpath(pkg_main or 'index.js')\n            requires_prepare = _requires_prepare(pkg_scripts, main_file in rel_names)\n            if requires_prepare:\n                # pnpm can only reuse a git-hosted package from the store when\n                # the row records that no prepare step was needed. We cannot\n                # provide the opposite, so leave the field unset: pnpm falls\n                # back to a fetch and fails loudly, rather than silently\n                # linking un-prepared files.\n                print(\n                    f'WARNING: {real_pkg_name} needs a prepare step; '\n                    'the offline store cannot provide it.',\n                    file=sys.stderr,\n                )\n\n        entry_bytes = _pack_v11_store_entry(v11_files, manifest, requires_prepare)\n\n        # It's currently not possible to fully determine which store key pnpm will use,\n        # so we insert multiple keys to ensure pnpm can find the entry it wants.\n\n        index_db.execute(\n            'INSERT OR REPLACE INTO package_index (key, data) VALUES (?, ?)',\n            (key, entry_bytes),\n        )\n\n        if tarball_url:\n            url_key = f'{tarball_url}\\t{raw_pkg_id}'\n            index_db.execute(\n                'INSERT OR REPLACE INTO package_index (key, data) VALUES (?, ?)',\n                (url_key, entry_bytes),\n            )\n\n            # pnpm looks up git-hosted tarballs (codeload.github.com,\n            # bitbucket.org, gitlab.com) and tarballs without integrity by\n            # {tarball_url}\\tbuilt(not-built) \u2014 see pickStoreIndexKey in @pnpm/store.index.\n            pkgid_key = f'{tarball_url}\\t'\n            index_db.execute(\n                'INSERT OR REPLACE INTO package_index (key, data) VALUES (?, ?)',\n                (pkgid_key + 'built', entry_bytes),\n            )\n            index_db.execute(\n                'INSERT OR REPLACE INTO package_index (key, data) VALUES (?, ?)',\n                (pkgid_key + 'not-built', entry_bytes),\n            )\n    else:\n        pkg_id = _SANITIZE_RE.sub('+', f'{pkg_name}@{pkg_version}')\n\n        index_data = {\n            'name': real_pkg_name,\n            'version': real_pkg_version,\n            'requiresBuild': False,\n            'files': index_files,\n        }\n\n        idx_prefix = integrity_digest[:2]\n        idx_rest = integrity_digest[2:64]\n        idx_dir = os.path.join(store, 'index', idx_prefix)\n        os.makedirs(idx_dir, exist_ok=True)\n        idx_path = os.path.join(idx_dir, f'{idx_rest}-{pkg_id}.json')\n        with open(idx_path, 'w', encoding='utf-8') as out:\n            json.dump(index_data, out)\n\n        # For tarball-URL packages, also create an index entry keyed by the URL hash\n        # this is how pnpm looks up tarball deps without integrity\n        if tarball_url:\n            if store_version == 'v3':\n                url_hash = hashlib.sha256(tarball_url.encode()).hexdigest()\n                url_idx_prefix = url_hash[:2]\n                url_idx_rest = url_hash[2:64]\n                url_idx_dir = os.path.join(store, 'index', url_idx_prefix)\n                os.makedirs(url_idx_dir, exist_ok=True)\n                url_idx_path = os.path.join(\n                    url_idx_dir, f'{url_idx_rest}-{pkg_id}.json'\n                )\n                with open(url_idx_path, 'w', encoding='utf-8') as out:\n                    json.dump(index_data, out)\n            else:\n                url_dir_name = re.sub(r'[:/]', '+', tarball_url)\n                if (\n                    len(url_dir_name) > _MAX_LENGTH_WITHOUT_HASH\n                    or url_dir_name != url_dir_name.lower()\n                ):\n                    url_dir_name = f'{url_dir_name[: _MAX_LENGTH_WITHOUT_HASH - 33]}_{hashlib.sha256(url_dir_name.encode()).hexdigest()[:32]}'\n                url_idx_dir = os.path.join(store, url_dir_name)\n                os.makedirs(url_idx_dir, exist_ok=True)\n                url_idx_path = os.path.join(url_idx_dir, 'integrity.json')\n                with open(url_idx_path, 'w', encoding='utf-8') as out:\n                    json.dump(index_data, out)\n\n\nif __name__ == '__main__':\n    if len(sys.argv) != 4:\n        print(\n            f'Usage: {sys.argv[0]} <manifest.json> <tarball-dir> <store-dir>',\n            file=sys.stderr,\n        )\n        sys.exit(1)\n    populate_store(sys.argv[1], sys.argv[2], sys.argv[3])\n",
+    "dest-filename": "populate_pnpm_store.py",
+    "dest": "ui/flatpak-node"
+  },
+  {
+    "type": "inline",
+    "contents": "{\"packages\":{\"@emnapi__core-2.0.0-beta.2.tgz\":{\"integrity\":\"MzCVoWtcg4Pm2B3je5mMvYMvj3MmBKw+fU7vbsJc9/iT8ip6/eYIHo/Dsm/mr+wsHB6SEyJDuxB09Yy6r/8+4A==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"333095a16b5c8383e6d81de37b998cbd832f8f732604ac3e7d4eef6ec25cf7f893f22a7afde6081e8fc3b26fe6afec2c1c1e92132243bb1074f58cbaafff3ee0\",\"name\":\"@emnapi/core\",\"version\":\"2.0.0-beta.2\"},\"@emnapi__runtime-2.0.0-beta.2.tgz\":{\"integrity\":\"JcrSPzPvZuNZvJqPTF9Fw25LbOJ8avzFVlaf2grmH4Cku0oGP47tRgqPZadcfj3YoZMHkFVnCYFbQM8I+i5QEw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"25cad23f33ef66e359bc9a8f4c5f45c36e4b6ce27c6afcc556569fda0ae61f80a4bb4a063f8eed460a8f65a75c7e3dd8a1930790556709815b40cf08fa2e5013\",\"name\":\"@emnapi/runtime\",\"version\":\"2.0.0-beta.2\"},\"@emnapi__wasi-threads-2.2.0.tgz\":{\"integrity\":\"JP7OYH38Q7+pyTAe14raZHLQIK7BDKbdwji+Xi3pcd/6QkJYQH3SX4wu6EplGrGJWRepoNzedfm0G3B9Z4e9Rw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"24fece607dfc43bfa9c9301ed78ada6472d020aec10ca6ddc238be5e2de971dffa424258407dd25f8c2ee84a651ab1895917a9a0dcde75f9b41b707d6787bd47\",\"name\":\"@emnapi/wasi-threads\",\"version\":\"2.2.0\"},\"@jridgewell__gen-mapping-0.3.13.tgz\":{\"integrity\":\"2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"da492dffb9e227a32010fc45d1b61d43a7ad65a03e7d0bc370b29c921cb5c8840ecdaa0a8c10634a3eb7fda2d58d8137aa146de5dbccfae5327c283a50a0816c\",\"name\":\"@jridgewell/gen-mapping\",\"version\":\"0.3.13\"},\"@jridgewell__remapping-2.3.5.tgz\":{\"integrity\":\"LI9u/+laYG4Ds1TDKSJW2YPrIlcVYOwi2fUC6xB43lueCjgxV4lffOCZCtYFiH6TNOX+tQKXx97T4IKHbhyHEQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"2c8f6effe95a606e03b354c3292256d983eb22571560ec22d9f502eb1078de5b9e0a383157895f7ce0990ad605887e9334e5feb50297c7ded3e082876e1c8711\",\"name\":\"@jridgewell/remapping\",\"version\":\"2.3.5\"},\"@jridgewell__resolve-uri-3.1.3.tgz\":{\"integrity\":\"lhTtjtoEArWBjismtfS761S9Hlyn+nIZqOZVYoZ1Xn82PMNMVnk+jj/NhC4fAXGTs7ydONcJiR5vyQBTMDu27g==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"9614ed8eda0402b5818e2b26b5f4bbeb54bd1e5ca7fa7219a8e6556286755e7f363cc34c56793e8e3fcd842e1f017193b3bc9d38d709891e6fc90053303bb6ee\",\"name\":\"@jridgewell/resolve-uri\",\"version\":\"3.1.3\"},\"@jridgewell__sourcemap-codec-1.6.0.tgz\":{\"integrity\":\"T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"4fb8dffb9ce0b191f0349e25bd0eff69ecdbca4d27357fb32555a998703b558b04c7b6bbaabe5183921bb4916a920cdee58dacaeeab545463c43cdfb39dee217\",\"name\":\"@jridgewell/sourcemap-codec\",\"version\":\"1.6.0\"},\"@jridgewell__trace-mapping-0.3.31.tgz\":{\"integrity\":\"zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"cf3351f9275048327373c8e869e3fc410a0242bf0db98c76748232b65d507811191c9f6e5ba85e6ecad881bcfc849c1441aa374d608cb667d5f0dbb5b7038b03\",\"name\":\"@jridgewell/trace-mapping\",\"version\":\"0.3.31\"},\"@napi-rs__wasm-runtime-1.2.6.tgz\":{\"integrity\":\"mRyDmEw9/fCDXCGfL1sbgIw/GUK0PVxRW4YwgPN61F3LQ+fSyoBFarJVzgGyhF6kRzEQZ0FejDqm4WLXSeqQmw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"991c83984c3dfdf0835c219f2f5b1b808c3f1942b43d5c515b863080f37ad45dcb43e7d2ca80456ab255ce01b2845ea447311067415e8c3aa6e162d749ea909b\",\"name\":\"@napi-rs/wasm-runtime\",\"version\":\"1.2.6\"},\"@oxc-project__types-0.156.0.tgz\":{\"integrity\":\"1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"d43bb2838f1374935dca1101f179f52f7e9b4fd3efe8652d94a8c7c4ecacf3191a17fad0ab75c913e6c0bab48afc0808cf998616c6fbedc9fd3dbdb4f9609273\",\"name\":\"@oxc-project/types\",\"version\":\"0.156.0\"},\"@rolldown__binding-android-arm-eabi-1.2.19.tgz\":{\"integrity\":\"e+Ebe0WT+9tbXmNKPIiC8YrWAHYwug3m6i4p3rZGGulfZri1jtI4HslT+OZnFf/OIHowWF71DTlHwXBP2SiA7A==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"7be11b7b4593fbdb5b5e634a3c8882f18ad6007630ba0de6ea2e29deb6461ae95f66b8b58ed2381ec953f8e66715ffce207a30585ef50d3947c1704fd92880ec\",\"name\":\"@rolldown/binding-android-arm-eabi\",\"version\":\"1.2.19\"},\"@rolldown__binding-android-arm64-1.2.19.tgz\":{\"integrity\":\"hOombrTJ+szt2ciEzS7oCA78lMPBgF5UMQWCJIyNfnrI7GLl8HYoFqCnpL2gcPOaXMqryGCU5ExdQKyDDcC+yA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"84ea266eb4c9faccedd9c884cd2ee8080efc94c3c1805e54310582248c8d7e7ac8ec62e5f0762816a0a7a4bda070f39a5ccaabc86094e44c5d40ac830dc0bec8\",\"name\":\"@rolldown/binding-android-arm64\",\"version\":\"1.2.19\"},\"@rolldown__binding-darwin-arm64-1.2.19.tgz\":{\"integrity\":\"XoMA2pwCKGTQzUjPgtRwkedH4WmXhdIPKT6l6oOxd1PUbNodGI6DcBekgN7EC//+x3pfBYX/qL1gNmZAqivw5g==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"5e8300da9c022864d0cd48cf82d47091e747e1699785d20f293ea5ea83b17753d46cda1d188e837017a480dec40bfffec77a5f0585ffa8bd60366640aa2bf0e6\",\"name\":\"@rolldown/binding-darwin-arm64\",\"version\":\"1.2.19\"},\"@rolldown__binding-darwin-x64-1.2.19.tgz\":{\"integrity\":\"zo8EsSSwMZCY/e+fRnGaX02YGgvJD0yvhNi/9hpGPA2MJ9ZF8dPCw75UGfpI6OpQ/myR/dIYmogRvqiZD0TrXg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"ce8f04b124b0319098fdef9f46719a5f4d981a0bc90f4caf84d8bff61a463c0d8c27d645f1d3c2c3be5419fa48e8ea50fe6c91fdd2189a8811bea8990f44eb5e\",\"name\":\"@rolldown/binding-darwin-x64\",\"version\":\"1.2.19\"},\"@rolldown__binding-freebsd-x64-1.2.19.tgz\":{\"integrity\":\"O8ISAOfI1nj7AuBPd30FSF47z7f7lzlk5poQVGgiikvQuGEBFYvW8ki+UEnT+YJPnNGjQzn304klt4O9FUE7mA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"3bc21200e7c8d678fb02e04f777d05485e3bcfb7fb973964e69a105468228a4bd0b86101158bd6f248be5049d3f9824f9cd1a34339f7d38925b783bd15413b98\",\"name\":\"@rolldown/binding-freebsd-x64\",\"version\":\"1.2.19\"},\"@rolldown__binding-linux-arm-gnueabihf-1.2.19.tgz\":{\"integrity\":\"/lYCba5NO0yq4S0jGMH8QTBtkvQxoXjoQWzF5BcWp9MjB9jxVRD1GQDNofkVjcOj30DWyhLIN/4Oe60JKzaONw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"fe56026dae4d3b4caae12d2318c1fc41306d92f431a178e8416cc5e41716a7d32307d8f15510f51900cda1f9158dc3a3df40d6ca12c837fe0e7bad092b368e37\",\"name\":\"@rolldown/binding-linux-arm-gnueabihf\",\"version\":\"1.2.19\"},\"@rolldown__binding-linux-arm64-gnu-1.2.19.tgz\":{\"integrity\":\"pm/apFMBnSbFb3O6nG5pHO1iqHhZrjGDFEjSm+ot9J17XXPvH9L90y5h+jgfHCE+Qdlsvy8qKEcU4VKxgjD+vA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"a66fdaa453019d26c56f73ba9c6e691ced62a87859ae31831448d29bea2df49d7b5d73ef1fd2fdd32e61fa381f1c213e41d96cbf2f2a284714e152b18230febc\",\"name\":\"@rolldown/binding-linux-arm64-gnu\",\"version\":\"1.2.19\"},\"@rolldown__binding-linux-arm64-musl-1.2.19.tgz\":{\"integrity\":\"K1SmQp3FFichn8oqrNIwvFoZ5wcvjC7goBzpaMNvLf9FZc+QB/QvLmnpJZgAAGHiD980tP8FZZnXk2K94rvlxg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"2b54a6429dc51627219fca2aacd230bc5a19e7072f8c2ee0a01ce968c36f2dff4565cf9007f42f2e69e92598000061e20fdf34b4ff056599d79362bde2bbe5c6\",\"name\":\"@rolldown/binding-linux-arm64-musl\",\"version\":\"1.2.19\"},\"@rolldown__binding-linux-ppc64-gnu-1.2.19.tgz\":{\"integrity\":\"I0xwD57jP/3A7+5UPZin2w8Y7XHEmEM5zqpYZOcQ45MlNW6tUJUziymV3yRr7rL4vwyfEcRsRksC4a7Kc08p5Q==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"234c700f9ee33ffdc0efee543d98a7db0f18ed71c4984339ceaa5864e710e39325356ead5095338b2995df246beeb2f8bf0c9f11c46c464b02e1aeca734f29e5\",\"name\":\"@rolldown/binding-linux-ppc64-gnu\",\"version\":\"1.2.19\"},\"@rolldown__binding-linux-s390x-gnu-1.2.19.tgz\":{\"integrity\":\"BrtEHT24SNXj9HiXqy+s/kXiSiQGt6EKCPUlRirAoIioVxKGnbXBUEkbZASAei7iZJB0/Ynm+0JP00Ipx7AnSw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"06bb441d3db848d5e3f47897ab2facfe45e24a2406b7a10a08f525462ac0a088a85712869db5c150491b6404807a2ee2649074fd89e6fb424fd34229c7b0274b\",\"name\":\"@rolldown/binding-linux-s390x-gnu\",\"version\":\"1.2.19\"},\"@rolldown__binding-linux-x64-gnu-1.2.19.tgz\":{\"integrity\":\"rm75/9DkHKeU2WnA8w4X94WGYgLlDCFCfkQC+4bguVJmC/jvDRv2B+2wLOYhyE0fVuv7//Ckk39OoOufyCu76Q==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"ae6ef9ffd0e41ca794d969c0f30e17f785866202e50c21427e4402fb86e0b952660bf8ef0d1bf607edb02ce621c84d1f56ebfbfff0a4937f4ea0eb9fc82bbbe9\",\"name\":\"@rolldown/binding-linux-x64-gnu\",\"version\":\"1.2.19\"},\"@rolldown__binding-linux-x64-musl-1.2.19.tgz\":{\"integrity\":\"irh/4+iYFM4GAzpluDErgjz89bj6NDtqqMAG/6O1LG38Ed3NpyebzCpcVNkFW8uhy+/3/BocUvnXDR33CXWe9A==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"8ab87fe3e89814ce06033a65b8312b823cfcf5b8fa343b6aa8c006ffa3b52c6dfc11ddcda7279bcc2a5c54d9055bcba1cbeff7fc1a1c52f9d70d1df709759ef4\",\"name\":\"@rolldown/binding-linux-x64-musl\",\"version\":\"1.2.19\"},\"@rolldown__binding-openharmony-arm64-1.2.19.tgz\":{\"integrity\":\"+KWTWNoPt+CfSq94CiceWu3yPE+QzkaG+phPyz9G60tmZLwfQkcA4AeksafzvJAw4pvg1mcd5a1TkUqVv0s4JA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"f8a59358da0fb7e09f4aaf780a271e5aedf23c4f90ce4686fa984fcb3f46eb4b6664bc1f424700e007a4b1a7f3bc9030e29be0d6671de5ad53914a95bf4b3824\",\"name\":\"@rolldown/binding-openharmony-arm64\",\"version\":\"1.2.19\"},\"@rolldown__binding-wasm32-wasi-1.2.19.tgz\":{\"integrity\":\"7EH+skOsl5qpWnK0vzamgJFhOv1cwxQpsxm8tI883K9fur5c27p8q87fzEO6BbBPabA2/+s/zR63/pLc137iOg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"ec41feb243ac979aa95a72b4bf36a68091613afd5cc31429b319bcb48f3cdcaf5fbabe5cdbba7cabcedfcc43ba05b04f69b036ffeb3fcd1eb7fe92dcd77ee23a\",\"name\":\"@rolldown/binding-wasm32-wasi\",\"version\":\"1.2.19\"},\"@rolldown__binding-win32-arm64-msvc-1.2.19.tgz\":{\"integrity\":\"3Q1Yg1Q7tEvBWoZf5rFvG/GKZQPgwfru+p4wBajDfJFBs0SHCpL++dfTjW9gyAKd1T7ZpIYvdaUax7Pa/IhFVQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"dd0d5883543bb44bc15a865fe6b16f1bf18a6503e0c1faeefa9e3005a8c37c9141b344870a92fef9d7d38d6f60c8029dd53ed9a4862f75a51ac7b3dafc884555\",\"name\":\"@rolldown/binding-win32-arm64-msvc\",\"version\":\"1.2.19\"},\"@rolldown__binding-win32-x64-msvc-1.2.19.tgz\":{\"integrity\":\"y/sqRRc6d7hECzOFc5n3LSeqctmIp9mMjY1Kq4s14uLPd/LZ4z7i1zrW6fMtp2mPeuQIC4e6ULMcwQzMomqQag==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"cbfb2a45173a77b8440b33857399f72d27aa72d988a7d98c8d8d4aab8b35e2e2cf77f2d9e33ee2d73ad6e9f32da7698f7ae4080b87ba50b31cc10ccca26a906a\",\"name\":\"@rolldown/binding-win32-x64-msvc\",\"version\":\"1.2.19\"},\"@rolldown__pluginutils-1.1.1.tgz\":{\"integrity\":\"glFIJDvLNDtJhT9qrMFWLPbvS+skxgt4L0K8Ei2YtnhPysAJnsI7nyxSJxKj4ADeKX0OLjC4ntRkwpLOoS3rwA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"825148243bcb343b49853f6aacc1562cf6ef4beb24c60b782f42bc122d98b6784fcac0099ec23b9f2c522712a3e000de297d0e2e30b89ed464c292cea12debc0\",\"name\":\"@rolldown/pluginutils\",\"version\":\"1.1.1\"},\"@sveltejs__acorn-typescript-1.0.13.tgz\":{\"integrity\":\"wgKggnhZVL9Bfx1OaKKTrYY9BFRk6C8UAkQNUcIv1+llzYrIqy+RZm5HPKzn0NpEBvTVhTqB4kQyllZywsRBRQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"c202a082785954bf417f1d4e68a293ad863d045464e82f1402440d51c22fd7e965cd8ac8ab2f91666e473cace7d0da4406f4d5853a81e24432965672c2c44145\",\"name\":\"@sveltejs/acorn-typescript\",\"version\":\"1.0.13\"},\"@sveltejs__load-config-0.2.3.tgz\":{\"integrity\":\"VT3qmUb8pRV2QrZjd8iAmtg8lf4W0TIjZbvXtz5MKei/q96teWZgGJyyidJzOjzZzvdq616eSRVeMYIQChUTAQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"553dea9946fca5157642b66377c8809ad83c95fe16d1322365bbd7b73e4c29e8bfabdead796660189cb289d2733a3cd9cef76aeb5e9e49155e3182100a151301\",\"name\":\"@sveltejs/load-config\",\"version\":\"0.2.3\"},\"@sveltejs__vite-plugin-svelte-7.3.2.tgz\":{\"integrity\":\"86J4nBLeTqYYIx/paBIRqYJMFYlpTS2sepUdQ6tUyU1jxqRV72ejOrIV2wsqlOsKlkM+h0G1SgwoHI30N+n9CA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"f3a2789c12de4ea618231fe9681211a9824c1589694d2dac7a951d43ab54c94d63c6a455ef67a33ab215db0b2a94eb0a96433e8741b54a0c281c8df437e9fd08\",\"name\":\"@sveltejs/vite-plugin-svelte\",\"version\":\"7.3.2\"},\"@tauri-apps__api-2.12.5.tgz\":{\"integrity\":\"G9QIMt5fzED+aS4QhVK3w1HWLKpLIwH/MnpCr9z1ugGEHnS2ORmqrLkc0uALOjRK4qXJy+4Yiw8LDl/KicC1Hg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"1bd40832de5fcc40fe692e108552b7c351d62caa4b2301ff327a42afdcf5ba01841e74b63919aaacb91cd2e00b3a344ae2a5c9cbee188b0f0b0e5fca89c0b51e\",\"name\":\"@tauri-apps/api\",\"version\":\"2.12.5\"},\"@tauri-apps__cli-2.12.6.tgz\":{\"integrity\":\"/cOeQgqq8PBDPODOjjT0YHs4qxKCHcQMWMiBm4rLM3JNr9mZE+PHNKOK4zAkhIUtYMNL/0fweW48VNvzD1AbqA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"fdc39e420aaaf0f0433ce0ce8e34f4607b38ab12821dc40c58c8819b8acb33724dafd99913e3c734a38ae3302484852d60c34bff47f0796e3c54dbf30f501ba8\",\"name\":\"@tauri-apps/cli\",\"version\":\"2.12.6\"},\"@tauri-apps__cli-darwin-arm64-2.12.6.tgz\":{\"integrity\":\"Uokwk1hFfJoG54+kD8iU0St33jAIkNvojnjEfBZ6UbL5rnM10AiFwUS/2DHTJ9R4/Kba4U44v7djfMuWFTQgeg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"5289309358457c9a06e78fa40fc894d12b77de300890dbe88e78c47c167a51b2f9ae7335d00885c144bfd831d327d478fca6dae14e38bfb7637ccb961534207a\",\"name\":\"@tauri-apps/cli-darwin-arm64\",\"version\":\"2.12.6\"},\"@tauri-apps__cli-darwin-x64-2.12.6.tgz\":{\"integrity\":\"WhahqzcyHCpCzh4Taf0ZbBm6nGkvuOSh5ffrgOO7EdYaYe+RBQK8LOlFu+bbjul5v9cdLDi3kco+0+7IlZtTVA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"5a16a1ab37321c2a42ce1e1369fd196c19ba9c692fb8e4a1e5f7eb80e3bb11d61a61ef910502bc2ce945bbe6db8ee979bfd71d2c38b791ca3ed3eec8959b5354\",\"name\":\"@tauri-apps/cli-darwin-x64\",\"version\":\"2.12.6\"},\"@tauri-apps__cli-linux-arm-gnueabihf-2.12.6.tgz\":{\"integrity\":\"GB6weN+iFHxiFZ9SOKW6fINis7gnxohoOldR7sryBe7uaavkFGaMCa0yQs5njeXPWvzlE9WTQ13z8oDjmqK+Ww==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"181eb078dfa2147c62159f5238a5ba7c8362b3b827c688683a5751eecaf205eeee69abe414668c09ad3242ce678de5cf5afce513d593435df3f280e39aa2be5b\",\"name\":\"@tauri-apps/cli-linux-arm-gnueabihf\",\"version\":\"2.12.6\"},\"@tauri-apps__cli-linux-arm64-gnu-2.12.6.tgz\":{\"integrity\":\"mdHoUFYKfztUtPKE0C2hhGkEo7j6swXjg+5yRRKSD7A2gLkRPQFIXWD/DAYhiJdeAkyA8MCP6nvvKvg/4YryWQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"99d1e850560a7f3b54b4f284d02da1846904a3b8fab305e383ee724512920fb03680b9113d01485d60ff0c062188975e024c80f0c08fea7bef2af83fe18af259\",\"name\":\"@tauri-apps/cli-linux-arm64-gnu\",\"version\":\"2.12.6\"},\"@tauri-apps__cli-linux-arm64-musl-2.12.6.tgz\":{\"integrity\":\"2BxB+9a3JRN0eJ0t0qGe8IKJfgBLOZDE8a499OXH+yg4J9bMpSK1oHXBxnHuSHFWhby4QnQ/t+sBf7tRC0UZeA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"d81c41fbd6b7251374789d2dd2a19ef082897e004b3990c4f1ae3df4e5c7fb283827d6cca522b5a075c1c671ee48715685bcb842743fb7eb017fbb510b451978\",\"name\":\"@tauri-apps/cli-linux-arm64-musl\",\"version\":\"2.12.6\"},\"@tauri-apps__cli-linux-riscv64-gnu-2.12.6.tgz\":{\"integrity\":\"sb58RsNHex9QVqHdN1cf9MMlamUWAtk1NzuxTZalUnBUHfblIbe71hfmdI6whDZ84MufgOdeg/bzvhrbZS1r0w==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"b1be7c46c3477b1f5056a1dd37571ff4c3256a651602d935373bb14d96a55270541df6e521b7bbd617e6748eb084367ce0cb9f80e75e83f6f3be1adb652d6bd3\",\"name\":\"@tauri-apps/cli-linux-riscv64-gnu\",\"version\":\"2.12.6\"},\"@tauri-apps__cli-linux-x64-gnu-2.12.6.tgz\":{\"integrity\":\"ZAb4/CHRma3ErjL2RGfHjITTUBIs4zySf0hIli9BddOtEdSx0ze0hEgxl+HfBVc5OEW/QmbiZ2E2+CkkHc8Pcg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"6406f8fc21d199adc4ae32f64467c78c84d350122ce33c927f4848962f4175d3ad11d4b1d337b484483197e1df0557393845bf4266e2676136f829241dcf0f72\",\"name\":\"@tauri-apps/cli-linux-x64-gnu\",\"version\":\"2.12.6\"},\"@tauri-apps__cli-linux-x64-musl-2.12.6.tgz\":{\"integrity\":\"ueSzM2Du6r4i1d/lby9kEvrhPnXw5zM/VYvcW1ldEWSpkUyVohsBXkmD+U7vMskEW5tXeCUenki7nYVxyGBGpQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"b9e4b33360eeeabe22d5dfe56f2f6412fae13e75f0e7333f558bdc5b595d1164a9914c95a21b015e4983f94eef32c9045b9b5778251e9e48bb9d8571c86046a5\",\"name\":\"@tauri-apps/cli-linux-x64-musl\",\"version\":\"2.12.6\"},\"@tauri-apps__cli-win32-arm64-msvc-2.12.6.tgz\":{\"integrity\":\"6bmOt2BQSe0Bba+5CJcTKSML7VOYDxyiAKyBrjo86VxMdC1usIQmklu3Xc83s3QoK1rOMwwbANlPF6i5R2mvIg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"e9b98eb7605049ed016dafb908971329230bed53980f1ca200ac81ae3a3ce95c4c742d6eb08426925bb75dcf37b374282b5ace330c1b00d94f17a8b94769af22\",\"name\":\"@tauri-apps/cli-win32-arm64-msvc\",\"version\":\"2.12.6\"},\"@tauri-apps__cli-win32-ia32-msvc-2.12.6.tgz\":{\"integrity\":\"9q9ZFNuFreBczwyJuhhlrEOBzGClwWUYirQ2GBl66Y6EaNl17IdLH8TRqoY9wYB1LnctNBi+Fa/WMGtFA4BtFQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"f6af5914db85ade05ccf0c89ba1865ac4381cc60a5c165188ab43618197ae98e8468d975ec874b1fc4d1aa863dc180752e772d3418be15afd6306b4503806d15\",\"name\":\"@tauri-apps/cli-win32-ia32-msvc\",\"version\":\"2.12.6\"},\"@tauri-apps__cli-win32-x64-msvc-2.12.6.tgz\":{\"integrity\":\"ion7Chbj21ROxMRpjQ7G8rz5sIOaI7IoBQum1oq5sl1V5zGWyc/oYnCrQhVqO2TxK/lBDWxt648BzLi02SY3Xg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"8a89fb0a16e3db544ec4c4698d0ec6f2bcf9b0839a23b228050ba6d68ab9b25d55e73196c9cfe86270ab42156a3b64f12bf9410d6c6deb8f01ccb8b4d926375e\",\"name\":\"@tauri-apps/cli-win32-x64-msvc\",\"version\":\"2.12.6\"},\"@tsconfig__svelte-5.0.9.tgz\":{\"integrity\":\"gbtbqsEFq9gFzGmgJMIB3+leXVmkUttoFjzeHsbqN6qFKst40fvxnN9+3Ajdl8VlIGwPevs9LNJ8YUhQgchqaw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"81bb5baac105abd805cc69a024c201dfe95e5d59a452db68163cde1ec6ea37aa852acb78d1fbf19cdf7edc08dd97c565206c0f7afb3d2cd27c61485081c86a6b\",\"name\":\"@tsconfig/svelte\",\"version\":\"5.0.9\"},\"@tybys__wasm-util-0.10.5.tgz\":{\"integrity\":\"dOGOPxlaNV+G046mZzN+9C0dAcQZeSKcXiVaM0TYy/LM4ttTmgSBDxYfovcYI8Em3+eAbiAYpvWLOv8+ZVRJKA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"74e18e3f195a355f86d38ea667337ef42d1d01c41979229c5e255a3344d8cbf2cce2db539a04810f161fa2f71823c126dfe7806e2018a6f58b3aff3e65544928\",\"name\":\"@tybys/wasm-util\",\"version\":\"0.10.5\"},\"@types__estree-1.0.10.tgz\":{\"integrity\":\"lTyOMnOcmRBzdCv6/4zUZCrEhV0xrqQiUZBZtVcbmLHBXKLnN8q89v/wKRF/Q0HbwVsqbIG3o5HDoFl9sduM+g==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"953c8e32739c991073742bfaff8cd4642ac4855d31aea422519059b5571b98b1c15ca2e737cabcf6fff029117f4341dbc15b2a6c81b7a391c3a0597db1db8cfa\",\"name\":\"@types/estree\",\"version\":\"1.0.10\"},\"acorn-8.19.0.tgz\":{\"integrity\":\"oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"a09940dd78919bb0b293aa850f6267f1a93d07b8d2cb4ab2d340033b7fbc7694f42d28c58a1418bf80b4d8b142498255dd0dfbc58c30472e66f88a48894cea5b\",\"name\":\"acorn\",\"version\":\"8.19.0\"},\"aria-query-5.3.1.tgz\":{\"integrity\":\"Z/ZeOgVl7bcSYZ/u/rh0fOpvEpq//LZmdbkXyc7syVzjPAhfOa9ebsdTSjEBDU4vs5nC98Kfduj1uFo0qyET3g==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"67f65e3a0565edb712619feefeb8747cea6f129abffcb66675b917c9ceecc95ce33c085f39af5e6ec7534a31010d4e2fb399c2f7c29f76e8f5b85a34ab2113de\",\"name\":\"aria-query\",\"version\":\"5.3.1\"},\"axobject-query-4.1.0.tgz\":{\"integrity\":\"qIj0G9wZbMGNLjLmg1PT6v2mE9AH2zlnADJD/2tC6E00hgmhUOfEB6greHPAfLRSufHqROIUTkw6E+M3lH0PTQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"a888f41bdc196cc18d2e32e68353d3eafda613d007db3967003243ff6b42e84d348609a150e7c407a82b7873c07cb452b9f1ea44e2144e4c3a13e337947d0f4d\",\"name\":\"axobject-query\",\"version\":\"4.1.0\"},\"chokidar-4.0.3.tgz\":{\"integrity\":\"Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"420ceef247c1be8f9c038f7ada39cfd4a912e83a29e4d4ba83b4792c5609af86fc51bf783cf417524b02c3d3ef5e87973d145d751342e42d4941447648c1ad9c\",\"name\":\"chokidar\",\"version\":\"4.0.3\"},\"clsx-2.1.1.tgz\":{\"integrity\":\"eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"7989b441606d52b0566561b4777f3a386030d7a67df793e2395a3607b6e35926c779d1a5e5ed1959aabae6438681448d7ac1080e407d2126d383f24af5d84264\",\"name\":\"clsx\",\"version\":\"2.1.1\"},\"deepmerge-4.3.1.tgz\":{\"integrity\":\"3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"dec52a6cc11cefb5eaa5d34eec547246883e796de987e19809b8feacafae63244cbb0b15cb4acc895b4f9fe40994a16f58fff53d8a5aa6a627d0c7b6927167f8\",\"name\":\"deepmerge\",\"version\":\"4.3.1\"},\"detect-libc-2.1.2.tgz\":{\"integrity\":\"Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"06d8f604e38ef37a375b21f9f5ef0c817b3111055c6ab9143a9118aee6c1d2eaf09cdd74c90dfae2bb22072535d67665a966199b4e62fe87fb8a8e26ce2841b5\",\"name\":\"detect-libc\",\"version\":\"2.1.2\"},\"devalue-5.9.4.tgz\":{\"integrity\":\"sPAT4pztbu6586/hrhOnMKS17IJrvg12mXiSPSS3W5qDeN2RGgvZ0diZCm31dBbnevfVmujNO3IM2wrS4Y2Rhg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"b0f013e29ced6eeeb9f3afe1ae13a730a4b5ec826bbe0d769978923d24b75b9a8378dd911a0bd9d1d8990a6df57416e77af7d59ae8cd3b720cdb0ad2e18d9186\",\"name\":\"devalue\",\"version\":\"5.9.4\"},\"esm-env-1.2.2.tgz\":{\"integrity\":\"Epxrv+Nr/CaL4ZcFGPJIYLWFom+YeV1DqMLHJoEd9SYRxNbaFruBwfEX/kkHUJf55j2+TUbmDcmuilbP1TmXHA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"129c6bbfe36bfc268be1970518f24860b585a26f98795d43a8c2c726811df52611c4d6da16bb81c1f117fe49075097f9e63dbe4d46e60dc9ae8a56cfd539971c\",\"name\":\"esm-env\",\"version\":\"1.2.2\"},\"esrap-2.4.2.tgz\":{\"integrity\":\"WpVZsWnSheHBy+fGrO/0duwnbe6ODZH1QyBbjupreSCJGojaBWRncrq+HVeIJ8eHQjEwSJg9hC4yPJyNVOrpqg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"5a9559b169d285e1c1cbe7c6aceff476ec276dee8e0d91f543205b8eea6b7920891a88da05646772babe1d578827c78742313048983d842e323c9c8d54eae9aa\",\"name\":\"esrap\",\"version\":\"2.4.2\"},\"fdir-6.5.0.tgz\":{\"integrity\":\"tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"b486d8b596ee70eb340511aa3c992c84951874bf920c7edd54cf208f2f84469dd60148cb105244fb4da46a7c87b708d63a7c2b298062c0098cd29e242c90275e\",\"name\":\"fdir\",\"version\":\"6.5.0\"},\"fsevents-2.3.3.tgz\":{\"integrity\":\"5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"e71a037d7f9f2fb7da0139da82658fa5b16dc21fd1efb5a630caaa1c64bae42defbc1d181eb805f81d58999df8e35b4c8f99fade4d36d765cda09c339617df43\",\"name\":\"fsevents\",\"version\":\"2.3.3\"},\"is-reference-3.0.3.tgz\":{\"integrity\":\"ixkJoqQvAP88E6wLydLGGqCJsrFUnqoH6HnaczB8XmDH1oaWU+xxdptvikTgaEhtZ53Ky6YXiBuUI2WXLMCwjw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"8b1909a2a42f00ff3c13ac0bc9d2c61aa089b2b1549eaa07e879da73307c5e60c7d6869653ec71769b6f8a44e068486d679dcacba617881b942365972cc0b08f\",\"name\":\"is-reference\",\"version\":\"3.0.3\"},\"lightningcss-1.33.0.tgz\":{\"integrity\":\"WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"5a4503ae88ee26cd3192019fdae756c5adf21814713edc54901efd8ba68264b46073b3ccf1f65ef53a2c7cf0dcbc4a5065bb850129c762644b04b51b98b38820\",\"name\":\"lightningcss\",\"version\":\"1.33.0\"},\"lightningcss-android-arm64-1.33.0.tgz\":{\"integrity\":\"gEpRTalKdosp4Bb8qWtc2iOgE5SeIHlpS1up9bFq2wAyYhl1UdTObYiHe98zEM9SQvSoqQZ1IQD0JNpg3Ml5pg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"804a514da94a768b29e016fca96b5cda23a013949e2079694b5ba9f5b16adb003262197551d4ce6d88877bdf3310cf5242f4a8a906752100f424da60dcc979a6\",\"name\":\"lightningcss-android-arm64\",\"version\":\"1.33.0\"},\"lightningcss-darwin-arm64-1.33.0.tgz\":{\"integrity\":\"Sciaz8eenNTKn9b3t7+xr0ipTp9YxKQY4npwQ3mrRuL0BAVHBLyZxofhaKBAVtzmtRZ/zTyo0/to4B1uWG/Djg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"49c89acfc79e9cd4ca9fd6f7b7bfb1af48a94e9f58c4a418e27a704379ab46e2f404054704bc99c687e168a04056dce6b5167fcd3ca8d3fb68e01d6e586fc38e\",\"name\":\"lightningcss-darwin-arm64\",\"version\":\"1.33.0\"},\"lightningcss-darwin-x64-1.33.0.tgz\":{\"integrity\":\"Z5UPAxzrjlWNNyGy6i65cJzzvgJ5D3T6wMvs+gWpY9d7qRhANrxqAp6LhxIgZhWEw18RfJTGcRxjuLIBr+m8XQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"67950f031ceb8e558d3721b2ea2eb9709cf3be02790f74fac0cbecfa05a963d77ba9184036bc6a029e8b871220661584c35f117c94c6711c63b8b201afe9bc5d\",\"name\":\"lightningcss-darwin-x64\",\"version\":\"1.33.0\"},\"lightningcss-freebsd-x64-1.33.0.tgz\":{\"integrity\":\"QQM/Ti/hQajJwCY+RiWuCZ9sdtI/XQk7nDK5vC8kkdwixezOlDgvDx7+RT+QjK6FcFT4MpsuoBnHIo/O3StRRg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"41033f4e2fe141a8c9c0263e4625ae099f6c76d23f5d093b9c32b9bc2f2491dc22c5ecce94382f0f1efe453f908cae857054f8329b2ea019c7228fcedd2b5146\",\"name\":\"lightningcss-freebsd-x64\",\"version\":\"1.33.0\"},\"lightningcss-linux-arm-gnueabihf-1.33.0.tgz\":{\"integrity\":\"N7FVBe6iS24MlM6R/4RBTxGhQheZGs7tiQ9U32UtF75NzP5Q7xWPRqLBCKxlRQRk3rY1jCIPLzx7WzOhuUIRLQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"37b15505eea24b6e0c94ce91ff84414f11a14217991aceed890f54df652d17be4dccfe50ef158f46a2c108ac65450464deb6358c220f2f3c7b5b33a1b942112d\",\"name\":\"lightningcss-linux-arm-gnueabihf\",\"version\":\"1.33.0\"},\"lightningcss-linux-arm64-gnu-1.33.0.tgz\":{\"integrity\":\"j2v/itmy4HlNxlc6voKXYgBqNi0Ng2LShg4z7GufpEgs05P+2suBVyi9I6YHq5uoVFx9ETin3eCEhLVyXGQnKg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"8f6bff8ad9b2e0794dc6573abe829762006a362d0d8362d2860e33ec6b9fa4482cd393fedacb815728bd23a607ab9ba8545c7d1138a7dde08484b5725c64272a\",\"name\":\"lightningcss-linux-arm64-gnu\",\"version\":\"1.33.0\"},\"lightningcss-linux-arm64-musl-1.33.0.tgz\":{\"integrity\":\"yiO5ROMuYQgXbC60yjZU5CYSFZGKXL0HFATXt9mHJn1+zW55oCtMI9NfcVhYLMFDL7gV7oBPon/EmMMGg2OvtQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"ca23b944e32e6108176c2eb4ca3654e4261215918a5cbd071404d7b7d987267d7ecd6e79a02b4c23d35f7158582cc1432fb815ee804fa27fc498c3068363afb5\",\"name\":\"lightningcss-linux-arm64-musl\",\"version\":\"1.33.0\"},\"lightningcss-linux-x64-gnu-1.33.0.tgz\":{\"integrity\":\"ar+Ju7LmcN0Jo4FpL4hpFybwNG9/3A/Br5KW2n2jyODg3MEZXaDYADdemoNS+BDNfMgKvylJLj4S5tyRActuAg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"6abf89bbb2e670dd09a381692f88691726f0346f7fdc0fc1af9296da7da3c8e0e0dcc1195da0d800375e9a8352f810cd7cc80abf29492e3e12e6dc9101cb6e02\",\"name\":\"lightningcss-linux-x64-gnu\",\"version\":\"1.33.0\"},\"lightningcss-linux-x64-musl-1.33.0.tgz\":{\"integrity\":\"RYiYbkokw0trfKqqzfF55lginwEPrD3OJDfTuJzFs1MK6iFnDenaz1fqLLtX4ITG3OktJQXOeTaw1awrBAlZPw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"4588986e4a24c34b6b7caaaacdf179e658229f010fac3dce2437d3b89cc5b3530aea21670de9dacf57ea2cbb57e084c6dce92d2505ce7936b0d5ac2b0409593f\",\"name\":\"lightningcss-linux-x64-musl\",\"version\":\"1.33.0\"},\"lightningcss-win32-arm64-msvc-1.33.0.tgz\":{\"integrity\":\"1K+MPfLSFVpphzpdbfkhlWk6wBrTObBzS2T6db10PNOZgR9GoVsAWzwNyuhUYYbTp23j+4RrncfujZ4uAzXvwA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"d4af8c3df2d2155a69873a5d6df92195693ac01ad339b0734b64fa75bd743cd399811f46a15b005b3c0dcae8546186d3a76de3fb846b9dc7ee8d9e2e0335efc0\",\"name\":\"lightningcss-win32-arm64-msvc\",\"version\":\"1.33.0\"},\"lightningcss-win32-x64-msvc-1.33.0.tgz\":{\"integrity\":\"OlEICDx/Xl0FqSp4bry8zFnCvGpig3Gl4gCquvYwHuqJKEC1+n9NgDniFvqHGmMv1ZkqDJrDqKKSykTDX+ehuA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"3a5108083c7f5e5d05a92a786ebcbccc59c2bc6a628371a5e200aabaf6301eea892840b5fa7f4d8039e216fa871a632fd5992a0c9ac3a8a292ca44c35fe7a1b8\",\"name\":\"lightningcss-win32-x64-msvc\",\"version\":\"1.33.0\"},\"locate-character-3.0.0.tgz\":{\"integrity\":\"SW13ws7BjaeJ6p7Q6CO2nchbYEc3X3J6WrmTTDto7yMPqVSZTUyY5Tjbid+Ab8gLnATtygYtiDIJGQRRn2ZOiA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"496d77c2cec18da789ea9ed0e823b69dc85b6047375f727a5ab9934c3b68ef230fa954994d4c98e538db89df806fc80b9c04edca062d8832091904519f664e88\",\"name\":\"locate-character\",\"version\":\"3.0.0\"},\"magic-string-0.30.21.tgz\":{\"integrity\":\"vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"bddd85e1853211728670b1e8abe4c4c828f1b9e49e1e7171cb28cda7cd328345d5e2f5219c37abfe5bef96a33f6ab0796d740de4adbfde88a7c82472c7c4f609\",\"name\":\"magic-string\",\"version\":\"0.30.21\"},\"mri-1.2.0.tgz\":{\"integrity\":\"tzzskb3bG8LvYGFF/mDTpq3jpI6Q9wc3LEmBaghu+DdCssd1FakN7Bc0hVNmEyGq1bq3RgfkCb3cmQLpNPOroA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"b73cec91bddb1bc2ef606145fe60d3a6ade3a48e90f707372c49816a086ef83742b2c77515a90dec17348553661321aad5bab74607e409bddc9902e934f3aba0\",\"name\":\"mri\",\"version\":\"1.2.0\"},\"nanoid-3.3.20.tgz\":{\"integrity\":\"uKdg2G3GNCKQn9byYOpxbGqrT2fGO5KRt5J/8b3pok8rT6qxGWF6hxMyJiEYtAf+FVyYuD9hRaDqX5uPFYJ4ZQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"b8a760d86dc63422909fd6f260ea716c6aab4f67c63b9291b7927ff1bde9a24f2b4faab119617a871332262118b407fe155c98b83f6145a0ea5f9b8f15827865\",\"name\":\"nanoid\",\"version\":\"3.3.20\"},\"obug-3.0.0.tgz\":{\"integrity\":\"5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"e6fbc1e7e5bb78fbfea77baac62f91716d570332d6d3f871b77ff85f82dce2a1ee7733a1981881c0e63a0d1a1be169da9c0106bcd70b8c5f8a34eb9fad4a0443\",\"name\":\"obug\",\"version\":\"3.0.0\"},\"picocolors-1.1.1.tgz\":{\"integrity\":\"xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"c5c787dac9e1b5be4cf658aa0ec984c39ea57b7efa993664117fe311bfd1c4d1727a036e97b78db250973fd1438ff2dcbb45fc284c8c71e3f69eda5a1eb0c454\",\"name\":\"picocolors\",\"version\":\"1.1.1\"},\"picomatch-4.0.7.tgz\":{\"integrity\":\"qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"a9c26ef3c436216a89b030f9dbd24a31dc069bf76f2275b81ef427470887f49b62849bf318eb1c0ed1c4df1d6904a794393cac43c91598b9c9da426eef285c18\",\"name\":\"picomatch\",\"version\":\"4.0.7\"},\"postcss-8.5.33.tgz\":{\"integrity\":\"RVHEU9/Pp1Fnjr/MpAJsZoADukCKhfIi15OunEYiGktIkYLkPVvC1sioWolGDS7XByMTx9m/IGbro0Js13zhnQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"4551c453dfcfa751678ebfcca4026c668003ba408a85f222d793ae9c46221a4b489182e43d5bc2d6c8a85a89460d2ed7072313c7d9bf2066eba3426cd77ce19d\",\"name\":\"postcss\",\"version\":\"8.5.33\"},\"readdirp-4.1.2.tgz\":{\"integrity\":\"GDhwkLfywWL2s6vEjyhri+eXmfH6j1L7JE27WhqLeYzoh/A3DBaYGEj2H/HFZCn/kMfim73FXxEJTw06WtxQwg==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"18387090b7f2c162f6b3abc48f286b8be79799f1fa8f52fb244dbb5a1a8b798ce887f0370c16981848f61ff1c56429ff90c7e29bbdc55f11094f0d3a5adc50c2\",\"name\":\"readdirp\",\"version\":\"4.1.2\"},\"rolldown-1.2.19.tgz\":{\"integrity\":\"QIiV1J9d0pzN4jeeTH4sjPy0AZ6cAy2cG0ExeoE1+U8Rvj+hR3gYkokx0YbeUNGlZqiQJJ2utcETe0oKXwzsuA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"408895d49f5dd29ccde2379e4c7e2c8cfcb4019e9c032d9c1b41317a8135f94f11be3fa1477818928931d186de50d1a566a890249daeb5c1137b4a0a5f0cecb8\",\"name\":\"rolldown\",\"version\":\"1.2.19\"},\"sade-1.8.1.tgz\":{\"integrity\":\"xal3CZX1Xlo/k4ApwCFrHVACi9fBqJ7V+mwhBsuf/1IOKbBy098Fex+Wa/5QMubw09pSZ/u8EY8PWgevJsXp1A==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"c5a9770995f55e5a3f938029c0216b1d50028bd7c1a89ed5fa6c2106cb9fff520e29b072d3df057b1f966bfe5032e6f0d3da5267fbbc118f0f5a07af26c5e9d4\",\"name\":\"sade\",\"version\":\"1.8.1\"},\"source-map-js-1.2.3.tgz\":{\"integrity\":\"xj+WrAkyv5Qp+t7r9N5HvCBu7g1qOe6CKRNpq22X1GGcPEQADFU54v5qsPVs3/vrUFQ7XivFrcAVKA2stI0kWA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"c63f96ac0932bf9429fadeebf4de47bc206eee0d6a39ee82291369ab6d97d4619c3c44000c5539e2fe6ab0f56cdffbeb50543b5e2bc5adc015280dacb48d2458\",\"name\":\"source-map-js\",\"version\":\"1.2.3\"},\"svelte-5.59.1.tgz\":{\"integrity\":\"ADG20W/jYSQut/79AavRRfbXQYebFKMVWT/xAbjVVZfZA4XzIoFfcpanEfYTyN+uWQUaPP+nstFx4qVKwEVnQQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"0031b6d16fe361242eb7fefd01abd145f6d741879b14a315593ff101b8d55597d90385f322815f7296a711f613c8dfae59051a3cffa7b2d171e2a54ac0456741\",\"name\":\"svelte\",\"version\":\"5.59.1\"},\"svelte-check-4.7.8.tgz\":{\"integrity\":\"laZ49GFHZ3b0z2PWinJWL0syehc/PTR8aHaUaTiBkWJ+4Y38nhxjmXsSz7CbGa3VdKopViVbrBH3bGNqIAI0bQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"95a678f461476776f4cf63d68a72562f4b327a173f3d347c68769469388191627ee18dfc9e1c63997b12cfb09b19add574aa2956255bac11f76c636a2002346d\",\"name\":\"svelte-check\",\"version\":\"4.7.8\"},\"tinyglobby-0.2.17.tgz\":{\"integrity\":\"wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"c1747f758a5ca8a99f5a911d66388a24ec023459dd0f40cc9eb5bf7188d51adb449017d581c2c51e836b963e3b9a339589cf72c8dbbae5a96c805e0d4324dada\",\"name\":\"tinyglobby\",\"version\":\"0.2.17\"},\"tslib-2.9.1.tgz\":{\"integrity\":\"a4Ux9VKuIMHsOS7ENbEq6hK2ZGYIT27Rtl0E4eD9KqwxhKiQeMZE/9xb3IdYwWaSOyIBQLExhQgXDTYoiCxnWA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"6b8531f552ae20c1ec392ec435b12aea12b66466084f6ed1b65d04e1e0fd2aac3184a89078c644ffdc5bdc8758c166923b220140b1318508170d3628882c6758\",\"name\":\"tslib\",\"version\":\"2.9.1\"},\"typescript-6.0.3.tgz\":{\"integrity\":\"y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"cb64efbb14993c3c906a490544f6472859be28a56a222b1d83dfc26709bd7edbca5cb3fc3515a3dfcfce0e335baf8dd2b285ea36e022b047f519d0b1a9671d07\",\"name\":\"typescript\",\"version\":\"6.0.3\"},\"vite-8.3.8.tgz\":{\"integrity\":\"LzOn3h9rG/0vhLdXrV4yJ4QFA9eEoqCl+Yx+kGJd7aB9w6nfNgVHKSYwLPZUHrz4ZGa+t+kXjV9itvcHDLQouA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"2f33a7de1f6b1bfd2f84b757ad5e3227840503d784a2a0a5f98c7e90625deda07dc3a9df3605472926302cf6541ebcf86466beb7e9178d5f62b6f7070cb428b8\",\"name\":\"vite\",\"version\":\"8.3.8\"},\"vitefu-1.1.4.tgz\":{\"integrity\":\"qbEIDswfXH3x3IYRMScl/bf1AVW0dn7Z8qkr7g7nohkusfuC7tcFa7t5EoTOz60AunosLM9sDrDjHxsX+Up+CQ==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"a9b1080ecc1f5c7df1dc8611312725fdb7f50155b4767ed9f2a92bee0ee7a2192eb1fb82eed7056bbb791284cecfad00ba7a2c2ccf6c0eb0e31f1b17f94a7e09\",\"name\":\"vitefu\",\"version\":\"1.1.4\"},\"zimmerframe-1.1.5.tgz\":{\"integrity\":\"msJxIvYDYcoNL+PJsu+7qmpDWsYmAxTY+2TNYXXF0hzBzBk0BMecOqDOG/EckUoKCuKwObfbugIl8QpqHDXeFA==\",\"integrity_algo\":\"sha512\",\"integrity_digest\":\"9ac27122f60361ca0d2fe3c9b2efbbaa6a435ac6260314d8fb64cd6175c5d21cc1cc193404c79c3aa0ce1bf11c914a0a0ae2b039b7dbba0225f10a6a1c35de14\",\"name\":\"zimmerframe\",\"version\":\"1.1.5\"}},\"store_version\":\"v11\"}",
+    "dest-filename": "pnpm-manifest.json",
+    "dest": "ui/flatpak-node"
+  },
+  {
+    "type": "script",
+    "commands": [
+      "version=$(node --version | sed \"s/^v//\")",
+      "nodedir=$(dirname \"$(dirname \"$(which node)\")\")",
+      "mkdir -p \"flatpak-node/cache/node-gyp/$version\"",
+      "ln -s \"$nodedir/include\" \"flatpak-node/cache/node-gyp/$version/include\"",
+      "echo 11 > \"flatpak-node/cache/node-gyp/$version/installVersion\""
+    ],
+    "dest-filename": "setup_sdk_node_headers.sh",
+    "dest": "ui/flatpak-node"
+  },
+  {
+    "type": "shell",
+    "commands": [
+      "python3 flatpak-node/populate_pnpm_store.py flatpak-node/pnpm-manifest.json flatpak-node/pnpm-tarballs flatpak-node/pnpm-store",
+      "echo \"storeDir: $PWD/flatpak-node/pnpm-store\" >> pnpm-workspace.yaml",
+      "bash flatpak-node/setup_sdk_node_headers.sh"
+    ],
+    "dest": "ui"
+  },
+  {
+    "type": "archive",
+    "url": "https://registry.npmjs.org/pnpm/-/pnpm-12.23.0.tgz",
+    "sha256": "6501a897dcfe072e8df2957c94c46f27f71901b28f2e02a167f91e0ac7905859",
+    "dest": "flatpak-tools/pnpm"
+  }
+]
