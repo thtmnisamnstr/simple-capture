@@ -55,5 +55,8 @@ one change: the two `type: dir` sources become the release tag.
 (the `helpers` module keeps `dest: third_party` and its `skip` list does not apply to git
 sources). Then follow https://docs.flathub.org/docs/for-app-authors/submission: fork
 `flathub/flathub`, branch from `new-pr`, add the manifest, the five JSON lists and `shared/`, and
-open the pull request. The metainfo needs screenshots before review (Flathub requires at least
-one); they are referenced by URL from the tagged repository.
+open the pull request. The metainfo's screenshots (`app/linux/screenshots`, made by
+`tools/linux-dev/screenshots.sh`) are referenced from the main branch, so merge this branch first.
+Until then CI's linter reports `appstream-missing-screenshots` (the URLs 404) and
+`appstream-screenshots-not-mirrored-in-ostree` (Flathub's own build mirrors them); both are
+expected before the merge.
