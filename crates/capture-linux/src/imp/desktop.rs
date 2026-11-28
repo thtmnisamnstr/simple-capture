@@ -123,6 +123,35 @@ fn xdg_trash_in(data: &Path, path: &Path) -> Result<()> {
     })
 }
 
+/// Puts `path` on the clipboard as a file, through the app's own GTK on its main thread, so it
+/// needs no wl-copy or xclip (which sandboxes and many desktops lack). False when GTK refused.
+fn gtk_copy_file(path: &Path) -> bool {
+    use gtk::{TargetEntry, TargetFlags};
+    let uri = uri(path);
+    let text = path.to_string_lossy().into_owned();
+    let (tx, rx) = std::sync::mpsc::channel();
+    gtk::glib::MainContext::default().invoke(move || {
+        let clipboard = gtk::Clipboard::get(&gtk::gdk::SELECTION_CLIPBOARD);
+        let targets = [
+            TargetEntry::new("text/uri-list", TargetFlags::empty(), 0),
+            TargetEntry::new("x-special/gnome-copied-files", TargetFlags::empty(), 1),
+            TargetEntry::new("UTF8_STRING", TargetFlags::empty(), 2),
+            TargetEntry::new("text/plain;charset=utf-8", TargetFlags::empty(), 2),
+        ];
+        let ok = clipboard.set_with_data(&targets, move |_, sel, info| {
+            let data = match info {
+                0 => format!("{uri}\r\n"),
+                1 => format!("copy\n{uri}"),
+                _ => text.clone(),
+            };
+            sel.set(&sel.target(), 8, data.as_bytes());
+        });
+        let _ = tx.send(ok);
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(2))
+        .unwrap_or(false)
+}
+
 pub struct LinuxDesktop;
 
 impl Desktop for LinuxDesktop {
@@ -164,6 +193,9 @@ impl Desktop for LinuxDesktop {
     }
 
     fn copy_file(&self, path: &Path) -> Result<()> {
+        if gtk_copy_file(path) {
+            return Ok(());
+        }
         let list = format!("{}\r\n", uri(path));
         let mut cmd = if std::env::var_os("WAYLAND_DISPLAY").is_some() && has("wl-copy") {
             let mut c = Command::new("wl-copy");
