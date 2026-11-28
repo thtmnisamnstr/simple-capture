@@ -14,7 +14,7 @@ researched 2026-11-27) is the background; where the two differ, this section win
 | Flathub | `flatpak.yml` | Offline manifest in `packaging/flatpak` (GNOME 50, Skia from source, helpers from the same pins), built for x86_64 and aarch64 and linted in CI; metainfo has screenshots | After a tagged release: the submission steps in `packaging/flatpak/README.md` (a PR to `flathub/flathub`) |
 
 Decisions taken (they were §7's questions):
-- **App ID:** `io.github.thtmnisamnstr.SimpleCapture` on every Linux package (Flathub verifies
+- **App ID:** `io.github.thtmnisamnstr.simple-capture` on every Linux package (Flathub verifies
   it through GitHub). GTK's program name is the app ID, so windows match the desktop file. The
   Tauri identifier stays `com.simplecapture.desktop`, so the data folder doesn't move and macOS
   is untouched.
@@ -48,7 +48,7 @@ The fix doesn't depend on any channel: install `<app-id>.desktop` through `bundl
   `~/.var/app/<id>/`. The cost is that one app ends up with two IDs in GNOME Software and in
   AppStream.
 - (b) Move every Linux package to one new ID now, while Linux is still experimental and has
-  almost no users. Candidates are `io.github.thtmnisamnstr.SimpleCapture`, which Flathub verifies
+  almost no users. Candidates are `io.github.thtmnisamnstr.simple-capture`, which Flathub verifies
   through GitHub ownership [5], or `com.simplecapture.SimpleCapture`, which needs control of
   simplecapture.com and a token at `/.well-known/org.flathub.VerifiedApps.txt` [5]. Override the
   identifier in `app/tauri.linux.conf.json`. macOS and Windows keep `com.simplecapture.desktop`,
@@ -58,10 +58,10 @@ The fix doesn't depend on any channel: install `<app-id>.desktop` through `bundl
   repo package names are hard to change later.
 
   **Status (2026-11-27, branch linux-testing):** the portal side of (b) is done. The app registers
-  `io.github.thtmnisamnstr.SimpleCapture` with the portal (`APP_ID` in
+  `io.github.thtmnisamnstr.simple-capture` with the portal (`APP_ID` in
   `crates/capture-linux/src/imp/portal.rs`), and on the owner's GNOME machine registration,
   restore tokens and GlobalShortcuts all work once a desktop file of that name is installed
-  (`~/.local/share/applications/io.github.thtmnisamnstr.SimpleCapture.desktop` for dev runs).
+  (`~/.local/share/applications/io.github.thtmnisamnstr.simple-capture.desktop` for dev runs).
   Still open: ship that desktop file in the packages, and decide whether the Tauri identifier
   (and with it the Linux data folder) moves too.
 
@@ -305,7 +305,7 @@ Store and Ubuntu has no Flatpak by default.
 
 ## 7. Decisions for the owner
 1. Linux app ID: keep `com.simplecapture.desktop` on host packages plus a separate Flatpak ID, or
-   one new Linux ID. If new, `io.github.thtmnisamnstr.SimpleCapture` or a domain ID (do you
+   one new Linux ID. If new, `io.github.thtmnisamnstr.simple-capture` or a domain ID (do you
    control simplecapture.com?).
 2. Oldest supported distro: Ubuntu 24.04/Debian 13 only, or also 22.04/Debian 12 (an older build
    machine and a lower GStreamer floor)?

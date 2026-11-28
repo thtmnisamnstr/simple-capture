@@ -37,8 +37,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
     env:
-      ID: io.github.thtmnisamnstr.SimpleCapture
-      MANIFEST: packaging/flatpak/io.github.thtmnisamnstr.SimpleCapture.yml
+      ID: io.github.thtmnisamnstr.simple-capture
+      MANIFEST: packaging/flatpak/io.github.thtmnisamnstr.simple-capture.yml
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

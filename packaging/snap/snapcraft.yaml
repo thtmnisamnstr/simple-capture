@@ -18,8 +18,8 @@ apps:
   simple-capture:
     command: usr/bin/simple-capture-app
     command-chain: [local/launch]
-    desktop: usr/share/applications/io.github.thtmnisamnstr.SimpleCapture.desktop
-    common-id: io.github.thtmnisamnstr.SimpleCapture
+    desktop: usr/share/applications/io.github.thtmnisamnstr.simple-capture.desktop
+    common-id: io.github.thtmnisamnstr.simple-capture
     extensions: [gnome]
     plugs:
       - home
@@ -38,7 +38,7 @@ parts:
     plugin: dump
     source: simple-capture.deb
     source-type: deb
-    parse-info: [usr/share/metainfo/io.github.thtmnisamnstr.SimpleCapture.metainfo.xml]
+    parse-info: [usr/share/metainfo/io.github.thtmnisamnstr.simple-capture.metainfo.xml]
     stage-packages:
       - gstreamer1.0-plugins-good
       - gstreamer1.0-plugins-bad
@@ -48,7 +48,7 @@ parts:
     override-prime: |
       craftctl default
       sed -i 's|^Icon=.*|Icon=${SNAP}/usr/share/icons/hicolor/128x128/apps/simple-capture-app.png|' \
-        usr/share/applications/io.github.thtmnisamnstr.SimpleCapture.desktop
+        usr/share/applications/io.github.thtmnisamnstr.simple-capture.desktop
 
   launcher:
     plugin: dump

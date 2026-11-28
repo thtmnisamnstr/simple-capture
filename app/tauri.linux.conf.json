@@ -18,8 +18,8 @@
         "section": "video",
         "desktopTemplate": "linux/tauri-desktop.hbs",
         "files": {
-          "/usr/share/applications/io.github.thtmnisamnstr.SimpleCapture.desktop": "linux/io.github.thtmnisamnstr.SimpleCapture.desktop",
-          "/usr/share/metainfo/io.github.thtmnisamnstr.SimpleCapture.metainfo.xml": "linux/io.github.thtmnisamnstr.SimpleCapture.metainfo.xml"
+          "/usr/share/applications/io.github.thtmnisamnstr.simple-capture.desktop": "linux/io.github.thtmnisamnstr.simple-capture.desktop",
+          "/usr/share/metainfo/io.github.thtmnisamnstr.simple-capture.metainfo.xml": "linux/io.github.thtmnisamnstr.simple-capture.metainfo.xml"
         }
       },
       "rpm": {
@@ -38,13 +38,13 @@
         ],
         "desktopTemplate": "linux/tauri-desktop.hbs",
         "files": {
-          "/usr/share/applications/io.github.thtmnisamnstr.SimpleCapture.desktop": "linux/io.github.thtmnisamnstr.SimpleCapture.desktop",
-          "/usr/share/metainfo/io.github.thtmnisamnstr.SimpleCapture.metainfo.xml": "linux/io.github.thtmnisamnstr.SimpleCapture.metainfo.xml"
+          "/usr/share/applications/io.github.thtmnisamnstr.simple-capture.desktop": "linux/io.github.thtmnisamnstr.simple-capture.desktop",
+          "/usr/share/metainfo/io.github.thtmnisamnstr.simple-capture.metainfo.xml": "linux/io.github.thtmnisamnstr.simple-capture.metainfo.xml"
         }
       },
       "appimage": {
         "files": {
-          "/usr/share/metainfo/io.github.thtmnisamnstr.SimpleCapture.metainfo.xml": "linux/io.github.thtmnisamnstr.SimpleCapture.metainfo.xml"
+          "/usr/share/metainfo/io.github.thtmnisamnstr.simple-capture.metainfo.xml": "linux/io.github.thtmnisamnstr.simple-capture.metainfo.xml"
         }
       }
     }

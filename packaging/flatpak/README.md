@@ -1,6 +1,6 @@
 # Flatpak
 
-`io.github.thtmnisamnstr.SimpleCapture.yml` builds the app the way Flathub does: offline, from
+`io.github.thtmnisamnstr.simple-capture.yml` builds the app the way Flathub does: offline, from
 pinned sources only, on the GNOME 50 runtime.
 
 | Module | What it builds |
@@ -34,8 +34,8 @@ CI (`.github/workflows/flatpak.yml`) fails when a crate or helper pin is missing
 flatpak install --user flathub org.gnome.Sdk//50 org.gnome.Platform//50 \
   org.freedesktop.Sdk.Extension.node26//25.08 org.freedesktop.Sdk.Extension.llvm21//25.08 org.flatpak.Builder
 flatpak run org.flatpak.Builder --user --install --force-clean build-dir \
-  packaging/flatpak/io.github.thtmnisamnstr.SimpleCapture.yml
-flatpak run io.github.thtmnisamnstr.SimpleCapture
+  packaging/flatpak/io.github.thtmnisamnstr.simple-capture.yml
+flatpak run io.github.thtmnisamnstr.simple-capture
 ```
 
 A full build takes about an hour on 4 cores (Skia, FFmpeg's encoders and the app).

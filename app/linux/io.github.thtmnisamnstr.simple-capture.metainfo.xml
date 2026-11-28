@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- AppStream metadata for Linux software centres and Flathub. -->
 <component type="desktop-application">
-  <id>io.github.thtmnisamnstr.SimpleCapture</id>
+  <id>io.github.thtmnisamnstr.simple-capture</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>simple-capture</name>
@@ -29,7 +29,7 @@
       computer.
     </p>
   </description>
-  <launchable type="desktop-id">io.github.thtmnisamnstr.SimpleCapture.desktop</launchable>
+  <launchable type="desktop-id">io.github.thtmnisamnstr.simple-capture.desktop</launchable>
   <url type="homepage">https://github.com/thtmnisamnstr/simple-capture</url>
   <url type="bugtracker">https://github.com/thtmnisamnstr/simple-capture/issues</url>
   <url type="vcs-browser">https://github.com/thtmnisamnstr/simple-capture</url>

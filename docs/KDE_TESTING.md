@@ -26,7 +26,7 @@ Plasma 6.6: share dialog, recording, restore with no dialog, shortcuts bound aga
 | X11 session | Gone | Plasma 6.7 is the last with X11; 6.8 is Wayland-only [6] |
 
 Every portal on the host depends on the app ID. The app calls `host.portal.Registry.Register`
-with `io.github.thtmnisamnstr.SimpleCapture`, and the portal only accepts an ID that matches an
+with `io.github.thtmnisamnstr.simple-capture`, and the portal only accepts an ID that matches an
 installed `.desktop` file basename [7]. Tauri installs `simple-capture.desktop` instead (see
 LINUX_DISTRIBUTION.md §1.1). **Install the matching desktop file first, or every KDE result about
 restore tokens and shortcuts is unreliable.** In headless runs, install it into the private
@@ -85,10 +85,10 @@ There is no switch to skip it. Options, best first:
 - Keep `$XDG_CONFIG_HOME/kglobalshortcutsrc` as a fixture next to the permission store.
 - After that, trigger our shortcut through KGlobalAccel's D-Bus API [15]:
   ```bash
-  qdbus6 org.kde.kglobalaccel | grep -i simplecapture        # e.g. /component/io_github_thtmnisamnstr_SimpleCapture
-  qdbus6 org.kde.kglobalaccel /component/io_github_thtmnisamnstr_SimpleCapture \
+  qdbus6 org.kde.kglobalaccel | grep -i simplecapture        # e.g. /component/io_github_thtmnisamnstr_simple_capture
+  qdbus6 org.kde.kglobalaccel /component/io_github_thtmnisamnstr_simple_capture \
     org.kde.kglobalaccel.Component.shortcutNames             # the IDs we bound
-  qdbus6 org.kde.kglobalaccel /component/io_github_thtmnisamnstr_SimpleCapture \
+  qdbus6 org.kde.kglobalaccel /component/io_github_thtmnisamnstr_simple_capture \
     org.kde.kglobalaccel.Component.invokeShortcut record
   ```
   The portal then emits `Activated`/`Deactivated` to the app. Assert in the driver log that a

@@ -9,4 +9,4 @@ Terminal=false
 Categories=AudioVideo;Video;Recorder;
 Keywords=screen;recorder;screencast;capture;video;camera;
 StartupNotify=false
-StartupWMClass=io.github.thtmnisamnstr.SimpleCapture
+StartupWMClass=io.github.thtmnisamnstr.simple-capture

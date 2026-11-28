@@ -22,7 +22,7 @@ use super::pw::Connection;
 
 /// The Linux app ID the portals know the app by; the installed desktop file must be named after
 /// it. It differs from the bundle ID elsewhere because Flathub rejects IDs ending in `.desktop`.
-pub const APP_ID: &str = "io.github.thtmnisamnstr.SimpleCapture";
+pub const APP_ID: &str = "io.github.thtmnisamnstr.simple-capture";
 const REMOTE_TIMEOUT: Duration = Duration::from_secs(5);
 const NATIVE_WAIT: Duration = Duration::from_millis(1500);
 const TOKEN_FILE: &str = "portal-screencast.txt";

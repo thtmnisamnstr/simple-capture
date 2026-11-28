@@ -65,8 +65,8 @@ printf 'wireplumber.profiles = {\n  main = {\n    monitor.alsa = disabled\n    m
   > "$XDG_CONFIG_HOME/wireplumber/wireplumber.conf.d/90-sc-headless.conf"
 # The portals accept the app ID only with a desktop file whose Exec program exists.
 sed "s#^Exec=.*#Exec=${SC_APP:-$(cd "$(dirname "$0")/../.." && pwd)/target/debug/simple-capture-app}#" \
-  "$(dirname "$0")/../../app/linux/io.github.thtmnisamnstr.SimpleCapture.desktop" \
-  > "$XDG_DATA_HOME/applications/io.github.thtmnisamnstr.SimpleCapture.desktop"
+  "$(dirname "$0")/../../app/linux/io.github.thtmnisamnstr.simple-capture.desktop" \
+  > "$XDG_DATA_HOME/applications/io.github.thtmnisamnstr.simple-capture.desktop"
 export WAYLAND_DISPLAY=wayland-sc
 dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_RUNTIME_DIR XDG_CONFIG_HOME \
   XDG_CACHE_HOME XDG_DATA_HOME XDG_DATA_DIRS XDG_CONFIG_DIRS XDG_DESKTOP_PORTAL_DIR QT_LINUX_ACCESSIBILITY_ALWAYS_ON \
