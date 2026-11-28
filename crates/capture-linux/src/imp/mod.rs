@@ -84,8 +84,14 @@ impl ScreenSource for Screen {
         Ok(Box::new(stream))
     }
 
-    fn snapshot(&self, _spec: &SourceSpec, _max: SizePx) -> Result<RgbaImage> {
-        Err(Error::Unsupported("snapshots of portal sources"))
+    /// Uses the pick's open PipeWire connection only: asking the portal for a remote just for a
+    /// preview could stall it (see `pw::Connection`).
+    fn snapshot(&self, spec: &SourceSpec, max: SizePx) -> Result<RgbaImage> {
+        let c = portal::cast_of(spec)?;
+        let conn = c
+            .open_connection()
+            .ok_or(Error::Unsupported("snapshots before the pick's stream is open"))?;
+        conn.snapshot(c.node, max)
     }
 }
 

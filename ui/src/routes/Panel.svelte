@@ -657,6 +657,9 @@
             <input class="switch" type="checkbox" bind:checked={settings.preview_shown} />
           </label>
         </div>
+        {#if portalOnly && settings.preview_shown}
+          <p class="muted note">The Preview window shows up in a recording of the screen it's on.</p>
+        {/if}
         {#if isSmall}
           <p class="warn" role="status">
             <Icon name="warning" size={14} />

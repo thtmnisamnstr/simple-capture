@@ -151,6 +151,11 @@ impl Cast {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// The pick's PipeWire connection if one is open; never asks the portal for a remote.
+    pub fn open_connection(&self) -> Option<Arc<Connection>> {
+        self.held().as_ref().filter(|c| c.alive()).cloned()
+    }
+
     /// The pick's PipeWire connection, opened once after the pick; a new remote is asked for
     /// only when that connection has gone.
     pub fn connection(self: &Arc<Self>) -> Result<Arc<Connection>> {
