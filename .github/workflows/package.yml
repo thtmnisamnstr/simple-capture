@@ -7,7 +7,7 @@ name: package
 #           the Mac App Store edition (app-store.yml); Developer ID signed and notarized on v* tags
 #           and manual runs when the secrets are set, else ad hoc
 #   Windows NSIS setup .exe (per-user install)
-#   Linux   .deb and .AppImage
+#   Linux   .deb, .rpm and .AppImage for x86_64 and arm64
 # A v* tag also drafts a GitHub Release with SHA256SUMS.txt and build provenance attestations.
 
 on:
@@ -38,9 +38,14 @@ jobs:
         include:
           - plat: linux-x86_64
             os_arg: linux
+            runner: ubuntu-24.04
+          - plat: linux-arm64
+            os_arg: linux
+            runner: ubuntu-24.04-arm
           - plat: windows-x86_64
             os_arg: windows
-    runs-on: ubuntu-24.04
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,8 +61,10 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update -q
+          extra=()
+          [ "${{ matrix.os_arg }}" = windows ] && extra+=(mingw-w64)
           sudo apt-get install -y --no-install-recommends nasm cmake ninja-build meson pkg-config \
-            autoconf automake libtool mingw-w64
+            autoconf automake libtool "${extra[@]}"
       - name: Build helpers (cache miss)
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
@@ -110,7 +117,10 @@ jobs:
             bundles: nsis
           - os: ubuntu-24.04
             plat: linux-x86_64
-            bundles: deb,appimage
+            bundles: deb,rpm,appimage
+          - os: ubuntu-24.04-arm
+            plat: linux-arm64
+            bundles: deb,rpm,appimage
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     env:
@@ -211,6 +221,22 @@ jobs:
           config=(--config tauri.bundle.conf.json)
           if [ "$RUNNER_OS" = macOS ]; then config+=(--config tauri.bundle.macos.conf.json); fi
           ../ui/node_modules/.bin/tauri build "${config[@]}" --bundles ${{ matrix.bundles }} -- --locked
+      - name: The Linux packages carry the app ID's desktop file and metainfo
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get install -y --no-install-recommends appstream desktop-file-utils rpm2cpio cpio
+          id=io.github.thtmnisamnstr.SimpleCapture
+          desktop-file-validate app/linux/$id.desktop
+          appstreamcli validate --no-net app/linux/$id.metainfo.xml
+          deb=$(ls "$CARGO_TARGET_DIR"/release/bundle/deb/*.deb)
+          rpm=$(ls "$CARGO_TARGET_DIR"/release/bundle/rpm/*.rpm)
+          for want in "usr/share/applications/$id.desktop" "usr/share/metainfo/$id.metainfo.xml" \
+                      usr/bin/simple-capture-app usr/bin/sc-ffmpeg; do
+            dpkg-deb -c "$deb" | grep -qE " (\./)?$want$" || { echo "::error::the .deb lacks $want"; exit 1; }
+            rpm2cpio "$rpm" | cpio -t 2>/dev/null | grep -qE "^(\./|/)?$want$" || { echo "::error::the .rpm lacks $want"; exit 1; }
+          done
+          dpkg-deb -f "$deb" Depends
       - name: The .deb keeps its helpers off the system's names
         if: runner.os == 'Linux'
         shell: bash
@@ -263,6 +289,7 @@ jobs:
             ${{ env.CARGO_TARGET_DIR }}/release/bundle/dmg/*.dmg
             ${{ env.CARGO_TARGET_DIR }}/release/bundle/nsis/*.exe
             ${{ env.CARGO_TARGET_DIR }}/release/bundle/deb/*.deb
+            ${{ env.CARGO_TARGET_DIR }}/release/bundle/rpm/*.rpm
             ${{ env.CARGO_TARGET_DIR }}/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
@@ -298,7 +325,7 @@ jobs:
             name=${name//[^A-Za-z0-9._-]/.}
             if [ -e "release/$name" ]; then echo "duplicate asset name: $name" >&2; exit 1; fi
             mv "$f" "release/$name"
-          done < <(find dist -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.deb' \
+          done < <(find dist -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.deb' -o -name '*.rpm' \
             -o -name '*.AppImage' -o -name '*.tar.gz' \) -print0)
           cd release
           assets=(*)
