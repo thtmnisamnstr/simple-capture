@@ -397,10 +397,12 @@ jobs:
           command -v unsquashfs >/dev/null || sudo apt-get install -y --no-install-recommends squashfs-tools
           unsquashfs -l "$SNAP_FILE" > contents.txt
           for want in usr/bin/simple-capture-app usr/bin/sc-ffmpeg usr/lib/simple-capture/fonts \
-                      meta/gui/io.github.thtmnisamnstr.simple-capture.desktop meta/snap.yaml; do
+                      meta/gui/simple-capture.desktop meta/snap.yaml; do
             grep -q "squashfs-root/$want" contents.txt || { echo "::error::the snap lacks $want"; exit 1; }
           done
+          grep "squashfs-root/meta/gui/" contents.txt
           unsquashfs -cat "$SNAP_FILE" meta/snap.yaml
+          unsquashfs -cat "$SNAP_FILE" meta/gui/simple-capture.desktop
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: simple-capture-snap-${{ matrix.plat }}
