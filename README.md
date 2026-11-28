@@ -71,6 +71,7 @@ global shortcuts through the portal on Wayland.
 - **Debian 13, Ubuntu 24.04 and newer:** from the first Linux release, the signed apt repository at
   https://thtmnisamnstr.github.io/simple-capture (instructions there), or the `.deb` from Releases.
 - **Fedora:** the signed dnf repository at the same address, or the `.rpm` from Releases.
+- **Arch Linux:** `simple-capture-bin` in the AUR (from the first Linux release).
 - **Any distro:** the Flatpak (Flathub, coming) or the `.AppImage` from Releases; the Snap is
   coming to the Snap Store.
 
