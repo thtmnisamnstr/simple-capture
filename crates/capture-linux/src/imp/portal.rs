@@ -3,8 +3,9 @@
 //!
 //! Picks persist (`persist_mode` 2): the portal returns a single-use restore token with every
 //! pick, kept in the app's data folder, so the last screen or window can be opened again later
-//! without the dialog. A remote is opened right after a pick and after each use, so starting a
-//! recording never waits on the portal.
+//! without the dialog. Each pick asks the portal for one PipeWire remote, right after the pick,
+//! and keeps that connection: every stream of the pick (the size probe, each segment) runs on it,
+//! so starting a recording never waits on the portal.
 
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
@@ -13,12 +14,17 @@ use std::time::Duration;
 
 use ashpd::desktop::screencast::{CursorMode, Screencast, SelectSourcesOptions, SourceType};
 use ashpd::desktop::{PersistMode, Session};
-use sc_core::project::SourceDescriptor;
+use sc_core::project::{Resolution, SourceDescriptor};
 use sc_geometry::SizePx;
 use sc_platform::{Error, PickedSource, PickerRequest, Result, SourcePicker, SourceSpec};
 
-pub const APP_ID: &str = "com.simplecapture.desktop";
+use super::pw::Connection;
+
+/// The Linux app ID the portals know the app by; the installed desktop file must be named after
+/// it. It differs from the bundle ID elsewhere because Flathub rejects IDs ending in `.desktop`.
+pub const APP_ID: &str = "io.github.thtmnisamnstr.SimpleCapture";
 const REMOTE_TIMEOUT: Duration = Duration::from_secs(5);
+const NATIVE_WAIT: Duration = Duration::from_millis(1500);
 const TOKEN_FILE: &str = "portal-screencast.txt";
 
 pub fn runtime() -> &'static tokio::runtime::Runtime {
@@ -116,8 +122,10 @@ fn portal_err(e: ashpd::Error) -> Error {
 pub struct Cast {
     proxy: Screencast,
     session: Option<Session<Screencast>>,
-    spare: Mutex<Option<OwnedFd>>,
+    conn: Mutex<Option<Arc<Connection>>>,
+    native: OnceLock<SizePx>,
     pub node: u32,
+    /// The logical size the portal reports.
     pub size: SizePx,
     pub window: bool,
 }
@@ -137,32 +145,86 @@ impl Cast {
         .map_err(portal_err)
     }
 
-    /// A PipeWire remote for one stream: the one opened ahead, or a new one.
-    pub fn remote(self: &Arc<Self>) -> Result<OwnedFd> {
-        let ready = self
-            .spare
+    fn held(&self) -> std::sync::MutexGuard<'_, Option<Arc<Connection>>> {
+        self.conn
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
-        let fd = match ready {
-            Some(fd) => fd,
-            None => runtime().block_on(self.open_remote())?,
-        };
-        self.prefetch();
-        Ok(fd)
     }
 
-    fn prefetch(self: &Arc<Self>) {
+    /// The pick's PipeWire connection, opened once after the pick; a new remote is asked for
+    /// only when that connection has gone.
+    pub fn connection(self: &Arc<Self>) -> Result<Arc<Connection>> {
+        if let Some(c) = self.held().as_ref().filter(|c| c.alive()) {
+            return Ok(c.clone());
+        }
+        tracing::info!("screen cast: opening a PipeWire remote now");
+        let fd = runtime().block_on(self.open_remote())?;
+        let c = Connection::open(Some(fd))?;
+        *self.held() = Some(c.clone());
+        Ok(c)
+    }
+
+    /// The recording size: the source's real pixels for native resolution (found by a probe
+    /// right after the pick), the portal's logical size for 1x or when the probe failed.
+    pub fn size_for(&self, resolution: Resolution) -> SizePx {
+        if resolution == Resolution::OneX {
+            return self.size;
+        }
+        let deadline = std::time::Instant::now() + NATIVE_WAIT;
+        loop {
+            if let Some(s) = self.native.get() {
+                return *s;
+            }
+            if std::time::Instant::now() >= deadline {
+                tracing::warn!(
+                    "screen cast: the native size is not known yet; using the logical size"
+                );
+                return self.size;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// Opens the connection and finds the native size in the background, right after the pick.
+    fn prepare(self: &Arc<Self>) {
         let me = Arc::downgrade(self);
         runtime().spawn(async move {
             let Some(c) = me.upgrade() else { return };
-            match c.open_remote().await {
-                Ok(fd) => {
-                    *c.spare
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(fd);
+            let t = std::time::Instant::now();
+            let fd = match c.open_remote().await {
+                Ok(fd) => fd,
+                Err(e) => {
+                    tracing::warn!("screen cast: open a PipeWire remote: {e}");
+                    let _ = c.native.set(c.size);
+                    return;
                 }
-                Err(e) => tracing::warn!("screen cast: open a PipeWire remote ahead: {e}"),
+            };
+            let node = c.node;
+            let opened = tokio::task::spawn_blocking(move || {
+                let conn = Connection::open(Some(fd))?;
+                let native = conn.probe(node);
+                Ok::<_, Error>((conn, native))
+            })
+            .await;
+            match opened {
+                Ok(Ok((conn, native))) => {
+                    let native = native.unwrap_or(c.size);
+                    tracing::info!(
+                        ms = t.elapsed().as_millis(),
+                        w = native.w,
+                        h = native.h,
+                        logical_w = c.size.w,
+                        logical_h = c.size.h,
+                        "screen cast: connection ready"
+                    );
+                    *c.held() = Some(conn);
+                    let _ = c.native.set(native);
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!("screen cast: PipeWire connection: {e}");
+                    let _ = c.native.set(c.size);
+                }
+                Err(e) => tracing::warn!("screen cast: {e}"),
             }
         });
     }
@@ -266,14 +328,15 @@ async fn pick(restore: Option<String>) -> std::result::Result<Option<Cast>, ashp
         window,
         proxy,
         session: Some(session),
-        spare: Mutex::new(None),
+        conn: Mutex::new(None),
+        native: OnceLock::new(),
     }))
 }
 
 fn picked(c: Cast) -> PickedSource {
     let descriptor = descriptor(&c);
     let c = Arc::new(c);
-    c.prefetch();
+    c.prepare();
     PickedSource {
         descriptor,
         handle: c,

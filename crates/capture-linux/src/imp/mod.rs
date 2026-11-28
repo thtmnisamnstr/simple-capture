@@ -57,10 +57,10 @@ impl ScreenSource for Screen {
     fn describe(
         &self,
         spec: &SourceSpec,
-        _cfg: &ScreenStreamConfig,
+        cfg: &ScreenStreamConfig,
     ) -> Result<(SourceDescriptor, SizePx)> {
         let c = portal::cast_of(spec)?;
-        Ok((portal::descriptor(&c), c.size))
+        Ok((portal::descriptor(&c), c.size_for(cfg.resolution)))
     }
 
     fn start(
@@ -71,15 +71,16 @@ impl ScreenSource for Screen {
         sink: Arc<dyn FrameSink>,
     ) -> Result<Box<dyn ScreenStream>> {
         let c = portal::cast_of(spec)?;
-        let fd = c.remote()?;
-        Ok(Box::new(pw::start(
-            Some(fd),
-            c.node,
-            tag,
-            c.size,
-            cfg.fps,
-            sink,
-        )?))
+        let t = std::time::Instant::now();
+        let size = c.size_for(cfg.resolution);
+        let stream = c.connection()?.start(c.node, tag, size, cfg.fps, sink)?;
+        tracing::info!(
+            ms = t.elapsed().as_millis(),
+            w = size.w,
+            h = size.h,
+            "screen stream started"
+        );
+        Ok(Box::new(stream))
     }
 
     fn snapshot(&self, _spec: &SourceSpec, _max: SizePx) -> Result<RgbaImage> {
