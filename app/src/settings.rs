@@ -142,7 +142,9 @@ impl Default for RecorderSettings {
             cursor: true,
             click_highlight: false,
             camera_key: default_camera_key(),
-            preview_shown: true,
+            // A portal stream can't leave the app's own windows out, so on Linux the Preview would
+            // appear in every recording of its screen.
+            preview_shown: !cfg!(target_os = "linux"),
             preview_at: None,
             bar_at: None,
             after_recording: AfterRecording::Editor,

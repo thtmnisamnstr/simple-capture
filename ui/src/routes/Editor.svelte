@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { revealLabel, scUrl } from '../lib/format.ts';
+  import { kbd, revealLabel, scUrl } from '../lib/format.ts';
   import { api, errorText } from '../lib/api.ts';
   import { onEvent } from '../lib/events.ts';
   import { isExportProgress, isExportState, isObject } from '../lib/guards.ts';
@@ -424,7 +424,7 @@
 
   async function setLinked(next: boolean) {
     await edit({ op: 'set_linked', linked: next });
-    if (!error) toast = next ? 'Linked: the camera follows the screen again (⌘Z to undo)' : 'Screen and camera can now be edited separately';
+    if (!error) toast = next ? `Linked: the camera follows the screen again (${kbd('⌘Z')} to undo)` : 'Screen and camera can now be edited separately';
   }
 
   function duplicate() {
@@ -890,8 +890,8 @@
       {#if shuttleRate !== 0}<span class="shuttle tnum" aria-live="polite">{shuttleRate < 0 ? '◀◀' : '▶▶'} {Math.abs(shuttleRate)}×</span>{/if}
     </div>
     <div class="right">
-      <button class="plain icon tool" disabled={!canUndo} onclick={undo} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" size={15} /></button>
-      <button class="plain icon tool" disabled={!canRedo} onclick={redo} title="Redo (⇧⌘Z)" aria-label="Redo"><Icon name="redo" size={15} /></button>
+      <button class="plain icon tool" disabled={!canUndo} onclick={undo} title={`Undo (${kbd('⌘Z')})`} aria-label="Undo"><Icon name="undo" size={15} /></button>
+      <button class="plain icon tool" disabled={!canRedo} onclick={redo} title={`Redo (${kbd('⇧⌘Z')})`} aria-label="Redo"><Icon name="redo" size={15} /></button>
       {#if exporting}
         <div class="progress" title="Exporting {pct}%">
           <span class="bar"><span style:width="{pct}%"></span></span>
@@ -899,7 +899,7 @@
           <button class="plain small" onclick={() => exportJob && api.cancelExport(exportJob)}>Cancel</button>
         </div>
       {:else}
-        <button class="primary" onclick={() => (exportSheet = true)} disabled={!doc} title="Export (⌘E)">
+        <button class="primary" onclick={() => (exportSheet = true)} disabled={!doc} title={`Export (${kbd('⌘E')})`}>
           <Icon name="export" size={14} /> Export…
         </button>
       {/if}
@@ -1093,9 +1093,9 @@
     <div class="tlbar">
       <button class="plain" onclick={split} title="Split at playhead (S)"><Icon name="scissors" size={14} /> Split</button>
       <button class="plain" onclick={() => void deleteSelection()} disabled={!selected.length && !range} title="Delete selection (⌫)"><Icon name="trash" size={14} /> Delete</button>
-      <button class="plain" onclick={() => void copy(true)} disabled={!selected.length && !range} title="Cut (⌘X)">Cut</button>
-      <button class="plain" onclick={() => void copy(false)} disabled={!selected.length && !range} title="Copy (⌘C)">Copy</button>
-      <button class="plain" onclick={paste} disabled={clipboardNs <= 0} title="Paste at playhead (⌘V)">Paste</button>
+      <button class="plain" onclick={() => void copy(true)} disabled={!selected.length && !range} title={`Cut (${kbd('⌘X')})`}>Cut</button>
+      <button class="plain" onclick={() => void copy(false)} disabled={!selected.length && !range} title={`Copy (${kbd('⌘C')})`}>Copy</button>
+      <button class="plain" onclick={paste} disabled={clipboardNs <= 0} title={`Paste at playhead (${kbd('⌘V')})`}>Paste</button>
       <button class="plain" onclick={addText} title="Add text at the playhead (T)"><span class="tglyph">T</span> Text</button>
       <button class="plain" onclick={addBlur} disabled={!doc} title="Hide part of the screen from the playhead (B)"><span class="tglyph">▦</span> Blur</button>
       <button class="plain" onclick={() => (silencePanel = !silencePanel)} aria-expanded={silencePanel} disabled={!doc} title="Find the pauses and cut them out">Remove Silences…</button>

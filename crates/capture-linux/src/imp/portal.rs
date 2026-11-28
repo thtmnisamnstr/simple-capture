@@ -22,7 +22,7 @@ use super::pw::Connection;
 
 /// The Linux app ID the portals know the app by; the installed desktop file must be named after
 /// it. It differs from the bundle ID elsewhere because Flathub rejects IDs ending in `.desktop`.
-pub const APP_ID: &str = "io.github.thtmnisamnstr.SimpleCapture";
+pub const APP_ID: &str = "io.github.thtmnisamnstr.simple-capture";
 const REMOTE_TIMEOUT: Duration = Duration::from_secs(5);
 const NATIVE_WAIT: Duration = Duration::from_millis(1500);
 const TOKEN_FILE: &str = "portal-screencast.txt";
@@ -149,6 +149,11 @@ impl Cast {
         self.conn
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// The pick's PipeWire connection if one is open; never asks the portal for a remote.
+    pub fn open_connection(&self) -> Option<Arc<Connection>> {
+        self.held().as_ref().filter(|c| c.alive()).cloned()
     }
 
     /// The pick's PipeWire connection, opened once after the pick; a new remote is asked for
@@ -294,8 +299,13 @@ async fn pick(restore: Option<String>) -> std::result::Result<Option<Cast>, ashp
                 .set_restore_token(restore.as_deref()),
         )
         .await?;
+    let parent = tokio::task::spawn_blocking(super::parent::focused)
+        .await
+        .ok()
+        .flatten();
+    tracing::info!(parent = parent.is_some(), "screen cast: asking the portal");
     let response = match proxy
-        .start(&session, None, Default::default())
+        .start(&session, parent.as_ref(), Default::default())
         .await?
         .response()
     {

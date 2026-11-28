@@ -1,0 +1,123 @@
+# Flatpak build of simple-capture, entirely offline from pinned sources: the app (Rust + the
+# Svelte UI), Skia at the milestone skia-bindings pins, and the export helpers (FFmpeg with
+# networking off, gifski) from third_party/versions.toml, the same pins as the .deb and .rpm.
+# The *-sources.json lists come from generate-sources.py; regenerate them when a lockfile or pin
+# changes. CI: .github/workflows/flatpak.yml. Flathub submission: packaging/flatpak/README.md.
+id: io.github.thtmnisamnstr.simple-capture
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node26
+  - org.freedesktop.Sdk.Extension.llvm21
+command: simple-capture-app
+rename-icon: simple-capture-app
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  # V4L2 cameras and GPU encoding.
+  - --device=all
+  # Microphones and the system audio monitor are PipeWire nodes the app links itself; the
+  # screen stream comes through the ScreenCast portal on the same daemon.
+  - --filesystem=xdg-run/pipewire-0
+  - --socket=pulseaudio
+  # The default projects folder (XDG_VIDEOS_DIR/simple-capture); other folders go through the
+  # file chooser portal.
+  - --filesystem=xdg-videos:create
+  - --talk-name=org.kde.StatusNotifierWatcher
+cleanup:
+  - /lib/sdk-build
+  - /include
+  - /lib/pkgconfig
+  - '*.la'
+  - '*.a'
+build-options:
+  append-path: /usr/lib/sdk/node26/bin:/usr/lib/sdk/llvm21/bin:/app/lib/sdk-build/bin
+  prepend-ld-library-path: /usr/lib/sdk/llvm21/lib
+  env:
+    LIBCLANG_PATH: /usr/lib/sdk/llvm21/lib
+    CARGO_NET_OFFLINE: 'true'
+    CARGO_TERM_COLOR: never
+modules:
+  - shared/libayatana-appindicator/libayatana-appindicator-gtk3.json
+
+  - name: nasm
+    config-opts: [--prefix=/app/lib/sdk-build]
+    sources:
+      - type: archive
+        url: https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/nasm-2.16.03.tar.xz
+        sha256: 1412a1c760bbd05db026b6c0d1657affd6631cd0a63cddb6f73cc6d4aa616148
+
+  - name: helpers
+    buildsystem: simple
+    build-options:
+      append-path: /run/build/helpers/flatpak-tools/rust/bin
+      env:
+        CARGO_HOME: /run/build/helpers/cargo
+    build-commands:
+      # Rust 1.100 (rust-toolchain.toml; Flathub's rust-stable trails it), unpacked here rather than
+      # in /app, where flatpak-builder's stripping breaks rustc's libLLVM.
+      - flatpak-tools/rust-dist/install.sh --prefix=$PWD/flatpak-tools/rust --disable-ldconfig
+        --components=rustc,cargo,rust-std-$(uname -m)-unknown-linux-gnu
+      - third_party/ffmpeg/build-linux.sh linux
+      - third_party/gifski/build.sh linux
+      - |
+        out=third_party/out/linux-$(uname -m | sed 's/aarch64/arm64/')
+        for h in ffmpeg ffprobe gifski; do install -Dm755 "$out/$h" "/app/bin/sc-$h"; done
+        mkdir -p /app/lib/simple-capture/licenses/helpers
+        cp -R "$out/licenses/." /app/lib/simple-capture/licenses/helpers/
+        install -Dm644 "$out/gifski.LICENSE" /app/lib/simple-capture/licenses/helpers/gifski-LICENSE
+    sources:
+      - type: dir
+        path: ../../third_party
+        dest: third_party
+        skip: [build, out]
+      - helper-sources.json
+      - rust-sources.json
+      - cargo-sources.json
+
+  - name: simple-capture
+    buildsystem: simple
+    build-options:
+      append-path: /run/build/simple-capture/flatpak-tools/rust/bin
+      env:
+        CARGO_HOME: /run/build/simple-capture/cargo
+        SKIA_GN_ARGS: skia_use_freetype=true skia_use_system_freetype2=false skia_enable_fontmgr_custom_empty=true
+    build-commands:
+      # Rust 1.100 (rust-toolchain.toml; Flathub's rust-stable trails it), unpacked here rather than
+      # in /app, where flatpak-builder's stripping breaks rustc's libLLVM.
+      - flatpak-tools/rust-dist/install.sh --prefix=$PWD/flatpak-tools/rust --disable-ldconfig
+        --components=rustc,cargo,rust-std-$(uname -m)-unknown-linux-gnu
+      - cd flatpak-tools/gn && python3 build/gen.py && ninja -C out gn
+      # cargo-about's own crate sits inside this workspace's folder without being a member.
+      - printf '\n[workspace]\n' >> flatpak-tools/cargo-about/Cargo.toml
+      - cargo build --release --locked --manifest-path flatpak-tools/cargo-about/Cargo.toml --features cli
+      - cd ui && node ../flatpak-tools/pnpm/bin/pnpm.mjs install --offline --frozen-lockfile --trust-lockfile
+      - cd ui && node ../flatpak-tools/pnpm/bin/pnpm.mjs run build
+      - SKIA_SOURCE_DIR=$PWD/skia SKIA_GN_COMMAND=$PWD/flatpak-tools/gn/out/gn SKIA_NINJA_COMMAND=ninja
+        cargo build --release --locked -p simple-capture-app
+      - PATH="$PWD/flatpak-tools/cargo-about/target/release:$PATH" scripts/ci/notices.sh
+      - install -Dm755 target/release/simple-capture-app /app/bin/simple-capture-app
+      - |
+        lib=/app/lib/simple-capture
+        mkdir -p "$lib/fonts" "$lib/licenses"
+        cp -R assets/fonts/. "$lib/fonts/"
+        install -Dm644 LICENSE "$lib/licenses/LICENSE"
+        install -Dm644 target/notices/THIRD_PARTY_RUST.html "$lib/licenses/THIRD_PARTY_RUST.html"
+      - install -Dm644 app/linux/io.github.thtmnisamnstr.simple-capture.desktop -t /app/share/applications
+      - install -Dm644 app/linux/io.github.thtmnisamnstr.simple-capture.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 app/icons/32x32.png /app/share/icons/hicolor/32x32/apps/simple-capture-app.png
+      - install -Dm644 app/icons/64x64.png /app/share/icons/hicolor/64x64/apps/simple-capture-app.png
+      - install -Dm644 app/icons/128x128.png /app/share/icons/hicolor/128x128/apps/simple-capture-app.png
+      - install -Dm644 app/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/simple-capture-app.png
+      - install -Dm644 app/icons/icon.png /app/share/icons/hicolor/512x512/apps/simple-capture-app.png
+    sources:
+      - type: dir
+        path: ../..
+        skip: [target, third_party/build, third_party/out, ui/node_modules, ui/dist, app/binaries,
+               app/gen, packaging/flatpak/.flatpak-builder, .flatpak-builder, .git, flatpak-tools]
+      - rust-sources.json
+      - cargo-sources.json
+      - node-sources.json
+      - skia-sources.json

@@ -34,6 +34,11 @@ export function hostOs(ua: string = typeof navigator === 'undefined' ? '' : navi
   return 'linux';
 }
 
+/** A ⌘ shortcut as this platform writes it: unchanged on macOS, with Ctrl elsewhere. */
+export function kbd(mac: string, os: HostOs = hostOs()): string {
+  return os === 'macos' ? mac : mac.replace('⇧⌘', 'Ctrl+Shift+').replace('⌘', 'Ctrl+');
+}
+
 export function revealLabel(os: HostOs = hostOs()): string {
   return os === 'macos' ? 'Show in Finder' : os === 'windows' ? 'Show in Explorer' : 'Show in Files';
 }

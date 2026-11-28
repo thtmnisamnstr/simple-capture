@@ -28,6 +28,8 @@ pipewire = { version = "0.10.1", features = ["v0_3_53"] }
 v4l = "0.14.0"
 gstreamer = "0.25.4"
 gstreamer-app = "0.25.2"
+# The clipboard (Desktop::copy_file); Tauri already links this GTK.
+gtk = "0.18.2"
 
 [lints]
 workspace = true

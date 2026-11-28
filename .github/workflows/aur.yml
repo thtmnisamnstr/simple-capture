@@ -1,0 +1,57 @@
+name: aur
+
+# Publishes simple-capture-bin to the AUR for a published GitHub Release (packaging/aur). Setup,
+# once: an AUR account whose SSH key is the AUR_SSH_PRIVATE_KEY secret
+# (docs/LINUX_DISTRIBUTION.md). The first push creates the package.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish (v1.2.3)
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aur
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: PKGBUILD for the release
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a plain version tag: $TAG" >&2; exit 1; }
+          packaging/aur/update.sh "${TAG#v}" aur
+          cat aur/PKGBUILD
+      - name: Push to the AUR
+        env:
+          KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          [ -n "$KEY" ] || { echo "::error::the AUR_SSH_PRIVATE_KEY secret is not set"; exit 1; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/aur && chmod 600 ~/.ssh/aur
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/aur -o IdentitiesOnly=yes"
+          git clone ssh://aur@aur.archlinux.org/simple-capture-bin.git repo
+          cp aur/PKGBUILD aur/.SRCINFO repo/
+          cd repo
+          git config user.name "simple-capture release"
+          git config user.email "noreply@github.com"
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then echo "the AUR already has $TAG"; exit 0; fi
+          git commit -m "Update to ${TAG#v}"
+          git push origin HEAD:master
+          rm -f ~/.ssh/aur

@@ -301,6 +301,8 @@ fn on_run_event(app: &tauri::AppHandle, ev: RunEvent) {
 }
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    sc_capture_linux::set_program_name();
     let log = init_tracing(&data_dir());
     if let Some(p) = &log {
         tracing::info!(log = %p.display(), "app log");

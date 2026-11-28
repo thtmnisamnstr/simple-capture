@@ -178,7 +178,7 @@ Fixed in that round:
 - Picks are remembered (restore tokens); "Choose Again…" still shows the dialog.
 - Wayland shortcuts go through the portal; the X11 plugin is used only on X11.
 - Stop is not offered while a recording is still starting (tray, shortcut; the bar already).
-- The app registers the portal app ID `io.github.thtmnisamnstr.SimpleCapture`; it needs an
+- The app registers the portal app ID `io.github.thtmnisamnstr.simple-capture`; it needs an
   installed desktop file of that name (dev: `~/.local/share/applications/`, `NoDisplay=true`).
 
 Then KDE Plasma 6.6, in a headless KWin session with KDE's own portal (`tools/linux-dev/kde-headless.sh`;
@@ -190,7 +190,7 @@ muted again): it records the room's noise floor, and the mic list now says when 
 
 Still open:
 
-- The packages must install `io.github.thtmnisamnstr.SimpleCapture.desktop` (Tauri installs
+- The packages must install `io.github.thtmnisamnstr.simple-capture.desktop` (Tauri installs
   `simple-capture.desktop`); without it the portals keep tokens and shortcuts under no ID.
 - The camera delivers 16 fps in dim light (the driver's own rate; `v4l2-ctl` measures the same).
 - Encoding is in software on Asahi (no VA-API): openh264 manages 52 fps at 2560×1600, enough

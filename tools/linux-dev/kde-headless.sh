@@ -28,9 +28,10 @@ fusermount3 -u "$BASE/rt/doc" 2>/dev/null || true
 # SC_HL_KEEP=1 keeps the private data, config and state (portal restore data, shortcut
 # grants) from the previous run, to test what a relaunch remembers.
 if [ "${SC_HL_KEEP:-0}" = 1 ]; then rm -rf "$BASE/rt"; else rm -rf "$BASE"; fi
-mkdir -p "$BASE"/{rt,cfg,state,data/applications}
+mkdir -p "$BASE"/{rt,cfg,state,cache,data/applications}
 chmod 700 "$BASE/rt"
-export XDG_RUNTIME_DIR="$BASE/rt" XDG_CONFIG_HOME="$BASE/cfg" XDG_STATE_HOME="$BASE/state" XDG_DATA_HOME="$BASE/data"
+export XDG_RUNTIME_DIR="$BASE/rt" XDG_CONFIG_HOME="$BASE/cfg" XDG_STATE_HOME="$BASE/state" XDG_DATA_HOME="$BASE/data" \
+  XDG_CACHE_HOME="$BASE/cache"
 export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_TYPE=wayland KDE_FULL_SESSION=true
 export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 QT_ACCESSIBILITY=1
 export XDG_DESKTOP_PORTAL_DIR="${SC_HL_PORTALS:-${KDE_PREFIX:-/usr}/share/xdg-desktop-portal/portals}"
@@ -64,11 +65,11 @@ printf 'wireplumber.profiles = {\n  main = {\n    monitor.alsa = disabled\n    m
   > "$XDG_CONFIG_HOME/wireplumber/wireplumber.conf.d/90-sc-headless.conf"
 # The portals accept the app ID only with a desktop file whose Exec program exists.
 sed "s#^Exec=.*#Exec=${SC_APP:-$(cd "$(dirname "$0")/../.." && pwd)/target/debug/simple-capture-app}#" \
-  "$(dirname "$0")/../../app/linux/io.github.thtmnisamnstr.SimpleCapture.desktop" \
-  > "$XDG_DATA_HOME/applications/io.github.thtmnisamnstr.SimpleCapture.desktop"
+  "$(dirname "$0")/../../app/linux/io.github.thtmnisamnstr.simple-capture.desktop" \
+  > "$XDG_DATA_HOME/applications/io.github.thtmnisamnstr.simple-capture.desktop"
 export WAYLAND_DISPLAY=wayland-sc
 dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_RUNTIME_DIR XDG_CONFIG_HOME \
-  XDG_DATA_HOME XDG_DATA_DIRS XDG_CONFIG_DIRS XDG_DESKTOP_PORTAL_DIR QT_LINUX_ACCESSIBILITY_ALWAYS_ON \
+  XDG_CACHE_HOME XDG_DATA_HOME XDG_DATA_DIRS XDG_CONFIG_DIRS XDG_DESKTOP_PORTAL_DIR QT_LINUX_ACCESSIBILITY_ALWAYS_ON \
   QT_ACCESSIBILITY KDE_FULL_SESSION ${LD_LIBRARY_PATH:+LD_LIBRARY_PATH} \
   ${QT_PLUGIN_PATH:+QT_PLUGIN_PATH} ${QML_IMPORT_PATH:+QML_IMPORT_PATH} ${QML2_IMPORT_PATH:+QML2_IMPORT_PATH} PATH
 dbus-update-activation-environment QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software
@@ -86,8 +87,10 @@ wireplumber > "$BASE/wireplumber.log" 2>&1 & pids+=($!)
 sleep 0.5
 pw-cli create-node adapter '{ factory.name=support.null-audio-sink node.name=sc-null-sink node.description="SC null sink" media.class=Audio/Sink object.linger=true audio.position=[FL,FR] }' > /dev/null
 # KWin grants privileged protocols (screencast) to clients its service cache trusts; this
-# private session has no cache, so the check is lifted here (a test switch KWin provides).
+# private session has no cache, so the check is lifted here (a test switch KWin provides), and
+# likewise for window screenshots (tools/linux-dev/kde-shot.py).
 env -u WAYLAND_DISPLAY -u QT_LINUX_ACCESSIBILITY_ALWAYS_ON -u QT_ACCESSIBILITY KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 \
+  KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 \
   ${SC_KWIN_WRAP:-} "$KWIN" --virtual --width "${SC_KDE_WIDTH:-1280}" --height "${SC_KDE_HEIGHT:-720}" \
   --no-lockscreen --socket wayland-sc > "$BASE/kwin.log" 2>&1 & pids+=($!)
 for _ in $(seq 200); do [ -S "$XDG_RUNTIME_DIR/wayland-sc" ] && break; sleep 0.1; done

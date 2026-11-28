@@ -1,0 +1,52 @@
+{
+  "bundle": {
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libpipewire-0.3-0",
+          "libayatana-appindicator3-1",
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "xdg-desktop-portal"
+        ],
+        "recommends": [
+          "gstreamer1.0-plugins-bad",
+          "xdg-desktop-portal-gnome | xdg-desktop-portal-kde | xdg-desktop-portal-wlr"
+        ],
+        "section": "video",
+        "desktopTemplate": "linux/tauri-desktop.hbs",
+        "files": {
+          "/usr/share/applications/io.github.thtmnisamnstr.simple-capture.desktop": "linux/io.github.thtmnisamnstr.simple-capture.desktop",
+          "/usr/share/metainfo/io.github.thtmnisamnstr.simple-capture.metainfo.xml": "linux/io.github.thtmnisamnstr.simple-capture.metainfo.xml"
+        }
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3",
+          "pipewire-libs",
+          "libayatana-appindicator-gtk3",
+          "gstreamer1-plugins-base",
+          "gstreamer1-plugins-good",
+          "xdg-desktop-portal"
+        ],
+        "recommends": [
+          "gstreamer1-plugin-openh264",
+          "gstreamer1-plugins-bad-free"
+        ],
+        "desktopTemplate": "linux/tauri-desktop.hbs",
+        "files": {
+          "/usr/share/applications/io.github.thtmnisamnstr.simple-capture.desktop": "linux/io.github.thtmnisamnstr.simple-capture.desktop",
+          "/usr/share/metainfo/io.github.thtmnisamnstr.simple-capture.metainfo.xml": "linux/io.github.thtmnisamnstr.simple-capture.metainfo.xml"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/share/metainfo/io.github.thtmnisamnstr.simple-capture.metainfo.xml": "linux/io.github.thtmnisamnstr.simple-capture.metainfo.xml"
+        }
+      }
+    }
+  }
+}

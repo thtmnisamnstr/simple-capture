@@ -12,6 +12,7 @@ use std::time::Duration;
 use pipewire as pw;
 use pw::spa;
 use pw::spa::pod::Pod;
+use sc_core::image::RgbaImage;
 use sc_geometry::SizePx;
 use sc_platform::{
     Error, FrameBuffer, FrameSink, Result, ScreenStream, SourceEvent, StreamTag, VideoFrame,
@@ -181,8 +182,17 @@ enum Cmd {
         id: u64,
         reply: mpsc::Sender<()>,
     },
+    Snap(SnapReq),
     Quit,
 }
+
+struct SnapReq {
+    node: u32,
+    max: SizePx,
+    reply: mpsc::Sender<RgbaImage>,
+}
+
+type Snaps = Rc<RefCell<Vec<SnapReq>>>;
 
 /// One PipeWire connection, on its own thread, that screen streams start and stop on. A portal
 /// pick keeps one for as long as it lives: opening a portal remote can stall
@@ -270,6 +280,17 @@ impl Connection {
         }
     }
 
+    /// One frame of `node`, fitted inside `max`. A recording stream on the node answers with its
+    /// own next frame; otherwise a snapshot stream wakes for one frame and pauses again.
+    pub fn snapshot(&self, node: u32, max: SizePx) -> Result<RgbaImage> {
+        let (reply, rx) = mpsc::channel();
+        self.cmds
+            .send(Cmd::Snap(SnapReq { node, max, reply }))
+            .map_err(|_| Error::Other("the PipeWire connection is closed".into()))?;
+        rx.recv_timeout(Duration::from_secs(3))
+            .map_err(|_| Error::Timeout("no frame for the snapshot".into()))
+    }
+
     fn stop(&self, id: u64) {
         let (reply, rx) = mpsc::channel();
         if self.cmds.send(Cmd::Stop { id, reply }).is_ok() {
@@ -333,8 +354,10 @@ fn serve(
             }
         })
         .register();
-    let streams: Rc<RefCell<HashMap<u64, Live>>> = Rc::default();
+    let streams: Rc<RefCell<HashMap<u64, (u32, Live)>>> = Rc::default();
     let probes: Rc<RefCell<Vec<Probe>>> = Rc::default();
+    let snaps: Snaps = Rc::default();
+    let snap_streams: Rc<RefCell<HashMap<u32, Live>>> = Rc::default();
     let _attached = rx.attach(mainloop.loop_(), {
         let (mainloop, core) = (mainloop.clone(), core.clone());
         move |cmd| match cmd {
@@ -348,9 +371,12 @@ fn serve(
                 reply,
             } => {
                 probes.borrow_mut().clear();
-                match screen_stream(&core, node, tag, out, fps, sink) {
+                for (_, (stream, _)) in snap_streams.borrow_mut().drain() {
+                    let _ = stream.disconnect();
+                }
+                match screen_stream(&core, node, tag, out, fps, sink, snaps.clone()) {
                     Ok(live) => {
-                        streams.borrow_mut().insert(id, live);
+                        streams.borrow_mut().insert(id, (node, live));
                         let _ = reply.send(Ok(()));
                     }
                     Err(e) => {
@@ -359,7 +385,7 @@ fn serve(
                 }
             }
             Cmd::Stop { id, reply } => {
-                if let Some((stream, listener)) = streams.borrow_mut().remove(&id) {
+                if let Some((_, (stream, listener))) = streams.borrow_mut().remove(&id) {
                     let _ = stream.disconnect();
                     drop(listener);
                 }
@@ -372,9 +398,32 @@ fn serve(
                     Err(e) => tracing::warn!("PipeWire probe: {e}"),
                 }
             }
+            Cmd::Snap(req) => {
+                let node = req.node;
+                snaps.borrow_mut().push(req);
+                if streams.borrow().values().any(|(n, _)| *n == node) {
+                    return;
+                }
+                if let Some((stream, _)) = snap_streams.borrow().get(&node) {
+                    let _ = stream.set_active(true);
+                    return;
+                }
+                match snap_stream(&core, node, snaps.clone()) {
+                    Ok(s) => {
+                        snap_streams.borrow_mut().insert(node, s);
+                    }
+                    Err(e) => {
+                        tracing::warn!("PipeWire snapshot: {e}");
+                        snaps.borrow_mut().retain(|r| r.node != node);
+                    }
+                }
+            }
             Cmd::Quit => {
                 probes.borrow_mut().clear();
-                for (_, (stream, _)) in streams.borrow_mut().drain() {
+                for (_, (stream, _)) in snap_streams.borrow_mut().drain() {
+                    let _ = stream.disconnect();
+                }
+                for (_, (_, (stream, _))) in streams.borrow_mut().drain() {
                     let _ = stream.disconnect();
                 }
                 mainloop.quit();
@@ -443,6 +492,7 @@ fn screen_stream(
     out: SizePx,
     fps: u32,
     sink: Arc<dyn FrameSink>,
+    snaps: Snaps,
 ) -> std::result::Result<Live, String> {
     let stream = pw::stream::StreamRc::new(core.clone(), "simple-capture-screen", video_props())
         .map_err(|e| format!("PipeWire stream: {e}"))?;
@@ -489,50 +539,27 @@ fn screen_stream(
                 return;
             };
             let Some(order) = f.order else { return };
+            let size = f.size;
+            if has_snap(&snaps, node) {
+                with_packed(&mut buffer, size, |src, stride| {
+                    answer_snaps(&snaps, node, src, stride, size, order);
+                });
+            }
             let now = host_now().0;
             if last_ns.is_some_and(|l| now - l < min_interval) {
                 return;
             }
-            let datas = buffer.datas_mut();
-            let Some(d) = datas.first_mut() else { return };
-            let stride = d.chunk().stride().max(0) as usize;
-            let offset = d.chunk().offset() as usize;
-            let size = f.size;
-            // PipeWire maps a memfd with only the access its flags grant, and some producers
-            // (xdg-desktop-portal-wlr) don't flag theirs readable: that mapping is PROT_NONE.
-            let raw = d.as_raw();
-            let own_map;
-            let bytes: &[u8] = if d.type_() == spa::buffer::DataType::MemFd
-                && raw.flags & spa::sys::SPA_DATA_FLAG_READABLE == 0
-            {
-                let Some(m) = ReadMap::new(raw.fd, raw.mapoffset, raw.maxsize) else {
-                    return;
-                };
-                own_map = m;
-                own_map.bytes()
-            } else {
-                match d.data() {
-                    Some(b) => b,
-                    None => return,
+            let Some(nv12) = with_packed(&mut buffer, size, |src, stride| {
+                if size == out {
+                    packed_to_nv12_par(src, stride, out, order)
+                } else {
+                    let (fit, _) = fit_packed(src, stride, size, out);
+                    packed_to_nv12_par(&fit, out.w as usize * 4, out, order)
                 }
-            };
-            let stride = if stride == 0 {
-                size.w as usize * 4
-            } else {
-                stride
-            };
-            let need = offset + stride * size.h as usize;
-            if size.w == 0 || size.h == 0 || bytes.len() < need {
+            }) else {
                 return;
-            }
-            last_ns = Some(now);
-            let src = &bytes[offset..need];
-            let nv12 = if size == out {
-                packed_to_nv12_par(src, stride, out, order)
-            } else {
-                let (fit, _) = fit_packed(src, stride, size, out);
-                packed_to_nv12_par(&fit, out.w as usize * 4, out, order)
             };
+            last_ns = Some(now);
             sink.on_screen(VideoFrame {
                 stream: tag,
                 pts: sc_platform::HostTime(now),
@@ -541,6 +568,148 @@ fn screen_stream(
                 content_scale: Some(1.0),
                 buffer: FrameBuffer(Arc::new(nv12)),
             });
+        })
+        .register()
+        .map_err(|e| format!("PipeWire listener: {e}"))?;
+    connect(
+        &stream,
+        node,
+        pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS,
+    )?;
+    Ok((stream, listener))
+}
+
+/// Calls `f` with the buffer's packed pixels (`size.h` rows of `stride` bytes) when it holds a
+/// whole frame.
+fn with_packed<R>(
+    buffer: &mut pw::buffer::Buffer<'_>,
+    size: SizePx,
+    f: impl FnOnce(&[u8], usize) -> R,
+) -> Option<R> {
+    let datas = buffer.datas_mut();
+    let d = datas.first_mut()?;
+    let stride = d.chunk().stride().max(0) as usize;
+    let offset = d.chunk().offset() as usize;
+    // PipeWire maps a memfd with only the access its flags grant, and some producers
+    // (xdg-desktop-portal-wlr) don't flag theirs readable: that mapping is PROT_NONE.
+    let raw = d.as_raw();
+    let own_map;
+    let bytes: &[u8] = if d.type_() == spa::buffer::DataType::MemFd
+        && raw.flags & spa::sys::SPA_DATA_FLAG_READABLE == 0
+    {
+        own_map = ReadMap::new(raw.fd, raw.mapoffset, raw.maxsize)?;
+        own_map.bytes()
+    } else {
+        d.data()?
+    };
+    let stride = if stride == 0 {
+        size.w as usize * 4
+    } else {
+        stride
+    };
+    let need = offset + stride * size.h as usize;
+    if size.w == 0 || size.h == 0 || bytes.len() < need {
+        return None;
+    }
+    Some(f(&bytes[offset..need], stride))
+}
+
+fn has_snap(snaps: &Snaps, node: u32) -> bool {
+    snaps.borrow().iter().any(|r| r.node == node)
+}
+
+fn answer_snaps(
+    snaps: &Snaps,
+    node: u32,
+    src: &[u8],
+    stride: usize,
+    size: SizePx,
+    order: PackedOrder,
+) {
+    let mine: Vec<SnapReq> = {
+        let mut all = snaps.borrow_mut();
+        let (mine, rest) = all.drain(..).partition(|r| r.node == node);
+        *all = rest;
+        mine
+    };
+    for r in mine {
+        let _ = r
+            .reply
+            .send(snapshot_image(src, stride, size, order, r.max));
+    }
+}
+
+/// `src` fitted inside `max` (never enlarged), as opaque RGBA.
+fn snapshot_image(
+    src: &[u8],
+    stride: usize,
+    size: SizePx,
+    order: PackedOrder,
+    max: SizePx,
+) -> RgbaImage {
+    let k = (f64::from(max.w) / f64::from(size.w.max(1)))
+        .min(f64::from(max.h) / f64::from(size.h.max(1)))
+        .min(1.0);
+    let out = SizePx {
+        w: ((f64::from(size.w) * k).round() as u32).max(1),
+        h: ((f64::from(size.h) * k).round() as u32).max(1),
+    };
+    let (mut data, _) = fit_packed(src, stride, size, out);
+    for px in data.as_chunks_mut::<4>().0 {
+        if matches!(order, PackedOrder::Bgra) {
+            px.swap(0, 2);
+        }
+        px[3] = 255;
+    }
+    RgbaImage {
+        size: out,
+        stride: out.w as usize * 4,
+        data,
+    }
+}
+
+/// A stream that answers snapshot requests for `node` and pauses once none are left; a request
+/// wakes it again.
+fn snap_stream(
+    core: &pw::core::CoreRc,
+    node: u32,
+    snaps: Snaps,
+) -> std::result::Result<Live, String> {
+    let stream = pw::stream::StreamRc::new(core.clone(), "simple-capture-snapshot", video_props())
+        .map_err(|e| format!("PipeWire stream: {e}"))?;
+    let listener = stream
+        .add_local_listener_with_user_data(Format {
+            size: SizePx { w: 0, h: 0 },
+            order: None,
+        })
+        .param_changed(|_, f, id, param| {
+            let Some(param) = param else { return };
+            if id != spa::param::ParamType::Format.as_raw() {
+                return;
+            }
+            let mut info = spa::param::video::VideoInfoRaw::default();
+            if info.parse(param).is_ok() {
+                f.size = SizePx {
+                    w: info.size().width,
+                    h: info.size().height,
+                };
+                f.order = order_of(info.format());
+            }
+        })
+        .process(move |stream, f| {
+            let Some(mut buffer) = stream.dequeue_buffer() else {
+                return;
+            };
+            if let Some(order) = f.order {
+                let size = f.size;
+                with_packed(&mut buffer, size, |src, stride| {
+                    answer_snaps(&snaps, node, src, stride, size, order);
+                });
+            }
+            drop(buffer);
+            if !has_snap(&snaps, node) {
+                let _ = stream.set_active(false);
+            }
         })
         .register()
         .map_err(|e| format!("PipeWire listener: {e}"))?;

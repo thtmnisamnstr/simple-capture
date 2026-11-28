@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata for Linux software centres and Flathub. -->
+<component type="desktop-application">
+  <id>io.github.thtmnisamnstr.simple-capture</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>simple-capture</name>
+  <summary>Record your screen, camera and voice, then edit and export</summary>
+  <developer id="io.github.thtmnisamnstr">
+    <name>Gavin Johnson</name>
+  </developer>
+  <description>
+    <p>
+      simple-capture is a screen recorder with a small video editor built in. Record a display or a
+      window with your camera in a corner and your microphone and system audio on their own tracks.
+      Before you record, pick a frame shape to match where the video is going, from 16:9 down to
+      vertical 9:16 for short-form video.
+    </p>
+    <p>
+      When you stop, the editor opens. Trim and split clips, speed them up, blur anything private,
+      and add text with outlines, shadows and simple animations.
+    </p>
+    <p>
+      Export to MP4, MOV, WebM, GIF or animated WebP, with presets for email, team chat, video sites
+      and vertical video, and a size estimate before the export starts.
+    </p>
+    <p>
+      You don't need an account, and the app never connects to the internet. Recordings stay on your
+      computer.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.thtmnisamnstr.simple-capture.desktop</launchable>
+  <url type="homepage">https://github.com/thtmnisamnstr/simple-capture</url>
+  <url type="bugtracker">https://github.com/thtmnisamnstr/simple-capture/issues</url>
+  <url type="vcs-browser">https://github.com/thtmnisamnstr/simple-capture</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>The recorder: pick a screen or window, frame it, choose the sound</caption>
+      <image>https://raw.githubusercontent.com/thtmnisamnstr/simple-capture/main/app/linux/screenshots/01-record.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The editor: trim, split, speed up and add text on a timeline</caption>
+      <image>https://raw.githubusercontent.com/thtmnisamnstr/simple-capture/main/app/linux/screenshots/02-edit.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Export to MP4, MOV, WebM, GIF or WebP, with presets for where it goes</caption>
+      <image>https://raw.githubusercontent.com/thtmnisamnstr/simple-capture/main/app/linux/screenshots/03-export.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The Library of recordings</caption>
+      <image>https://raw.githubusercontent.com/thtmnisamnstr/simple-capture/main/app/linux/screenshots/04-library.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <keywords>
+    <keyword>screen recorder</keyword>
+    <keyword>screencast</keyword>
+    <keyword>video editor</keyword>
+    <keyword>camera</keyword>
+    <keyword>GIF</keyword>
+  </keywords>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+    <category>Recorder</category>
+  </categories>
+  <releases>
+    <release version="0.1.0" date="2026-11-28">
+      <description>
+        <p>First Linux release (experimental): GNOME and KDE Plasma on Wayland.</p>
+      </description>
+    </release>
+  </releases>
+</component>

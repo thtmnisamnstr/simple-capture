@@ -22,6 +22,14 @@ pub mod shortcuts {
     pub use crate::imp::shortcuts::{Bound, Wanted, bind, wayland, xdg_trigger};
 }
 
+/// Names the process after the app ID before GTK starts: GTK makes the Wayland app_id and the X11
+/// WM_CLASS from it, and desktops match those to the installed desktop file for the window's icon,
+/// name and dock entry (Flatpak expects the same ID).
+#[cfg(target_os = "linux")]
+pub fn set_program_name() {
+    gstreamer::glib::set_prgname(Some(imp::portal::APP_ID));
+}
+
 pub fn platform() -> Arc<dyn Platform> {
     #[cfg(target_os = "linux")]
     return imp::platform();

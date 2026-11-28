@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>simple-capture for Linux</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fff; --code: #f2f2f4; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #f2f2f4; --bg: #161618; --code: #26262a; } }
+  body { font: 16px/1.55 system-ui, sans-serif; color: var(--fg); background: var(--bg);
+         max-width: 46rem; margin: 3rem auto; padding: 0 16px; }
+  pre { background: var(--code); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
+  code { font: 14px/1.5 ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<h1>simple-capture for Linux</h1>
+<p>Version @VERSION@, for x86_64 and arm64. Updates arrive with your system's own updates.</p>
+
+<h2>Debian, Ubuntu and derivatives</h2>
+<pre><code>curl -fsSL @BASE@/simple-capture.gpg | sudo tee /usr/share/keyrings/simple-capture.gpg &gt; /dev/null
+curl -fsSL @BASE@/simple-capture.sources | sudo tee /etc/apt/sources.list.d/simple-capture.sources &gt; /dev/null
+sudo apt update &amp;&amp; sudo apt install simple-capture</code></pre>
+
+<h2>Fedora, RHEL and derivatives</h2>
+<pre><code>sudo curl -fsSLo /etc/yum.repos.d/simple-capture.repo @BASE@/simple-capture.repo
+sudo dnf install simple-capture</code></pre>
+
+<p>The signing key is <a href="simple-capture.asc">simple-capture.asc</a>. Source, other
+packages (Flatpak, Snap, AppImage) and release notes:
+<a href="https://github.com/thtmnisamnstr/simple-capture">github.com/thtmnisamnstr/simple-capture</a>.</p>
+</body>
+</html>
