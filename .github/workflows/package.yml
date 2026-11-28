@@ -225,14 +225,14 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          sudo apt-get install -y --no-install-recommends appstream desktop-file-utils rpm2cpio cpio
+          sudo apt-get install -y --no-install-recommends appstream desktop-file-utils rpm
           id=io.github.thtmnisamnstr.simple-capture
           desktop-file-validate app/linux/$id.desktop
           appstreamcli validate --no-net app/linux/$id.metainfo.xml
           deb=$(ls "$CARGO_TARGET_DIR"/release/bundle/deb/*.deb)
           rpm=$(ls "$CARGO_TARGET_DIR"/release/bundle/rpm/*.rpm)
           dpkg-deb -c "$deb" | awk '{print $NF}' | sed -E 's#^\./##' > deb.txt
-          rpm2cpio "$rpm" | cpio -t --quiet | sed -E 's#^\.?/##' > rpm.txt
+          rpm -qlp "$rpm" | sed -E 's#^/##' > rpm.txt
           for want in "usr/share/applications/$id.desktop" "usr/share/metainfo/$id.metainfo.xml" \
                       usr/bin/simple-capture-app usr/bin/sc-ffmpeg; do
             grep -qx "$want" deb.txt || { echo "::error::the .deb lacks $want"; exit 1; }
