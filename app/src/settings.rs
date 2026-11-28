@@ -220,6 +220,19 @@ impl SettingsStore {
         }
     }
 
+    /// A system-picker pick lives only as long as the process, so a saved one is stale at launch.
+    /// On Linux every source is such a pick; the panel would offer it and recording would fail.
+    #[cfg(target_os = "linux")]
+    pub fn forget_picked_source(&self) {
+        let mut s = self.load();
+        if matches!(s.source, Some(SourceSpecDto::Picked { .. })) {
+            s.source = None;
+            if let Err(e) = self.save(&s) {
+                tracing::warn!("forget the last picked source: {e}");
+            }
+        }
+    }
+
     pub fn save(&self, s: &RecorderSettings) -> Result<(), String> {
         s.validate()?;
         let bytes = serde_json::to_vec_pretty(s).map_err(|e| format!("encode settings: {e}"))?;
@@ -242,6 +255,39 @@ mod tests {
             std::env::temp_dir().join(format!("sc-app-settings-{name}-{}", sc_core::ids::new_id()));
         std::fs::create_dir_all(&d).expect("temp dir");
         d
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_saved_pick_is_forgotten_at_launch_and_other_sources_are_kept() {
+        let dir = temp_dir("pick");
+        let store = SettingsStore::new(&dir);
+        let picked = RecorderSettings {
+            source: Some(SourceSpecDto::Picked {
+                pick_id: "gone".into(),
+                region_pt: None,
+            }),
+            ..RecorderSettings::default()
+        };
+        store.save(&picked).expect("save");
+        store.forget_picked_source();
+        assert_eq!(store.load().source, None);
+        let region = RecorderSettings {
+            source: Some(SourceSpecDto::Region {
+                display_id: "1".into(),
+                region_pt: RectPt {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 10.0,
+                    h: 10.0,
+                },
+            }),
+            ..RecorderSettings::default()
+        };
+        store.save(&region).expect("save");
+        store.forget_picked_source();
+        assert_eq!(store.load().source, region.source);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

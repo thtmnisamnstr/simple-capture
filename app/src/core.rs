@@ -124,8 +124,11 @@ impl Core {
     ) -> Core {
         let (platform, camera) = WithSharedCamera::new(platform);
         let screens = platform.screens();
+        let settings = SettingsStore::new(&data_dir);
+        #[cfg(target_os = "linux")]
+        settings.forget_picked_source();
         Core {
-            settings: SettingsStore::new(&data_dir),
+            settings,
             settings_write: Mutex::new(()),
             app,
             platform,
