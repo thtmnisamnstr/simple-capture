@@ -162,8 +162,14 @@ pub fn bind(wanted: Vec<Wanted>, activated: Arc<dyn Fn(&str) + Send + Sync>) -> 
         let stream = portal.receive_activated().await?;
         Ok::<_, ashpd::Error>((portal, session, bound, stream))
     });
-    let (portal, session, bound, mut stream) =
-        started.map_err(|e| Error::Other(format!("global shortcuts portal: {e}")))?;
+    let (portal, session, bound, mut stream) = started.map_err(|e| {
+        let text = e.to_string();
+        if text.contains("UnknownInterface") || text.contains("No such interface") {
+            Error::Unsupported("this desktop offers no global shortcuts to apps")
+        } else {
+            Error::Other(format!("global shortcuts portal: {e}"))
+        }
+    })?;
     // The portal sends Activated only to the connection that owns the session, and there is one
     // session at a time (the old listener is gone before a rebind).
     let listener = runtime().spawn(async move {
