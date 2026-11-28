@@ -6,6 +6,14 @@ with no human where possible and with a short hands-on checklist where not. Toda
 `xdg-desktop-portal-wlr` picks the only output by itself (`chooser_type=none`). That tests our
 pipeline, not KDE's or GNOME's portal. Sources are listed at the end and cited as [n].
 
+**Status (2026-11-28):** section 1 is built. `tools/linux-dev/kde-headless.sh` runs headless KWin
+with xdg-desktop-portal-kde and kglobalacceld; `approve-portal.py` answers KDE's share and shortcut
+dialogs over AT-SPI; `e2e.sh` runs the app there (`SC_E2E_SESSION=kde`, `SC_E2E_APPROVE=1`,
+`SC_HL_KEEP=1` to keep what the portal remembers, `SC_E2E_ALONGSIDE` for kglobalaccel). Passed on
+Plasma 6.6: share dialog, recording, restore with no dialog, shortcuts bound again silently,
+`invokeShortcut record` starting and stopping a recording. Still to do: a real Plasma desktop
+(section 2) and the checklist (section 3).
+
 ## 0. What is different on KDE
 
 | | GNOME 50 (Ubuntu 26.04) | Plasma 6.6 (Kubuntu 26.04) / 6.8 (Fedora 45) |

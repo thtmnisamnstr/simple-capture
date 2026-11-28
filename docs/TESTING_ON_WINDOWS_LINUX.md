@@ -181,17 +181,22 @@ Fixed in that round:
 - The app registers the portal app ID `io.github.thtmnisamnstr.SimpleCapture`; it needs an
   installed desktop file of that name (dev: `~/.local/share/applications/`, `NoDisplay=true`).
 
+Then KDE Plasma 6.6, in a headless KWin session with KDE's own portal (`tools/linux-dev/kde-headless.sh`;
+`SC_E2E_SESSION=kde tools/linux-dev/e2e.sh FLOW`): the share dialog (approved over AT-SPI), a
+recording, a relaunch that restores the last screen with no dialog (15 ms), the shortcuts bound
+again without asking, and the record shortcut fired through kglobalaccel starting and stopping a
+recording. The real microphone was checked on GNOME with the owner's permission (unmuted for 10 s,
+muted again): it records the room's noise floor, and the mic list now says when a source is muted.
+
 Still open:
 
 - The packages must install `io.github.thtmnisamnstr.SimpleCapture.desktop` (Tauri installs
   `simple-capture.desktop`); without it the portals keep tokens and shortcuts under no ID.
-- The mic's sound itself is unverified here: the owner's default microphone is muted in GNOME's
-  settings, so every app (`pw-record` too) gets digital silence. The app does not yet warn that
-  the chosen microphone is muted.
 - The camera delivers 16 fps in dim light (the driver's own rate; `v4l2-ctl` measures the same).
 - Encoding is in software on Asahi (no VA-API): openh264 manages 52 fps at 2560×1600, enough
   for 30 fps, tight for 60.
 - GNOME's AppIndicator extension logs "Failed to recognize image format" when the tray icon
   changes (the tray-icon crate replaces its temporary PNG while the shell reads it); cosmetic.
 - The portal dialog has no parent window ("Failed to associate portal window with parent window").
-- KDE: see docs/KDE_TESTING.md. Packaging: see docs/LINUX_DISTRIBUTION.md.
+- KDE on a real desktop (not only the headless session), and KDE on X11. Packaging: see
+  docs/LINUX_DISTRIBUTION.md.
