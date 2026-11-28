@@ -70,9 +70,12 @@ fn export_focused(tx: Reply) {
 
 /// GTK refuses a second export of the same window, so the handle is kept on the window.
 fn export_wayland(raw: *mut GdkWindow, tx: Reply) {
-    let kept = unsafe { gtk::glib::gobject_ffi::g_object_get_data(raw.cast(), EXPORTED_KEY.as_ptr()) };
+    let kept =
+        unsafe { gtk::glib::gobject_ffi::g_object_get_data(raw.cast(), EXPORTED_KEY.as_ptr()) };
     if !kept.is_null() {
-        let handle = unsafe { CStr::from_ptr(kept.cast()) }.to_string_lossy().into_owned();
+        let handle = unsafe { CStr::from_ptr(kept.cast()) }
+            .to_string_lossy()
+            .into_owned();
         let _ = tx.send(Some(Parent::Wayland(handle)));
         return;
     }
@@ -99,7 +102,9 @@ unsafe extern "C" fn exported(window: *mut GdkWindow, handle: *const c_char, dat
             Some(gtk::glib::ffi::g_free),
         );
     }
-    let handle = unsafe { CStr::from_ptr(handle) }.to_string_lossy().into_owned();
+    let handle = unsafe { CStr::from_ptr(handle) }
+        .to_string_lossy()
+        .into_owned();
     let _ = tx.send(Some(Parent::Wayland(handle)));
 }
 

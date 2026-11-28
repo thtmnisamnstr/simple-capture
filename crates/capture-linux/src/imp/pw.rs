@@ -633,7 +633,9 @@ fn answer_snaps(
         mine
     };
     for r in mine {
-        let _ = r.reply.send(snapshot_image(src, stride, size, order, r.max));
+        let _ = r
+            .reply
+            .send(snapshot_image(src, stride, size, order, r.max));
     }
 }
 

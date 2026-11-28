@@ -89,9 +89,9 @@ impl ScreenSource for Screen {
     /// preview could stall it (see `pw::Connection`).
     fn snapshot(&self, spec: &SourceSpec, max: SizePx) -> Result<RgbaImage> {
         let c = portal::cast_of(spec)?;
-        let conn = c
-            .open_connection()
-            .ok_or(Error::Unsupported("snapshots before the pick's stream is open"))?;
+        let conn = c.open_connection().ok_or(Error::Unsupported(
+            "snapshots before the pick's stream is open",
+        ))?;
         conn.snapshot(c.node, max)
     }
 }
