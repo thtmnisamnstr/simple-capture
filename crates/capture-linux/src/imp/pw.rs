@@ -23,6 +23,56 @@ struct Format {
     order: Option<PackedOrder>,
 }
 
+/// A read-only mapping of `size` bytes at `offset` in a shared-memory fd.
+struct ReadMap {
+    base: *mut libc::c_void,
+    len: usize,
+    start: usize,
+    size: usize,
+}
+
+impl ReadMap {
+    fn new(fd: i64, offset: u32, size: u32) -> Option<Self> {
+        let fd = i32::try_from(fd).ok().filter(|fd| *fd >= 0)?;
+        let page = usize::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).ok()?;
+        let offset = offset as usize;
+        let size = size as usize;
+        if size == 0 {
+            return None;
+        }
+        let aligned = offset - offset % page.max(1);
+        let start = offset - aligned;
+        let len = start.checked_add(size)?;
+        let base = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                len,
+                libc::PROT_READ,
+                libc::MAP_SHARED,
+                fd,
+                libc::off_t::try_from(aligned).ok()?,
+            )
+        };
+        (base != libc::MAP_FAILED).then_some(Self {
+            base,
+            len,
+            start,
+            size,
+        })
+    }
+
+    fn bytes(&self) -> &[u8] {
+        // SAFETY: `base..base + len` stays mapped readable until Drop, and start + size == len.
+        unsafe { std::slice::from_raw_parts(self.base.cast::<u8>().add(self.start), self.size) }
+    }
+}
+
+impl Drop for ReadMap {
+    fn drop(&mut self) {
+        unsafe { libc::munmap(self.base, self.len) };
+    }
+}
+
 fn order_of(f: spa::param::video::VideoFormat) -> Option<PackedOrder> {
     use spa::param::video::VideoFormat as F;
     match f {
@@ -196,7 +246,24 @@ fn run(
             let stride = d.chunk().stride().max(0) as usize;
             let offset = d.chunk().offset() as usize;
             let size = f.size;
-            let Some(bytes) = d.data() else { return };
+            // PipeWire maps a memfd with only the access its flags grant, and some producers
+            // (xdg-desktop-portal-wlr) don't flag theirs readable: that mapping is PROT_NONE.
+            let raw = d.as_raw();
+            let own_map;
+            let bytes: &[u8] = if d.type_() == spa::buffer::DataType::MemFd
+                && raw.flags & spa::sys::SPA_DATA_FLAG_READABLE == 0
+            {
+                let Some(m) = ReadMap::new(raw.fd, raw.mapoffset, raw.maxsize) else {
+                    return;
+                };
+                own_map = m;
+                own_map.bytes()
+            } else {
+                match d.data() {
+                    Some(b) => b,
+                    None => return,
+                }
+            };
             let stride = if stride == 0 {
                 size.w as usize * 4
             } else {
@@ -278,5 +345,34 @@ pub fn start(
             let _ = quit.send(());
             Err(Error::Timeout("the PipeWire stream did not start".into()))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReadMap;
+    use std::io::Write;
+    use std::os::fd::{AsRawFd, FromRawFd};
+
+    fn memfd(bytes: &[u8]) -> std::fs::File {
+        let fd = unsafe { libc::memfd_create(c"sc-readmap".as_ptr(), 0) };
+        assert!(fd >= 0, "memfd_create");
+        let mut f = unsafe { std::fs::File::from_raw_fd(fd) };
+        f.write_all(bytes).expect("write");
+        f
+    }
+
+    #[test]
+    fn read_map_reads_any_offset_whatever_the_page_size() {
+        let page = usize::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).expect("page");
+        let data: Vec<u8> = (0..page * 3).map(|i| (i % 251) as u8).collect();
+        let f = memfd(&data);
+        let fd = i64::from(f.as_raw_fd());
+        for (offset, size) in [(0, page * 3), (page + 100, 1000), (7, page)] {
+            let m = ReadMap::new(fd, offset as u32, size as u32).expect("map");
+            assert_eq!(m.bytes(), &data[offset..offset + size], "offset {offset}");
+        }
+        assert!(ReadMap::new(fd, 0, 0).is_none());
+        assert!(ReadMap::new(-1, 0, 16).is_none());
     }
 }
