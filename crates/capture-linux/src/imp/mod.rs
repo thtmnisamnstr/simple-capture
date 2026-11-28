@@ -2,6 +2,7 @@ mod camera;
 mod desktop;
 mod gst;
 mod mjpeg;
+mod nodes;
 mod portal;
 mod pw;
 mod sys;
@@ -12,7 +13,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use sc_capture_common::audio::{CpalMic, CpalSystemAudio, mic_devices};
+use sc_capture_common::audio::{CpalMic, CpalSystemAudio};
 use sc_capture_common::watch::Watcher;
 use sc_core::image::RgbaImage;
 use sc_core::project::SourceDescriptor;
@@ -27,6 +28,22 @@ use sc_platform::{
 use sc_tracks::{HelperDecoder, HelperWriters};
 
 struct Screen;
+
+struct Mic(CpalMic);
+
+impl AudioSource for Mic {
+    fn devices(&self) -> Result<Vec<CaptureDevice>> {
+        nodes::mics()
+    }
+
+    fn start(&self, device_id: &str, sink: Arc<dyn FrameSink>) -> Result<Box<dyn DeviceStream>> {
+        self.0.start(device_id, sink)
+    }
+
+    fn show_mic_modes(&self) -> Result<()> {
+        self.0.show_mic_modes()
+    }
+}
 
 impl ScreenSource for Screen {
     fn displays(&self) -> Result<Vec<DisplayInfo>> {
@@ -129,7 +146,7 @@ impl OverlayWindows for Overlays {
 
 pub struct LinuxPlatform {
     screen: Screen,
-    mic: CpalMic,
+    mic: Mic,
     system_audio: CpalSystemAudio,
     camera: Camera,
     picker: portal::PortalPicker,
@@ -156,9 +173,9 @@ pub fn platform() -> Arc<dyn Platform> {
         .unwrap_or_else(|_| sc_helpers::bundled_path(sc_helpers::HelperKind::Ffmpeg));
     Arc::new(LinuxPlatform {
         screen: Screen,
-        mic: CpalMic {
+        mic: Mic(CpalMic {
             clock: sys::host_now,
-        },
+        }),
         system_audio: CpalSystemAudio {
             clock: sys::host_now,
         },
@@ -265,7 +282,7 @@ impl Platform for LinuxPlatform {
         };
         Ok(Box::new(Watcher::start(
             sink,
-            Box::new(move || ids(mic_devices())),
+            Box::new(move || ids(nodes::mics())),
             Box::new(move || ids(camera::devices())),
         )?))
     }
